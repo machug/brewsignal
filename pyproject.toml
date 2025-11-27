@@ -1,0 +1,28 @@
+[project]
+name = "tilt-ui"
+version = "0.1.0"
+description = "Modern web UI for Tilt Hydrometer monitoring"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104",
+    "uvicorn[standard]>=0.24",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.19",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "aioblescan>=0.2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "httpx>=0.25",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]

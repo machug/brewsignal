@@ -4,11 +4,16 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .database import init_db
+from . import models  # noqa: F401 - Import models so SQLAlchemy sees them
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: init DB, start scanner
     print("Starting Tilt UI...")
+    await init_db()
+    print("Database initialized")
     yield
     # Shutdown: stop scanner
     print("Shutting down Tilt UI...")

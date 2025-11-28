@@ -72,6 +72,7 @@ async def handle_tilt_reading(reading: TiltReading):
             "id": reading.id,
             "color": reading.color,
             "beer_name": tilt.beer_name,
+            "original_gravity": tilt.original_gravity,
             "sg": sg_calibrated,
             "sg_raw": reading.sg,
             "temp": temp_calibrated,

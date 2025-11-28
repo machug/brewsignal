@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
-	import { updateTiltBeerName } from '$lib/stores/tilts.svelte';
+	import { updateTiltBeerName, updateTiltOriginalGravity } from '$lib/stores/tilts.svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import TiltChart from './TiltChart.svelte';
 
@@ -55,6 +55,11 @@
 		} else if (e.key === 'Escape') {
 			isEditing = false;
 		}
+	}
+
+	// Handle OG change from FermentationStats
+	async function handleOgChange(og: number | null) {
+		await updateTiltOriginalGravity(tilt.id, og);
 	}
 
 	// Reactive temp unit from config
@@ -219,7 +224,12 @@
 		{#if chartMounted}
 			<div class="chart-section" class:hidden={!expanded}>
 				{#key tilt.id}
-					<TiltChart tiltId={tilt.id} tiltColor={tilt.color} />
+					<TiltChart
+						tiltId={tilt.id}
+						tiltColor={tilt.color}
+						originalGravity={tilt.original_gravity}
+						onOgChange={handleOgChange}
+					/>
 				{/key}
 			</div>
 		{/if}

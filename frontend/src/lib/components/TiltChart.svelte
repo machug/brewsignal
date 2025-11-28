@@ -9,6 +9,7 @@
 		type AmbientHistoricalReading
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius } from '$lib/stores/config.svelte';
+	import FermentationStats from './FermentationStats.svelte';
 
 	const REFRESH_STORAGE_KEY = 'tiltui_chart_refresh_minutes';
 	const REFRESH_OPTIONS = [
@@ -32,9 +33,11 @@
 	interface Props {
 		tiltId: string;
 		tiltColor: string;
+		originalGravity?: number | null;
+		onOgChange?: (og: number | null) => void;
 	}
 
-	let { tiltId, tiltColor }: Props = $props();
+	let { tiltId, tiltColor, originalGravity = null, onOgChange }: Props = $props();
 
 	// Reactive check for Celsius mode
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -596,6 +599,15 @@ onMount(async () => {
 			</div>
 		{/if}
 	</div>
+
+	<!-- Fermentation Stats -->
+	{#if readings.length > 0}
+		<FermentationStats
+			{readings}
+			{originalGravity}
+			onOgChange={onOgChange ?? (() => {})}
+		/>
+	{/if}
 </div>
 
 <style>

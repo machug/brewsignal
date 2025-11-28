@@ -52,6 +52,8 @@ async def update_tilt(
 
     if update.beer_name is not None:
         tilt.beer_name = update.beer_name
+    if update.original_gravity is not None:
+        tilt.original_gravity = update.original_gravity
 
     await db.commit()
     await db.refresh(tilt)

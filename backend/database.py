@@ -20,6 +20,18 @@ class Base(AsyncAttrs, DeclarativeBase):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migration: add original_gravity column if it doesn't exist
+        await conn.run_sync(_migrate_add_original_gravity)
+
+
+def _migrate_add_original_gravity(conn):
+    """Add original_gravity column to tilts table if not present."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("tilts")]
+    if "original_gravity" not in columns:
+        conn.execute(text("ALTER TABLE tilts ADD COLUMN original_gravity REAL"))
+        print("Migration: Added original_gravity column to tilts table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

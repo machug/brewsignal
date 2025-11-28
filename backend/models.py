@@ -16,6 +16,7 @@ class Tilt(Base):
     color: Mapped[str] = mapped_column(String(20), nullable=False)
     mac: Mapped[Optional[str]] = mapped_column(String(17))
     beer_name: Mapped[str] = mapped_column(String(100), default="Untitled")
+    original_gravity: Mapped[Optional[float]] = mapped_column()
     last_seen: Mapped[Optional[datetime]] = mapped_column()
 
     readings: Mapped[list["Reading"]] = relationship(back_populates="tilt", cascade="all, delete-orphan")
@@ -107,11 +108,20 @@ class TiltCreate(TiltBase):
 
 class TiltUpdate(BaseModel):
     beer_name: Optional[str] = None
+    original_gravity: Optional[float] = None
+
+    @field_validator("original_gravity")
+    @classmethod
+    def validate_og(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 0.990 or v > 1.200):
+            raise ValueError("original_gravity must be between 0.990 and 1.200")
+        return v
 
 
 class TiltResponse(TiltBase):
     id: str
     mac: Optional[str]
+    original_gravity: Optional[float]
     last_seen: Optional[datetime]
 
     class Config:

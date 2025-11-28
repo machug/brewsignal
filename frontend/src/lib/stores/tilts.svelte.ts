@@ -4,6 +4,7 @@ export interface TiltReading {
 	id: string;
 	color: string;
 	beer_name: string;
+	original_gravity: number | null;
 	sg: number;
 	sg_raw: number;
 	temp: number;
@@ -207,6 +208,28 @@ export async function updateTiltBeerName(tiltId: string, beerName: string): Prom
 		}
 	} catch (e) {
 		console.error('Failed to update beer name:', e);
+	}
+	return false;
+}
+
+export async function updateTiltOriginalGravity(tiltId: string, og: number | null): Promise<boolean> {
+	try {
+		const response = await fetch(`/api/tilts/${tiltId}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ original_gravity: og })
+		});
+		if (response.ok) {
+			// Update local state immediately
+			const existing = tiltsState.tilts.get(tiltId);
+			if (existing) {
+				existing.original_gravity = og;
+				tiltsState.tilts = new Map(tiltsState.tilts);
+			}
+			return true;
+		}
+	} catch (e) {
+		console.error('Failed to update original gravity:', e);
 	}
 	return false;
 }

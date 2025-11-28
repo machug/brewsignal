@@ -153,19 +153,19 @@ async def list_timezones():
 async def get_timezone():
     """Get current timezone."""
     try:
-        # Read /etc/timezone on Debian/Ubuntu
-        tz_file = Path("/etc/timezone")
-        if tz_file.exists():
-            return {"timezone": tz_file.read_text().strip()}
-        # Fallback to timedatectl
+        # Use timedatectl (most reliable on modern systems)
         result = subprocess.run(
             ["timedatectl", "show", "--property=Timezone", "--value"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and result.stdout.strip():
             return {"timezone": result.stdout.strip()}
+        # Fallback to /etc/timezone
+        tz_file = Path("/etc/timezone")
+        if tz_file.exists():
+            return {"timezone": tz_file.read_text().strip()}
     except Exception:
         pass
     return {"timezone": "UTC"}

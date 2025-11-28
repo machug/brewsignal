@@ -10,6 +10,15 @@
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius } from '$lib/stores/config.svelte';
 
+	const REFRESH_STORAGE_KEY = 'tiltui_chart_refresh_minutes';
+	const REFRESH_OPTIONS = [
+		{ label: 'Off', value: 0 },
+		{ label: '1 min', value: 1 },
+		{ label: '3 min', value: 3 },
+		{ label: '5 min', value: 5 },
+		{ label: '10 min', value: 10 }
+	];
+
 	// Get smoothing settings from config
 	let smoothingEnabled = $derived(configState.config.smoothing_enabled);
 	let smoothingSamples = $derived(configState.config.smoothing_samples);
@@ -17,6 +26,8 @@
 	// System timezone for chart display
 	let systemTimezone = $state<string>('UTC');
 	let mounted = $state(false);
+	let lastLoadTime = $state(0);
+	let refreshMinutes = $state<number>(3);
 
 	interface Props {
 		tiltId: string;
@@ -370,31 +381,40 @@
 		}
 
 		// Downsample for performance (max 500 points)
-		const maxPoints = 500;
-		[timestamps, sgValues, tempValues, ambientValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, maxPoints);
+	const maxPoints = 500;
+	[timestamps, sgValues, tempValues, ambientValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, maxPoints);
 
-		return [timestamps, sgValues, tempValues, ambientValues];
+	return [timestamps, sgValues, tempValues, ambientValues];
+}
+
+async function loadData(force = false) {
+	const refreshMs = refreshMinutes * 60 * 1000;
+	const now = Date.now();
+
+	// Prevent rapid reloads (e.g., from frequent BLE updates) unless forced
+	if (!force && refreshMinutes > 0 && now - lastLoadTime < refreshMs - 500) {
+		return;
 	}
 
-	async function loadData() {
-		loading = true;
-		error = null;
+	loading = true;
+	error = null;
 
-		try {
-			// Fetch tilt readings and ambient history in parallel
-			const [tiltData, ambientData] = await Promise.all([
-				fetchReadings(tiltId, selectedRange),
-				fetchAmbientHistory(selectedRange).catch(() => []) // Don't fail if ambient unavailable
-			]);
-			readings = tiltData;
-			ambientReadings = ambientData;
-			updateChart();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load data';
-		} finally {
-			loading = false;
-		}
+	try {
+		// Fetch tilt readings and ambient history in parallel
+		const [tiltData, ambientData] = await Promise.all([
+			fetchReadings(tiltId, selectedRange),
+			fetchAmbientHistory(selectedRange).catch(() => []) // Don't fail if ambient unavailable
+		]);
+		readings = tiltData;
+		ambientReadings = ambientData;
+		updateChart();
+	} catch (e) {
+		error = e instanceof Error ? e.message : 'Failed to load data';
+	} finally {
+		lastLoadTime = Date.now();
+		loading = false;
 	}
+}
 
 	function updateChart() {
 		if (!chartContainer || readings.length === 0) return;
@@ -409,20 +429,43 @@
 		chart = new uPlot(opts, data, chartContainer);
 	}
 
-	function handleResize() {
-		if (chart && chartContainer) {
-			chart.setSize({ width: chartContainer.clientWidth, height: 220 });
+function handleResize() {
+	if (chart && chartContainer) {
+		chart.setSize({ width: chartContainer.clientWidth, height: 220 });
+	}
+}
+
+let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+function resetRefreshInterval() {
+	if (refreshInterval) {
+		clearInterval(refreshInterval);
+		refreshInterval = null;
+	}
+
+	if (refreshMinutes > 0) {
+		const intervalMs = refreshMinutes * 60 * 1000;
+		refreshInterval = setInterval(() => {
+			if (!loading) {
+				loadData();
+			}
+		}, intervalMs);
+	}
+}
+
+onMount(async () => {
+	// Load preferred refresh interval from localStorage
+	const storedRefresh = localStorage.getItem(REFRESH_STORAGE_KEY);
+	if (storedRefresh !== null) {
+		const parsed = parseInt(storedRefresh, 10);
+		if (!Number.isNaN(parsed)) {
+			refreshMinutes = parsed;
 		}
 	}
 
-	// Refresh interval (3 minutes)
-	const REFRESH_INTERVAL_MS = 3 * 60 * 1000;
-	let refreshInterval: ReturnType<typeof setInterval> | null = null;
-
-	onMount(async () => {
-		// Fetch system timezone for chart display
-		try {
-			const response = await fetch('/api/system/timezone');
+	// Fetch system timezone for chart display
+	try {
+		const response = await fetch('/api/system/timezone');
 			if (response.ok) {
 				const data = await response.json();
 				systemTimezone = data.timezone || 'UTC';
@@ -431,16 +474,10 @@
 			console.warn('Failed to fetch system timezone, using UTC');
 		}
 
-		await loadData();
+		await loadData(true);
 		mounted = true;
 		window.addEventListener('resize', handleResize);
-
-		// Set up periodic refresh (every 3 minutes)
-		refreshInterval = setInterval(() => {
-			if (!loading) {
-				loadData();
-			}
-		}, REFRESH_INTERVAL_MS);
+		resetRefreshInterval();
 	});
 
 	onDestroy(() => {
@@ -454,7 +491,7 @@
 	// Reload when range changes (only after initial mount)
 	$effect(() => {
 		if (mounted && selectedRange) {
-			loadData();
+			loadData(true);
 		}
 	});
 
@@ -473,11 +510,19 @@
 			updateChart();
 		}
 	});
+
+	function handleRefreshChange(event: Event) {
+		const minutes = Number((event.target as HTMLSelectElement).value);
+		refreshMinutes = minutes;
+		localStorage.setItem(REFRESH_STORAGE_KEY, String(minutes));
+		resetRefreshInterval();
+		loadData(true);
+	}
 </script>
 
 <div class="chart-wrapper">
 	<!-- Time range selector -->
-	<div class="flex items-center justify-between mb-3">
+	<div class="chart-controls">
 		<div class="flex items-center gap-1.5">
 			{#each TIME_RANGES as range}
 				<button
@@ -490,22 +535,32 @@
 				</button>
 			{/each}
 		</div>
-		<div class="chart-legend">
-			<span class="legend-item">
-				<span class="legend-dot" style="background: var(--tilt-yellow);"></span>
-				<span>SG</span>
-			</span>
-			<span class="legend-item">
-				<span
-					class="legend-line"
-					style="background: {tiltColorMap[tiltColor] || 'var(--text-secondary)'};"
-				></span>
-				<span>Wort</span>
-			</span>
-			<span class="legend-item">
-				<span class="legend-line legend-line-dotted" style="background: #22d3ee;"></span>
-				<span>Ambient</span>
-			</span>
+		<div class="controls-right">
+			<div class="refresh-control">
+				<label for="refreshInterval">Refresh</label>
+				<select id="refreshInterval" class="refresh-select" value={refreshMinutes} onchange={handleRefreshChange}>
+					{#each REFRESH_OPTIONS as option}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
+			<div class="chart-legend">
+				<span class="legend-item">
+					<span class="legend-dot" style="background: var(--tilt-yellow);"></span>
+					<span>SG</span>
+				</span>
+				<span class="legend-item">
+					<span
+						class="legend-line"
+						style="background: {tiltColorMap[tiltColor] || 'var(--text-secondary)'};"
+					></span>
+					<span>Wort</span>
+				</span>
+				<span class="legend-item">
+					<span class="legend-line legend-line-dotted" style="background: #22d3ee;"></span>
+					<span>Ambient</span>
+				</span>
+			</div>
 		</div>
 	</div>
 
@@ -533,6 +588,56 @@
 <style>
 	.chart-wrapper {
 		padding-top: 0.5rem;
+	}
+
+	.chart-controls {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.75rem;
+	}
+
+	.controls-right {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+
+	.refresh-control {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.6875rem;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.refresh-control label {
+		color: var(--text-muted);
+	}
+
+	.refresh-select {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.6875rem;
+		font-family: 'JetBrains Mono', monospace;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-default);
+		background: var(--bg-elevated);
+		color: var(--text-primary);
+		cursor: pointer;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.refresh-select:focus {
+		outline: none;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px var(--accent-muted);
 	}
 
 	.range-btn {

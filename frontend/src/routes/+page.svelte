@@ -1,48 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { tiltsState, connectWebSocket, disconnectWebSocket } from '$lib/stores/tilts.svelte';
-	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
+	import { weatherState } from '$lib/stores/weather.svelte';
 	import TiltCard from '$lib/components/TiltCard.svelte';
 
-	// Weather/Alerts types
-	interface WeatherForecast {
-		datetime: string;
-		condition: string;
-		temperature: number | null;
-		templow: number | null;
-	}
-
-	interface Alert {
-		level: string;
-		message: string;
-		day: string;
-	}
-
-	interface AlertsResponse {
-		forecast: WeatherForecast[];
-		alerts: Alert[];
-		weather_entity: string | null;
-		alerts_enabled: boolean;
-	}
-
-	let alertsData = $state<AlertsResponse | null>(null);
-	let alertsLoading = $state(false);
 	let alertsDismissed = $state(false);
 	let alertsCollapsed = $state(false);
-
-	async function loadAlerts() {
-		alertsLoading = true;
-		try {
-			const response = await fetch('/api/alerts');
-			if (response.ok) {
-				alertsData = await response.json();
-			}
-		} catch (e) {
-			console.error('Failed to load alerts:', e);
-		} finally {
-			alertsLoading = false;
-		}
-	}
 
 	onMount(() => {
 		// Load alert dismissal state from localStorage
@@ -57,12 +20,8 @@
 		}
 
 		connectWebSocket();
-		loadAlerts();
-		// Refresh alerts every 30 minutes
-		const interval = setInterval(loadAlerts, 30 * 60 * 1000);
 		return () => {
 			disconnectWebSocket();
-			clearInterval(interval);
 		};
 	});
 
@@ -73,56 +32,6 @@
 
 	function toggleExpand(tiltId: string) {
 		expandedTiltId = expandedTiltId === tiltId ? null : tiltId;
-	}
-
-	// Format ambient temp based on user's unit preference
-	// Ambient temp from HA is typically in Celsius, convert if needed
-	function formatAmbientTemp(tempC: number): string {
-		if (configState.config.temp_units === 'F') {
-			return ((tempC * 9) / 5 + 32).toFixed(1);
-		}
-		return tempC.toFixed(1);
-	}
-
-	// Format forecast temp (HA provides temps in Celsius)
-	function formatForecastTemp(temp: number | null): string {
-		if (temp === null) return '--';
-		return Math.round(temp).toString();
-	}
-
-	// Get weather icon based on condition
-	function getWeatherIcon(condition: string): string {
-		const icons: Record<string, string> = {
-			'sunny': '☀️',
-			'clear-night': '🌙',
-			'partlycloudy': '⛅',
-			'cloudy': '☁️',
-			'rainy': '🌧️',
-			'pouring': '🌧️',
-			'snowy': '❄️',
-			'fog': '🌫️',
-			'windy': '💨',
-			'lightning': '⚡',
-			'lightning-rainy': '⛈️',
-			'hail': '🌨️',
-		};
-		return icons[condition] || '🌡️';
-	}
-
-	// Format day name from datetime
-	function formatDayName(datetime: string): string {
-		try {
-			const date = new Date(datetime);
-			const today = new Date();
-			const tomorrow = new Date(today);
-			tomorrow.setDate(tomorrow.getDate() + 1);
-
-			if (date.toDateString() === today.toDateString()) return 'Today';
-			if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
-			return date.toLocaleDateString('en-US', { weekday: 'short' });
-		} catch {
-			return 'Day';
-		}
 	}
 
 	function dismissAlerts() {
@@ -141,7 +50,7 @@
 </svelte:head>
 
 <!-- Alerts Banner -->
-{#if alertsData && alertsData.alerts.length > 0 && !alertsDismissed}
+{#if weatherState.alerts.length > 0 && !alertsDismissed}
 	<div class="alerts-banner">
 		<div class="alerts-header">
 			<div class="alerts-title">
@@ -149,7 +58,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 				</svg>
 				<span>Weather Alerts</span>
-				<span class="alerts-count">{alertsData.alerts.length}</span>
+				<span class="alerts-count">{weatherState.alerts.length}</span>
 			</div>
 			<button type="button" class="dismiss-btn" onclick={dismissAlerts} aria-label="Dismiss alerts">
 				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -159,7 +68,7 @@
 		</div>
 		{#if !alertsCollapsed}
 			<div class="alerts-list">
-				{#each alertsData.alerts as alert}
+				{#each weatherState.alerts as alert}
 					<div class="alert-item" class:warning={alert.level === 'warning'} class:critical={alert.level === 'critical'}>
 						<span class="alert-day">{alert.day}:</span>
 						<span class="alert-message">{alert.message}</span>
@@ -167,9 +76,9 @@
 				{/each}
 			</div>
 		{/if}
-		{#if alertsData.alerts.length > 3}
+		{#if weatherState.alerts.length > 3}
 			<button type="button" class="show-more-btn" onclick={toggleAlertsCollapse}>
-				{alertsCollapsed ? `Show ${alertsData.alerts.length} alerts` : 'Show less'}
+				{alertsCollapsed ? `Show ${weatherState.alerts.length} alerts` : 'Show less'}
 			</button>
 		{/if}
 	</div>
@@ -212,58 +121,6 @@
 			/>
 		{/each}
 	</div>
-
-	<!-- Ambient Temperature -->
-	{#if tiltsState.ambient && (tiltsState.ambient.temperature !== null || tiltsState.ambient.humidity !== null)}
-		<div class="ambient-card">
-			<div class="ambient-header">
-				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-				</svg>
-				<span>Room Ambient</span>
-			</div>
-			<div class="ambient-values">
-				{#if tiltsState.ambient.temperature !== null}
-					<div class="ambient-value">
-						<span class="value">{formatAmbientTemp(tiltsState.ambient.temperature)}</span>
-						<span class="unit">{getTempUnit()}</span>
-						<span class="label">Temp</span>
-					</div>
-				{/if}
-				{#if tiltsState.ambient.humidity !== null}
-					<div class="ambient-value">
-						<span class="value">{tiltsState.ambient.humidity.toFixed(0)}</span>
-						<span class="unit">%</span>
-						<span class="label">Humidity</span>
-					</div>
-				{/if}
-			</div>
-		</div>
-	{/if}
-
-	<!-- Weather Forecast -->
-	{#if alertsData && alertsData.forecast.length > 0}
-		<div class="forecast-card">
-			<div class="forecast-header">
-				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-				</svg>
-				<span>Weather Forecast</span>
-			</div>
-			<div class="forecast-days">
-				{#each alertsData.forecast.slice(0, 5) as day}
-					<div class="forecast-day">
-						<span class="day-name">{formatDayName(day.datetime)}</span>
-						<span class="day-icon">{getWeatherIcon(day.condition)}</span>
-						<div class="day-temps">
-							<span class="temp-high">{formatForecastTemp(day.temperature)}°</span>
-							<span class="temp-low">{formatForecastTemp(day.templow)}°</span>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
 {/if}
 
 <style>
@@ -382,63 +239,6 @@
 		color: var(--text-secondary);
 	}
 
-	/* Ambient Card */
-	.ambient-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		padding: 1rem 1.25rem;
-		margin-top: 1.5rem;
-	}
-
-	.ambient-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin-bottom: 0.75rem;
-	}
-
-	.ambient-header svg {
-		width: 1rem;
-		height: 1rem;
-		color: var(--text-secondary);
-	}
-
-	.ambient-values {
-		display: flex;
-		gap: 2rem;
-	}
-
-	.ambient-value {
-		display: flex;
-		align-items: baseline;
-		gap: 0.25rem;
-	}
-
-	.ambient-value .value {
-		font-size: 1.5rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-	}
-
-	.ambient-value .unit {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
-	}
-
-	.ambient-value .label {
-		font-size: 0.625rem;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		margin-left: 0.5rem;
-	}
-
 	/* Alerts Banner */
 	.alerts-banner {
 		background: var(--bg-surface);
@@ -539,80 +339,5 @@
 
 	.show-more-btn:hover {
 		text-decoration: underline;
-	}
-
-	/* Weather Forecast */
-	.forecast-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		padding: 1rem 1.25rem;
-		margin-top: 1.5rem;
-	}
-
-	.forecast-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin-bottom: 1rem;
-	}
-
-	.forecast-header svg {
-		width: 1rem;
-		height: 1rem;
-		color: var(--text-secondary);
-	}
-
-	.forecast-days {
-		display: flex;
-		gap: 1rem;
-		overflow-x: auto;
-	}
-
-	.forecast-day {
-		flex: 0 0 auto;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		min-width: 4.5rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-	}
-
-	.day-name {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-	}
-
-	.day-icon {
-		font-size: 1.5rem;
-	}
-
-	.day-temps {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.125rem;
-	}
-
-	.temp-high {
-		font-size: 0.875rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-	}
-
-	.temp-low {
-		font-size: 0.75rem;
-		font-family: var(--font-mono);
-		color: var(--text-muted);
 	}
 </style>

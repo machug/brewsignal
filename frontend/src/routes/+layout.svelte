@@ -4,25 +4,55 @@
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { tiltsState, startHeaterPolling, stopHeaterPolling } from '$lib/stores/tilts.svelte';
-	import { loadConfig, configState } from '$lib/stores/config.svelte';
+	import { loadConfig, configState, getTempUnit } from '$lib/stores/config.svelte';
+	import { weatherState, startWeatherPolling, stopWeatherPolling, getWeatherIcon, formatDayName } from '$lib/stores/weather.svelte';
+
+	// Format ambient temp based on user's unit preference
+	function formatAmbientTemp(tempC: number): string {
+		if (configState.config.temp_units === 'F') {
+			return ((tempC * 9) / 5 + 32).toFixed(1);
+		}
+		return tempC.toFixed(1);
+	}
+
+	// Format forecast temp
+	function formatForecastTemp(temp: number | null): string {
+		if (temp === null) return '--';
+		return Math.round(temp).toString();
+	}
 
 	let { children } = $props();
 	let mobileMenuOpen = $state(false);
+	let weatherDropdownOpen = $state(false);
 
 	// Derived: show heater indicator only when HA is enabled and heater entity is configured
 	let showHeaterIndicator = $derived(
 		configState.config.ha_enabled && configState.config.ha_heater_entity_id
 	);
 
+	// Get today's forecast
+	let todayForecast = $derived(weatherState.forecast[0] || null);
+
 	onMount(() => {
 		loadConfig();
 		// Start polling heater state every 30 seconds
 		startHeaterPolling(30000);
+		// Start polling weather every 30 minutes
+		startWeatherPolling(30 * 60 * 1000);
 	});
 
 	onDestroy(() => {
 		stopHeaterPolling();
+		stopWeatherPolling();
 	});
+
+	function toggleWeatherDropdown() {
+		weatherDropdownOpen = !weatherDropdownOpen;
+	}
+
+	function closeWeatherDropdown() {
+		weatherDropdownOpen = false;
+	}
 
 	const navLinks = [
 		{ href: '/', label: 'Dashboard' },
@@ -80,8 +110,74 @@
 					{/each}
 				</div>
 
-				<!-- Right side: heater indicator + connection status + mobile menu -->
+				<!-- Right side: weather + ambient + heater indicator + connection status + mobile menu -->
 				<div class="flex items-center gap-3">
+					<!-- Weather indicator with dropdown -->
+					{#if todayForecast}
+						<div class="weather-indicator-wrapper">
+							<button
+								type="button"
+								class="weather-indicator"
+								onclick={toggleWeatherDropdown}
+								aria-label="Toggle weather forecast"
+								aria-expanded={weatherDropdownOpen}
+							>
+								<span class="text-sm">{getWeatherIcon(todayForecast.condition)}</span>
+								<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+									{formatForecastTemp(todayForecast.temperature)}°
+								</span>
+							</button>
+
+							{#if weatherDropdownOpen}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<div class="weather-backdrop" onclick={closeWeatherDropdown}></div>
+								<div class="weather-dropdown" transition:slide={{ duration: 150 }}>
+									<div class="weather-dropdown-header">
+										<span>5-Day Forecast</span>
+									</div>
+									<div class="weather-dropdown-days">
+										{#each weatherState.forecast.slice(0, 5) as day}
+											<div class="weather-day">
+												<span class="weather-day-name">{formatDayName(day.datetime)}</span>
+												<span class="weather-day-icon">{getWeatherIcon(day.condition)}</span>
+												<div class="weather-day-temps">
+													<span class="weather-temp-high">{formatForecastTemp(day.temperature)}°</span>
+													<span class="weather-temp-low">{formatForecastTemp(day.templow)}°</span>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Ambient temperature/humidity -->
+					{#if tiltsState.ambient && (tiltsState.ambient.temperature !== null || tiltsState.ambient.humidity !== null)}
+						<div
+							class="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full"
+							style="background: var(--bg-elevated);"
+						>
+							{#if tiltsState.ambient.temperature !== null}
+								<div class="flex items-center gap-1.5">
+									<span class="text-sm opacity-60">🌡️</span>
+									<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+										{formatAmbientTemp(tiltsState.ambient.temperature)}{getTempUnit()}
+									</span>
+								</div>
+							{/if}
+							{#if tiltsState.ambient.humidity !== null}
+								<div class="flex items-center gap-1.5">
+									<span class="text-sm opacity-60">💧</span>
+									<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+										{tiltsState.ambient.humidity.toFixed(0)}%
+									</span>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
 					<!-- Heater indicator -->
 					{#if showHeaterIndicator && tiltsState.heater.available}
 						<div
@@ -191,5 +287,102 @@
 		height: 2px;
 		background: var(--accent);
 		border-radius: 1px;
+	}
+
+	/* Weather indicator */
+	.weather-indicator-wrapper {
+		position: relative;
+	}
+
+	.weather-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		background: var(--bg-elevated);
+		border: none;
+		border-radius: 9999px;
+		cursor: pointer;
+		transition: background var(--transition);
+	}
+
+	.weather-indicator:hover {
+		background: var(--bg-hover);
+	}
+
+	.weather-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+	}
+
+	.weather-dropdown {
+		position: absolute;
+		top: calc(100% + 0.5rem);
+		right: 0;
+		z-index: 50;
+		min-width: 16rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+		overflow: hidden;
+	}
+
+	.weather-dropdown-header {
+		padding: 0.75rem 1rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.weather-dropdown-days {
+		padding: 0.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.weather-day {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		background: var(--bg-elevated);
+	}
+
+	.weather-day-name {
+		flex: 0 0 4rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+	}
+
+	.weather-day-icon {
+		font-size: 1.25rem;
+	}
+
+	.weather-day-temps {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.weather-temp-high {
+		font-size: 0.875rem;
+		font-weight: 500;
+		font-family: var(--font-mono);
+		color: var(--text-primary);
+	}
+
+	.weather-temp-low {
+		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		color: var(--text-muted);
 	}
 </style>

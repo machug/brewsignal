@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { configState, updateConfig } from '$lib/stores/config.svelte';
+	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 
 	interface SystemInfo {
 		hostname: string;
@@ -80,6 +80,35 @@
 	let alertsError = $state<string | null>(null);
 	let alertsSuccess = $state(false);
 
+	// Derived unit helpers
+	let useCelsius = $derived(configState.config.temp_units === 'C');
+	let tempUnitSymbol = $derived(useCelsius ? '°C' : '°F');
+
+	// Convert temperature for display (backend stores in Fahrenheit)
+	function displayTemp(tempF: number | null | undefined): string {
+		if (tempF === null || tempF === undefined) return '—';
+		if (useCelsius) {
+			return fahrenheitToCelsius(tempF).toFixed(1);
+		}
+		return tempF.toFixed(1);
+	}
+
+	// Convert temperature from display units to Fahrenheit for storage
+	function toFahrenheit(temp: number): number {
+		if (useCelsius) {
+			return celsiusToFahrenheit(temp);
+		}
+		return temp;
+	}
+
+	// Convert temperature from Fahrenheit to display units
+	function fromFahrenheit(tempF: number): number {
+		if (useCelsius) {
+			return fahrenheitToCelsius(tempF);
+		}
+		return tempF;
+	}
+
 	async function loadSystemInfo() {
 		try {
 			const response = await fetch('/api/system/info');
@@ -135,10 +164,13 @@
 		haAmbientHumidityEntityId = configState.config.ha_ambient_humidity_entity_id;
 		haWeatherEntityId = configState.config.ha_weather_entity_id;
 		haHeaterEntityId = configState.config.ha_heater_entity_id;
-		// Temperature Control
+		// Temperature Control - convert from Fahrenheit to display units
 		tempControlEnabled = configState.config.temp_control_enabled;
-		tempTarget = configState.config.temp_target;
-		tempHysteresis = configState.config.temp_hysteresis;
+		tempTarget = fromFahrenheit(configState.config.temp_target);
+		// Hysteresis: convert delta (°F delta to °C delta uses same ratio)
+		tempHysteresis = configState.config.temp_units === 'C'
+			? configState.config.temp_hysteresis * (5 / 9)
+			: configState.config.temp_hysteresis;
 		// Weather Alerts
 		weatherAlertsEnabled = configState.config.weather_alerts_enabled;
 		alertTempThreshold = configState.config.alert_temp_threshold;
@@ -210,10 +242,15 @@
 		controlError = null;
 		controlSuccess = false;
 		try {
+			// Convert from display units back to Fahrenheit for storage
+			const targetF = toFahrenheit(tempTarget);
+			// Hysteresis delta: convert from display units to Fahrenheit
+			const hysteresisF = useCelsius ? tempHysteresis * (9 / 5) : tempHysteresis;
+
 			const result = await updateConfig({
 				temp_control_enabled: tempControlEnabled,
-				temp_target: tempTarget,
-				temp_hysteresis: tempHysteresis
+				temp_target: targetF,
+				temp_hysteresis: hysteresisF
 			});
 			if (result.success) {
 				controlSuccess = true;
@@ -848,7 +885,7 @@
 									<div class="status-item">
 										<span class="status-label">Wort Temp</span>
 										<span class="status-value">
-											{controlStatus.wort_temp !== null ? `${controlStatus.wort_temp.toFixed(1)}°F` : '—'}
+											{controlStatus.wort_temp !== null ? `${displayTemp(controlStatus.wort_temp)}${tempUnitSymbol}` : '—'}
 										</span>
 									</div>
 									{#if controlStatus.override_active}
@@ -864,32 +901,38 @@
 							<div class="setting-row">
 								<div class="setting-info">
 									<span class="setting-label">Target Temperature</span>
-									<span class="setting-description">Desired fermentation temperature (°F)</span>
+									<span class="setting-description">Desired fermentation temperature ({tempUnitSymbol})</span>
 								</div>
-								<input
-									type="number"
-									bind:value={tempTarget}
-									min="32"
-									max="100"
-									step="0.5"
-									class="input-field input-number"
-								/>
+								<div class="input-with-unit">
+									<input
+										type="number"
+										bind:value={tempTarget}
+										min={useCelsius ? 0 : 32}
+										max={useCelsius ? 38 : 100}
+										step="0.5"
+										class="input-field input-number"
+									/>
+									<span class="unit">{tempUnitSymbol}</span>
+								</div>
 							</div>
 
 							<!-- Hysteresis -->
 							<div class="setting-row">
 								<div class="setting-info">
 									<span class="setting-label">Hysteresis</span>
-									<span class="setting-description">± tolerance before triggering (°F)</span>
+									<span class="setting-description">± tolerance before triggering ({tempUnitSymbol})</span>
 								</div>
-								<input
-									type="number"
-									bind:value={tempHysteresis}
-									min="0.5"
-									max="10"
-									step="0.5"
-									class="input-field input-number"
-								/>
+								<div class="input-with-unit">
+									<input
+										type="number"
+										bind:value={tempHysteresis}
+										min={useCelsius ? 0.3 : 0.5}
+										max={useCelsius ? 5.5 : 10}
+										step={useCelsius ? 0.25 : 0.5}
+										class="input-field input-number"
+									/>
+									<span class="unit">{tempUnitSymbol}</span>
+								</div>
 							</div>
 
 							<!-- Manual Override Buttons -->
@@ -1355,6 +1398,19 @@
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.input-with-unit {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.input-with-unit .unit {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		font-family: 'JetBrains Mono', monospace;
+		min-width: 2rem;
 	}
 
 	.select-input-sm {

@@ -3,15 +3,6 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
-name = "aioblescan"
-version = "0.2.14"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/45/15/faf503083bc5a2d81f1b17fbbe30d15f35217b6c5e944c771c8760354d59/aioblescan-0.2.14.tar.gz", hash = "sha256:3a47c5292186ee87fc49cb076a5271c766510f44749b93ac4a32bbb4cb5258a0", size = 24937, upload-time = "2023-01-07T10:02:02.157Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/4c/b8e1a16c5baf299b540dd4a21c1b804651d9d7a1b2f459557d94f16c2baa/aioblescan-0.2.14-py3-none-any.whl", hash = "sha256:1e38977bc207f658ac1e21db21a58e941ba9da6c362a889f4113d80e1cf86fbd", size = 27862, upload-time = "2023-01-07T10:02:00.015Z" },
-]
-
-[[package]]
 name = "aiosqlite"
 version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -551,7 +542,6 @@ name = "tilt-ui"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "aioblescan" },
     { name = "aiosqlite" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -570,7 +560,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aioblescan", specifier = ">=0.2.4" },
     { name = "aiosqlite", specifier = ">=0.19" },
     { name = "fastapi", specifier = ">=0.104" },
     { name = "httpx", specifier = ">=0.25" },

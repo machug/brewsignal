@@ -103,8 +103,7 @@ else
         uvicorn[standard] \
         sqlalchemy[asyncio] \
         aiosqlite \
-        httpx \
-        aioblescan
+        httpx
 fi
 
 deactivate

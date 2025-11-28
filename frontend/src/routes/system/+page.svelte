@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
+	import { tiltsState, toggleHeater, fetchHeaterState } from '$lib/stores/tilts.svelte';
 
 	interface SystemInfo {
 		hostname: string;
@@ -873,27 +874,68 @@
 						</div>
 
 						{#if tempControlEnabled}
+							<!-- Live Heater Status Card -->
+							<div class="heater-status-card" class:heater-active={tiltsState.heater.state === 'on'}>
+								<div class="heater-status-main">
+									<div class="heater-icon-container" class:heating={tiltsState.heater.state === 'on'}>
+										<span class="heater-icon">🔥</span>
+									</div>
+									<div class="heater-info">
+										<span class="heater-state-label">Heater Status</span>
+										<span class="heater-state-value" class:on={tiltsState.heater.state === 'on'}>
+											{tiltsState.heater.state === 'on' ? 'HEATING' : tiltsState.heater.state === 'off' ? 'OFF' : 'Unknown'}
+										</span>
+									</div>
+									<div class="heater-toggle-buttons">
+										<button
+											type="button"
+											class="heater-btn heater-btn-on"
+											class:active={tiltsState.heater.state === 'on'}
+											onclick={() => toggleHeater('on').then(() => fetchHeaterState())}
+											disabled={tiltsState.heater.loading}
+										>
+											Turn On
+										</button>
+										<button
+											type="button"
+											class="heater-btn heater-btn-off"
+											class:active={tiltsState.heater.state === 'off'}
+											onclick={() => toggleHeater('off').then(() => fetchHeaterState())}
+											disabled={tiltsState.heater.loading}
+										>
+											Turn Off
+										</button>
+									</div>
+								</div>
+								{#if controlStatus?.override_active}
+									<div class="override-banner">
+										<span class="override-icon">⚡</span>
+										<span>Manual override active: {controlStatus.override_state?.toUpperCase()}</span>
+									</div>
+								{/if}
+							</div>
+
 							<!-- Control Status -->
 							{#if controlStatus}
 								<div class="control-status">
-									<div class="status-item">
-										<span class="status-label">Heater</span>
-										<span class="status-value" class:heater-on={controlStatus.heater_state === 'on'}>
-											{controlStatus.heater_state === 'on' ? 'ON' : controlStatus.heater_state === 'off' ? 'OFF' : '—'}
-										</span>
-									</div>
 									<div class="status-item">
 										<span class="status-label">Wort Temp</span>
 										<span class="status-value">
 											{controlStatus.wort_temp !== null ? `${displayTemp(controlStatus.wort_temp)}${tempUnitSymbol}` : '—'}
 										</span>
 									</div>
-									{#if controlStatus.override_active}
-										<div class="status-item override">
-											<span class="status-label">Override</span>
-											<span class="status-value">{controlStatus.override_state?.toUpperCase()}</span>
-										</div>
-									{/if}
+									<div class="status-item">
+										<span class="status-label">Target</span>
+										<span class="status-value">
+											{tempTarget}{tempUnitSymbol}
+										</span>
+									</div>
+									<div class="status-item">
+										<span class="status-label">Mode</span>
+										<span class="status-value" class:override={controlStatus.override_active}>
+											{controlStatus.override_active ? 'Manual' : 'Auto'}
+										</span>
+									</div>
 								</div>
 							{/if}
 
@@ -1775,6 +1817,137 @@
 	}
 
 	/* Temperature Control */
+	.heater-status-card {
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-hover);
+		border-radius: 0.75rem;
+		padding: 1rem;
+		margin-bottom: 1rem;
+		transition: all 0.3s ease;
+	}
+
+	.heater-status-card.heater-active {
+		background: rgba(239, 68, 68, 0.08);
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+
+	.heater-status-main {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.heater-icon-container {
+		width: 3rem;
+		height: 3rem;
+		border-radius: 0.75rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg-card);
+		transition: all 0.3s ease;
+	}
+
+	.heater-icon-container.heating {
+		background: rgba(239, 68, 68, 0.2);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse-glow {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+		50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.3); }
+	}
+
+	.heater-icon {
+		font-size: 1.5rem;
+		transition: filter 0.3s ease;
+	}
+
+	.heater-icon-container:not(.heating) .heater-icon {
+		filter: grayscale(100%) opacity(0.5);
+	}
+
+	.heater-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.heater-state-label {
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+	}
+
+	.heater-state-value {
+		font-size: 1.25rem;
+		font-weight: 700;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-secondary);
+	}
+
+	.heater-state-value.on {
+		color: var(--tilt-red);
+	}
+
+	.heater-toggle-buttons {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.heater-btn {
+		padding: 0.5rem 1rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		border-radius: 0.5rem;
+		border: 1px solid var(--bg-hover);
+		background: var(--bg-card);
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.heater-btn:hover:not(:disabled) {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.heater-btn-on.active {
+		background: rgba(239, 68, 68, 0.15);
+		border-color: var(--tilt-red);
+		color: var(--tilt-red);
+	}
+
+	.heater-btn-off.active {
+		background: rgba(74, 222, 128, 0.15);
+		border-color: var(--tilt-green);
+		color: var(--tilt-green);
+	}
+
+	.heater-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.override-banner {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		background: rgba(59, 130, 246, 0.1);
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: var(--tilt-blue);
+	}
+
+	.override-icon {
+		font-size: 0.875rem;
+	}
+
 	.control-status {
 		display: flex;
 		gap: 1.5rem;
@@ -1805,11 +1978,7 @@
 		color: var(--text-primary);
 	}
 
-	.status-value.heater-on {
-		color: var(--amber-400);
-	}
-
-	.status-item.override .status-value {
+	.status-value.override {
 		color: var(--tilt-blue);
 	}
 

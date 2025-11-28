@@ -1,15 +1,26 @@
 <script lang="ts">
 	import '../app.css';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
-	import { tiltsState } from '$lib/stores/tilts.svelte';
-	import { loadConfig } from '$lib/stores/config.svelte';
+	import { tiltsState, startHeaterPolling, stopHeaterPolling } from '$lib/stores/tilts.svelte';
+	import { loadConfig, configState } from '$lib/stores/config.svelte';
 
 	let { children } = $props();
 	let mobileMenuOpen = $state(false);
 
+	// Derived: show heater indicator only when HA is enabled and heater entity is configured
+	let showHeaterIndicator = $derived(
+		configState.config.ha_enabled && configState.config.ha_heater_entity_id
+	);
+
 	onMount(() => {
 		loadConfig();
+		// Start polling heater state every 30 seconds
+		startHeaterPolling(30000);
+	});
+
+	onDestroy(() => {
+		stopHeaterPolling();
 	});
 
 	const navLinks = [
@@ -77,8 +88,27 @@
 					{/each}
 				</div>
 
-				<!-- Right side: connection status + mobile menu -->
-				<div class="flex items-center gap-4">
+				<!-- Right side: heater indicator + connection status + mobile menu -->
+				<div class="flex items-center gap-3">
+					<!-- Heater indicator -->
+					{#if showHeaterIndicator && tiltsState.heater.available}
+						<div
+							class="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all"
+							style="background: {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)'}; border: 1px solid {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.3)' : 'transparent'};"
+						>
+							<span
+								class="text-sm transition-all"
+								style="filter: {tiltsState.heater.state === 'on' ? 'none' : 'grayscale(100%) opacity(0.5)'};"
+							>🔥</span>
+							<span
+								class="text-xs font-semibold uppercase tracking-wide hidden sm:inline"
+								style="color: {tiltsState.heater.state === 'on' ? 'var(--tilt-red)' : 'var(--text-muted)'};"
+							>
+								{tiltsState.heater.state === 'on' ? 'Heating' : 'Off'}
+							</span>
+						</div>
+					{/if}
+
 					<!-- Connection status -->
 					<div
 						class="flex items-center gap-2 px-3 py-1.5 rounded-full"

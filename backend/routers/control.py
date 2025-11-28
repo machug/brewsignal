@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..models import ControlEvent, ControlEventResponse
 from ..temp_controller import get_control_status, set_manual_override, get_latest_tilt_temp
+from ..services.ha_client import get_ha_client, init_ha_client
 from .config import get_config_value
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,23 @@ class OverrideResponse(BaseModel):
     message: str
     override_state: Optional[str]
     override_until: Optional[str]
+
+
+class HeaterStateResponse(BaseModel):
+    state: Optional[str]  # "on", "off", or null if unavailable
+    entity_id: Optional[str]
+    last_changed: Optional[str]
+    available: bool
+
+
+class HeaterToggleRequest(BaseModel):
+    state: str  # "on" or "off"
+
+
+class HeaterToggleResponse(BaseModel):
+    success: bool
+    message: str
+    new_state: Optional[str]
 
 
 @router.get("/status", response_model=ControlStatusResponse)
@@ -131,4 +149,128 @@ async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_
             message="Failed to set override",
             override_state=None,
             override_until=None
+        )
+
+
+@router.get("/heater", response_model=HeaterStateResponse)
+async def get_heater_state(db: AsyncSession = Depends(get_db)):
+    """Get current heater switch state from Home Assistant."""
+    ha_enabled = await get_config_value(db, "ha_enabled")
+    heater_entity = await get_config_value(db, "ha_heater_entity_id")
+
+    if not ha_enabled or not heater_entity:
+        return HeaterStateResponse(
+            state=None,
+            entity_id=heater_entity,
+            last_changed=None,
+            available=False
+        )
+
+    # Get or initialize HA client
+    ha_client = get_ha_client()
+    if not ha_client:
+        ha_url = await get_config_value(db, "ha_url")
+        ha_token = await get_config_value(db, "ha_token")
+        if ha_url and ha_token:
+            ha_client = init_ha_client(ha_url, ha_token)
+
+    if not ha_client:
+        return HeaterStateResponse(
+            state=None,
+            entity_id=heater_entity,
+            last_changed=None,
+            available=False
+        )
+
+    # Fetch live state from HA
+    entity_state = await ha_client.get_state(heater_entity)
+
+    if entity_state:
+        state = entity_state.get("state", "").lower()
+        # Normalize state to "on" or "off"
+        if state in ("on", "off"):
+            heater_state = state
+        elif state == "unavailable":
+            return HeaterStateResponse(
+                state=None,
+                entity_id=heater_entity,
+                last_changed=entity_state.get("last_changed"),
+                available=False
+            )
+        else:
+            heater_state = None
+
+        return HeaterStateResponse(
+            state=heater_state,
+            entity_id=heater_entity,
+            last_changed=entity_state.get("last_changed"),
+            available=True
+        )
+
+    return HeaterStateResponse(
+        state=None,
+        entity_id=heater_entity,
+        last_changed=None,
+        available=False
+    )
+
+
+@router.post("/heater", response_model=HeaterToggleResponse)
+async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends(get_db)):
+    """Directly toggle heater switch via Home Assistant."""
+    if request.state not in ("on", "off"):
+        return HeaterToggleResponse(
+            success=False,
+            message="State must be 'on' or 'off'",
+            new_state=None
+        )
+
+    ha_enabled = await get_config_value(db, "ha_enabled")
+    heater_entity = await get_config_value(db, "ha_heater_entity_id")
+
+    if not ha_enabled:
+        return HeaterToggleResponse(
+            success=False,
+            message="Home Assistant integration is not enabled",
+            new_state=None
+        )
+
+    if not heater_entity:
+        return HeaterToggleResponse(
+            success=False,
+            message="No heater entity configured",
+            new_state=None
+        )
+
+    # Get or initialize HA client
+    ha_client = get_ha_client()
+    if not ha_client:
+        ha_url = await get_config_value(db, "ha_url")
+        ha_token = await get_config_value(db, "ha_token")
+        if ha_url and ha_token:
+            ha_client = init_ha_client(ha_url, ha_token)
+
+    if not ha_client:
+        return HeaterToggleResponse(
+            success=False,
+            message="Failed to connect to Home Assistant",
+            new_state=None
+        )
+
+    # Call HA service to toggle heater
+    service = "turn_on" if request.state == "on" else "turn_off"
+    success = await ha_client.call_service("switch", service, heater_entity)
+
+    if success:
+        logger.info(f"Heater manually toggled to {request.state}")
+        return HeaterToggleResponse(
+            success=True,
+            message=f"Heater turned {request.state}",
+            new_state=request.state
+        )
+    else:
+        return HeaterToggleResponse(
+            success=False,
+            message="Failed to control heater via Home Assistant",
+            new_state=None
         )

@@ -274,6 +274,11 @@
 		}
 	}
 
+	/* When expanded with chart, allow full width */
+	.wide.expanded {
+		max-width: 56rem;
+	}
+
 	.wide .text-3xl {
 		font-size: 2.5rem;
 	}

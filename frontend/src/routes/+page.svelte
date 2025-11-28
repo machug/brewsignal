@@ -28,6 +28,7 @@
 	let alertsData = $state<AlertsResponse | null>(null);
 	let alertsLoading = $state(false);
 	let alertsDismissed = $state(false);
+	let alertsCollapsed = $state(false);
 
 	async function loadAlerts() {
 		alertsLoading = true;
@@ -44,6 +45,17 @@
 	}
 
 	onMount(() => {
+		// Load alert dismissal state from localStorage
+		const dismissed = localStorage.getItem('tiltui_alerts_dismissed');
+		const dismissedTime = localStorage.getItem('tiltui_alerts_dismissed_time');
+		if (dismissed === 'true' && dismissedTime) {
+			const elapsed = Date.now() - parseInt(dismissedTime, 10);
+			// Auto-restore alerts after 6 hours
+			if (elapsed < 6 * 60 * 60 * 1000) {
+				alertsDismissed = true;
+			}
+		}
+
 		connectWebSocket();
 		loadAlerts();
 		// Refresh alerts every 30 minutes
@@ -115,6 +127,12 @@
 
 	function dismissAlerts() {
 		alertsDismissed = true;
+		localStorage.setItem('tiltui_alerts_dismissed', 'true');
+		localStorage.setItem('tiltui_alerts_dismissed_time', Date.now().toString());
+	}
+
+	function toggleAlertsCollapse() {
+		alertsCollapsed = !alertsCollapsed;
 	}
 </script>
 
@@ -131,6 +149,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 				</svg>
 				<span>Weather Alerts</span>
+				<span class="alerts-count">{alertsData.alerts.length}</span>
 			</div>
 			<button type="button" class="dismiss-btn" onclick={dismissAlerts} aria-label="Dismiss alerts">
 				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -138,14 +157,21 @@
 				</svg>
 			</button>
 		</div>
-		<div class="alerts-list">
-			{#each alertsData.alerts as alert}
-				<div class="alert-item" class:warning={alert.level === 'warning'} class:critical={alert.level === 'critical'}>
-					<span class="alert-day">{alert.day}:</span>
-					<span class="alert-message">{alert.message}</span>
-				</div>
-			{/each}
-		</div>
+		{#if !alertsCollapsed}
+			<div class="alerts-list">
+				{#each alertsData.alerts as alert}
+					<div class="alert-item" class:warning={alert.level === 'warning'} class:critical={alert.level === 'critical'}>
+						<span class="alert-day">{alert.day}:</span>
+						<span class="alert-message">{alert.message}</span>
+					</div>
+				{/each}
+			</div>
+		{/if}
+		{#if alertsData.alerts.length > 3}
+			<button type="button" class="show-more-btn" onclick={toggleAlertsCollapse}>
+				{alertsCollapsed ? `Show ${alertsData.alerts.length} alerts` : 'Show less'}
+			</button>
+		{/if}
 	</div>
 {/if}
 
@@ -347,14 +373,14 @@
 
 	.empty-hint svg {
 		flex-shrink: 0;
-		color: var(--amber-400);
+		color: var(--text-secondary);
 	}
 
 	/* Ambient Card */
 	.ambient-card {
-		background: var(--bg-card);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.75rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.375rem;
 		padding: 1rem 1.25rem;
 		margin-top: 1.5rem;
 	}
@@ -374,6 +400,7 @@
 	.ambient-header svg {
 		width: 1rem;
 		height: 1rem;
+		color: var(--text-secondary);
 	}
 
 	.ambient-values {
@@ -389,8 +416,8 @@
 
 	.ambient-value .value {
 		font-size: 1.5rem;
-		font-weight: 600;
-		font-family: 'JetBrains Mono', monospace;
+		font-weight: 500;
+		font-family: var(--font-mono);
 		color: var(--text-primary);
 	}
 
@@ -408,9 +435,10 @@
 
 	/* Alerts Banner */
 	.alerts-banner {
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.3);
-		border-radius: 0.75rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-left: 3px solid var(--warning);
+		border-radius: 0.375rem;
 		padding: 1rem 1.25rem;
 		margin-bottom: 1.5rem;
 	}
@@ -428,12 +456,23 @@
 		gap: 0.5rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: var(--amber-400);
+		color: var(--text-primary);
 	}
 
 	.alerts-title svg {
 		width: 1.25rem;
 		height: 1.25rem;
+		color: var(--warning);
+	}
+
+	.alerts-count {
+		background: var(--warning);
+		color: var(--gray-950);
+		font-size: 0.625rem;
+		font-weight: 700;
+		padding: 0.125rem 0.375rem;
+		border-radius: 9999px;
+		margin-left: 0.5rem;
 	}
 
 	.dismiss-btn {
@@ -465,15 +504,15 @@
 		font-size: 0.8125rem;
 		color: var(--text-secondary);
 		padding-left: 0.5rem;
-		border-left: 2px solid var(--amber-400);
+		border-left: 2px solid var(--gray-700);
 	}
 
 	.alert-item.warning {
-		border-left-color: var(--amber-500);
+		border-left-color: var(--warning);
 	}
 
 	.alert-item.critical {
-		border-left-color: var(--tilt-red);
+		border-left-color: var(--negative);
 	}
 
 	.alert-day {
@@ -482,11 +521,25 @@
 		margin-right: 0.25rem;
 	}
 
+	.show-more-btn {
+		font-size: 0.75rem;
+		color: var(--accent);
+		background: none;
+		border: none;
+		padding: 0.25rem 0.5rem;
+		cursor: pointer;
+		margin-top: 0.25rem;
+	}
+
+	.show-more-btn:hover {
+		text-decoration: underline;
+	}
+
 	/* Weather Forecast */
 	.forecast-card {
-		background: var(--bg-card);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.75rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.375rem;
 		padding: 1rem 1.25rem;
 		margin-top: 1.5rem;
 	}
@@ -506,6 +559,7 @@
 	.forecast-header svg {
 		width: 1rem;
 		height: 1rem;
+		color: var(--text-secondary);
 	}
 
 	.forecast-days {
@@ -523,7 +577,7 @@
 		padding: 0.75rem;
 		min-width: 4.5rem;
 		background: var(--bg-elevated);
-		border-radius: 0.5rem;
+		border-radius: 0.375rem;
 	}
 
 	.day-name {
@@ -545,14 +599,14 @@
 
 	.temp-high {
 		font-size: 0.875rem;
-		font-weight: 600;
-		font-family: 'JetBrains Mono', monospace;
+		font-weight: 500;
+		font-family: var(--font-mono);
 		color: var(--text-primary);
 	}
 
 	.temp-low {
 		font-size: 0.75rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-mono);
 		color: var(--text-muted);
 	}
 </style>

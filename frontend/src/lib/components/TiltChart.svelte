@@ -478,7 +478,7 @@
 		</div>
 		<div class="chart-legend">
 			<span class="legend-item">
-				<span class="legend-dot" style="background: var(--amber-400);"></span>
+				<span class="legend-dot" style="background: var(--tilt-yellow);"></span>
 				<span>SG</span>
 			</span>
 			<span class="legend-item">
@@ -498,9 +498,9 @@
 	<!-- Chart container -->
 	<div class="chart-container" bind:this={chartContainer}>
 		{#if loading}
-			<div class="chart-loading">
-				<div class="loading-spinner"></div>
-				<span>Loading chart data...</span>
+			<div class="py-8 flex flex-col items-center gap-3">
+				<div class="w-full h-48 bg-[var(--bg-elevated)] rounded animate-pulse"></div>
+				<span class="text-sm text-[var(--text-muted)]">Loading chart...</span>
 			</div>
 		{:else if error}
 			<div class="chart-error">
@@ -540,9 +540,9 @@
 	}
 
 	.range-btn.active {
-		color: var(--amber-400);
-		background: rgba(251, 191, 36, 0.1);
-		border-color: rgba(251, 191, 36, 0.2);
+		background: var(--bg-elevated);
+		color: var(--text-primary);
+		border-color: var(--border-default);
 	}
 
 	.chart-legend {
@@ -592,7 +592,6 @@
 		background: transparent !important;
 	}
 
-	.chart-loading,
 	.chart-error,
 	.chart-empty {
 		position: absolute;
@@ -606,35 +605,21 @@
 		font-size: 0.75rem;
 	}
 
-	.loading-spinner {
-		width: 1.5rem;
-		height: 1.5rem;
-		border: 2px solid var(--bg-hover);
-		border-top-color: var(--amber-400);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
 	.retry-btn {
 		padding: 0.375rem 0.75rem;
 		font-size: 0.6875rem;
 		font-weight: 500;
-		color: var(--amber-400);
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.2);
+		color: var(--accent);
+		background: var(--accent-muted);
+		border: 1px solid transparent;
 		border-radius: 0.375rem;
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
 
 	.retry-btn:hover {
-		background: rgba(251, 191, 36, 0.15);
+		background: var(--accent-hover);
+		color: white;
 	}
 
 	.chart-empty {

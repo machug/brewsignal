@@ -10,7 +10,8 @@ dependencies = [
     "aiosqlite>=0.19",
     "pydantic>=2.5",
     "pydantic-settings>=2.1",
-    "aioblescan>=0.2.4",
+    "bleak>=0.22",
+    "beacontools>=2.1",
     "httpx>=0.25",
 ]
 

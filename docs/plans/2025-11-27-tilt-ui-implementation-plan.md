@@ -709,3 +709,13 @@ sudo visudo -c  # Validate syntax
 7. Phase 7 (logging) - persistence
 8. Phase 8 (polish) - deployment ready
 9. Phase 9 (hardware) - real Tilt integration testing
+## Future Features
+
+### Phase 10: Home Assistant Integration
+- Temperature control with hysteresis (target temp ± tolerance)
+- Configure HA webhook/REST API endpoints for heater/cooler control
+- Auto-trigger smart plugs when temp dips below or rises above target
+- Support for heating mat/ring and cooling options
+- Dashboard UI for temperature control settings
+- History of heating/cooling events
+

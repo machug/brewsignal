@@ -9,18 +9,20 @@ User=pi
 Group=pi
 WorkingDirectory=/opt/tiltui
 Environment="PATH=/opt/tiltui/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/tiltui/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 80
+# Use FILE mode to read TiltPi JSON files (written by Node-RED)
+Environment="TILT_FILES=/home/pi"
+ExecStart=/opt/tiltui/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=5
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=/opt/tiltui/data
 PrivateTmp=true
 
-# Bluetooth access
+# Bluetooth access (kept for future BLE mode)
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
 
 # Logging

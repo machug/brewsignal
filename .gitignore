@@ -48,3 +48,6 @@ npm-debug.log*
 extracted/
 *.img
 *.img.gz
+
+# Other
+docs/plans/

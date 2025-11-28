@@ -72,3 +72,25 @@ export function disconnectWebSocket() {
 	ws?.close();
 	ws = null;
 }
+
+export async function updateTiltBeerName(tiltId: string, beerName: string): Promise<boolean> {
+	try {
+		const response = await fetch(`/api/tilts/${tiltId}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ beer_name: beerName })
+		});
+		if (response.ok) {
+			// Update local state immediately
+			const existing = tiltsState.tilts.get(tiltId);
+			if (existing) {
+				existing.beer_name = beerName;
+				tiltsState.tilts = new Map(tiltsState.tilts);
+			}
+			return true;
+		}
+	} catch (e) {
+		console.error('Failed to update beer name:', e);
+	}
+	return false;
+}

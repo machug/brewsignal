@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
+	import { updateTiltBeerName } from '$lib/stores/tilts.svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import TiltChart from './TiltChart.svelte';
 
@@ -10,6 +11,42 @@
 	}
 
 	let { tilt, expanded = false, onToggleExpand }: Props = $props();
+
+	// Beer name editing state
+	let isEditing = $state(false);
+	let editValue = $state('');
+	let inputRef = $state<HTMLInputElement | null>(null);
+	let saving = $state(false);
+
+	function startEditing() {
+		editValue = tilt.beer_name;
+		isEditing = true;
+		// Focus input after DOM update
+		setTimeout(() => inputRef?.focus(), 0);
+	}
+
+	async function saveEdit() {
+		if (saving) return;
+		const trimmed = editValue.trim();
+		if (!trimmed || trimmed === tilt.beer_name) {
+			isEditing = false;
+			return;
+		}
+		saving = true;
+		const success = await updateTiltBeerName(tilt.id, trimmed);
+		saving = false;
+		if (success) {
+			isEditing = false;
+		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			saveEdit();
+		} else if (e.key === 'Escape') {
+			isEditing = false;
+		}
+	}
 
 	// Reactive temp unit from config
 	let tempUnit = $derived(getTempUnit());
@@ -72,10 +109,33 @@
 	<div class="p-5">
 		<!-- Header row -->
 		<div class="flex justify-between items-start mb-5">
-			<div>
-				<h3 class="text-lg font-semibold text-[var(--text-primary)] tracking-tight">
-					{tilt.beer_name}
-				</h3>
+			<div class="flex-1 min-w-0 mr-3">
+				{#if isEditing}
+					<input
+						type="text"
+						bind:this={inputRef}
+						bind:value={editValue}
+						onblur={saveEdit}
+						onkeydown={handleKeydown}
+						disabled={saving}
+						class="beer-name-input"
+						maxlength="100"
+					/>
+				{:else}
+					<button
+						type="button"
+						class="beer-name-btn"
+						onclick={startEditing}
+						title="Click to edit beer name"
+					>
+						<h3 class="text-lg font-semibold text-[var(--text-primary)] tracking-tight truncate">
+							{tilt.beer_name}
+						</h3>
+						<svg class="edit-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+						</svg>
+					</button>
+				{/if}
 				<div class="flex items-center gap-2 mt-1">
 					<span
 						class="w-2 h-2 rounded-full"
@@ -221,5 +281,47 @@
 		color: var(--amber-400);
 		border-color: rgba(251, 191, 36, 0.3);
 		background: rgba(251, 191, 36, 0.1);
+	}
+
+	/* Beer name editing */
+	.beer-name-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		text-align: left;
+		max-width: 100%;
+	}
+
+	.beer-name-btn:hover .edit-icon {
+		opacity: 1;
+	}
+
+	.edit-icon {
+		flex-shrink: 0;
+		width: 0.875rem;
+		height: 0.875rem;
+		color: var(--text-muted);
+		opacity: 0;
+		transition: opacity 0.15s ease;
+	}
+
+	.beer-name-input {
+		width: 100%;
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		background: var(--bg-elevated);
+		border: 1px solid var(--amber-400);
+		border-radius: 0.375rem;
+		padding: 0.25rem 0.5rem;
+		outline: none;
+	}
+
+	.beer-name-input:disabled {
+		opacity: 0.6;
 	}
 </style>

@@ -2,87 +2,114 @@
 @import 'uplot/dist/uPlot.min.css';
 @import 'tailwindcss';
 
-/* Import distinctive fonts - Outfit for modern industrial feel */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Single font family - Geist with system fallback */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Craft Brewery palette - rich dark with warm amber accents */
-  --bg-deep: #08090c;
-  --bg-primary: #0f1115;
-  --bg-card: #161921;
-  --bg-elevated: #1c2029;
-  --bg-hover: #252a36;
+  /* Font stacks */
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* Amber/copper brewing tones */
-  --amber-300: #fcd34d;
-  --amber-400: #fbbf24;
-  --amber-500: #f59e0b;
-  --amber-600: #d97706;
-  --amber-glow: rgba(251, 191, 36, 0.12);
-  --amber-glow-strong: rgba(251, 191, 36, 0.25);
+  /* True neutral grays - zinc scale, no warm/cool tint */
+  --gray-950: #09090b;
+  --gray-900: #18181b;
+  --gray-850: #1f1f23;
+  --gray-800: #27272a;
+  --gray-700: #3f3f46;
+  --gray-600: #52525b;
+  --gray-500: #71717a;
+  --gray-400: #a1a1aa;
+  --gray-300: #d4d4d8;
+  --gray-200: #e4e4e7;
+  --gray-100: #f4f4f5;
+  --gray-50: #fafafa;
+
+  /* Semantic background tokens */
+  --bg-base: var(--gray-950);
+  --bg-surface: var(--gray-900);
+  --bg-elevated: var(--gray-850);
+  --bg-hover: var(--gray-800);
+
+  /* Legacy aliases for compatibility during migration */
+  --bg-deep: var(--bg-base);
+  --bg-primary: var(--bg-surface);
+  --bg-card: var(--bg-surface);
 
   /* Text hierarchy */
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text-primary: var(--gray-50);
+  --text-secondary: var(--gray-400);
+  --text-muted: var(--gray-500);
 
-  /* Tilt colors - saturated for dark backgrounds */
-  --tilt-red: #f43f5e;
-  --tilt-green: #10b981;
-  --tilt-black: #6b7280;
+  /* Borders - subtle, structural */
+  --border-subtle: var(--gray-850);
+  --border-default: var(--gray-700);
+
+  /* Single accent: calm blue. Used sparingly for interactive states only. */
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-muted: rgba(59, 130, 246, 0.15);
+
+  /* Semantic colors - functional only */
+  --positive: #22c55e;
+  --warning: #eab308;
+  --negative: #ef4444;
+
+  /* Tilt colors - slightly muted for dark background */
+  --tilt-red: #f87171;
+  --tilt-green: #4ade80;
+  --tilt-black: #71717a;
   --tilt-purple: #a78bfa;
   --tilt-orange: #fb923c;
   --tilt-blue: #60a5fa;
   --tilt-yellow: #facc15;
   --tilt-pink: #f472b6;
+
+  /* Spacing scale - 4px base */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Single transition timing */
+  --transition: 150ms ease;
 }
 
 html {
-  background-color: var(--bg-deep);
+  background-color: var(--bg-base);
   color: var(--text-primary);
 }
 
 body {
   margin: 0;
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Monospace for numeric readings */
+/* Monospace for readings */
 .font-mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   letter-spacing: -0.02em;
 }
 
-/* Grain texture overlay for depth */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.025;
-  pointer-events: none;
-  z-index: 9999;
+/* Simple fade-in for page load */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-/* Card hover glow effect */
-.card-glow {
-  position: relative;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
 }
 
-.card-glow:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px -10px var(--amber-glow-strong);
-}
-
-/* Amber accent glow for important values */
-.reading-glow {
-  text-shadow: 0 0 30px var(--amber-glow-strong);
-}
-
-/* Custom scrollbar */
+/* Custom scrollbar - minimal */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -92,42 +119,17 @@ body::after {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-hover);
+  background: var(--gray-700);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--amber-600);
+  background: var(--gray-600);
 }
 
-/* Animations */
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.5s ease-out forwards;
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-/* uPlot dark theme overrides */
+/* uPlot overrides - simplified */
 .u-wrap {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .u-legend {
@@ -136,9 +138,9 @@ body::after {
 
 .u-cursor-x,
 .u-cursor-y {
-  border-color: rgba(251, 191, 36, 0.3) !important;
+  border-color: var(--gray-600) !important;
 }
 
 .u-select {
-  background: rgba(251, 191, 36, 0.1) !important;
+  background: var(--accent-muted) !important;
 }

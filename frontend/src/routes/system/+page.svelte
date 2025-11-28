@@ -166,10 +166,10 @@
 		haHeaterEntityId = configState.config.ha_heater_entity_id;
 		// Temperature Control - convert from Fahrenheit to display units
 		tempControlEnabled = configState.config.temp_control_enabled;
-		tempTarget = fromFahrenheit(configState.config.temp_target);
-		// Hysteresis: convert delta (°F delta to °C delta uses same ratio)
+		tempTarget = Math.round(fromFahrenheit(configState.config.temp_target) * 2) / 2; // Round to nearest 0.5
+		// Hysteresis: convert delta (°F delta to °C delta uses same ratio), round to 2 decimal places
 		tempHysteresis = configState.config.temp_units === 'C'
-			? configState.config.temp_hysteresis * (5 / 9)
+			? Math.round(configState.config.temp_hysteresis * (5 / 9) * 100) / 100
 			: configState.config.temp_hysteresis;
 		// Weather Alerts
 		weatherAlertsEnabled = configState.config.weather_alerts_enabled;

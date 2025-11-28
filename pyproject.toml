@@ -1,6 +1,6 @@
 [project]
 name = "tilt-ui"
-version = "0.1.0"
+version = "1.0.0"
 description = "Modern web UI for Tilt Hydrometer monitoring"
 requires-python = ">=3.11"
 dependencies = [

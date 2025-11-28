@@ -120,7 +120,8 @@ async def lifespan(app: FastAPI):
     print("Scanner stopped")
 
 
-app = FastAPI(title="Tilt UI", version="0.1.0", lifespan=lifespan)
+from .routers.system import VERSION
+app = FastAPI(title="Tilt UI", version=VERSION, lifespan=lifespan)
 
 # Register routers
 app.include_router(tilts.router)

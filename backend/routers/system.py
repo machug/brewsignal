@@ -19,12 +19,16 @@ from ..cleanup import cleanup_old_readings, get_reading_stats
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
+# Read version from VERSION file
+_version_file = Path(__file__).parent.parent.parent / "VERSION"
+VERSION = _version_file.read_text().strip() if _version_file.exists() else "0.0.0"
+
 
 class SystemInfo(BaseModel):
     hostname: str
     ip_addresses: list[str]
     uptime_seconds: Optional[float]
-    version: str = "0.1.0"
+    version: str = VERSION
 
 
 class SystemAction(BaseModel):

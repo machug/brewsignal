@@ -51,7 +51,7 @@ const DEFAULT_CONFIG: AppConfig = {
 	ha_weather_entity_id: '',
 	// Alerts
 	weather_alerts_enabled: false,
-	alert_temp_threshold: 5.0
+	alert_temp_threshold: 3.0
 };
 
 export const configState = $state<{ config: AppConfig; loaded: boolean }>({

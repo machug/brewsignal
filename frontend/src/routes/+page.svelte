@@ -72,12 +72,9 @@
 		return tempC.toFixed(1);
 	}
 
-	// Format forecast temp
+	// Format forecast temp (HA provides temps in Celsius)
 	function formatForecastTemp(temp: number | null): string {
 		if (temp === null) return '--';
-		if (configState.config.temp_units === 'F') {
-			return Math.round((temp * 9) / 5 + 32).toString();
-		}
 		return Math.round(temp).toString();
 	}
 

@@ -75,7 +75,7 @@
 
 	// Weather Alerts state
 	let weatherAlertsEnabled = $state(false);
-	let alertTempThreshold = $state(5.0);
+	let alertTempThreshold = $state(3.0);
 	let alertsSaving = $state(false);
 	let alertsError = $state<string | null>(null);
 	let alertsSuccess = $state(false);
@@ -987,18 +987,18 @@
 							<div class="setting-row">
 								<div class="setting-info">
 									<span class="setting-label">Alert Threshold</span>
-									<span class="setting-description">Alert when forecast differs from target by this amount (°F)</span>
+									<span class="setting-description">Alert when forecast differs from target by this amount (°C)</span>
 								</div>
 								<div class="input-with-unit">
 									<input
 										type="number"
 										min="1"
-										max="20"
+										max="15"
 										step="0.5"
 										bind:value={alertTempThreshold}
 										class="input-field-sm"
 									/>
-									<span class="unit">°F</span>
+									<span class="unit">°C</span>
 								</div>
 							</div>
 

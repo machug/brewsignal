@@ -5,6 +5,21 @@ All notable changes to Tilt UI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-28
+
+### Added
+- **Home Assistant Integration** - Connect to Home Assistant for ambient temperature/humidity display
+- **Temperature Control** - Automatic heater control via HA switch entity with hysteresis
+- **Manual Override** - Force heater on/off for 1 hour, bypassing automatic control
+- **Weather Forecast Display** - 5-day forecast from HA weather entity on dashboard
+- **Predictive Weather Alerts** - Warnings when forecast temps may affect fermentation
+- **Chart Timezone Support** - X-axis now respects system timezone setting
+
+### Fixed
+- HA client reinitialization when config changes
+- Immediate heater action on manual override
+- Timezone-aware datetime consistency throughout backend
+
 ## [1.0.1] - 2025-11-28
 
 ### Added

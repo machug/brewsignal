@@ -10,6 +10,9 @@ A modern web interface for monitoring Tilt Hydrometer fermentation data on Raspb
 - **Historical Charts** - Interactive uPlot charts with 1H/6H/24H/7D/30D time ranges
 - **Calibration** - Linear interpolation between calibration points for SG and temperature
 - **Multi-Tilt Support** - Monitor multiple Tilts simultaneously (Red, Green, Black, Purple, Orange, Blue, Yellow, Pink)
+- **Home Assistant Integration** - Display ambient temperature/humidity from HA sensors
+- **Temperature Control** - Automatic heater control via HA switch with hysteresis and manual override
+- **Weather Alerts** - Predictive alerts when forecast temps may affect fermentation
 - **Data Export** - Download all readings as CSV
 - **Dark Theme** - Easy on the eyes during late-night brew checks
 
@@ -80,6 +83,10 @@ sudo systemctl start tiltui
 | `/api/tilts/{id}/calibration` | GET/POST | Calibration points |
 | `/api/config` | GET/PATCH | Application settings |
 | `/api/system/info` | GET | System information |
+| `/api/ambient` | GET | Ambient temp/humidity from HA |
+| `/api/control/status` | GET | Temperature control status |
+| `/api/control/override` | POST | Set manual heater override |
+| `/api/alerts` | GET | Weather forecast and alerts |
 | `/ws` | WebSocket | Real-time readings |
 | `/log.csv` | GET | Export all data as CSV |
 

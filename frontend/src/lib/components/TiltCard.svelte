@@ -13,6 +13,14 @@
 
 	let { tilt, expanded = false, wide = false, onToggleExpand }: Props = $props();
 
+	// Track if chart has ever been shown (to avoid mounting until first expand)
+	let chartMounted = $state(false);
+	$effect(() => {
+		if (expanded && !chartMounted) {
+			chartMounted = true;
+		}
+	});
+
 	// Beer name editing state
 	let isEditing = $state(false);
 	let editValue = $state('');
@@ -206,9 +214,9 @@
 			</div>
 		{/if}
 
-		<!-- Expandable chart section -->
-		{#if expanded}
-			<div class="chart-section">
+		<!-- Expandable chart section - use CSS to hide instead of destroying -->
+		{#if chartMounted}
+			<div class="chart-section" class:hidden={!expanded}>
 				<TiltChart tiltId={tilt.id} tiltColor={tilt.color} />
 			</div>
 		{/if}
@@ -288,6 +296,10 @@
 		margin-top: 1rem;
 		padding-top: 1rem;
 		border-top: 1px solid var(--bg-hover);
+	}
+
+	.chart-section.hidden {
+		display: none;
 	}
 
 	.expand-btn {

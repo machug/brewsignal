@@ -72,10 +72,10 @@
 	}
 
 	function getSignalStrength(rssi: number): { bars: number; color: string } {
-		if (rssi >= -50) return { bars: 4, color: 'var(--tilt-green)' };
-		if (rssi >= -60) return { bars: 3, color: 'var(--tilt-green)' };
-		if (rssi >= -70) return { bars: 2, color: 'var(--amber-400)' };
-		return { bars: 1, color: 'var(--tilt-red)' };
+		if (rssi >= -50) return { bars: 4, color: 'var(--positive)' };
+		if (rssi >= -60) return { bars: 3, color: 'var(--positive)' };
+		if (rssi >= -70) return { bars: 2, color: 'var(--warning)' };
+		return { bars: 1, color: 'var(--negative)' };
 	}
 
 	function timeSince(isoString: string): string {
@@ -96,14 +96,14 @@
 </script>
 
 <div
-	class="card-glow rounded-xl overflow-hidden animate-fade-in-up"
+	class="rounded-lg overflow-hidden animate-fade-in"
 	class:expanded
-	style="background: var(--bg-card); border: 1px solid var(--bg-hover);"
+	style="background: var(--bg-surface); border: 1px solid var(--border-subtle);"
 >
-	<!-- Accent bar with glow -->
+	<!-- Accent bar -->
 	<div
-		class="h-1"
-		style="background: {accentColor}; box-shadow: 0 0 20px {accentColor}40;"
+		class="h-0.5"
+		style="background: {accentColor};"
 	></div>
 
 	<div class="p-5">
@@ -139,7 +139,7 @@
 				<div class="flex items-center gap-2 mt-1">
 					<span
 						class="w-2 h-2 rounded-full"
-						style="background: {accentColor}; box-shadow: 0 0 8px {accentColor};"
+						style="background: {accentColor};"
 					></span>
 					<span class="text-sm text-[var(--text-muted)] font-medium">{tilt.color}</span>
 				</div>
@@ -167,29 +167,26 @@
 		<div class="grid grid-cols-2 gap-3 mb-4">
 			<!-- Specific Gravity -->
 			<div
-				class="rounded-lg p-4 text-center"
+				class="rounded-md p-4 text-center"
 				style="background: var(--bg-elevated);"
 			>
-				<p
-					class="text-3xl font-bold font-mono tracking-tight reading-glow"
-					style="color: var(--amber-400);"
-				>
+				<p class="text-3xl font-medium font-mono tracking-tight" style="color: var(--text-primary);">
 					{formatSG(tilt.sg)}
 				</p>
-				<p class="text-[10px] text-[var(--text-muted)] uppercase tracking-widest mt-1 font-medium">
+				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
 					Gravity
 				</p>
 			</div>
 
 			<!-- Temperature -->
 			<div
-				class="rounded-lg p-4 text-center"
+				class="rounded-md p-4 text-center"
 				style="background: var(--bg-elevated);"
 			>
-				<p class="text-3xl font-bold font-mono tracking-tight text-[var(--text-primary)]">
+				<p class="text-3xl font-medium font-mono tracking-tight text-[var(--text-primary)]">
 					{formatTempValue(tilt.temp)}<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
 				</p>
-				<p class="text-[10px] text-[var(--text-muted)] uppercase tracking-widest mt-1 font-medium">
+				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
 					Temp
 				</p>
 			</div>
@@ -278,9 +275,9 @@
 	}
 
 	.expand-btn:hover {
-		color: var(--amber-400);
-		border-color: rgba(251, 191, 36, 0.3);
-		background: rgba(251, 191, 36, 0.1);
+		color: var(--accent);
+		border-color: var(--accent-muted);
+		background: var(--accent-muted);
 	}
 
 	/* Beer name editing */
@@ -315,7 +312,7 @@
 		font-weight: 600;
 		color: var(--text-primary);
 		background: var(--bg-elevated);
-		border: 1px solid var(--amber-400);
+		border: 1px solid var(--accent);
 		border-radius: 0.375rem;
 		padding: 0.25rem 0.5rem;
 		outline: none;

@@ -393,6 +393,7 @@
 			if (response.ok) {
 				const data = await response.json();
 				systemTimezone = data.timezone || 'UTC';
+				console.log('Chart using timezone:', systemTimezone);
 			}
 		} catch (e) {
 			console.warn('Failed to fetch system timezone, using UTC');

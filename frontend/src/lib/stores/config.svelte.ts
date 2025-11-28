@@ -22,6 +22,9 @@ export interface AppConfig {
 	ha_heater_entity_id: string;
 	// Weather
 	ha_weather_entity_id: string;
+	// Alerts
+	weather_alerts_enabled: boolean;
+	alert_temp_threshold: number;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -45,7 +48,10 @@ const DEFAULT_CONFIG: AppConfig = {
 	temp_hysteresis: 1.0,
 	ha_heater_entity_id: '',
 	// Weather
-	ha_weather_entity_id: ''
+	ha_weather_entity_id: '',
+	// Alerts
+	weather_alerts_enabled: false,
+	alert_temp_threshold: 5.0
 };
 
 export const configState = $state<{ config: AppConfig; loaded: boolean }>({

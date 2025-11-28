@@ -4,9 +4,54 @@
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import TiltCard from '$lib/components/TiltCard.svelte';
 
+	// Weather/Alerts types
+	interface WeatherForecast {
+		datetime: string;
+		condition: string;
+		temperature: number | null;
+		templow: number | null;
+	}
+
+	interface Alert {
+		level: string;
+		message: string;
+		day: string;
+	}
+
+	interface AlertsResponse {
+		forecast: WeatherForecast[];
+		alerts: Alert[];
+		weather_entity: string | null;
+		alerts_enabled: boolean;
+	}
+
+	let alertsData = $state<AlertsResponse | null>(null);
+	let alertsLoading = $state(false);
+	let alertsDismissed = $state(false);
+
+	async function loadAlerts() {
+		alertsLoading = true;
+		try {
+			const response = await fetch('/api/alerts');
+			if (response.ok) {
+				alertsData = await response.json();
+			}
+		} catch (e) {
+			console.error('Failed to load alerts:', e);
+		} finally {
+			alertsLoading = false;
+		}
+	}
+
 	onMount(() => {
 		connectWebSocket();
-		return () => disconnectWebSocket();
+		loadAlerts();
+		// Refresh alerts every 30 minutes
+		const interval = setInterval(loadAlerts, 30 * 60 * 1000);
+		return () => {
+			disconnectWebSocket();
+			clearInterval(interval);
+		};
 	});
 
 	let tiltsList = $derived(Array.from(tiltsState.tilts.values()));
@@ -26,11 +71,86 @@
 		}
 		return tempC.toFixed(1);
 	}
+
+	// Format forecast temp
+	function formatForecastTemp(temp: number | null): string {
+		if (temp === null) return '--';
+		if (configState.config.temp_units === 'F') {
+			return Math.round((temp * 9) / 5 + 32).toString();
+		}
+		return Math.round(temp).toString();
+	}
+
+	// Get weather icon based on condition
+	function getWeatherIcon(condition: string): string {
+		const icons: Record<string, string> = {
+			'sunny': '☀️',
+			'clear-night': '🌙',
+			'partlycloudy': '⛅',
+			'cloudy': '☁️',
+			'rainy': '🌧️',
+			'pouring': '🌧️',
+			'snowy': '❄️',
+			'fog': '🌫️',
+			'windy': '💨',
+			'lightning': '⚡',
+			'lightning-rainy': '⛈️',
+			'hail': '🌨️',
+		};
+		return icons[condition] || '🌡️';
+	}
+
+	// Format day name from datetime
+	function formatDayName(datetime: string): string {
+		try {
+			const date = new Date(datetime);
+			const today = new Date();
+			const tomorrow = new Date(today);
+			tomorrow.setDate(tomorrow.getDate() + 1);
+
+			if (date.toDateString() === today.toDateString()) return 'Today';
+			if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+			return date.toLocaleDateString('en-US', { weekday: 'short' });
+		} catch {
+			return 'Day';
+		}
+	}
+
+	function dismissAlerts() {
+		alertsDismissed = true;
+	}
 </script>
 
 <svelte:head>
 	<title>Dashboard | Tilt UI</title>
 </svelte:head>
+
+<!-- Alerts Banner -->
+{#if alertsData && alertsData.alerts.length > 0 && !alertsDismissed}
+	<div class="alerts-banner">
+		<div class="alerts-header">
+			<div class="alerts-title">
+				<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+				</svg>
+				<span>Weather Alerts</span>
+			</div>
+			<button type="button" class="dismiss-btn" onclick={dismissAlerts} aria-label="Dismiss alerts">
+				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
+		<div class="alerts-list">
+			{#each alertsData.alerts as alert}
+				<div class="alert-item" class:warning={alert.level === 'warning'} class:critical={alert.level === 'critical'}>
+					<span class="alert-day">{alert.day}:</span>
+					<span class="alert-message">{alert.message}</span>
+				</div>
+			{/each}
+		</div>
+	</div>
+{/if}
 
 {#if tiltsList.length === 0}
 	<div class="empty-state">
@@ -93,6 +213,30 @@
 						<span class="label">Humidity</span>
 					</div>
 				{/if}
+			</div>
+		</div>
+	{/if}
+
+	<!-- Weather Forecast -->
+	{#if alertsData && alertsData.forecast.length > 0}
+		<div class="forecast-card">
+			<div class="forecast-header">
+				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+				</svg>
+				<span>Weather Forecast</span>
+			</div>
+			<div class="forecast-days">
+				{#each alertsData.forecast.slice(0, 5) as day}
+					<div class="forecast-day">
+						<span class="day-name">{formatDayName(day.datetime)}</span>
+						<span class="day-icon">{getWeatherIcon(day.condition)}</span>
+						<div class="day-temps">
+							<span class="temp-high">{formatForecastTemp(day.temperature)}°</span>
+							<span class="temp-low">{formatForecastTemp(day.templow)}°</span>
+						</div>
+					</div>
+				{/each}
 			</div>
 		</div>
 	{/if}
@@ -263,5 +407,155 @@
 		color: var(--text-muted);
 		text-transform: uppercase;
 		margin-left: 0.5rem;
+	}
+
+	/* Alerts Banner */
+	.alerts-banner {
+		background: rgba(251, 191, 36, 0.1);
+		border: 1px solid rgba(251, 191, 36, 0.3);
+		border-radius: 0.75rem;
+		padding: 1rem 1.25rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.alerts-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.75rem;
+	}
+
+	.alerts-title {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--amber-400);
+	}
+
+	.alerts-title svg {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	.dismiss-btn {
+		padding: 0.25rem;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		border-radius: 0.25rem;
+	}
+
+	.dismiss-btn:hover {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.dismiss-btn svg {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.alerts-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.alert-item {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		padding-left: 0.5rem;
+		border-left: 2px solid var(--amber-400);
+	}
+
+	.alert-item.warning {
+		border-left-color: var(--amber-500);
+	}
+
+	.alert-item.critical {
+		border-left-color: var(--tilt-red);
+	}
+
+	.alert-day {
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-right: 0.25rem;
+	}
+
+	/* Weather Forecast */
+	.forecast-card {
+		background: var(--bg-card);
+		border: 1px solid var(--bg-hover);
+		border-radius: 0.75rem;
+		padding: 1rem 1.25rem;
+		margin-top: 1.5rem;
+	}
+
+	.forecast-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin-bottom: 1rem;
+	}
+
+	.forecast-header svg {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.forecast-days {
+		display: flex;
+		gap: 1rem;
+		overflow-x: auto;
+	}
+
+	.forecast-day {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		min-width: 4.5rem;
+		background: var(--bg-elevated);
+		border-radius: 0.5rem;
+	}
+
+	.day-name {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+	}
+
+	.day-icon {
+		font-size: 1.5rem;
+	}
+
+	.day-temps {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.125rem;
+	}
+
+	.temp-high {
+		font-size: 0.875rem;
+		font-weight: 600;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-primary);
+	}
+
+	.temp-low {
+		font-size: 0.75rem;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-muted);
 	}
 </style>

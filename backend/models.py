@@ -204,6 +204,9 @@ class ConfigUpdate(BaseModel):
     ha_heater_entity_id: Optional[str] = None
     # Weather
     ha_weather_entity_id: Optional[str] = None
+    # Alerts
+    weather_alerts_enabled: Optional[bool] = None
+    alert_temp_threshold: Optional[float] = None
 
     @field_validator("temp_units")
     @classmethod
@@ -261,6 +264,13 @@ class ConfigUpdate(BaseModel):
             raise ValueError("temp_hysteresis must be between 0.5 and 10")
         return v
 
+    @field_validator("alert_temp_threshold")
+    @classmethod
+    def validate_alert_temp_threshold(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 1 or v > 20):
+            raise ValueError("alert_temp_threshold must be between 1 and 20")
+        return v
+
 
 class ConfigResponse(BaseModel):
     temp_units: str = "C"
@@ -284,3 +294,6 @@ class ConfigResponse(BaseModel):
     ha_heater_entity_id: str = ""
     # Weather
     ha_weather_entity_id: str = ""
+    # Alerts
+    weather_alerts_enabled: bool = False
+    alert_temp_threshold: float = 5.0

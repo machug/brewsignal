@@ -73,6 +73,13 @@
 	let controlSuccess = $state(false);
 	let overrideLoading = $state(false);
 
+	// Weather Alerts state
+	let weatherAlertsEnabled = $state(false);
+	let alertTempThreshold = $state(5.0);
+	let alertsSaving = $state(false);
+	let alertsError = $state<string | null>(null);
+	let alertsSuccess = $state(false);
+
 	async function loadSystemInfo() {
 		try {
 			const response = await fetch('/api/system/info');
@@ -132,6 +139,9 @@
 		tempControlEnabled = configState.config.temp_control_enabled;
 		tempTarget = configState.config.temp_target;
 		tempHysteresis = configState.config.temp_hysteresis;
+		// Weather Alerts
+		weatherAlertsEnabled = configState.config.weather_alerts_enabled;
+		alertTempThreshold = configState.config.alert_temp_threshold;
 	}
 
 	async function saveConfig() {
@@ -215,6 +225,26 @@
 			}
 		} finally {
 			controlSaving = false;
+		}
+	}
+
+	async function saveAlertsConfig() {
+		alertsSaving = true;
+		alertsError = null;
+		alertsSuccess = false;
+		try {
+			const result = await updateConfig({
+				weather_alerts_enabled: weatherAlertsEnabled,
+				alert_temp_threshold: alertTempThreshold
+			});
+			if (result.success) {
+				alertsSuccess = true;
+				setTimeout(() => (alertsSuccess = false), 3000);
+			} else {
+				alertsError = result.error || 'Failed to save settings';
+			}
+		} finally {
+			alertsSaving = false;
 		}
 	}
 
@@ -923,6 +953,82 @@
 								{/if}
 							</div>
 						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Weather Alerts -->
+			{#if haEnabled && haWeatherEntityId}
+				<div class="card">
+					<div class="card-header">
+						<h2 class="card-title">Weather Alerts</h2>
+					</div>
+					<div class="card-body">
+						<!-- Enable Alerts -->
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Enable Weather Alerts</span>
+								<span class="setting-description">Get alerts when forecast temps may affect fermentation</span>
+							</div>
+							<button
+								type="button"
+								class="toggle"
+								class:active={weatherAlertsEnabled}
+								onclick={() => (weatherAlertsEnabled = !weatherAlertsEnabled)}
+								aria-pressed={weatherAlertsEnabled}
+								aria-label="Toggle weather alerts"
+							>
+								<span class="toggle-slider"></span>
+							</button>
+						</div>
+
+						{#if weatherAlertsEnabled}
+							<!-- Alert Threshold -->
+							<div class="setting-row">
+								<div class="setting-info">
+									<span class="setting-label">Alert Threshold</span>
+									<span class="setting-description">Alert when forecast differs from target by this amount (°F)</span>
+								</div>
+								<div class="input-with-unit">
+									<input
+										type="number"
+										min="1"
+										max="20"
+										step="0.5"
+										bind:value={alertTempThreshold}
+										class="input-field-sm"
+									/>
+									<span class="unit">°F</span>
+								</div>
+							</div>
+
+							<p class="setting-hint mt-2">
+								Alerts are generated when the forecast high or low temperatures differ from your target fermentation temperature by more than the threshold.
+							</p>
+						{/if}
+
+						<!-- Save Button -->
+						<div class="mt-4 config-actions">
+							<button
+								type="button"
+								class="btn-primary"
+								onclick={saveAlertsConfig}
+								disabled={alertsSaving}
+							>
+								{#if alertsSaving}
+									<span class="loading-dot"></span>
+									Saving...
+								{:else}
+									Save Alert Settings
+								{/if}
+							</button>
+							{#if alertsError}
+								<p class="config-error">{alertsError}</p>
+							{/if}
+							{#if alertsSuccess}
+								<p class="config-success">Settings saved</p>
+							{/if}
+						</div>
 					</div>
 				</div>
 			{/if}

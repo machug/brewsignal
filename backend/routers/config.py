@@ -37,6 +37,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ha_heater_entity_id": "",
     # Weather
     "ha_weather_entity_id": "",
+    # Alerts
+    "weather_alerts_enabled": False,
+    "alert_temp_threshold": 5.0,
 }
 
 

@@ -277,6 +277,7 @@
 	/* When expanded with chart, allow full width */
 	.wide.expanded {
 		max-width: 56rem;
+		width: 100%;
 	}
 
 	.wide .text-3xl {

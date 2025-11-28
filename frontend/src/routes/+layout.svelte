@@ -57,12 +57,12 @@
 				<a href="/" class="flex items-center gap-3 group">
 					<div
 						class="w-9 h-9 rounded-lg flex items-center justify-center transition-all group-hover:scale-105"
-						style="background: linear-gradient(135deg, var(--amber-500), var(--amber-600)); box-shadow: 0 4px 12px var(--amber-glow-strong);"
+						style="background: var(--accent);"
 					>
 						<span class="text-lg">🍺</span>
 					</div>
 					<span class="text-lg font-semibold tracking-tight" style="color: var(--text-primary);">
-						Tilt<span style="color: var(--amber-400);">UI</span>
+						Tilt<span style="color: var(--accent);">UI</span>
 					</span>
 				</a>
 
@@ -72,18 +72,9 @@
 						{@const active = isActive(link.href, $page.url.pathname)}
 						<a
 							href={link.href}
-							class="relative px-4 py-2 text-sm font-medium transition-all rounded-lg"
-							style="color: {active ? 'var(--text-primary)' : 'var(--text-secondary)'}; background: {active ? 'var(--bg-elevated)' : 'transparent'};"
-							onmouseenter={(e) => !active && (e.currentTarget.style.color = 'var(--text-primary)')}
-							onmouseleave={(e) => !active && (e.currentTarget.style.color = 'var(--text-secondary)')}
+							class="nav-link {active ? 'active' : ''}"
 						>
 							{link.label}
-							{#if active}
-								<span
-									class="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full"
-									style="background: var(--amber-400);"
-								></span>
-							{/if}
 						</a>
 					{/each}
 				</div>
@@ -93,16 +84,13 @@
 					<!-- Heater indicator -->
 					{#if showHeaterIndicator && tiltsState.heater.available}
 						<div
-							class="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all"
-							style="background: {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-card)'}; border: 1px solid {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.3)' : 'transparent'};"
+							class="flex items-center gap-2 px-3 py-1.5 rounded-full"
+							style="background: {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-elevated)'};"
 						>
+							<span class="text-sm" style="opacity: {tiltsState.heater.state === 'on' ? 1 : 0.4};">🔥</span>
 							<span
-								class="text-sm transition-all"
-								style="filter: {tiltsState.heater.state === 'on' ? 'none' : 'grayscale(100%) opacity(0.5)'};"
-							>🔥</span>
-							<span
-								class="text-xs font-semibold uppercase tracking-wide hidden sm:inline"
-								style="color: {tiltsState.heater.state === 'on' ? 'var(--tilt-red)' : 'var(--text-muted)'};"
+								class="text-xs font-medium uppercase tracking-wide hidden sm:inline"
+								style="color: {tiltsState.heater.state === 'on' ? 'var(--negative)' : 'var(--text-muted)'};"
 							>
 								{tiltsState.heater.state === 'on' ? 'Heating' : 'Off'}
 							</span>
@@ -112,11 +100,11 @@
 					<!-- Connection status -->
 					<div
 						class="flex items-center gap-2 px-3 py-1.5 rounded-full"
-						style="background: var(--bg-card);"
+						style="background: var(--bg-elevated);"
 					>
 						<span
-							class="w-2 h-2 rounded-full transition-colors {tiltsState.connected ? 'animate-pulse-soft' : ''}"
-							style="background: {tiltsState.connected ? 'var(--tilt-green)' : 'var(--tilt-red)'};"
+							class="w-2 h-2 rounded-full"
+							style="background: {tiltsState.connected ? 'var(--positive)' : 'var(--text-muted)'};"
 						></span>
 						<span class="text-xs font-medium hidden sm:inline" style="color: var(--text-muted);">
 							{tiltsState.connected ? 'Live' : 'Offline'}
@@ -170,3 +158,37 @@
 		{@render children()}
 	</main>
 </div>
+
+<style>
+	.nav-link {
+		position: relative;
+		padding: 0.5rem 1rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+		background: transparent;
+		border-radius: 0.375rem;
+		transition: color var(--transition), background var(--transition);
+	}
+
+	.nav-link:hover {
+		color: var(--text-primary);
+	}
+
+	.nav-link.active {
+		color: var(--text-primary);
+		background: var(--bg-elevated);
+	}
+
+	.nav-link.active::after {
+		content: '';
+		position: absolute;
+		bottom: 0;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 1.5rem;
+		height: 2px;
+		background: var(--accent);
+		border-radius: 1px;
+	}
+</style>

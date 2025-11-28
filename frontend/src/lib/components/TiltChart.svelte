@@ -498,11 +498,11 @@
 	<!-- Chart container -->
 	<div class="chart-container" bind:this={chartContainer}>
 		{#if loading}
-			<div class="py-8 flex flex-col items-center gap-3">
-				<div class="w-full h-48 bg-[var(--bg-elevated)] rounded animate-pulse"></div>
-				<span class="text-sm text-[var(--text-muted)]">Loading chart...</span>
+			<div class="loading-overlay">
+				<div class="loading-spinner"></div>
 			</div>
-		{:else if error}
+		{/if}
+		{#if error}
 			<div class="chart-error">
 				<span>Failed to load chart</span>
 				<button type="button" class="retry-btn" onclick={loadData}>Retry</button>
@@ -586,6 +586,30 @@
 		border-radius: 0.5rem;
 		background: var(--bg-elevated);
 		overflow: hidden;
+	}
+
+	.loading-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(24, 24, 27, 0.6);
+		backdrop-filter: blur(2px);
+		z-index: 10;
+	}
+
+	.loading-spinner {
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 2px solid var(--border-subtle);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
 	.chart-container :global(.u-wrap) {

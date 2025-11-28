@@ -157,6 +157,8 @@ async def set_heater_state(ha_client, entity_id: str, state: str, db, wort_temp:
     """Turn heater on or off and log the event."""
     global _heater_state
 
+    logger.debug(f"Attempting to set heater to '{state}' (entity: {entity_id})")
+
     if state == "on":
         success = await ha_client.call_service("switch", "turn_on", entity_id)
         action = "heat_on"
@@ -165,8 +167,12 @@ async def set_heater_state(ha_client, entity_id: str, state: str, db, wort_temp:
         action = "heat_off"
 
     if success:
+        old_state = _heater_state
         _heater_state = state
+        logger.info(f"Heater state changed: {old_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, tilt_id)
+    else:
+        logger.error(f"Failed to set heater to '{state}' via HA (entity: {entity_id})")
 
     return success
 
@@ -236,6 +242,20 @@ async def temperature_control_loop() -> None:
                     await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                     continue
 
+                # Sync cached heater state with actual HA state before making control decisions
+                # This prevents stale cache from causing incorrect control decisions
+                actual_state = await ha_client.get_state(heater_entity)
+                if actual_state:
+                    ha_state = actual_state.get("state", "").lower()
+                    if ha_state in ("on", "off"):
+                        if _heater_state != ha_state:
+                            logger.debug(f"Syncing heater cache: {_heater_state} -> {ha_state} (from HA)")
+                        _heater_state = ha_state
+                    elif ha_state == "unavailable":
+                        logger.warning(f"Heater entity {heater_entity} is unavailable in HA")
+                        await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
+                        continue
+
                 # Get control parameters
                 target_temp = await get_config_value(db, "temp_target") or 68.0
                 hysteresis = await get_config_value(db, "temp_hysteresis") or 1.0
@@ -268,26 +288,46 @@ async def temperature_control_loop() -> None:
                         await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                         continue
 
+                # Calculate thresholds for logging
+                heat_on_threshold = target_temp - hysteresis
+                heat_off_threshold = target_temp + hysteresis
+
+                # Log control decision info at DEBUG level for diagnostics
+                logger.debug(
+                    f"Control check: wort={wort_temp:.2f}F, target={target_temp:.2f}F, "
+                    f"hysteresis={hysteresis:.2f}F, on_threshold={heat_on_threshold:.2f}F, "
+                    f"off_threshold={heat_off_threshold:.2f}F, cached_state={_heater_state}"
+                )
+
                 # Automatic control logic with hysteresis
-                if wort_temp < (target_temp - hysteresis):
+                if wort_temp < heat_on_threshold:
                     # Too cold - turn on heater
                     if _heater_state != "on":
-                        logger.info(f"Wort temp {wort_temp:.1f}F below target {target_temp:.1f}F (hysteresis={hysteresis}), turning heater ON")
+                        logger.info(f"Wort temp {wort_temp:.1f}F below target {target_temp:.1f}F (hysteresis={hysteresis:.2f}), turning heater ON")
                         await set_heater_state(
                             ha_client, heater_entity, "on", db,
                             wort_temp, ambient_temp, target_temp, tilt_id
                         )
+                    else:
+                        logger.debug(f"Heater already ON, wort={wort_temp:.1f}F < on_threshold={heat_on_threshold:.1f}F")
 
-                elif wort_temp > (target_temp + hysteresis):
+                elif wort_temp > heat_off_threshold:
                     # Too warm - turn off heater
                     if _heater_state != "off":
-                        logger.info(f"Wort temp {wort_temp:.1f}F above target {target_temp:.1f}F (hysteresis={hysteresis}), turning heater OFF")
+                        logger.info(f"Wort temp {wort_temp:.1f}F above target {target_temp:.1f}F (hysteresis={hysteresis:.2f}), turning heater OFF")
                         await set_heater_state(
                             ha_client, heater_entity, "off", db,
                             wort_temp, ambient_temp, target_temp, tilt_id
                         )
+                    else:
+                        logger.debug(f"Heater already OFF, wort={wort_temp:.1f}F > off_threshold={heat_off_threshold:.1f}F")
 
-                # Within hysteresis band - maintain current state
+                else:
+                    # Within hysteresis band - maintain current state
+                    logger.debug(
+                        f"Within hysteresis band ({heat_on_threshold:.1f}F-{heat_off_threshold:.1f}F), "
+                        f"maintaining heater state: {_heater_state}"
+                    )
 
         except Exception as e:
             logger.error(f"Temperature control error: {e}", exc_info=True)

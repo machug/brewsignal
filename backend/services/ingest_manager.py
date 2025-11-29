@@ -15,13 +15,17 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..ingest import AdapterRouter, HydrometerReading
+from ..ingest import AdapterRouter, HydrometerReading, ReadingStatus
 from ..models import Device, Reading
 from ..state import latest_readings
 from ..websocket import manager as ws_manager
 from .calibration import calibration_service
 
 logger = logging.getLogger(__name__)
+
+# Valid ranges for outlier filtering
+SG_MIN, SG_MAX = 0.500, 1.200
+TEMP_MIN_F, TEMP_MAX_F = 32.0, 212.0  # Fahrenheit (freezing to boiling)
 
 
 class IngestManager:
@@ -136,6 +140,32 @@ class IngestManager:
 
         return device.auth_token == provided_token
 
+    def _validate_reading(self, reading: HydrometerReading) -> str:
+        """Validate reading values and return appropriate status.
+
+        Returns 'invalid' if SG or temperature are outside valid ranges,
+        otherwise returns the reading's original status.
+        """
+        # Check SG (use calibrated if available, else raw)
+        sg = reading.gravity if reading.gravity is not None else reading.gravity_raw
+        if sg is not None and not (SG_MIN <= sg <= SG_MAX):
+            logger.warning(
+                "Outlier SG detected: %.4f (valid: %.3f-%.3f) for device %s",
+                sg, SG_MIN, SG_MAX, reading.device_id
+            )
+            return ReadingStatus.INVALID.value
+
+        # Check temperature (use calibrated if available, else raw)
+        temp = reading.temperature if reading.temperature is not None else reading.temperature_raw
+        if temp is not None and not (TEMP_MIN_F <= temp <= TEMP_MAX_F):
+            logger.warning(
+                "Outlier temperature detected: %.1f°F (valid: %.0f-%.0f) for device %s",
+                temp, TEMP_MIN_F, TEMP_MAX_F, reading.device_id
+            )
+            return ReadingStatus.INVALID.value
+
+        return reading.status.value
+
     async def _store_reading(
         self,
         db: AsyncSession,
@@ -143,6 +173,9 @@ class IngestManager:
         reading: HydrometerReading,
     ) -> Reading:
         """Store reading in database."""
+        # Validate reading and get status (may be 'invalid' for outliers)
+        status = self._validate_reading(reading)
+
         db_reading = Reading(
             device_id=device.id,
             device_type=reading.device_type,
@@ -156,7 +189,7 @@ class IngestManager:
             battery_percent=reading.battery_percent,
             angle=reading.angle,
             source_protocol=reading.source_protocol,
-            status=reading.status.value,
+            status=status,
             is_pre_filtered=reading.is_pre_filtered,
         )
 

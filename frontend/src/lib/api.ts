@@ -10,6 +10,7 @@ export interface HistoricalReading {
 	temp_raw: number | null;
 	temp_calibrated: number | null;
 	rssi: number | null;
+	status?: string; // 'valid', 'invalid', 'uncalibrated', 'incomplete'
 }
 
 export interface TimeRangeOption {

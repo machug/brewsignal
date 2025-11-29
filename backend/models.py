@@ -225,6 +225,7 @@ class ReadingResponse(BaseModel):
     temp_raw: Optional[float]
     temp_calibrated: Optional[float]
     rssi: Optional[int]
+    status: Optional[str] = None  # 'valid', 'invalid', 'uncalibrated', 'incomplete'
 
     class Config:
         from_attributes = True

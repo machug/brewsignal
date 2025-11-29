@@ -2,6 +2,12 @@
 	import type { HistoricalReading } from '$lib/api';
 	import { configState, formatTemp, getTempUnit, fahrenheitToCelsius } from '$lib/stores/config.svelte';
 
+	// Valid ranges for outlier filtering (matches backend)
+	const SG_MIN = 0.5;
+	const SG_MAX = 1.2;
+	const TEMP_MIN_F = 32; // Fahrenheit
+	const TEMP_MAX_F = 212;
+
 	interface Props {
 		readings: HistoricalReading[];
 		originalGravity: number | null;
@@ -25,23 +31,30 @@
 			return null;
 		}
 
+		// Filter out invalid readings (flagged by backend) first
+		const validReadings = readings.filter((r) => r.status !== 'invalid');
+
+		if (validReadings.length === 0) {
+			return null;
+		}
+
 		// Readings come newest first, so reverse for chronological order
-		const sorted = [...readings].sort(
+		const sorted = [...validReadings].sort(
 			(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
 		);
 
 		const firstReading = sorted[0];
 		const lastReading = sorted[sorted.length - 1];
 
-		// SG values (prefer calibrated)
+		// SG values (prefer calibrated, filter outliers for historical data)
 		const sgValues = sorted
 			.map((r) => r.sg_calibrated ?? r.sg_raw)
-			.filter((v): v is number => v !== null);
+			.filter((v): v is number => v !== null && v >= SG_MIN && v <= SG_MAX);
 
-		// Temp values (prefer calibrated, in Fahrenheit from backend)
+		// Temp values (prefer calibrated, in Fahrenheit from backend, filter outliers)
 		const tempValues = sorted
 			.map((r) => r.temp_calibrated ?? r.temp_raw)
-			.filter((v): v is number => v !== null);
+			.filter((v): v is number => v !== null && v >= TEMP_MIN_F && v <= TEMP_MAX_F);
 
 		if (sgValues.length === 0) {
 			return null;

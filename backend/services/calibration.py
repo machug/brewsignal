@@ -5,12 +5,15 @@ applies a simple offset. With multiple points, interpolates or extrapolates
 linearly based on the closest points.
 """
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import CalibrationPoint
+
+if TYPE_CHECKING:
+    from ..ingest.base import HydrometerReading
 
 
 def linear_interpolate(x: float, points: list[tuple[float, float]]) -> float:
@@ -160,6 +163,55 @@ class CalibrationService:
         cal_sg = await self.calibrate_sg(db, tilt_id, raw_sg)
         cal_temp = await self.calibrate_temp(db, tilt_id, raw_temp)
         return cal_sg, cal_temp
+
+    def convert_units(self, reading: "HydrometerReading") -> "HydrometerReading":
+        """Convert raw values to standard units (SG, Fahrenheit).
+
+        Args:
+            reading: HydrometerReading with raw values
+
+        Returns:
+            Reading with gravity/temperature filled from unit conversion
+        """
+        from ..ingest.base import GravityUnit, TemperatureUnit
+        from ..ingest.units import celsius_to_fahrenheit, plato_to_sg
+
+        # Temperature: Convert to Fahrenheit if Celsius
+        if reading.temperature_raw is not None:
+            if reading.temperature_unit == TemperatureUnit.CELSIUS:
+                reading.temperature = celsius_to_fahrenheit(reading.temperature_raw)
+            else:
+                reading.temperature = reading.temperature_raw
+
+        # Gravity: Convert to SG if Plato
+        if reading.gravity_raw is not None:
+            if reading.gravity_unit == GravityUnit.PLATO:
+                reading.gravity = plato_to_sg(reading.gravity_raw)
+            else:
+                reading.gravity = reading.gravity_raw
+
+        return reading
+
+    def apply_polynomial(self, angle: float, coefficients: list[float]) -> float:
+        """Apply polynomial calibration: SG = a*x^n + b*x^(n-1) + ... + c
+
+        Args:
+            angle: Tilt angle in degrees
+            coefficients: Polynomial coefficients [a, b, c, ...] highest degree first
+
+        Returns:
+            Calculated specific gravity
+        """
+        if not coefficients:
+            return 0.0
+
+        result = 0.0
+        degree = len(coefficients) - 1
+        for i, coef in enumerate(coefficients):
+            power = degree - i
+            result += coef * (angle ** power)
+
+        return result
 
 
 # Global calibration service instance

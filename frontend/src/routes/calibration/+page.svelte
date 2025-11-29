@@ -160,7 +160,7 @@
 </script>
 
 <svelte:head>
-	<title>Calibration | Tilt UI</title>
+	<title>Calibration | BrewSignal</title>
 </svelte:head>
 
 <div class="page-container">

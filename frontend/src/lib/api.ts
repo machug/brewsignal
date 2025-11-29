@@ -1,4 +1,4 @@
-// API helper functions for Tilt UI
+// API helper functions for BrewSignal
 
 const BASE_URL = '/api';
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Tilt UI - Beer Fermentation Dashboard
+Description=BrewSignal - Beer Fermentation Dashboard
 After=network.target bluetooth.target
 Wants=bluetooth.target
 
@@ -7,16 +7,16 @@ Wants=bluetooth.target
 Type=simple
 User=pi
 Group=pi
-WorkingDirectory=/opt/tiltui
-Environment="PATH=/opt/tiltui/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/tiltui/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8080
+WorkingDirectory=/opt/brewsignal
+Environment="PATH=/opt/brewsignal/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/brewsignal/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=5
 
 # Security hardening (NoNewPrivileges disabled to allow sudo for system controls)
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/tiltui/data
+ReadWritePaths=/opt/brewsignal/data
 PrivateTmp=true
 
 # Bluetooth access
@@ -25,7 +25,7 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=tiltui
+SyslogIdentifier=brewsignal
 
 [Install]
 WantedBy=multi-user.target

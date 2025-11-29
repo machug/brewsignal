@@ -1,13 +1,14 @@
 [project]
-name = "tilt-ui"
-version = "1.0.0"
-description = "Modern web UI for Tilt Hydrometer monitoring"
+name = "brewsignal"
+version = "2.0.0"
+description = "Modern web UI for BrewSignal Hydrometer monitoring"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104",
     "uvicorn[standard]>=0.24",
     "sqlalchemy>=2.0",
     "aiosqlite>=0.19",
+    "greenlet>=3.0",
     "pydantic>=2.5",
     "pydantic-settings>=2.1",
     "bleak>=0.22",

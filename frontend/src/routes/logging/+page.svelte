@@ -77,7 +77,7 @@
 </script>
 
 <svelte:head>
-	<title>Logging | Tilt UI</title>
+	<title>Logging | BrewSignal</title>
 </svelte:head>
 
 <div class="page-container">

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Tilt UI Installation Script
-# Installs Tilt UI as a systemd service on Raspberry Pi
+# BrewSignal Installation Script
+# Installs BrewSignal as a systemd service on Raspberry Pi
 
 set -e
 
@@ -10,12 +10,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-INSTALL_DIR="/opt/tiltui"
-SERVICE_FILE="/etc/systemd/system/tiltui.service"
-REPO_URL="https://github.com/yourusername/tilt_ui.git"
+INSTALL_DIR="/opt/brewsignal"
+SERVICE_FILE="/etc/systemd/system/brewsignal.service"
+REPO_URL="https://github.com/machug/brewsignal.git"
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Tilt UI Installation Script${NC}"
+echo -e "${GREEN}  BrewSignal Installation Script${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 # Check if running as root
@@ -52,9 +52,9 @@ systemctl enable bluetooth
 systemctl start bluetooth
 
 # Stop existing service if running
-if systemctl is-active --quiet tiltui; then
-    echo -e "\n${YELLOW}Stopping existing Tilt UI service...${NC}"
-    systemctl stop tiltui
+if systemctl is-active --quiet brewsignal; then
+    echo -e "\n${YELLOW}Stopping existing BrewSignal service...${NC}"
+    systemctl stop brewsignal
 fi
 
 # Create install directory
@@ -120,27 +120,27 @@ chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
 echo -e "\n${GREEN}[7/7] Installing systemd service...${NC}"
-cp "$SCRIPT_DIR/tiltui.service" "$SERVICE_FILE"
+cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
 systemctl daemon-reload
-systemctl enable tiltui
-systemctl start tiltui
+systemctl enable brewsignal
+systemctl start brewsignal
 
 # Verify service started
 sleep 3
-if systemctl is-active --quiet tiltui; then
+if systemctl is-active --quiet brewsignal; then
     echo -e "\n${GREEN}========================================${NC}"
     echo -e "${GREEN}  Installation Complete!${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo -e "Tilt UI is now running at: ${GREEN}http://$(hostname -I | awk '{print $1}')${NC}"
+    echo -e "BrewSignal is now running at: ${GREEN}http://$(hostname -I | awk '{print $1}')${NC}"
     echo ""
     echo "Useful commands:"
-    echo "  - View logs:    journalctl -u tiltui -f"
-    echo "  - Restart:      sudo systemctl restart tiltui"
-    echo "  - Stop:         sudo systemctl stop tiltui"
-    echo "  - Status:       sudo systemctl status tiltui"
+    echo "  - View logs:    journalctl -u brewsignal -f"
+    echo "  - Restart:      sudo systemctl restart brewsignal"
+    echo "  - Stop:         sudo systemctl stop brewsignal"
+    echo "  - Status:       sudo systemctl status brewsignal"
 else
     echo -e "\n${RED}Service failed to start. Check logs:${NC}"
-    echo "  journalctl -u tiltui -n 50"
+    echo "  journalctl -u brewsignal -n 50"
     exit 1
 fi

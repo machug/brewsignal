@@ -478,7 +478,7 @@
 </script>
 
 <svelte:head>
-	<title>System | Tilt UI</title>
+	<title>System | BrewSignal</title>
 </svelte:head>
 
 <div class="page-container">

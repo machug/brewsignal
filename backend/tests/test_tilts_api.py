@@ -4,7 +4,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models import Tilt
+from backend.models import Tilt, TiltUpdate
 
 
 @pytest.mark.asyncio
@@ -118,8 +118,6 @@ class TestTiltUpdateModel:
 
     def test_is_field_set_when_provided(self):
         """Test is_field_set returns True when field is explicitly provided."""
-        from backend.models import TiltUpdate
-        
         # Field provided with value
         update = TiltUpdate(original_gravity=1.050)
         assert update.is_field_set("original_gravity") is True
@@ -130,8 +128,6 @@ class TestTiltUpdateModel:
 
     def test_is_field_set_when_not_provided(self):
         """Test is_field_set returns False when field is not provided."""
-        from backend.models import TiltUpdate
-        
         # Empty update
         update = TiltUpdate()
         assert update.is_field_set("original_gravity") is False

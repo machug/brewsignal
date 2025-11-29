@@ -97,6 +97,46 @@ wheels = [
 ]
 
 [[package]]
+name = "brewsignal"
+version = "1.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "beacontools" },
+    { name = "bleak" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.19" },
+    { name = "beacontools", specifier = ">=2.1" },
+    { name = "bleak", specifier = ">=0.22" },
+    { name = "fastapi", specifier = ">=0.104" },
+    { name = "httpx", specifier = ">=0.25" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.25" },
+    { name = "pydantic", specifier = ">=2.5" },
+    { name = "pydantic-settings", specifier = ">=2.1" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.24" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "certifi"
 version = "2025.11.12"
 source = { registry = "https://pypi.org/simple" }
@@ -700,46 +740,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/ba/b8/73a0e6a6e079a9d9c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/52/1064f510b141bd54025f9b55105e26d1fa970b9be67ad766380a3c9b74b0/starlette-0.50.0-py3-none-any.whl", hash = "sha256:9e5391843ec9b6e472eed1365a78c8098cfceb7a74bfd4d6b1c0c0095efb3bca", size = 74033, upload-time = "2025-11-01T15:25:25.461Z" },
 ]
-
-[[package]]
-name = "tilt-ui"
-version = "1.0.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "beacontools" },
-    { name = "bleak" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "sqlalchemy" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.19" },
-    { name = "beacontools", specifier = ">=2.1" },
-    { name = "bleak", specifier = ">=0.22" },
-    { name = "fastapi", specifier = ">=0.104" },
-    { name = "httpx", specifier = ">=0.25" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.25" },
-    { name = "pydantic", specifier = ">=2.5" },
-    { name = "pydantic-settings", specifier = ">=2.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.24" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "typing-extensions"

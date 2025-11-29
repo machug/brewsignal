@@ -19,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### File Paths
 - Database file renamed: `tiltui.db` → `fermentation.db`
-- Log file renamed: `tiltui.log` → `brewsignal.log`
 
 #### System Service
 - Systemd service renamed: `tiltui.service` → `brewsignal.service`

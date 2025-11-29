@@ -30,8 +30,8 @@ A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. 
 
 ```bash
 # Clone the repository
-git clone https://github.com/machug/tilt_ui.git
-cd tilt_ui
+git clone https://github.com/machug/brewsignal.git
+cd brewsignal
 
 # Create virtual environment and install
 python3 -m venv venv

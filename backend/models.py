@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -193,6 +193,10 @@ class TiltUpdate(BaseModel):
         if v is not None and (v < 0.990 or v > 1.200):
             raise ValueError("original_gravity must be between 0.990 and 1.200")
         return v
+
+    def is_field_set(self, field_name: str) -> bool:
+        """Check if a field was explicitly provided in the request."""
+        return field_name in self.model_fields_set
 
 
 class TiltResponse(TiltBase):

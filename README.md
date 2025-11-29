@@ -1,4 +1,4 @@
-# Tilt UI
+# BrewSignal
 
 A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. Supports Tilt, iSpindel, and GravityMon devices.
 
@@ -62,16 +62,16 @@ sudo systemctl start tiltui
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TILT_MOCK` | Enable mock scanner for development | `false` |
-| `TILT_FILES` | Path to TiltPi JSON files (legacy mode) | - |
-| `TILT_RELAY` | IP of remote TiltPi to relay from | - |
+| `SCANNER_MOCK` | Enable mock scanner for development | `false` |
+| `SCANNER_FILES_PATH` | Path to TiltPi JSON files (legacy mode) | - |
+| `SCANNER_RELAY_HOST` | IP of remote TiltPi to relay from | - |
 
 ### Scanner Modes
 
 1. **BLE Mode** (default) - Direct Bluetooth scanning for Tilt devices
-2. **Mock Mode** - Simulated readings for development (`TILT_MOCK=true`)
-3. **File Mode** - Read from TiltPi JSON files (`TILT_FILES=/home/pi`)
-4. **Relay Mode** - Fetch from remote TiltPi (`TILT_RELAY=192.168.1.100`)
+2. **Mock Mode** - Simulated readings for development (`SCANNER_MOCK=true`)
+3. **File Mode** - Read from TiltPi JSON files (`SCANNER_FILES_PATH=/home/pi`)
+4. **Relay Mode** - Fetch from remote TiltPi (`SCANNER_RELAY_HOST=192.168.1.100`)
 
 ## API Endpoints
 
@@ -111,7 +111,7 @@ The server auto-detects GravityMon extended format. Readings appear on the dashb
 Add calibration points to correct SG and temperature readings:
 
 1. Take a reference reading with a hydrometer/thermometer
-2. Note the raw value shown in Tilt UI
+2. Note the raw value shown in BrewSignal
 3. Add a calibration point: raw value → actual value
 4. The system uses linear interpolation between points
 

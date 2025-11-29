@@ -3,14 +3,20 @@
 Uses linear interpolation between calibration points. With a single point,
 applies a simple offset. With multiple points, interpolates or extrapolates
 linearly based on the closest points.
+
+Supports multiple calibration types:
+- offset: Simple additive offset (sg_offset, temp_offset)
+- polynomial: Polynomial calibration from angle (iSpindel style)
+- linear: Linear interpolation between multiple points (legacy Tilt)
+- none: No calibration applied
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CalibrationPoint
+from ..models import CalibrationPoint, Device
 
 if TYPE_CHECKING:
     from ..ingest.base import HydrometerReading
@@ -212,6 +218,98 @@ class CalibrationService:
             result += coef * (angle ** power)
 
         return result
+
+    async def calibrate_device_reading(
+        self,
+        db: AsyncSession,
+        device: Device,
+        reading: "HydrometerReading",
+    ) -> "HydrometerReading":
+        """Apply device-specific calibration to a reading.
+
+        This is the universal calibration entry point that handles all device types
+        and calibration methods.
+
+        Args:
+            db: Database session
+            device: Device model with calibration_type and calibration_data
+            reading: HydrometerReading with raw values (already unit-converted)
+
+        Returns:
+            Reading with calibrated gravity and temperature values
+        """
+        calibration_type = device.calibration_type or "none"
+        calibration_data = device.calibration_data or {}
+
+        # Apply gravity calibration based on type
+        if reading.gravity is not None:
+            if calibration_type == "offset":
+                sg_offset = calibration_data.get("sg_offset", 0.0)
+                reading.gravity = reading.gravity + sg_offset
+
+            elif calibration_type == "polynomial":
+                # iSpindel-style polynomial from angle
+                if reading.angle is not None:
+                    coefficients = calibration_data.get("coefficients", [])
+                    if coefficients:
+                        reading.gravity = self.apply_polynomial(reading.angle, coefficients)
+
+            elif calibration_type == "linear":
+                # Linear interpolation between points
+                sg_points = calibration_data.get("sg_points", [])
+                if sg_points:
+                    points = [(p[0], p[1]) for p in sg_points]
+                    reading.gravity = linear_interpolate(reading.gravity, points)
+
+        # Apply temperature calibration (offset or linear for all types)
+        if reading.temperature is not None:
+            if calibration_type in ("offset", "polynomial"):
+                temp_offset = calibration_data.get("temp_offset", 0.0)
+                reading.temperature = reading.temperature + temp_offset
+
+            elif calibration_type == "linear":
+                temp_points = calibration_data.get("temp_points", [])
+                if temp_points:
+                    points = [(p[0], p[1]) for p in temp_points]
+                    reading.temperature = linear_interpolate(reading.temperature, points)
+
+        return reading
+
+    async def get_or_create_device(
+        self,
+        db: AsyncSession,
+        device_id: str,
+        device_type: str,
+        name: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Device:
+        """Get existing device or create a new one.
+
+        Args:
+            db: Database session
+            device_id: Unique device identifier
+            device_type: Type of device (tilt, ispindel, gravitymon, floaty)
+            name: Display name for the device
+            **kwargs: Additional device fields (color, mac, native_gravity_unit, etc.)
+
+        Returns:
+            Device model instance
+        """
+        result = await db.execute(select(Device).where(Device.id == device_id))
+        device = result.scalar_one_or_none()
+
+        if device is None:
+            device = Device(
+                id=device_id,
+                device_type=device_type,
+                name=name or device_id,
+                calibration_type="none",
+                **kwargs,
+            )
+            db.add(device)
+            await db.flush()
+
+        return device
 
 
 # Global calibration service instance

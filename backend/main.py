@@ -22,15 +22,13 @@ from .temp_controller import start_temp_controller, stop_temp_controller
 from .cleanup import CleanupService
 from .scanner import TiltReading, TiltScanner
 from .services.calibration import calibration_service
+from .state import latest_readings
 from .websocket import manager
 
 # Global scanner instance
 scanner: Optional[TiltScanner] = None
 scanner_task: Optional[asyncio.Task] = None
 cleanup_service: Optional[CleanupService] = None
-
-# In-memory cache of latest readings per Tilt
-latest_readings: dict[str, dict] = {}
 
 
 async def handle_tilt_reading(reading: TiltReading):

@@ -3,20 +3,20 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..ingest import AdapterRouter
+from ..database import get_db
+from ..services import ingest_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
-
-# Global adapter router instance
-adapter_router = AdapterRouter()
 
 
 @router.post("/generic")
 async def ingest_generic(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     x_device_token: Optional[str] = Header(None, alias="X-Device-Token"),
 ):
     """Auto-detect payload format and ingest.
@@ -29,19 +29,15 @@ async def ingest_generic(
     except Exception as e:
         raise HTTPException(400, f"Invalid JSON: {e}")
 
-    reading = adapter_router.route(payload, source_protocol="http")
-
-    if not reading:
-        raise HTTPException(400, "Unknown payload format")
-
-    logger.info(
-        "Ingested %s reading from device %s",
-        reading.device_type,
-        reading.device_id,
+    reading = await ingest_manager.ingest(
+        db=db,
+        payload=payload,
+        source_protocol="http",
+        auth_token=x_device_token,
     )
 
-    # TODO: Process through calibration and store
-    # For now, just acknowledge receipt
+    if not reading:
+        raise HTTPException(400, "Unknown payload format or auth failed")
 
     return {
         "status": "ok",
@@ -53,6 +49,7 @@ async def ingest_generic(
 @router.post("/ispindel")
 async def ingest_ispindel(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     x_device_token: Optional[str] = Header(None, alias="X-Device-Token"),
 ):
     """Receive iSpindel HTTP POST.
@@ -64,17 +61,15 @@ async def ingest_ispindel(
     except Exception as e:
         raise HTTPException(400, f"Invalid JSON: {e}")
 
-    reading = adapter_router.route(payload, source_protocol="http")
-
-    if not reading or reading.device_type not in ("ispindel", "gravitymon"):
-        raise HTTPException(400, "Invalid iSpindel payload")
-
-    logger.info(
-        "Ingested iSpindel reading: device=%s, angle=%s, gravity=%s",
-        reading.device_id,
-        reading.angle,
-        reading.gravity_raw,
+    reading = await ingest_manager.ingest(
+        db=db,
+        payload=payload,
+        source_protocol="http",
+        auth_token=x_device_token,
     )
+
+    if not reading:
+        raise HTTPException(400, "Invalid iSpindel payload or auth failed")
 
     return {"status": "ok"}
 
@@ -82,6 +77,7 @@ async def ingest_ispindel(
 @router.post("/gravitymon")
 async def ingest_gravitymon(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     x_device_token: Optional[str] = Header(None, alias="X-Device-Token"),
 ):
     """Receive GravityMon HTTP POST."""
@@ -90,16 +86,14 @@ async def ingest_gravitymon(
     except Exception as e:
         raise HTTPException(400, f"Invalid JSON: {e}")
 
-    reading = adapter_router.route(payload, source_protocol="http")
+    reading = await ingest_manager.ingest(
+        db=db,
+        payload=payload,
+        source_protocol="http",
+        auth_token=x_device_token,
+    )
 
     if not reading:
-        raise HTTPException(400, "Invalid GravityMon payload")
-
-    logger.info(
-        "Ingested GravityMon reading: device=%s, gravity=%s, filtered=%s",
-        reading.device_id,
-        reading.gravity_raw,
-        reading.is_pre_filtered,
-    )
+        raise HTTPException(400, "Invalid GravityMon payload or auth failed")
 
     return {"status": "ok"}

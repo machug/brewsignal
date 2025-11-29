@@ -76,23 +76,49 @@ class Device(Base):
 
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
+    # Relationships
+    readings: Mapped[list["Reading"]] = relationship(back_populates="device", cascade="all, delete-orphan")
+
 
 class Reading(Base):
     __tablename__ = "readings"
     __table_args__ = (
         Index("ix_readings_tilt_timestamp", "tilt_id", "timestamp"),
+        Index("ix_readings_device_timestamp", "device_id", "timestamp"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    tilt_id: Mapped[str] = mapped_column(ForeignKey("tilts.id"), nullable=False, index=True)
+    # Legacy Tilt FK - nullable for non-Tilt devices
+    tilt_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tilts.id"), nullable=True, index=True)
+    # Universal device FK - for all device types including Tilt
+    device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"), nullable=True, index=True)
+    device_type: Mapped[str] = mapped_column(String(20), default="tilt")
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
+
+    # Gravity readings
     sg_raw: Mapped[Optional[float]] = mapped_column()
     sg_calibrated: Mapped[Optional[float]] = mapped_column()
+
+    # Temperature readings
     temp_raw: Mapped[Optional[float]] = mapped_column()
     temp_calibrated: Mapped[Optional[float]] = mapped_column()
-    rssi: Mapped[Optional[int]] = mapped_column()
 
-    tilt: Mapped["Tilt"] = relationship(back_populates="readings")
+    # Signal/battery
+    rssi: Mapped[Optional[int]] = mapped_column()
+    battery_voltage: Mapped[Optional[float]] = mapped_column()
+    battery_percent: Mapped[Optional[int]] = mapped_column()
+
+    # iSpindel-specific
+    angle: Mapped[Optional[float]] = mapped_column()
+
+    # Processing metadata
+    source_protocol: Mapped[str] = mapped_column(String(20), default="ble")
+    status: Mapped[str] = mapped_column(String(20), default="valid")
+    is_pre_filtered: Mapped[bool] = mapped_column(default=False)
+
+    # Relationships
+    tilt: Mapped[Optional["Tilt"]] = relationship(back_populates="readings")
+    device: Mapped[Optional["Device"]] = relationship(back_populates="readings")
 
 
 class CalibrationPoint(Base):

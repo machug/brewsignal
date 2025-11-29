@@ -88,8 +88,9 @@ def _migrate_create_devices_table(conn):
 
 
 def _migrate_tilts_to_devices(conn):
-    """Migrate existing tilts to devices table if not already done."""
+    """Migrate existing tilts to devices table, preserving calibration offsets."""
     from sqlalchemy import text
+    import json
 
     # Check if tilts table exists and has data
     try:
@@ -113,30 +114,94 @@ def _migrate_tilts_to_devices(conn):
         print(f"Migration: Tilts already migrated ({migrated_count} devices)")
         return
 
-    # Migrate tilts that aren't in devices yet
-    # Build calibration_data as JSON string manually (portable, no json_object)
-    conn.execute(text("""
-        INSERT OR IGNORE INTO devices (
-            id, device_type, name, color, mac, beer_name,
-            original_gravity, calibration_type, calibration_data,
-            last_seen, created_at
-        )
-        SELECT
-            id,
-            'tilt',
-            COALESCE(color, id),
-            color,
-            mac,
-            beer_name,
-            original_gravity,
-            'offset',
-            '{"sg_offset": 0, "temp_offset": 0}',
-            last_seen,
-            CURRENT_TIMESTAMP
+    # Get tilts that need migration
+    tilts_to_migrate = conn.execute(text("""
+        SELECT id, color, mac, beer_name, original_gravity, last_seen
         FROM tilts
         WHERE id NOT IN (SELECT id FROM devices)
-    """))
-    print(f"Migration: Migrated {tilt_count - migrated_count} tilts to devices table")
+    """)).fetchall()
+
+    # Check if calibration_points table exists
+    try:
+        has_calibration = conn.execute(text(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='calibration_points'"
+        )).scalar() is not None
+    except Exception:
+        has_calibration = False
+
+    for tilt in tilts_to_migrate:
+        tilt_id = tilt[0]
+        color = tilt[1]
+        mac = tilt[2]
+        beer_name = tilt[3]
+        original_gravity = tilt[4]
+        last_seen = tilt[5]
+
+        # Calculate calibration offsets from CalibrationPoint table
+        sg_offset = 0.0
+        temp_offset = 0.0
+        calibration_type = "none"
+
+        if has_calibration:
+            # Get SG calibration points for this tilt
+            sg_points = conn.execute(text("""
+                SELECT raw_value, actual_value FROM calibration_points
+                WHERE tilt_id = :tilt_id AND type = 'sg'
+                ORDER BY raw_value
+            """), {"tilt_id": tilt_id}).fetchall()
+
+            # Get temp calibration points for this tilt
+            temp_points = conn.execute(text("""
+                SELECT raw_value, actual_value FROM calibration_points
+                WHERE tilt_id = :tilt_id AND type = 'temp'
+                ORDER BY raw_value
+            """), {"tilt_id": tilt_id}).fetchall()
+
+            # Determine calibration type based on number of points
+            # Use linear interpolation if 2+ points exist for either SG or temp
+            has_multi_point = (len(sg_points) >= 2 or len(temp_points) >= 2)
+
+            if has_multi_point:
+                calibration_type = "linear"
+            elif sg_points or temp_points:
+                # Single point: calculate offset
+                calibration_type = "offset"
+                if sg_points:
+                    sg_offset = sg_points[0][1] - sg_points[0][0]
+                if temp_points:
+                    temp_offset = temp_points[0][1] - temp_points[0][0]
+
+        calibration_data = json.dumps({
+            "sg_offset": round(sg_offset, 4),
+            "temp_offset": round(temp_offset, 2),
+            # Store full calibration points for linear interpolation
+            "sg_points": [[p[0], p[1]] for p in sg_points] if has_calibration and sg_points else [],
+            "temp_points": [[p[0], p[1]] for p in temp_points] if has_calibration and temp_points else [],
+        })
+
+        conn.execute(text("""
+            INSERT INTO devices (
+                id, device_type, name, color, mac, beer_name,
+                original_gravity, calibration_type, calibration_data,
+                last_seen, created_at
+            ) VALUES (
+                :id, 'tilt', :name, :color, :mac, :beer_name,
+                :original_gravity, :calibration_type, :calibration_data,
+                :last_seen, CURRENT_TIMESTAMP
+            )
+        """), {
+            "id": tilt_id,
+            "name": color or tilt_id,
+            "color": color,
+            "mac": mac,
+            "beer_name": beer_name,
+            "original_gravity": original_gravity,
+            "calibration_type": calibration_type,
+            "calibration_data": calibration_data,
+            "last_seen": last_seen,
+        })
+
+    print(f"Migration: Migrated {len(tilts_to_migrate)} tilts to devices table (with calibration data)")
 
 
 def _migrate_add_reading_columns(conn):
@@ -151,6 +216,7 @@ def _migrate_add_reading_columns(conn):
     columns = [c["name"] for c in inspector.get_columns("readings")]
 
     new_columns = [
+        ("device_id", "TEXT REFERENCES devices(id)"),
         ("device_type", "TEXT DEFAULT 'tilt'"),
         ("angle", "REAL"),
         ("battery_voltage", "REAL"),
@@ -168,6 +234,12 @@ def _migrate_add_reading_columns(conn):
             except Exception as e:
                 # Column might already exist in some edge cases
                 print(f"Migration: Skipping {col_name} - {e}")
+
+    # Create index for device_id if it doesn't exist
+    try:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_device_id ON readings(device_id)"))
+    except Exception:
+        pass  # Index might already exist
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

@@ -9,8 +9,8 @@
 
 	onMount(() => {
 		// Load alert dismissal state from localStorage
-		const dismissed = localStorage.getItem('tiltui_alerts_dismissed');
-		const dismissedTime = localStorage.getItem('tiltui_alerts_dismissed_time');
+		const dismissed = localStorage.getItem('brewsignal_alerts_dismissed');
+		const dismissedTime = localStorage.getItem('brewsignal_alerts_dismissed_time');
 		if (dismissed === 'true' && dismissedTime) {
 			const elapsed = Date.now() - parseInt(dismissedTime, 10);
 			// Auto-restore alerts after 6 hours
@@ -36,8 +36,8 @@
 
 	function dismissAlerts() {
 		alertsDismissed = true;
-		localStorage.setItem('tiltui_alerts_dismissed', 'true');
-		localStorage.setItem('tiltui_alerts_dismissed_time', Date.now().toString());
+		localStorage.setItem('brewsignal_alerts_dismissed', 'true');
+		localStorage.setItem('brewsignal_alerts_dismissed_time', Date.now().toString());
 	}
 
 	function toggleAlertsCollapse() {
@@ -46,7 +46,7 @@
 </script>
 
 <svelte:head>
-	<title>Dashboard | Tilt UI</title>
+	<title>Dashboard | BrewSignal</title>
 </svelte:head>
 
 <!-- Alerts Banner -->

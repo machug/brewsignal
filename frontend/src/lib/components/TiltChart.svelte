@@ -11,7 +11,7 @@
 	import { configState, fahrenheitToCelsius } from '$lib/stores/config.svelte';
 	import FermentationStats from './FermentationStats.svelte';
 
-	const REFRESH_STORAGE_KEY = 'tiltui_chart_refresh_minutes';
+	const REFRESH_STORAGE_KEY = 'brewsignal_chart_refresh_minutes';
 	const REFRESH_OPTIONS = [
 		{ label: 'Off', value: 0 },
 		{ label: '1 min', value: 1 },

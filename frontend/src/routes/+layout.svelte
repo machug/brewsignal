@@ -72,7 +72,7 @@
 </script>
 
 <svelte:head>
-	<title>Tilt UI</title>
+	<title>BrewSignal</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
@@ -93,7 +93,7 @@
 						<span class="text-lg">🍺</span>
 					</div>
 					<span class="text-lg font-semibold tracking-tight" style="color: var(--text-primary);">
-						Tilt<span style="color: var(--accent);">UI</span>
+						Brew<span style="color: var(--accent);">Signal</span>
 					</span>
 				</a>
 

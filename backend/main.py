@@ -261,24 +261,39 @@ async def get_stats():
 static_dir = Path(__file__).parent / "static"
 
 
-@app.get("/logging")
+@app.get("/", response_class=FileResponse)
+async def serve_index():
+    """Serve the main dashboard page."""
+    return FileResponse(static_dir / "index.html")
+
+
+@app.get("/logging", response_class=FileResponse)
 async def serve_logging():
     """Serve the logging page."""
     return FileResponse(static_dir / "logging.html")
 
 
-@app.get("/calibration")
+@app.get("/calibration", response_class=FileResponse)
 async def serve_calibration():
     """Serve the calibration page."""
     return FileResponse(static_dir / "calibration.html")
 
 
-@app.get("/system")
+@app.get("/system", response_class=FileResponse)
 async def serve_system():
     """Serve the system page."""
     return FileResponse(static_dir / "system.html")
 
 
-# Mount static files (Svelte build output) - MUST be last
+@app.get("/favicon.png", response_class=FileResponse)
+async def serve_favicon():
+    """Serve the favicon."""
+    return FileResponse(static_dir / "favicon.png")
+
+
+# Mount static files (Svelte build output)
+# Mount _app separately for Svelte's hashed assets, keeping /docs and /redoc accessible
 if static_dir.exists():
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    app_assets = static_dir / "_app"
+    if app_assets.exists():
+        app.mount("/_app", StaticFiles(directory=app_assets), name="app_assets")

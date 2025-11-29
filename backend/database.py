@@ -7,7 +7,7 @@ from sqlalchemy.orm import DeclarativeBase
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/tiltui.db"
+DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/fermentation.db"
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)

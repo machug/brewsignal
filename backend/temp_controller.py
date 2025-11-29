@@ -20,6 +20,8 @@ CONTROL_INTERVAL_SECONDS = 60
 _heater_state: Optional[str] = None  # "on", "off", or None (unknown)
 _override_state: Optional[str] = None  # Manual override: "on", "off", or None (auto)
 _override_until: Optional[datetime] = None  # When override expires
+_last_state_change: Optional[datetime] = None  # When heater last changed state
+MIN_CYCLE_MINUTES = 5  # Minimum time between heater state changes
 
 # Track HA config to detect changes
 _last_ha_url: Optional[str] = None
@@ -153,9 +155,17 @@ async def log_control_event(
     logger.info(f"Control event: {action} (wort={wort_temp}, target={target_temp})")
 
 
-async def set_heater_state(ha_client, entity_id: str, state: str, db, wort_temp: float, ambient_temp: Optional[float], target_temp: float, tilt_id: Optional[str]) -> bool:
+async def set_heater_state(ha_client, entity_id: str, state: str, db, wort_temp: float, ambient_temp: Optional[float], target_temp: float, tilt_id: Optional[str], force: bool = False) -> bool:
     """Turn heater on or off and log the event."""
-    global _heater_state
+    global _heater_state, _last_state_change
+
+    # Check minimum cycle time (skip for forced changes like overrides)
+    if not force and _last_state_change is not None:
+        elapsed = datetime.now(timezone.utc) - _last_state_change
+        if elapsed < timedelta(minutes=MIN_CYCLE_MINUTES):
+            remaining = MIN_CYCLE_MINUTES - (elapsed.total_seconds() / 60)
+            logger.debug(f"Skipping heater change to '{state}' - min cycle time not met ({remaining:.1f} min remaining)")
+            return False
 
     logger.debug(f"Attempting to set heater to '{state}' (entity: {entity_id})")
 
@@ -169,6 +179,7 @@ async def set_heater_state(ha_client, entity_id: str, state: str, db, wort_temp:
     if success:
         old_state = _heater_state
         _heater_state = state
+        _last_state_change = datetime.now(timezone.utc)
         logger.info(f"Heater state changed: {old_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, tilt_id)
     else:
@@ -283,7 +294,7 @@ async def temperature_control_loop() -> None:
                         if _heater_state != desired_state:
                             await set_heater_state(
                                 ha_client, heater_entity, desired_state, db,
-                                wort_temp, ambient_temp, target_temp, tilt_id
+                                wort_temp, ambient_temp, target_temp, tilt_id, force=True
                             )
                         await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                         continue

@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 # Ensure backend package is importable
@@ -15,6 +16,7 @@ if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
 from backend.database import Base
+from backend.main import app
 
 
 # Test database URL (in-memory SQLite)
@@ -51,3 +53,25 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
         await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def client(test_db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Create an async HTTP client for testing."""
+    from backend.database import get_db
+
+    # Override the get_db dependency to use test database
+    async def override_get_db():
+        yield test_db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    # Create async client
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as ac:
+        yield ac
+
+    # Clean up
+    app.dependency_overrides.clear()

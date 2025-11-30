@@ -22,6 +22,7 @@ from .temp_controller import start_temp_controller, stop_temp_controller
 from .cleanup import CleanupService
 from .scanner import TiltReading, TiltScanner
 from .services.calibration import calibration_service
+from .services.batch_linker import link_reading_to_batch
 from .state import latest_readings
 from .websocket import manager
 
@@ -53,9 +54,17 @@ async def handle_tilt_reading(reading: TiltReading):
             session, reading.id, reading.sg, reading.temp_f
         )
 
+        # Device ID for Tilts is the same as tilt_id (e.g., "tilt-red")
+        device_id = reading.id
+
+        # Link to active batch if one exists for this device
+        batch_id = await link_reading_to_batch(session, device_id)
+
         # Store reading in DB
         db_reading = Reading(
             tilt_id=reading.id,
+            device_id=device_id,
+            batch_id=batch_id,
             sg_raw=reading.sg,
             sg_calibrated=sg_calibrated,
             temp_raw=reading.temp_f,

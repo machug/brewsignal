@@ -307,7 +307,7 @@ async def serve_batches_subpages(path: str):
     """Serve batches subpages (detail, new, etc.) - SPA handles routing.
 
     Tries to find the matching prerendered HTML file first,
-    falls back to batches.html for dynamic routes.
+    falls back to index.html for dynamic routes (uses absolute paths).
     """
     # Try to find a prerendered HTML file for this path
     # e.g., /batches/new -> static/batches/new.html
@@ -321,8 +321,9 @@ async def serve_batches_subpages(path: str):
     if index_path.exists():
         return FileResponse(index_path)
 
-    # Fall back to batches.html for dynamic routes (e.g., /batches/123)
-    return FileResponse(static_dir / "batches.html")
+    # Fall back to index.html for dynamic routes (e.g., /batches/123)
+    # index.html uses absolute paths which work for nested routes
+    return FileResponse(static_dir / "index.html")
 
 
 @app.get("/favicon.png", response_class=FileResponse)

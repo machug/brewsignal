@@ -19,6 +19,8 @@ from ..models import (
     TiltUpdate,
 )
 from ..services.calibration import calibration_service
+from ..state import latest_readings
+from ..websocket import manager
 
 router = APIRouter(prefix="/api/tilts", tags=["tilts"])
 
@@ -52,11 +54,22 @@ async def update_tilt(
 
     if update.beer_name is not None:
         tilt.beer_name = update.beer_name
-    if update.original_gravity is not None:
+    # Use is_field_set to allow explicitly setting OG to null
+    if update.is_field_set("original_gravity"):
         tilt.original_gravity = update.original_gravity
 
     await db.commit()
     await db.refresh(tilt)
+
+    # Update the in-memory cache and broadcast to WebSocket clients
+    if tilt_id in latest_readings:
+        if update.beer_name is not None:
+            latest_readings[tilt_id]["beer_name"] = tilt.beer_name
+        if update.is_field_set("original_gravity"):
+            latest_readings[tilt_id]["original_gravity"] = tilt.original_gravity
+        # Broadcast updated state to all connected clients
+        await manager.broadcast(latest_readings[tilt_id])
+
     return tilt
 
 

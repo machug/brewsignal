@@ -304,7 +304,24 @@ async def serve_batches():
 
 @app.get("/batches/{path:path}", response_class=FileResponse)
 async def serve_batches_subpages(path: str):
-    """Serve batches subpages (detail, new, etc.) - SPA handles routing."""
+    """Serve batches subpages (detail, new, etc.) - SPA handles routing.
+
+    Tries to find the matching prerendered HTML file first,
+    falls back to batches.html for dynamic routes.
+    """
+    # Try to find a prerendered HTML file for this path
+    # e.g., /batches/new -> static/batches/new.html
+    html_path = static_dir / "batches" / f"{path}.html"
+    if html_path.exists():
+        return FileResponse(html_path)
+
+    # Check if path is a directory with index.html
+    # e.g., /batches/new/ -> static/batches/new/index.html
+    index_path = static_dir / "batches" / path / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+
+    # Fall back to batches.html for dynamic routes (e.g., /batches/123)
     return FileResponse(static_dir / "batches.html")
 
 

@@ -22,9 +22,13 @@
 	// Fetch linked batch on mount
 	onMount(async () => {
 		try {
-			// Device ID for Tilts is "tilt-{color}" lowercase
-			const deviceId = `tilt-${tilt.color.toLowerCase()}`;
-			const batches = await fetchBatches(undefined, deviceId, 1);
+			// Try both device_id formats: "tilt-{color}" and "{COLOR}"
+			const color = tilt.color.toUpperCase();
+			let batches = await fetchBatches(undefined, color, 1);
+			if (batches.length === 0) {
+				// Try legacy format
+				batches = await fetchBatches(undefined, `tilt-${tilt.color.toLowerCase()}`, 1);
+			}
 			if (batches.length > 0) {
 				// Get the active (fermenting/conditioning) batch, or most recent
 				linkedBatch = batches.find(b => b.status === 'fermenting' || b.status === 'conditioning') || batches[0];

@@ -34,12 +34,12 @@
 	let tempUnit = $derived(getTempUnit());
 
 	// Get live readings from WebSocket if device is linked
-	// device_id is formatted as "tilt-{color}" (e.g., "tilt-red")
+	// device_id can be "tilt-{color}" (e.g., "tilt-red") or just "{COLOR}" (e.g., "RED")
 	// tiltsState uses tilt.id as key, so we need to find by color match
 	let liveReading = $derived.by(() => {
 		if (!batch?.device_id) return null;
-		// Extract color from device_id (e.g., "tilt-red" -> "RED")
-		const colorMatch = batch.device_id.match(/^tilt-(\w+)$/i);
+		// Extract color from device_id - handle both "tilt-red" and "RED" formats
+		const colorMatch = batch.device_id.match(/^(?:tilt-)?(\w+)$/i);
 		if (!colorMatch) return null;
 		const targetColor = colorMatch[1].toUpperCase();
 		// Find tilt with matching color
@@ -115,19 +115,19 @@
 
 	function formatDate(dateStr?: string | null): string {
 		if (!dateStr) return '--';
-		return new Date(dateStr).toLocaleDateString('en-US', {
+		return new Date(dateStr).toLocaleDateString('en-GB', {
 			weekday: 'short',
-			month: 'short',
 			day: 'numeric',
+			month: 'short',
 			year: 'numeric'
 		});
 	}
 
 	function formatDateTime(dateStr?: string | null): string {
 		if (!dateStr) return '--';
-		return new Date(dateStr).toLocaleString('en-US', {
-			month: 'short',
+		return new Date(dateStr).toLocaleString('en-GB', {
 			day: 'numeric',
+			month: 'short',
 			hour: 'numeric',
 			minute: '2-digit'
 		});

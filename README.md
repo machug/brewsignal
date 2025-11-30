@@ -10,7 +10,8 @@ A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. 
 - **Real-time Monitoring** - Live SG and temperature readings via WebSocket
 - **Historical Charts** - Interactive uPlot charts with 1H/6H/24H/7D/30D time ranges
 - **Calibration** - Linear interpolation (Tilt) and polynomial calibration (iSpindel)
-- **Unit Conversion** - Automatic Plato↔SG and Celsius↔Fahrenheit
+- **Unit Conversion** - Display gravity as SG, Plato, or Brix; temperature as °C or °F
+- **RSSI Filtering** - Filter weak Bluetooth signals to reduce noise from distant devices
 - **Home Assistant Integration** - Display ambient temperature/humidity from HA sensors
 - **Temperature Control** - Automatic heater control via HA switch with hysteresis and manual override
 - **Weather Alerts** - Predictive alerts when forecast temps may affect fermentation

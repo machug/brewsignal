@@ -34,7 +34,22 @@
 	let tempUnit = $derived(getTempUnit());
 
 	// Get live readings from WebSocket if device is linked
-	let liveReading = $derived(batch?.device_id ? tiltsState.tilts.get(batch.device_id) : null);
+	// device_id is formatted as "tilt-{color}" (e.g., "tilt-red")
+	// tiltsState uses tilt.id as key, so we need to find by color match
+	let liveReading = $derived.by(() => {
+		if (!batch?.device_id) return null;
+		// Extract color from device_id (e.g., "tilt-red" -> "RED")
+		const colorMatch = batch.device_id.match(/^tilt-(\w+)$/i);
+		if (!colorMatch) return null;
+		const targetColor = colorMatch[1].toUpperCase();
+		// Find tilt with matching color
+		for (const tilt of tiltsState.tilts.values()) {
+			if (tilt.color.toUpperCase() === targetColor) {
+				return tilt;
+			}
+		}
+		return null;
+	});
 
 	async function loadBatch() {
 		loading = true;

@@ -230,7 +230,7 @@ From `<YEAST>` (first entry):
 
 from dataclasses import dataclass
 from typing import Optional
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # Use defusedxml to prevent XXE attacks
 
 @dataclass
 class ParsedYeast:

@@ -356,12 +356,14 @@ async def init_db():
         await conn.run_sync(_migrate_create_devices_table)
         await conn.run_sync(_migrate_add_reading_columns)
         await conn.run_sync(_migrate_readings_nullable_tilt_id)
-        await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line
 
-        # Step 2: Create any missing tables
+        # Step 2: Create any missing tables (includes new Style, Recipe, Batch tables)
         await conn.run_sync(Base.metadata.create_all)
 
-        # Step 3: Data migrations
+        # Step 3: Migrations that depend on new tables existing
+        await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
+
+        # Step 4: Data migrations
         await conn.run_sync(_migrate_tilts_to_devices)
 ```
 

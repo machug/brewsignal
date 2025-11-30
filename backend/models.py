@@ -494,3 +494,141 @@ class ConfigResponse(BaseModel):
     # Alerts
     weather_alerts_enabled: bool = False
     alert_temp_threshold: float = 5.0
+
+
+# Recipe & Batch Pydantic Schemas
+class StyleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    guide: str
+    category_number: str
+    style_letter: Optional[str] = None
+    name: str
+    category: str
+    type: Optional[str] = None
+    og_min: Optional[float] = None
+    og_max: Optional[float] = None
+    fg_min: Optional[float] = None
+    fg_max: Optional[float] = None
+    ibu_min: Optional[float] = None
+    ibu_max: Optional[float] = None
+    srm_min: Optional[float] = None
+    srm_max: Optional[float] = None
+    abv_min: Optional[float] = None
+    abv_max: Optional[float] = None
+    description: Optional[str] = None
+
+
+class RecipeCreate(BaseModel):
+    name: str
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og_target: Optional[float] = None
+    fg_target: Optional[float] = None
+    yeast_name: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    ibu_target: Optional[float] = None
+    abv_target: Optional[float] = None
+    batch_size: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class RecipeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og_target: Optional[float] = None
+    fg_target: Optional[float] = None
+    yeast_name: Optional[str] = None
+    yeast_lab: Optional[str] = None
+    yeast_product_id: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    ibu_target: Optional[float] = None
+    srm_target: Optional[float] = None
+    abv_target: Optional[float] = None
+    batch_size: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    style: Optional[StyleResponse] = None
+
+
+class BatchCreate(BaseModel):
+    recipe_id: Optional[int] = None
+    device_id: Optional[str] = None
+    name: Optional[str] = None
+    status: str = "planning"
+    brew_date: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        if v not in valid:
+            raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+
+class BatchUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    device_id: Optional[str] = None
+    brew_date: Optional[datetime] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    measured_fg: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        if v not in valid:
+            raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+
+class BatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    recipe_id: Optional[int] = None
+    device_id: Optional[str] = None
+    batch_number: Optional[int] = None
+    name: Optional[str] = None
+    status: str
+    brew_date: Optional[datetime] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    measured_fg: Optional[float] = None
+    measured_abv: Optional[float] = None
+    measured_attenuation: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    recipe: Optional[RecipeResponse] = None
+
+
+class BatchProgressResponse(BaseModel):
+    """Fermentation progress response."""
+    batch_id: int
+    recipe_name: Optional[str] = None
+    status: str
+    targets: dict  # og, fg, attenuation, abv
+    measured: dict  # og, current_sg, attenuation, abv
+    progress: dict  # percent_complete, sg_remaining, estimated_days_remaining
+    temperature: dict  # current, yeast_min, yeast_max, status

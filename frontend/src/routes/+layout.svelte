@@ -3,7 +3,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
-	import { tiltsState, startHeaterPolling, stopHeaterPolling } from '$lib/stores/tilts.svelte';
+	import { tiltsState, connectWebSocket, disconnectWebSocket, startHeaterPolling, stopHeaterPolling } from '$lib/stores/tilts.svelte';
 	import { loadConfig, configState, getTempUnit } from '$lib/stores/config.svelte';
 	import { weatherState, startWeatherPolling, stopWeatherPolling, getWeatherIcon, formatDayName } from '$lib/stores/weather.svelte';
 
@@ -35,6 +35,8 @@
 
 	onMount(() => {
 		loadConfig();
+		// Connect WebSocket for live updates (persists across navigation)
+		connectWebSocket();
 		// Start polling heater state every 30 seconds
 		startHeaterPolling(30000);
 		// Start polling weather every 30 minutes
@@ -42,6 +44,7 @@
 	});
 
 	onDestroy(() => {
+		disconnectWebSocket();
 		stopHeaterPolling();
 		stopWeatherPolling();
 	});

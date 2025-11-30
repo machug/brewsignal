@@ -186,9 +186,10 @@
 			<input
 				type="date"
 				id="brewDate"
-				class="form-input"
+				class="form-input date-input"
 				bind:value={brewDate}
 			/>
+			<span class="form-hint">DD/MM/YYYY</span>
 		</div>
 
 		<!-- Gravity Measurements -->

@@ -84,6 +84,7 @@ class Reading(Base):
     __table_args__ = (
         Index("ix_readings_tilt_timestamp", "tilt_id", "timestamp"),
         Index("ix_readings_device_timestamp", "device_id", "timestamp"),
+        Index("ix_readings_batch_timestamp", "batch_id", "timestamp"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -91,6 +92,8 @@ class Reading(Base):
     tilt_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tilts.id"), nullable=True, index=True)
     # Universal device FK - for all device types including Tilt
     device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"), nullable=True, index=True)
+    # Batch FK - for tracking readings per batch
+    batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("batches.id"), nullable=True, index=True)
     device_type: Mapped[str] = mapped_column(String(20), default="tilt")
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
 
@@ -118,6 +121,7 @@ class Reading(Base):
     # Relationships
     tilt: Mapped[Optional["Tilt"]] = relationship(back_populates="readings")
     device: Mapped[Optional["Device"]] = relationship(back_populates="readings")
+    batch: Mapped[Optional["Batch"]] = relationship(back_populates="readings")
 
 
 class CalibrationPoint(Base):
@@ -170,6 +174,112 @@ class Config(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[Optional[str]] = mapped_column(Text)  # JSON encoded
+
+
+class Style(Base):
+    """BJCP Style Guidelines reference data."""
+    __tablename__ = "styles"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # e.g., "bjcp-2021-18b"
+    guide: Mapped[str] = mapped_column(String(50), nullable=False)  # "BJCP 2021"
+    category_number: Mapped[str] = mapped_column(String(10), nullable=False)  # "18"
+    style_letter: Mapped[Optional[str]] = mapped_column(String(5))  # "B"
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # "American Pale Ale"
+    category: Mapped[str] = mapped_column(String(100), nullable=False)  # "Pale American Ale"
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # "Ale", "Lager", etc.
+    og_min: Mapped[Optional[float]] = mapped_column()
+    og_max: Mapped[Optional[float]] = mapped_column()
+    fg_min: Mapped[Optional[float]] = mapped_column()
+    fg_max: Mapped[Optional[float]] = mapped_column()
+    ibu_min: Mapped[Optional[float]] = mapped_column()
+    ibu_max: Mapped[Optional[float]] = mapped_column()
+    srm_min: Mapped[Optional[float]] = mapped_column()
+    srm_max: Mapped[Optional[float]] = mapped_column()
+    abv_min: Mapped[Optional[float]] = mapped_column()
+    abv_max: Mapped[Optional[float]] = mapped_column()
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    recipes: Mapped[list["Recipe"]] = relationship(back_populates="style")
+
+
+class Recipe(Base):
+    """Recipes imported from BeerXML or created manually."""
+    __tablename__ = "recipes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    author: Mapped[Optional[str]] = mapped_column(String(100))
+    style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
+    type: Mapped[Optional[str]] = mapped_column(String(50))  # "All Grain", "Extract", etc.
+
+    # Gravity targets
+    og_target: Mapped[Optional[float]] = mapped_column()
+    fg_target: Mapped[Optional[float]] = mapped_column()
+
+    # Yeast info (extracted from BeerXML)
+    yeast_name: Mapped[Optional[str]] = mapped_column(String(100))
+    yeast_lab: Mapped[Optional[str]] = mapped_column(String(100))
+    yeast_product_id: Mapped[Optional[str]] = mapped_column(String(50))
+    yeast_temp_min: Mapped[Optional[float]] = mapped_column()  # Celsius
+    yeast_temp_max: Mapped[Optional[float]] = mapped_column()  # Celsius
+    yeast_attenuation: Mapped[Optional[float]] = mapped_column()  # Percent
+
+    # Other targets
+    ibu_target: Mapped[Optional[float]] = mapped_column()
+    srm_target: Mapped[Optional[float]] = mapped_column()
+    abv_target: Mapped[Optional[float]] = mapped_column()
+    batch_size: Mapped[Optional[float]] = mapped_column()  # Liters
+
+    # Raw BeerXML for future re-parsing
+    beerxml_content: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Metadata
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
+    batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
+
+
+class Batch(Base):
+    """Instances of brewing a recipe on a device."""
+    __tablename__ = "batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
+    device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"))
+
+    # Batch identification
+    batch_number: Mapped[Optional[int]] = mapped_column()
+    name: Mapped[Optional[str]] = mapped_column(String(200))  # Optional override
+
+    # Status tracking
+    status: Mapped[str] = mapped_column(String(20), default="planning")  # planning, fermenting, conditioning, completed, archived
+
+    # Timeline
+    brew_date: Mapped[Optional[datetime]] = mapped_column()
+    start_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation start
+    end_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation end
+
+    # Measured values
+    measured_og: Mapped[Optional[float]] = mapped_column()
+    measured_fg: Mapped[Optional[float]] = mapped_column()
+    measured_abv: Mapped[Optional[float]] = mapped_column()
+    measured_attenuation: Mapped[Optional[float]] = mapped_column()
+
+    # Notes
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    recipe: Mapped[Optional["Recipe"]] = relationship(back_populates="batches")
+    device: Mapped[Optional["Device"]] = relationship()
+    readings: Mapped[list["Reading"]] = relationship(back_populates="batch")
 
 
 # Pydantic Schemas
@@ -384,3 +494,141 @@ class ConfigResponse(BaseModel):
     # Alerts
     weather_alerts_enabled: bool = False
     alert_temp_threshold: float = 5.0
+
+
+# Recipe & Batch Pydantic Schemas
+class StyleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    guide: str
+    category_number: str
+    style_letter: Optional[str] = None
+    name: str
+    category: str
+    type: Optional[str] = None
+    og_min: Optional[float] = None
+    og_max: Optional[float] = None
+    fg_min: Optional[float] = None
+    fg_max: Optional[float] = None
+    ibu_min: Optional[float] = None
+    ibu_max: Optional[float] = None
+    srm_min: Optional[float] = None
+    srm_max: Optional[float] = None
+    abv_min: Optional[float] = None
+    abv_max: Optional[float] = None
+    description: Optional[str] = None
+
+
+class RecipeCreate(BaseModel):
+    name: str
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og_target: Optional[float] = None
+    fg_target: Optional[float] = None
+    yeast_name: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    ibu_target: Optional[float] = None
+    abv_target: Optional[float] = None
+    batch_size: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class RecipeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og_target: Optional[float] = None
+    fg_target: Optional[float] = None
+    yeast_name: Optional[str] = None
+    yeast_lab: Optional[str] = None
+    yeast_product_id: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    ibu_target: Optional[float] = None
+    srm_target: Optional[float] = None
+    abv_target: Optional[float] = None
+    batch_size: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    style: Optional[StyleResponse] = None
+
+
+class BatchCreate(BaseModel):
+    recipe_id: Optional[int] = None
+    device_id: Optional[str] = None
+    name: Optional[str] = None
+    status: str = "planning"
+    brew_date: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        if v not in valid:
+            raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+
+class BatchUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    device_id: Optional[str] = None
+    brew_date: Optional[datetime] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    measured_fg: Optional[float] = None
+    notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        if v not in valid:
+            raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+
+class BatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    recipe_id: Optional[int] = None
+    device_id: Optional[str] = None
+    batch_number: Optional[int] = None
+    name: Optional[str] = None
+    status: str
+    brew_date: Optional[datetime] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    measured_og: Optional[float] = None
+    measured_fg: Optional[float] = None
+    measured_abv: Optional[float] = None
+    measured_attenuation: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    recipe: Optional[RecipeResponse] = None
+
+
+class BatchProgressResponse(BaseModel):
+    """Fermentation progress response."""
+    batch_id: int
+    recipe_name: Optional[str] = None
+    status: str
+    targets: dict  # og, fg, attenuation, abv
+    measured: dict  # og, current_sg, attenuation, abv
+    progress: dict  # percent_complete, sg_remaining, estimated_days_remaining
+    temperature: dict  # current, yeast_min, yeast_max, status

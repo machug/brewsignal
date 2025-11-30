@@ -16,12 +16,13 @@ from sqlalchemy import select, desc
 from . import models  # noqa: F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db
 from .models import Reading, Tilt
-from .routers import alerts, ambient, config, control, devices, ha, ingest, system, tilts
+from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, recipes, system, tilts
 from .ambient_poller import start_ambient_poller, stop_ambient_poller
 from .temp_controller import start_temp_controller, stop_temp_controller
 from .cleanup import CleanupService
 from .scanner import TiltReading, TiltScanner
 from .services.calibration import calibration_service
+from .services.batch_linker import link_reading_to_batch
 from .state import latest_readings
 from .websocket import manager
 
@@ -53,9 +54,17 @@ async def handle_tilt_reading(reading: TiltReading):
             session, reading.id, reading.sg, reading.temp_f
         )
 
+        # Device ID for Tilts is the same as tilt_id (e.g., "tilt-red")
+        device_id = reading.id
+
+        # Link to active batch if one exists for this device
+        batch_id = await link_reading_to_batch(session, device_id)
+
         # Store reading in DB
         db_reading = Reading(
             tilt_id=reading.id,
+            device_id=device_id,
+            batch_id=batch_id,
             sg_raw=reading.sg,
             sg_calibrated=sg_calibrated,
             temp_raw=reading.temp_f,
@@ -144,6 +153,8 @@ app.include_router(ha.router)
 app.include_router(control.router)
 app.include_router(alerts.router)
 app.include_router(ingest.router)
+app.include_router(recipes.router)
+app.include_router(batches.router)
 
 
 @app.get("/api/health")

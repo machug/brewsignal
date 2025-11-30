@@ -5,6 +5,16 @@ All notable changes to BrewSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-11-30
+
+### Added
+- **RSSI Signal Filtering** (#6) - Filter weak Bluetooth signals below configurable threshold to reduce noise
+- **Plato/Brix Gravity Units** (#3) - Display gravity as SG, Plato (°P), or Brix (°Bx) with unit toggle in System settings
+
+### Technical
+- RSSI filter uses cached config (30s TTL) to minimize DB queries during high-frequency BLE scanning
+- Gravity unit conversion functions added to frontend config store
+
 ## [2.0.0] - 2025-11-29
 
 ### Changed

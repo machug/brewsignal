@@ -118,7 +118,7 @@
 			</div>
 
 			<!-- Temperature -->
-			{#if progress?.temperature?.current}
+			{#if progress?.temperature?.current != null}
 				<div class="metric">
 					<div class="metric-value temp" style="color: {tempStatus.color};">
 						{formatTempValue(progress.temperature.current)}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { tiltsState, connectWebSocket, disconnectWebSocket } from '$lib/stores/tilts.svelte';
+	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import { weatherState } from '$lib/stores/weather.svelte';
 	import TiltCard from '$lib/components/TiltCard.svelte';
 
@@ -18,11 +18,6 @@
 				alertsDismissed = true;
 			}
 		}
-
-		connectWebSocket();
-		return () => {
-			disconnectWebSocket();
-		};
 	});
 
 	let tiltsList = $derived(Array.from(tiltsState.tilts.values()));

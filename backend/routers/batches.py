@@ -90,6 +90,9 @@ async def create_batch(
         brew_date=batch.brew_date,
         measured_og=batch.measured_og,
         notes=batch.notes,
+        heater_entity_id=batch.heater_entity_id,
+        temp_target=batch.temp_target,
+        temp_hysteresis=batch.temp_hysteresis,
     )
 
     # Auto-set start_time if status is fermenting
@@ -147,6 +150,13 @@ async def update_batch(
             batch.measured_attenuation = ((batch.measured_og - update.measured_fg) / (batch.measured_og - 1.0)) * 100
     if update.notes is not None:
         batch.notes = update.notes
+    # Temperature control fields
+    if update.heater_entity_id is not None:
+        batch.heater_entity_id = update.heater_entity_id
+    if update.temp_target is not None:
+        batch.temp_target = update.temp_target
+    if update.temp_hysteresis is not None:
+        batch.temp_hysteresis = update.temp_hysteresis
 
     await db.commit()
     await db.refresh(batch)

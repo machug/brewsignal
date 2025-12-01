@@ -271,6 +271,11 @@ class Batch(Base):
     measured_abv: Mapped[Optional[float]] = mapped_column()
     measured_attenuation: Mapped[Optional[float]] = mapped_column()
 
+    # Temperature control - per-batch heater assignment
+    heater_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
+    temp_target: Mapped[Optional[float]] = mapped_column()  # Override target temp for this batch
+    temp_hysteresis: Mapped[Optional[float]] = mapped_column()  # Override hysteresis for this batch
+
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -570,6 +575,10 @@ class BatchCreate(BaseModel):
     brew_date: Optional[datetime] = None
     measured_og: Optional[float] = None
     notes: Optional[str] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
     @field_validator("status")
     @classmethod
@@ -590,6 +599,10 @@ class BatchUpdate(BaseModel):
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
     notes: Optional[str] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
     @field_validator("status")
     @classmethod
@@ -621,6 +634,10 @@ class BatchResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     recipe: Optional[RecipeResponse] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
 
 class BatchProgressResponse(BaseModel):

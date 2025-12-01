@@ -2,19 +2,21 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus } from '$lib/api';
-	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch } from '$lib/api';
-	import { formatGravity, getGravityUnit, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
+	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus } from '$lib/api';
+	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, toggleBatchHeater, setBatchHeaterOverride } from '$lib/api';
+	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import BatchForm from '$lib/components/BatchForm.svelte';
 
 	// State
 	let batch = $state<BatchResponse | null>(null);
 	let progress = $state<BatchProgressResponse | null>(null);
+	let controlStatus = $state<BatchControlStatus | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let isEditing = $state(false);
 	let statusUpdating = $state(false);
+	let heaterLoading = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id));
 
@@ -32,6 +34,13 @@
 	let statusInfo = $derived(batch ? statusConfig[batch.status] : statusConfig.planning);
 	let gravityUnit = $derived(getGravityUnit());
 	let tempUnit = $derived(getTempUnit());
+
+	// Check if heater control is available for this batch
+	let hasHeaterControl = $derived(
+		configState.config.ha_enabled && 
+		configState.config.temp_control_enabled && 
+		batch?.heater_entity_id
+	);
 
 	// Get live readings from WebSocket if device is linked
 	// device_id can be "tilt-{color}" (e.g., "tilt-red") or just "{COLOR}" (e.g., "RED")
@@ -63,6 +72,14 @@
 					// Progress may not be available
 				}
 			}
+			// Load heater control status if heater is configured
+			if (batch.heater_entity_id) {
+				try {
+					controlStatus = await fetchBatchControlStatus(batchId);
+				} catch {
+					// Control status may not be available
+				}
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load batch';
 		} finally {
@@ -90,6 +107,14 @@
 		if (!batch) return;
 		batch = await updateBatch(batch.id, data);
 		isEditing = false;
+		// Reload control status if heater was changed
+		if (batch.heater_entity_id) {
+			try {
+				controlStatus = await fetchBatchControlStatus(batch.id);
+			} catch {
+				// Control status may not be available
+			}
+		}
 	}
 
 	async function handleDelete() {
@@ -100,6 +125,34 @@
 			goto('/batches');
 		} catch (e) {
 			alert('Failed to delete batch');
+		}
+	}
+
+	async function handleHeaterToggle(state: 'on' | 'off') {
+		if (!batch || heaterLoading) return;
+		heaterLoading = true;
+		try {
+			await toggleBatchHeater(batch.id, state);
+			// Reload control status
+			controlStatus = await fetchBatchControlStatus(batch.id);
+		} catch (e) {
+			console.error('Failed to toggle heater:', e);
+		} finally {
+			heaterLoading = false;
+		}
+	}
+
+	async function handleOverride(state: 'on' | 'off' | null) {
+		if (!batch || heaterLoading) return;
+		heaterLoading = true;
+		try {
+			await setBatchHeaterOverride(batch.id, state);
+			// Reload control status
+			controlStatus = await fetchBatchControlStatus(batch.id);
+		} catch (e) {
+			console.error('Failed to set override:', e);
+		} finally {
+			heaterLoading = false;
 		}
 	}
 
@@ -394,6 +447,103 @@
 						</div>
 					{/if}
 				</div>
+
+				<!-- Heater Control -->
+				{#if hasHeaterControl && batch.status === 'fermenting'}
+					<div class="info-card heater-card" class:heater-on={controlStatus?.heater_state === 'on'}>
+						<h3 class="info-title">Temperature Control</h3>
+						<div class="heater-status">
+							<div class="heater-icon-wrap" class:heating={controlStatus?.heater_state === 'on'}>
+								🔥
+							</div>
+							<div class="heater-info">
+								<span class="heater-state" class:on={controlStatus?.heater_state === 'on'}>
+									{controlStatus?.heater_state === 'on' ? 'HEATING' : controlStatus?.heater_state === 'off' ? 'OFF' : 'Unknown'}
+								</span>
+								<span class="heater-entity">{batch.heater_entity_id}</span>
+							</div>
+						</div>
+						{#if controlStatus}
+							<div class="heater-details">
+								<div class="heater-detail">
+									<span class="detail-label">Target</span>
+									<span class="detail-value">{formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
+								</div>
+								<div class="heater-detail">
+									<span class="detail-label">Hysteresis</span>
+									<span class="detail-value">±{controlStatus.hysteresis?.toFixed(1) || '--'}{tempUnit}</span>
+								</div>
+							</div>
+							{#if controlStatus.override_active}
+								<div class="override-banner">
+									<span class="override-icon">⚡</span>
+									<span>Override: {controlStatus.override_state?.toUpperCase()}</span>
+								</div>
+							{/if}
+							<div class="heater-controls">
+								<button
+									type="button"
+									class="heater-btn"
+									class:active={controlStatus.heater_state === 'on'}
+									onclick={() => handleHeaterToggle('on')}
+									disabled={heaterLoading}
+								>
+									Turn On
+								</button>
+								<button
+									type="button"
+									class="heater-btn"
+									class:active={controlStatus.heater_state === 'off'}
+									onclick={() => handleHeaterToggle('off')}
+									disabled={heaterLoading}
+								>
+									Turn Off
+								</button>
+							</div>
+							<div class="override-controls">
+								<span class="override-label">Override (1hr)</span>
+								<div class="override-btns">
+									<button
+										type="button"
+										class="override-btn"
+										class:active={controlStatus.override_state === 'on'}
+										onclick={() => handleOverride('on')}
+										disabled={heaterLoading}
+									>
+										Force ON
+									</button>
+									<button
+										type="button"
+										class="override-btn"
+										class:active={controlStatus.override_state === 'off'}
+										onclick={() => handleOverride('off')}
+										disabled={heaterLoading}
+									>
+										Force OFF
+									</button>
+									{#if controlStatus.override_active}
+										<button
+											type="button"
+											class="override-btn cancel"
+											onclick={() => handleOverride(null)}
+											disabled={heaterLoading}
+										>
+											Cancel
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{:else if batch.heater_entity_id && batch.status !== 'fermenting'}
+					<div class="info-card">
+						<h3 class="info-title">Temperature Control</h3>
+						<div class="no-device">
+							<span>Heater: {batch.heater_entity_id}</span>
+							<span class="hint">Active only during fermentation</span>
+						</div>
+					</div>
+				{/if}
 
 				<!-- Notes -->
 				{#if batch.notes}
@@ -886,6 +1036,214 @@
 		line-height: 1.6;
 		margin: 0;
 		white-space: pre-wrap;
+	}
+
+	.hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	/* Heater Control Card */
+	.heater-card {
+		transition: all 0.3s ease;
+	}
+
+	.heater-card.heater-on {
+		background: rgba(239, 68, 68, 0.08);
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+
+	.heater-status {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.heater-icon-wrap {
+		width: 2.5rem;
+		height: 2.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0.5rem;
+		background: var(--bg-elevated);
+		font-size: 1.25rem;
+		transition: all 0.3s ease;
+	}
+
+	.heater-icon-wrap.heating {
+		background: rgba(239, 68, 68, 0.2);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	.heater-icon-wrap:not(.heating) {
+		filter: grayscale(100%) opacity(0.5);
+	}
+
+	@keyframes pulse-glow {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+		50% { box-shadow: 0 0 15px 3px rgba(239, 68, 68, 0.3); }
+	}
+
+	.heater-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.heater-state {
+		font-size: 1rem;
+		font-weight: 700;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-secondary);
+	}
+
+	.heater-state.on {
+		color: var(--tilt-red);
+	}
+
+	.heater-entity {
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.heater-details {
+		display: flex;
+		gap: 1.5rem;
+		margin-bottom: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--bg-elevated);
+		border-radius: 0.375rem;
+	}
+
+	.heater-detail {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.detail-label {
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+	}
+
+	.detail-value {
+		font-size: 0.875rem;
+		font-weight: 500;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-primary);
+	}
+
+	.override-banner {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+		padding: 0.375rem 0.625rem;
+		background: rgba(59, 130, 246, 0.1);
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: var(--tilt-blue);
+	}
+
+	.override-icon {
+		font-size: 0.875rem;
+	}
+
+	.heater-controls {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.heater-btn {
+		flex: 1;
+		padding: 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-subtle);
+		background: var(--bg-elevated);
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.heater-btn:hover:not(:disabled) {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.heater-btn.active {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: white;
+	}
+
+	.heater-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.override-controls {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.override-label {
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+	}
+
+	.override-btns {
+		display: flex;
+		gap: 0.375rem;
+	}
+
+	.override-btn {
+		padding: 0.375rem 0.625rem;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		border-radius: 0.25rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.override-btn:hover:not(:disabled) {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.override-btn.active {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: white;
+	}
+
+	.override-btn.cancel {
+		border-color: var(--tilt-red);
+		color: var(--tilt-red);
+	}
+
+	.override-btn.cancel:hover:not(:disabled) {
+		background: rgba(244, 63, 94, 0.1);
+	}
+
+	.override-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	@media (max-width: 640px) {

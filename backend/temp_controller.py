@@ -255,6 +255,11 @@ async def control_batch_heater(
     hysteresis = batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis
 
     # Sync cached heater state with actual HA state
+    # NOTE: This sync happens before checking minimum cycle time. If the heater state
+    # was changed externally (e.g., manual toggle in HA), this sync updates our cache
+    # but does NOT reset the last_change timestamp. This means external changes won't
+    # bypass the MIN_CYCLE_MINUTES protection, which is intentional to prevent rapid
+    # cycling even when users manually toggle the heater.
     actual_state = await ha_client.get_state(heater_entity)
     if actual_state:
         ha_state = actual_state.get("state", "").lower()
@@ -262,6 +267,7 @@ async def control_batch_heater(
             if batch_id in _batch_heater_states:
                 if _batch_heater_states[batch_id].get("state") != ha_state:
                     logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {ha_state} (from HA)")
+            # Only update the state, preserve the last_change timestamp
             _batch_heater_states.setdefault(batch_id, {})["state"] = ha_state
         elif ha_state == "unavailable":
             logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
@@ -393,6 +399,17 @@ async def temperature_control_loop() -> None:
                     await control_batch_heater(
                         ha_client, batch, db, global_target, global_hysteresis, ambient_temp
                     )
+
+                # Cleanup old batch entries from in-memory state dictionaries
+                active_batch_ids = {b.id for b in batches}
+                for batch_id in list(_batch_heater_states.keys()):
+                    if batch_id not in active_batch_ids:
+                        logger.debug(f"Cleaning up heater state for inactive batch {batch_id}")
+                        del _batch_heater_states[batch_id]
+                for batch_id in list(_batch_overrides.keys()):
+                    if batch_id not in active_batch_ids:
+                        logger.debug(f"Cleaning up override for inactive batch {batch_id}")
+                        del _batch_overrides[batch_id]
 
         except Exception as e:
             logger.error(f"Temperature control error: {e}", exc_info=True)

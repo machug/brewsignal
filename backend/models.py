@@ -588,6 +588,13 @@ class BatchCreate(BaseModel):
             raise ValueError(f"status must be one of: {', '.join(valid)}")
         return v
 
+    @field_validator("heater_entity_id")
+    @classmethod
+    def validate_heater_entity(cls, v: Optional[str]) -> Optional[str]:
+        if v and not v.startswith(("switch.", "input_boolean.")):
+            raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        return v
+
 
 class BatchUpdate(BaseModel):
     name: Optional[str] = None
@@ -612,6 +619,13 @@ class BatchUpdate(BaseModel):
         valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+    @field_validator("heater_entity_id")
+    @classmethod
+    def validate_heater_entity(cls, v: Optional[str]) -> Optional[str]:
+        if v and not v.startswith(("switch.", "input_boolean.")):
+            raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
         return v
 
 

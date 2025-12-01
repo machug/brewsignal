@@ -53,6 +53,7 @@ async def init_db():
 
         # Step 3: Migrations that depend on new tables existing
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
+        await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
 
         # Step 4: Data migrations
         await conn.run_sync(_migrate_tilts_to_devices)
@@ -347,6 +348,31 @@ def _migrate_readings_nullable_tilt_id(conn):
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_device_id ON readings(device_id)"))
 
     print("Migration: Readings table recreated with nullable tilt_id")
+
+
+def _migrate_add_batch_heater_columns(conn):
+    """Add heater control columns to batches table if not present."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "batches" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("batches")]
+
+    new_columns = [
+        ("heater_entity_id", "VARCHAR(100)"),
+        ("temp_target", "REAL"),
+        ("temp_hysteresis", "REAL"),
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE batches ADD COLUMN {col_name} {col_def}"))
+                print(f"Migration: Added {col_name} column to batches table")
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} - {e}")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

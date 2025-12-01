@@ -113,20 +113,11 @@ async def get_status(db: AsyncSession = Depends(get_db)):
 @router.get("/batch/{batch_id}/status", response_model=BatchControlStatusResponse)
 async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
     """Get temperature control status for a specific batch."""
+    from fastapi import HTTPException
+
     batch = await db.get(Batch, batch_id)
     if not batch:
-        return BatchControlStatusResponse(
-            batch_id=batch_id,
-            enabled=False,
-            heater_state=None,
-            heater_entity=None,
-            override_active=False,
-            override_state=None,
-            override_until=None,
-            target_temp=None,
-            hysteresis=None,
-            wort_temp=None,
-        )
+        raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
 
     temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
     global_target = await get_config_value(db, "temp_target") or 68.0

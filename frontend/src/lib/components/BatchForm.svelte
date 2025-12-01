@@ -252,8 +252,10 @@
 					class="form-input"
 					bind:value={heaterEntityId}
 					placeholder="switch.fermenter_heater"
+					pattern="(switch|input_boolean)\..+"
+					title="Must be a valid Home Assistant entity (e.g., switch.heater_1 or input_boolean.heater_1)"
 				/>
-				<span class="form-hint">e.g., switch.fermenter_heater_1</span>
+				<span class="form-hint">e.g., switch.fermenter_heater_1 or input_boolean.fermenter_heater_1</span>
 			</div>
 
 			{#if heaterEntityId}

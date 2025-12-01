@@ -121,6 +121,13 @@
 		}
 	});
 
+	// Load heater entities when HA becomes enabled
+	$effect(() => {
+		if (haEnabled && heaterEntities.length === 0 && !loadingHeaters) {
+			loadHeaterEntities();
+		}
+	});
+
 	onMount(() => {
 		loadRecipes();
 		loadHeaterEntities();

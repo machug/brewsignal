@@ -267,8 +267,11 @@ async def control_batch_heater(
             if batch_id in _batch_heater_states:
                 if _batch_heater_states[batch_id].get("state") != ha_state:
                     logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {ha_state} (from HA)")
-            # Only update the state, preserve the last_change timestamp
-            _batch_heater_states.setdefault(batch_id, {})["state"] = ha_state
+                # Only update the state, preserve the existing last_change timestamp
+                _batch_heater_states[batch_id]["state"] = ha_state
+            else:
+                # Initialize state tracking for new batch (no last_change yet)
+                _batch_heater_states[batch_id] = {"state": ha_state}
         elif ha_state == "unavailable":
             logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
             return
@@ -394,11 +397,14 @@ async def temperature_control_loop() -> None:
                 )
                 batches = result.scalars().all()
 
-                # Control each batch's heater
-                for batch in batches:
-                    await control_batch_heater(
-                        ha_client, batch, db, global_target, global_hysteresis, ambient_temp
-                    )
+                # Control each batch's heater concurrently for better performance
+                if batches:
+                    await asyncio.gather(*[
+                        control_batch_heater(
+                            ha_client, batch, db, global_target, global_hysteresis, ambient_temp
+                        )
+                        for batch in batches
+                    ], return_exceptions=True)
 
                 # Cleanup old batch entries from in-memory state dictionaries
                 active_batch_ids = {b.id for b in batches}

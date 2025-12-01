@@ -374,6 +374,17 @@ def _migrate_add_batch_heater_columns(conn):
             except Exception as e:
                 print(f"Migration: Skipping {col_name} - {e}")
 
+    # Add composite index for efficient querying of fermenting batches with heaters
+    indexes = [idx["name"] for idx in inspector.get_indexes("batches")]
+    if "ix_batch_fermenting_heater" not in indexes:
+        try:
+            conn.execute(text(
+                "CREATE INDEX ix_batch_fermenting_heater ON batches (status, heater_entity_id)"
+            ))
+            print("Migration: Added ix_batch_fermenting_heater index to batches table")
+        except Exception as e:
+            print(f"Migration: Skipping index creation - {e}")
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:

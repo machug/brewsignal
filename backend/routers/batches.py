@@ -70,6 +70,21 @@ async def create_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new batch."""
+    # Check for heater entity conflicts if a heater is specified
+    if batch.heater_entity_id:
+        conflict_result = await db.execute(
+            select(Batch).where(
+                Batch.status == "fermenting",
+                Batch.heater_entity_id == batch.heater_entity_id,
+            )
+        )
+        conflicting_batch = conflict_result.scalar_one_or_none()
+        if conflicting_batch:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Heater entity '{batch.heater_entity_id}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
+            )
+
     # Get next batch number
     result = await db.execute(select(func.max(Batch.batch_number)))
     max_num = result.scalar() or 0
@@ -120,6 +135,27 @@ async def update_batch(
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Check for heater entity conflicts if changing heater and batch is/will be fermenting
+    new_status = update.status if update.status is not None else batch.status
+    new_heater = update.heater_entity_id if update.heater_entity_id is not None else batch.heater_entity_id
+
+    if new_heater and new_status == "fermenting":
+        # Only check for conflicts if the heater entity is actually changing
+        if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
+            conflict_result = await db.execute(
+                select(Batch).where(
+                    Batch.status == "fermenting",
+                    Batch.heater_entity_id == new_heater,
+                    Batch.id != batch_id,
+                )
+            )
+            conflicting_batch = conflict_result.scalar_one_or_none()
+            if conflicting_batch:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heater entity '{new_heater}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
+                )
 
     # Update fields if provided
     if update.name is not None:

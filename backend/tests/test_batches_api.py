@@ -230,3 +230,82 @@ async def test_batch_control_status_state_available_for_completed_batch(client):
     data = response.json()
     assert data["batch_id"] == batch_id
     assert data["state_available"] is False  # Runtime state cleaned up for completed batch
+
+
+@pytest.mark.asyncio
+async def test_heater_entity_conflict_on_create(client):
+    """POST /api/batches should reject duplicate heater entities for fermenting batches."""
+    # Create first fermenting batch with a heater
+    batch1_data = {
+        "status": "fermenting",
+        "name": "Batch 1",
+        "heater_entity_id": "switch.heater_1",
+    }
+    response = await client.post("/api/batches", json=batch1_data)
+    assert response.status_code == 201
+
+    # Try to create second fermenting batch with the same heater
+    batch2_data = {
+        "status": "fermenting",
+        "name": "Batch 2",
+        "heater_entity_id": "switch.heater_1",
+    }
+    response = await client.post("/api/batches", json=batch2_data)
+
+    assert response.status_code == 400
+    assert "already in use" in response.json()["detail"]
+    assert "switch.heater_1" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_heater_entity_no_conflict_different_status(client):
+    """POST /api/batches should allow same heater if first batch is not fermenting."""
+    # Create completed batch with a heater
+    batch1_data = {
+        "status": "completed",
+        "name": "Batch 1",
+        "heater_entity_id": "switch.heater_1",
+    }
+    response = await client.post("/api/batches", json=batch1_data)
+    assert response.status_code == 201
+
+    # Create fermenting batch with the same heater - should work
+    batch2_data = {
+        "status": "fermenting",
+        "name": "Batch 2",
+        "heater_entity_id": "switch.heater_1",
+    }
+    response = await client.post("/api/batches", json=batch2_data)
+
+    assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_heater_entity_conflict_on_update(client):
+    """PATCH /api/batches/{id} should reject heater changes that create conflicts."""
+    # Create two fermenting batches with different heaters
+    batch1_data = {
+        "status": "fermenting",
+        "name": "Batch 1",
+        "heater_entity_id": "switch.heater_1",
+    }
+    response1 = await client.post("/api/batches", json=batch1_data)
+    assert response1.status_code == 201
+    batch1_id = response1.json()["id"]
+
+    batch2_data = {
+        "status": "fermenting",
+        "name": "Batch 2",
+        "heater_entity_id": "switch.heater_2",
+    }
+    response2 = await client.post("/api/batches", json=batch2_data)
+    assert response2.status_code == 201
+    batch2_id = response2.json()["id"]
+
+    # Try to update batch 2 to use heater_1 (already in use by batch 1)
+    update_data = {"heater_entity_id": "switch.heater_1"}
+    response = await client.put(f"/api/batches/{batch2_id}", json=update_data)
+
+    assert response.status_code == 400
+    assert "already in use" in response.json()["detail"]
+    assert "switch.heater_1" in response.json()["detail"]

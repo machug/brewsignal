@@ -304,6 +304,7 @@ class TiltCreate(TiltBase):
 class TiltUpdate(BaseModel):
     beer_name: Optional[str] = None
     original_gravity: Optional[float] = None
+    paired: Optional[bool] = None
 
     @field_validator("original_gravity")
     @classmethod
@@ -324,6 +325,7 @@ class TiltResponse(TiltBase):
     mac: Optional[str]
     original_gravity: Optional[float]
     last_seen: Optional[datetime]
+    paired: bool = False
 
 
 class TiltReading(BaseModel):

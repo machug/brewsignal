@@ -2,8 +2,9 @@
 
 import pytest
 from sqlalchemy import select
+from datetime import datetime, timezone
 
-from backend.models import Tilt, Device
+from backend.models import Tilt, Device, TiltResponse
 
 
 @pytest.mark.asyncio
@@ -40,3 +41,17 @@ async def test_device_model_has_paired_field(test_db):
     saved_device = result.scalar_one()
     assert hasattr(saved_device, 'paired')
     assert saved_device.paired is False
+
+
+def test_tilt_response_includes_paired():
+    """Test that TiltResponse schema includes paired field."""
+    response = TiltResponse(
+        id="tilt-red",
+        color="RED",
+        beer_name="Test Beer",
+        mac="AA:BB:CC:DD:EE:FF",
+        original_gravity=1.050,
+        last_seen=datetime.now(timezone.utc),
+        paired=True
+    )
+    assert response.paired is True

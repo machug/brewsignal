@@ -13,6 +13,9 @@ from ..services.beerxml_parser import parse_beerxml
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
+# File upload constraints
+MAX_FILE_SIZE = 1_000_000  # 1MB in bytes
+
 
 @router.get("", response_model=list[RecipeResponse])
 async def list_recipes(
@@ -82,16 +85,25 @@ async def import_beerxml(
     db: AsyncSession = Depends(get_db),
 ):
     """Import recipes from a BeerXML file."""
-    # Validate file size (1MB max)
-    content = await file.read()
-    if len(content) > 1_000_000:
-        raise HTTPException(status_code=400, detail="File too large (max 1MB)")
+    # Validate filename extension (before reading)
+    if not file.filename or not file.filename.lower().endswith('.xml'):
+        raise HTTPException(
+            status_code=400,
+            detail="File must have .xml extension"
+        )
 
-    # Validate content type
+    # Validate content type (before reading)
     if file.content_type and file.content_type not in ["text/xml", "application/xml"]:
         # Allow if no content type (some clients don't send it)
         if file.content_type != "application/octet-stream":
             raise HTTPException(status_code=400, detail="File must be XML")
+
+    # Read file content with size validation
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 1MB)")
 
     # Parse BeerXML
     try:

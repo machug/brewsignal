@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Recipe library UI for BeerXML import and management (#32)
+  - Import page with drag-and-drop BeerXML file upload
+  - Recipe list with search and filter
+  - Recipe detail view with fermentation-focused layout
+  - Laboratory notebook aesthetic with amber accents
+  - Integration with batch creation (auto-fill from recipe)
+  - Crimson Pro serif font for recipe names
+  - JetBrains Mono for measurements
+
 ### Fixed
 - Systemd service now points to `.venv` so installs run with the correct virtualenv
 - Installer copies frontend assets alongside backend for local installs and builds the frontend during installation

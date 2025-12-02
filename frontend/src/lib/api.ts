@@ -331,13 +331,52 @@ export async function fetchBatchProgress(batchId: number): Promise<BatchProgress
 	return response.json();
 }
 
-/**
- * Fetch all recipes (for batch creation form)
- */
-export async function fetchRecipes(): Promise<RecipeResponse[]> {
-	const response = await fetch(`${BASE_URL}/recipes`);
+// ============================================================================
+// Recipe Types & API
+// ============================================================================
+
+export async function fetchRecipes(limit = 50, offset = 0): Promise<RecipeResponse[]> {
+	const response = await fetch(`${BASE_URL}/recipes?limit=${limit}&offset=${offset}`);
 	if (!response.ok) {
-		throw new Error(`Failed to fetch recipes: ${response.statusText}`);
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to fetch recipes');
 	}
 	return response.json();
+}
+
+export async function fetchRecipe(id: number): Promise<RecipeResponse> {
+	const response = await fetch(`${BASE_URL}/recipes/${id}`);
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to fetch recipe');
+	}
+	return response.json();
+}
+
+export async function importBeerXML(file: File): Promise<RecipeResponse[]> {
+	const formData = new FormData();
+	formData.append('file', file);
+
+	const response = await fetch(`${BASE_URL}/recipes/import`, {
+		method: 'POST',
+		body: formData
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to import recipe');
+	}
+
+	return response.json();
+}
+
+export async function deleteRecipe(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/recipes/${id}`, {
+		method: 'DELETE'
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to delete recipe');
+	}
 }

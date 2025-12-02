@@ -36,7 +36,7 @@ if ! grep -q "Raspberry Pi\|BCM" /proc/cpuinfo 2>/dev/null; then
     fi
 fi
 
-echo -e "\n${GREEN}[1/8] Installing system dependencies...${NC}"
+echo -e "\n${GREEN}[1/9] Installing system dependencies...${NC}"
 apt-get update
 apt-get install -y \
     python3 \
@@ -51,7 +51,7 @@ apt-get install -y \
     git
 
 # Ensure Bluetooth is enabled
-echo -e "\n${GREEN}[2/8] Configuring Bluetooth...${NC}"
+echo -e "\n${GREEN}[2/9] Configuring Bluetooth...${NC}"
 systemctl enable bluetooth
 systemctl start bluetooth
 
@@ -62,7 +62,7 @@ if systemctl is-active --quiet brewsignal; then
 fi
 
 # Create install directory
-echo -e "\n${GREEN}[3/8] Setting up installation directory...${NC}"
+echo -e "\n${GREEN}[3/9] Setting up installation directory...${NC}"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 
@@ -87,7 +87,7 @@ else
 fi
 
 # Set up Python virtual environment
-echo -e "\n${GREEN}[4/8] Setting up Python environment...${NC}"
+echo -e "\n${GREEN}[4/9] Setting up Python environment...${NC}"
 cd "$INSTALL_DIR"
 
 if [ ! -d "$VENV_DIR" ]; then
@@ -114,7 +114,7 @@ fi
 deactivate
 
 # Build frontend assets
-echo -e "\n${GREEN}[5/8] Building frontend assets...${NC}"
+echo -e "\n${GREEN}[5/9] Building frontend assets...${NC}"
 if [ -d "$FRONTEND_DIR" ]; then
     if ! command -v npm >/dev/null 2>&1; then
         echo -e "${YELLOW}npm is not installed; skipping frontend build. Make sure backend/static has prebuilt assets.${NC}"
@@ -130,21 +130,28 @@ else
 fi
 
 # Set capabilities for BLE scanning
-echo -e "\n${GREEN}[6/8] Setting Bluetooth capabilities...${NC}"
+echo -e "\n${GREEN}[6/9] Setting Bluetooth capabilities...${NC}"
 setcap 'cap_net_raw,cap_net_admin+eip' "$VENV_DIR/bin/python3" || true
 
 # Set ownership
-echo -e "\n${GREEN}[7/8] Setting permissions...${NC}"
+echo -e "\n${GREEN}[7/9] Setting permissions...${NC}"
 chown -R pi:pi "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
 chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
-echo -e "\n${GREEN}[8/8] Installing systemd service...${NC}"
+echo -e "\n${GREEN}[8/9] Installing systemd service...${NC}"
 cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable brewsignal
 systemctl start brewsignal
+
+# Add cron job for service health monitoring
+echo -e "\n${GREEN}[9/9] Setting up service health monitoring...${NC}"
+# Check every 5 minutes if service is running, restart if stopped
+CRON_JOB="*/5 * * * * systemctl is-active --quiet brewsignal || sudo systemctl start brewsignal"
+(sudo -u pi crontab -l 2>/dev/null | grep -v "brewsignal" || true; echo "$CRON_JOB") | sudo -u pi crontab -
+echo "Added cron job to check service health every 5 minutes"
 
 # Verify service started
 sleep 3

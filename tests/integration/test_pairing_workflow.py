@@ -13,6 +13,19 @@ async def test_full_pairing_workflow():
     # Initialize test database
     await init_db()
 
+    # Clean up any existing GREEN tilt from previous test runs
+    async with async_session_factory() as session:
+        existing_tilt = await session.get(Tilt, "GREEN")
+        if existing_tilt:
+            await session.delete(existing_tilt)
+        # Also clean up any readings
+        result = await session.execute(
+            select(Reading).where(Reading.tilt_id == "GREEN")
+        )
+        for reading in result.scalars():
+            await session.delete(reading)
+        await session.commit()
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Step 1: Simulate device detection (unpaired by default)
         async with async_session_factory() as session:

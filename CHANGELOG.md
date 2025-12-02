@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Systemd service now points to `.venv` so installs run with the correct virtualenv
 - Installer copies frontend assets alongside backend for local installs and builds the frontend during installation
 
+## [2.2.0] - 2025-12-02
+
+### Added
+- **Per-Batch Heater Control** (#29) - Independent temperature control for multiple simultaneous fermentations
+- Batch-specific heater entity configuration (switch or input_boolean)
+- Batch-specific temperature targets and hysteresis settings
+- Manual override controls (Force ON/OFF) per batch with configurable duration
+- Real-time heater state display with visual indicators on batch detail pages
+- Temperature control card shows current heater state, target, and hysteresis per batch
+
+### Technical
+- Per-batch control loop processes all fermenting batches independently
+- In-memory state tracking (`_batch_heater_states`, `_batch_overrides`) with automatic cleanup
+- Database constraints prevent heater entity and device conflicts between fermenting batches
+- Minimum cycle time protection (5 minutes) prevents rapid heater cycling
+- WebSocket broadcasts for real-time heater state updates
+- Comprehensive validation tests for heater entity format and conflict detection
+
+### API Endpoints
+- `GET /api/control/batch/{batch_id}/status` - Get temperature control status for specific batch
+- `POST /api/control/override` - Set manual override (requires `batch_id` parameter)
+- `GET /api/control/heater-entities` - List available switch/input_boolean entities from Home Assistant
+
+### Breaking Changes
+- Global heater override endpoint now requires `batch_id` parameter (legacy global control deprecated)
+- Temperature control now operates per-batch instead of globally
+
 ## [2.1.0] - Unreleased
 
 ### Added

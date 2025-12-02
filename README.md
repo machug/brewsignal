@@ -23,7 +23,10 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
 - **Unit Conversion** - Display gravity as SG, Plato, or Brix; temperature as °C or °F
 - **RSSI Filtering** - Filter weak Bluetooth signals to reduce noise from distant devices
 - **Home Assistant Integration** - Display ambient temperature/humidity from HA sensors
-- **Temperature Control** - Automatic heater control via HA switch with hysteresis and manual override
+- **Per-Batch Temperature Control** - Independent heater control for multiple simultaneous fermentations
+  - Batch-specific temperature targets and hysteresis settings
+  - Manual override controls (Force ON/OFF) per batch
+  - Real-time heater state monitoring with visual indicators
 - **Weather Alerts** - Predictive alerts when forecast temps may affect fermentation
 - **BeerXML Import & Batch Tracking** - Import recipes, link readings to batches, and track against targets
 - **Data Export** - Download all readings as CSV
@@ -102,8 +105,10 @@ sudo systemctl start brewsignal
 | `/api/config` | GET/PATCH | Application settings |
 | `/api/system/info` | GET | System information |
 | `/api/ambient` | GET | Ambient temp/humidity from HA |
-| `/api/control/status` | GET | Temperature control status |
-| `/api/control/override` | POST | Set manual heater override |
+| `/api/control/status` | GET | Temperature control status (global, deprecated) |
+| `/api/control/batch/{id}/status` | GET | Temperature control status for specific batch |
+| `/api/control/override` | POST | Set manual heater override (requires batch_id) |
+| `/api/control/heater-entities` | GET | List available HA switch/input_boolean entities |
 | `/api/alerts` | GET | Weather forecast and alerts |
 | `/ws` | WebSocket | Real-time readings |
 | `/log.csv` | GET | Export all data as CSV |

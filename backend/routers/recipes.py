@@ -82,6 +82,13 @@ async def import_beerxml(
     db: AsyncSession = Depends(get_db),
 ):
     """Import recipes from a BeerXML file."""
+    # Validate filename extension
+    if not file.filename or not file.filename.lower().endswith('.xml'):
+        raise HTTPException(
+            status_code=400,
+            detail="File must have .xml extension"
+        )
+
     # Validate file size (1MB max)
     content = await file.read()
     if len(content) > 1_000_000:

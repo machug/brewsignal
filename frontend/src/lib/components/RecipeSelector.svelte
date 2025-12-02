@@ -12,6 +12,7 @@
 
 	let recipes = $state<RecipeResponse[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let searchQuery = $state('');
 
 	let filteredRecipes = $derived(
@@ -31,6 +32,7 @@
 		try {
 			recipes = await fetchRecipes();
 		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load recipes';
 			console.error('Failed to load recipes:', e);
 		} finally {
 			loading = false;
@@ -58,6 +60,10 @@
 		<div class="loading">
 			<div class="spinner"></div>
 			<p>Loading recipes...</p>
+		</div>
+	{:else if error}
+		<div class="error-box">
+			<p class="error-text">{error}</p>
 		</div>
 	{:else if recipes.length === 0}
 		<div class="empty">
@@ -174,6 +180,20 @@
 		font-size: 14px;
 		color: var(--text-secondary);
 		margin: 0;
+	}
+
+	.error-box {
+		padding: var(--space-4);
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid var(--negative);
+		border-radius: 6px;
+	}
+
+	.error-text {
+		font-size: 14px;
+		color: var(--negative);
+		margin: 0;
+		text-align: center;
 	}
 
 	.import-link {

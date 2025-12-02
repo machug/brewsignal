@@ -82,23 +82,23 @@ async def import_beerxml(
     db: AsyncSession = Depends(get_db),
 ):
     """Import recipes from a BeerXML file."""
-    # Validate filename extension
+    # Validate filename extension (before reading)
     if not file.filename or not file.filename.lower().endswith('.xml'):
         raise HTTPException(
             status_code=400,
             detail="File must have .xml extension"
         )
 
-    # Validate file size (1MB max)
-    content = await file.read()
-    if len(content) > 1_000_000:
-        raise HTTPException(status_code=400, detail="File too large (max 1MB)")
-
-    # Validate content type
+    # Validate content type (before reading)
     if file.content_type and file.content_type not in ["text/xml", "application/xml"]:
         # Allow if no content type (some clients don't send it)
         if file.content_type != "application/octet-stream":
             raise HTTPException(status_code=400, detail="File must be XML")
+
+    # Read file content with size validation
+    content = await file.read()
+    if len(content) > 1_000_000:
+        raise HTTPException(status_code=400, detail="File too large (max 1MB)")
 
     # Parse BeerXML
     try:

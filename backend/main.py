@@ -301,6 +301,12 @@ async def serve_system():
     return FileResponse(static_dir / "system.html")
 
 
+@app.get("/devices", response_class=FileResponse)
+async def serve_devices():
+    """Serve the devices page."""
+    return FileResponse(static_dir / "devices.html")
+
+
 @app.get("/batches", response_class=FileResponse)
 async def serve_batches():
     """Serve the batches page."""

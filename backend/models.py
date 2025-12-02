@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -19,6 +19,7 @@ class Tilt(Base):
     beer_name: Mapped[str] = mapped_column(String(100), default="Untitled")
     original_gravity: Mapped[Optional[float]] = mapped_column()
     last_seen: Mapped[Optional[datetime]] = mapped_column()
+    paired: Mapped[bool] = mapped_column(server_default=false())
 
     readings: Mapped[list["Reading"]] = relationship(back_populates="tilt", cascade="all, delete-orphan")
     calibration_points: Mapped[list["CalibrationPoint"]] = relationship(
@@ -75,6 +76,7 @@ class Device(Base):
     mac: Mapped[Optional[str]] = mapped_column(String(17))
 
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    paired: Mapped[bool] = mapped_column(server_default=false())
 
     # Relationships
     readings: Mapped[list["Reading"]] = relationship(back_populates="device", cascade="all, delete-orphan")

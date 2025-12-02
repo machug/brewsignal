@@ -267,8 +267,8 @@ async def get_stats():
 
         return {
             "total_readings": total_readings,
-            "oldest_reading": oldest_time.isoformat() if oldest_time else None,
-            "newest_reading": newest_time.isoformat() if newest_time else None,
+            "oldest_reading": serialize_datetime_to_utc(oldest_time) if oldest_time else None,
+            "newest_reading": serialize_datetime_to_utc(newest_time) if newest_time else None,
             "estimated_size_bytes": estimated_size_bytes,
         }
 

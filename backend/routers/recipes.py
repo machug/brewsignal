@@ -100,6 +100,8 @@ async def import_beerxml(
 
     # Read file content with size validation
     content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 1MB)")
 

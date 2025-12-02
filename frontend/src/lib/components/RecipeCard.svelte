@@ -21,7 +21,7 @@
 	let srmColor = $derived(getSrmColor(recipe.srm_target));
 </script>
 
-<button type="button" class="recipe-card" {onclick}>
+<button type="button" class="recipe-card" {onclick} aria-label="View {recipe.name} details">
 	<div class="recipe-header">
 		<h3 class="recipe-name">{recipe.name}</h3>
 		<div class="recipe-meta">

@@ -70,7 +70,9 @@
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			const fileInput = document.querySelector('.file-input') as HTMLInputElement;
-			fileInput?.click();
+			if (fileInput) {
+				fileInput.click();
+			}
 		}
 	}
 </script>

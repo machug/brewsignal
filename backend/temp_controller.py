@@ -158,6 +158,7 @@ async def log_control_event(
         ambient_temp=ambient_temp,
         target_temp=target_temp,
         tilt_id=tilt_id,
+        batch_id=batch_id,
     )
     db.add(event)
     await db.commit()

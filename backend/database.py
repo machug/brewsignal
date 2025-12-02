@@ -54,6 +54,7 @@ async def init_db():
         # Step 3: Migrations that depend on new tables existing
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
+        await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events
 
         # Step 4: Data migrations
         await conn.run_sync(_migrate_tilts_to_devices)
@@ -384,6 +385,24 @@ def _migrate_add_batch_heater_columns(conn):
             print("Migration: Added ix_batch_fermenting_heater index to batches table")
         except Exception as e:
             print(f"Migration: Skipping index creation - {e}")
+
+
+def _migrate_add_batch_id_to_control_events(conn):
+    """Add batch_id column to control_events table if not present."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "control_events" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("control_events")]
+
+    if "batch_id" not in columns:
+        try:
+            conn.execute(text("ALTER TABLE control_events ADD COLUMN batch_id INTEGER"))
+            print("Migration: Added batch_id column to control_events table")
+        except Exception as e:
+            print(f"Migration: Skipping batch_id column - {e}")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

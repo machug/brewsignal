@@ -85,6 +85,21 @@ async def create_batch(
                 detail=f"Heater entity '{batch.heater_entity_id}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
             )
 
+    # Check for device_id conflicts if a device is specified and status is fermenting
+    if batch.device_id and batch.status == "fermenting":
+        conflict_result = await db.execute(
+            select(Batch).where(
+                Batch.status == "fermenting",
+                Batch.device_id == batch.device_id,
+            )
+        )
+        conflicting_batch = conflict_result.scalar_one_or_none()
+        if conflicting_batch:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Device (Tilt) '{batch.device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
+            )
+
     # Get next batch number
     result = await db.execute(select(func.max(Batch.batch_number)))
     max_num = result.scalar() or 0
@@ -139,6 +154,7 @@ async def update_batch(
     # Check for heater entity conflicts if changing heater and batch is/will be fermenting
     new_status = update.status if update.status is not None else batch.status
     new_heater = update.heater_entity_id if update.heater_entity_id is not None else batch.heater_entity_id
+    new_device_id = update.device_id if update.device_id is not None else batch.device_id
 
     if new_heater and new_status == "fermenting":
         # Only check for conflicts if the heater entity is actually changing
@@ -155,6 +171,24 @@ async def update_batch(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Heater entity '{new_heater}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
+                )
+
+    # Check for device_id conflicts if changing device and batch is/will be fermenting
+    if new_device_id and new_status == "fermenting":
+        # Only check for conflicts if the device_id is actually changing
+        if update.device_id is not None and update.device_id != batch.device_id:
+            conflict_result = await db.execute(
+                select(Batch).where(
+                    Batch.status == "fermenting",
+                    Batch.device_id == new_device_id,
+                    Batch.id != batch_id,
+                )
+            )
+            conflicting_batch = conflict_result.scalar_one_or_none()
+            if conflicting_batch:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Device (Tilt) '{new_device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
                 )
 
     # Update fields if provided

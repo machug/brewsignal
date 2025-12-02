@@ -163,6 +163,7 @@ class ControlEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
     tilt_id: Mapped[Optional[str]] = mapped_column(String(36))
+    batch_id: Mapped[Optional[int]] = mapped_column()  # Batch that triggered this control event
     action: Mapped[str] = mapped_column(String(20))  # heat_on, heat_off, cool_on, cool_off
     wort_temp: Mapped[Optional[float]] = mapped_column()
     ambient_temp: Mapped[Optional[float]] = mapped_column()
@@ -363,6 +364,7 @@ class ControlEventResponse(BaseModel):
     id: int
     timestamp: datetime
     tilt_id: Optional[str]
+    batch_id: Optional[int]
     action: str
     wort_temp: Optional[float]
     ambient_temp: Optional[float]
@@ -595,6 +597,22 @@ class BatchCreate(BaseModel):
             raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
         return v
 
+    @field_validator("temp_target")
+    @classmethod
+    def validate_temp_target(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 32.0 or v > 212.0:  # Fahrenheit range (0-100°C)
+                raise ValueError("temp_target must be between 32°F and 212°F (0-100°C)")
+        return v
+
+    @field_validator("temp_hysteresis")
+    @classmethod
+    def validate_temp_hysteresis(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 0.1 or v > 10.0:
+                raise ValueError("temp_hysteresis must be between 0.1 and 10.0 degrees")
+        return v
+
 
 class BatchUpdate(BaseModel):
     name: Optional[str] = None
@@ -626,6 +644,22 @@ class BatchUpdate(BaseModel):
     def validate_heater_entity(cls, v: Optional[str]) -> Optional[str]:
         if v and not v.startswith(("switch.", "input_boolean.")):
             raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        return v
+
+    @field_validator("temp_target")
+    @classmethod
+    def validate_temp_target(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 32.0 or v > 212.0:  # Fahrenheit range (0-100°C)
+                raise ValueError("temp_target must be between 32°F and 212°F (0-100°C)")
+        return v
+
+    @field_validator("temp_hysteresis")
+    @classmethod
+    def validate_temp_hysteresis(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 0.1 or v > 10.0:
+                raise ValueError("temp_hysteresis must be between 0.1 and 10.0 degrees")
         return v
 
 

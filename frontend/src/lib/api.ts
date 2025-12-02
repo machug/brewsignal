@@ -108,6 +108,10 @@ export interface BatchResponse {
 	notes?: string;
 	created_at: string;
 	recipe?: RecipeResponse;
+	// Temperature control
+	heater_entity_id?: string;
+	temp_target?: number;
+	temp_hysteresis?: number;
 }
 
 export interface BatchCreate {
@@ -118,6 +122,10 @@ export interface BatchCreate {
 	brew_date?: string;
 	measured_og?: number;
 	notes?: string;
+	// Temperature control
+	heater_entity_id?: string;
+	temp_target?: number;
+	temp_hysteresis?: number;
 }
 
 export interface BatchUpdate {
@@ -130,6 +138,10 @@ export interface BatchUpdate {
 	measured_og?: number;
 	measured_fg?: number;
 	notes?: string;
+	// Temperature control
+	heater_entity_id?: string;
+	temp_target?: number;
+	temp_hysteresis?: number;
 }
 
 export interface BatchProgressResponse {
@@ -159,6 +171,78 @@ export interface BatchProgressResponse {
 		yeast_max?: number;
 		status: 'unknown' | 'in_range' | 'too_cold' | 'too_hot';
 	};
+}
+
+export interface BatchControlStatus {
+	batch_id: number;
+	enabled: boolean;
+	heater_state?: string;
+	heater_entity?: string;
+	override_active: boolean;
+	override_state?: string;
+	override_until?: string;
+	target_temp?: number;
+	hysteresis?: number;
+	wort_temp?: number;
+}
+
+/**
+ * Heater entity from Home Assistant
+ */
+export interface HeaterEntity {
+	entity_id: string;
+	friendly_name: string;
+	state: string | null;
+}
+
+/**
+ * Fetch available heater entities from Home Assistant
+ */
+export async function fetchHeaterEntities(): Promise<HeaterEntity[]> {
+	const response = await fetch(`${BASE_URL}/control/heater-entities`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch heater entities: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch batch control status
+ */
+export async function fetchBatchControlStatus(batchId: number): Promise<BatchControlStatus> {
+	const response = await fetch(`${BASE_URL}/control/batch/${batchId}/status`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch batch control status: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Toggle heater for a specific batch
+ */
+export async function toggleBatchHeater(batchId: number, state: 'on' | 'off'): Promise<{ success: boolean; message: string; new_state?: string }> {
+	const response = await fetch(`${BASE_URL}/control/heater`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ state, batch_id: batchId })
+	});
+	return response.json();
+}
+
+/**
+ * Set heater override for a batch
+ */
+export async function setBatchHeaterOverride(
+	batchId: number,
+	state: 'on' | 'off' | null,
+	durationMinutes: number = 60
+): Promise<{ success: boolean; message: string; override_state?: string; override_until?: string }> {
+	const response = await fetch(`${BASE_URL}/control/override`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ state, duration_minutes: durationMinutes, batch_id: batchId })
+	});
+	return response.json();
 }
 
 /**

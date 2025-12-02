@@ -70,6 +70,36 @@ async def create_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new batch."""
+    # Check for heater entity conflicts if a heater is specified
+    if batch.heater_entity_id:
+        conflict_result = await db.execute(
+            select(Batch).where(
+                Batch.status == "fermenting",
+                Batch.heater_entity_id == batch.heater_entity_id,
+            )
+        )
+        conflicting_batch = conflict_result.scalar_one_or_none()
+        if conflicting_batch:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Heater entity '{batch.heater_entity_id}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
+            )
+
+    # Check for device_id conflicts if a device is specified and status is fermenting
+    if batch.device_id and batch.status == "fermenting":
+        conflict_result = await db.execute(
+            select(Batch).where(
+                Batch.status == "fermenting",
+                Batch.device_id == batch.device_id,
+            )
+        )
+        conflicting_batch = conflict_result.scalar_one_or_none()
+        if conflicting_batch:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Device (Tilt) '{batch.device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
+            )
+
     # Get next batch number
     result = await db.execute(select(func.max(Batch.batch_number)))
     max_num = result.scalar() or 0
@@ -90,6 +120,9 @@ async def create_batch(
         brew_date=batch.brew_date,
         measured_og=batch.measured_og,
         notes=batch.notes,
+        heater_entity_id=batch.heater_entity_id,
+        temp_target=batch.temp_target,
+        temp_hysteresis=batch.temp_hysteresis,
     )
 
     # Auto-set start_time if status is fermenting
@@ -118,6 +151,46 @@ async def update_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    # Check for heater entity conflicts if changing heater and batch is/will be fermenting
+    new_status = update.status if update.status is not None else batch.status
+    new_heater = update.heater_entity_id if update.heater_entity_id is not None else batch.heater_entity_id
+    new_device_id = update.device_id if update.device_id is not None else batch.device_id
+
+    if new_heater and new_status == "fermenting":
+        # Only check for conflicts if the heater entity is actually changing
+        if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
+            conflict_result = await db.execute(
+                select(Batch).where(
+                    Batch.status == "fermenting",
+                    Batch.heater_entity_id == new_heater,
+                    Batch.id != batch_id,
+                )
+            )
+            conflicting_batch = conflict_result.scalar_one_or_none()
+            if conflicting_batch:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heater entity '{new_heater}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
+                )
+
+    # Check for device_id conflicts if changing device and batch is/will be fermenting
+    if new_device_id and new_status == "fermenting":
+        # Only check for conflicts if the device_id is actually changing
+        if update.device_id is not None and update.device_id != batch.device_id:
+            conflict_result = await db.execute(
+                select(Batch).where(
+                    Batch.status == "fermenting",
+                    Batch.device_id == new_device_id,
+                    Batch.id != batch_id,
+                )
+            )
+            conflicting_batch = conflict_result.scalar_one_or_none()
+            if conflicting_batch:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Device (Tilt) '{new_device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
+                )
+
     # Update fields if provided
     if update.name is not None:
         batch.name = update.name
@@ -129,6 +202,11 @@ async def update_batch(
             batch.start_time = datetime.now(timezone.utc)
         elif update.status in ["conditioning", "completed"] and old_status == "fermenting":
             batch.end_time = datetime.now(timezone.utc)
+
+        # Clean up runtime state when batch leaves fermenting status
+        if old_status == "fermenting" and update.status != "fermenting":
+            from ..temp_controller import cleanup_batch_state
+            cleanup_batch_state(batch_id)
     if update.device_id is not None:
         batch.device_id = update.device_id
     if update.brew_date is not None:
@@ -147,6 +225,13 @@ async def update_batch(
             batch.measured_attenuation = ((batch.measured_og - update.measured_fg) / (batch.measured_og - 1.0)) * 100
     if update.notes is not None:
         batch.notes = update.notes
+    # Temperature control fields
+    if update.heater_entity_id is not None:
+        batch.heater_entity_id = update.heater_entity_id
+    if update.temp_target is not None:
+        batch.temp_target = update.temp_target
+    if update.temp_hysteresis is not None:
+        batch.temp_hysteresis = update.temp_hysteresis
 
     await db.commit()
     await db.refresh(batch)

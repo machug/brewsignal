@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus } from '$lib/api';
-	import { fetchRecipes } from '$lib/api';
+	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus, HeaterEntity } from '$lib/api';
+	import { fetchRecipes, fetchHeaterEntities } from '$lib/api';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
+	import { configState } from '$lib/stores/config.svelte';
 
 	interface Props {
 		batch?: BatchResponse;
@@ -22,13 +23,23 @@
 	let measuredFg = $state(batch?.measured_fg?.toString() || '');
 	let notes = $state(batch?.notes || '');
 
+	// Temperature control fields
+	let heaterEntityId = $state(batch?.heater_entity_id || '');
+	let tempTarget = $state(batch?.temp_target?.toString() || '');
+	let tempHysteresis = $state(batch?.temp_hysteresis?.toString() || '');
+
 	let recipes = $state<RecipeResponse[]>([]);
+	let heaterEntities = $state<HeaterEntity[]>([]);
 	let loadingRecipes = $state(true);
+	let loadingHeaters = $state(false);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
 	// Get available devices from tilts store
 	let availableDevices = $derived(Array.from(tiltsState.tilts.values()));
+
+	// Check if HA is enabled
+	let haEnabled = $derived(configState.config.ha_enabled);
 
 	const statusOptions: { value: BatchStatus; label: string }[] = [
 		{ value: 'planning', label: 'Planning' },
@@ -51,6 +62,18 @@
 		}
 	}
 
+	async function loadHeaterEntities() {
+		if (!haEnabled) return;
+		loadingHeaters = true;
+		try {
+			heaterEntities = await fetchHeaterEntities();
+		} catch (e) {
+			console.error('Failed to load heater entities:', e);
+		} finally {
+			loadingHeaters = false;
+		}
+	}
+
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
 		if (saving) return;
@@ -65,7 +88,11 @@
 				device_id: deviceId || undefined,
 				brew_date: brewDate ? new Date(brewDate).toISOString() : undefined,
 				measured_og: measuredOg ? parseFloat(measuredOg) : undefined,
-				notes: notes || undefined
+				notes: notes || undefined,
+				// Temperature control
+				heater_entity_id: heaterEntityId || undefined,
+				temp_target: tempTarget ? parseFloat(tempTarget) : undefined,
+				temp_hysteresis: tempHysteresis ? parseFloat(tempHysteresis) : undefined
 			};
 
 			if (!isEditMode) {
@@ -94,8 +121,16 @@
 		}
 	});
 
+	// Load heater entities when HA becomes enabled
+	$effect(() => {
+		if (haEnabled && heaterEntities.length === 0 && !loadingHeaters) {
+			loadHeaterEntities();
+		}
+	});
+
 	onMount(() => {
 		loadRecipes();
+		loadHeaterEntities();
 	});
 </script>
 
@@ -224,6 +259,71 @@
 			{/if}
 		</div>
 
+		<!-- Temperature Control (only if HA is enabled) -->
+		{#if haEnabled}
+			<div class="form-section">
+				<h3 class="section-title">Temperature Control</h3>
+				<span class="section-hint">Link a heater switch from Home Assistant to control fermentation temperature</span>
+			</div>
+
+			<div class="form-group">
+				<label class="form-label" for="heaterEntity">Heater Switch</label>
+				<select
+					id="heaterEntity"
+					class="form-select"
+					bind:value={heaterEntityId}
+					disabled={loadingHeaters}
+				>
+					<option value="">No heater assigned</option>
+					{#each heaterEntities as entity}
+						<option value={entity.entity_id}>
+							{entity.friendly_name} ({entity.state})
+						</option>
+					{/each}
+				</select>
+				{#if loadingHeaters}
+					<span class="form-hint">Loading available switches from Home Assistant...</span>
+				{:else if heaterEntities.length === 0}
+					<span class="form-hint">No switches found in Home Assistant</span>
+				{:else}
+					<span class="form-hint">Select a switch or input_boolean entity to control the heater</span>
+				{/if}
+			</div>
+
+			{#if heaterEntityId}
+				<div class="form-row">
+					<div class="form-group">
+						<label class="form-label" for="tempTarget">Target Temperature (°F)</label>
+						<input
+							type="number"
+							id="tempTarget"
+							class="form-input"
+							bind:value={tempTarget}
+							placeholder="68"
+							step="0.5"
+							min="32"
+							max="100"
+						/>
+						<span class="form-hint">Leave empty to use global setting</span>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="tempHysteresis">Hysteresis (°F)</label>
+						<input
+							type="number"
+							id="tempHysteresis"
+							class="form-input"
+							bind:value={tempHysteresis}
+							placeholder="1.0"
+							step="0.5"
+							min="0.5"
+							max="10"
+						/>
+						<span class="form-hint">Leave empty to use global setting</span>
+					</div>
+				</div>
+			{/if}
+		{/if}
+
 		<!-- Notes -->
 		<div class="form-group">
 			<label class="form-label" for="notes">Notes</label>
@@ -283,6 +383,27 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
+	}
+
+	.form-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--border-subtle);
+		margin-top: 0.5rem;
+	}
+
+	.section-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.section-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
 	}
 
 	.form-group {

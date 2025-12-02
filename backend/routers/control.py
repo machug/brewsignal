@@ -10,11 +10,13 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..models import ControlEvent, ControlEventResponse
+from ..models import Batch, ControlEvent, ControlEventResponse
 from ..temp_controller import (
     get_control_status,
+    get_batch_control_status,
     set_manual_override,
     get_latest_tilt_temp,
+    get_device_temp,
     sync_cached_heater_state,
 )
 from ..services.ha_client import get_ha_client, init_ha_client
@@ -37,9 +39,24 @@ class ControlStatusResponse(BaseModel):
     heater_entity: Optional[str]
 
 
+class BatchControlStatusResponse(BaseModel):
+    batch_id: int
+    enabled: bool
+    heater_state: Optional[str]
+    heater_entity: Optional[str]
+    override_active: bool
+    override_state: Optional[str]
+    override_until: Optional[str]
+    target_temp: Optional[float]
+    hysteresis: Optional[float]
+    wort_temp: Optional[float]
+    state_available: bool  # True if runtime state exists, False if cleaned up (batch completed/archived)
+
+
 class OverrideRequest(BaseModel):
     state: Optional[str] = None  # "on", "off", or null to cancel
     duration_minutes: int = 60
+    batch_id: Optional[int] = None  # For batch-specific override
 
 
 class OverrideResponse(BaseModel):
@@ -47,6 +64,7 @@ class OverrideResponse(BaseModel):
     message: str
     override_state: Optional[str]
     override_until: Optional[str]
+    batch_id: Optional[int] = None
 
 
 class HeaterStateResponse(BaseModel):
@@ -54,21 +72,65 @@ class HeaterStateResponse(BaseModel):
     entity_id: Optional[str]
     last_changed: Optional[str]
     available: bool
+    batch_id: Optional[int] = None
 
 
 class HeaterToggleRequest(BaseModel):
     state: str  # "on" or "off"
+    entity_id: Optional[str] = None  # For batch-specific heater control
+    batch_id: Optional[int] = None
 
 
 class HeaterToggleResponse(BaseModel):
     success: bool
     message: str
     new_state: Optional[str]
+    batch_id: Optional[int] = None
+
+
+class HeaterEntityResponse(BaseModel):
+    entity_id: str
+    friendly_name: str
+    state: Optional[str]
+
+
+@router.get("/heater-entities", response_model=list[HeaterEntityResponse])
+async def get_heater_entities(db: AsyncSession = Depends(get_db)):
+    """Get available heater entities from Home Assistant.
+
+    Returns switch.* and input_boolean.* entities that can be used as heaters.
+    """
+    ha_enabled = await get_config_value(db, "ha_enabled")
+    if not ha_enabled:
+        return []
+
+    # Get or initialize HA client
+    ha_client = get_ha_client()
+    if not ha_client:
+        ha_url = await get_config_value(db, "ha_url")
+        ha_token = await get_config_value(db, "ha_token")
+        if ha_url and ha_token:
+            ha_client = init_ha_client(ha_url, ha_token)
+
+    if not ha_client:
+        return []
+
+    # Fetch switch and input_boolean entities
+    entities = await ha_client.get_entities_by_domain(["switch", "input_boolean"])
+
+    return [
+        HeaterEntityResponse(
+            entity_id=e["entity_id"],
+            friendly_name=e["friendly_name"],
+            state=e["state"]
+        )
+        for e in entities
+    ]
 
 
 @router.get("/status", response_model=ControlStatusResponse)
 async def get_status(db: AsyncSession = Depends(get_db)):
-    """Get current temperature control status."""
+    """Get current temperature control status (global settings)."""
     temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
     target_temp = await get_config_value(db, "temp_target")
     hysteresis = await get_config_value(db, "temp_hysteresis")
@@ -86,6 +148,40 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         hysteresis=hysteresis,
         wort_temp=status["wort_temp"],
         heater_entity=heater_entity or None,
+    )
+
+
+@router.get("/batch/{batch_id}/status", response_model=BatchControlStatusResponse)
+async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Get temperature control status for a specific batch."""
+    from fastapi import HTTPException
+
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+
+    temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
+    global_target = await get_config_value(db, "temp_target") or 68.0
+    global_hysteresis = await get_config_value(db, "temp_hysteresis") or 1.0
+
+    # Get batch-specific status
+    batch_status = get_batch_control_status(batch_id)
+
+    # Get temperature from batch's device
+    wort_temp = get_device_temp(batch.device_id) if batch.device_id else None
+
+    return BatchControlStatusResponse(
+        batch_id=batch_id,
+        enabled=temp_control_enabled and batch.heater_entity_id is not None,
+        heater_state=batch_status["heater_state"],
+        heater_entity=batch.heater_entity_id,
+        override_active=batch_status["override_active"],
+        override_state=batch_status["override_state"],
+        override_until=batch_status["override_until"],
+        target_temp=batch.temp_target if batch.temp_target is not None else global_target,
+        hysteresis=batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis,
+        wort_temp=wort_temp,
+        state_available=batch_status["state_available"],
     )
 
 
@@ -114,14 +210,37 @@ async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_
 
     - state: "on" to force heater on, "off" to force heater off, null to cancel override
     - duration_minutes: how long override lasts (default 60 min, 0 = indefinite)
+    - batch_id: required for batch-specific override
     """
     temp_control_enabled = await get_config_value(db, "temp_control_enabled")
+    # Require batch_id for override (multi-batch mode) - validate early
+    if request.batch_id is None:
+        return OverrideResponse(
+            success=False,
+            message="batch_id is required for heater override",
+            override_state=None,
+            override_until=None,
+            batch_id=None
+        )
+
+    # Verify batch exists and has heater configured - validate early before other checks
+    batch = await db.get(Batch, request.batch_id)
+    if not batch:
+        return OverrideResponse(
+            success=False,
+            message=f"Batch {request.batch_id} not found",
+            override_state=None,
+            override_until=None,
+            batch_id=request.batch_id
+        )
+
     if not temp_control_enabled:
         return OverrideResponse(
             success=False,
             message="Temperature control is not enabled",
             override_state=None,
-            override_until=None
+            override_until=None,
+            batch_id=request.batch_id
         )
 
     if request.state is not None and request.state not in ("on", "off"):
@@ -129,46 +248,71 @@ async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_
             success=False,
             message="State must be 'on', 'off', or null",
             override_state=None,
-            override_until=None
+            override_until=None,
+            batch_id=request.batch_id
         )
 
-    success = set_manual_override(request.state, request.duration_minutes)
+    if not batch.heater_entity_id:
+        return OverrideResponse(
+            success=False,
+            message=f"Batch {request.batch_id} has no heater entity configured",
+            override_state=None,
+            override_until=None,
+            batch_id=request.batch_id
+        )
+
+    success = set_manual_override(request.state, request.duration_minutes, batch_id=request.batch_id)
 
     if success:
-        status = get_control_status()
+        batch_status = get_batch_control_status(request.batch_id)
         if request.state is None:
-            message = "Override cancelled, returning to automatic control"
+            message = f"Override cancelled for batch {request.batch_id}, returning to automatic control"
         else:
             duration_msg = f"for {request.duration_minutes} minutes" if request.duration_minutes > 0 else "indefinitely"
-            message = f"Heater override set to {request.state} {duration_msg}"
+            message = f"Heater override for batch {request.batch_id} set to {request.state} {duration_msg}"
 
         return OverrideResponse(
             success=True,
             message=message,
-            override_state=status["override_state"],
-            override_until=status["override_until"]
+            override_state=batch_status["override_state"],
+            override_until=batch_status["override_until"],
+            batch_id=request.batch_id
         )
     else:
         return OverrideResponse(
             success=False,
             message="Failed to set override",
             override_state=None,
-            override_until=None
+            override_until=None,
+            batch_id=request.batch_id
         )
 
 
 @router.get("/heater", response_model=HeaterStateResponse)
-async def get_heater_state(db: AsyncSession = Depends(get_db)):
+async def get_heater_state(
+    entity_id: Optional[str] = Query(None, description="Specific entity ID to query"),
+    batch_id: Optional[int] = Query(None, description="Batch ID to get heater state for"),
+    db: AsyncSession = Depends(get_db)
+):
     """Get current heater switch state from Home Assistant."""
     ha_enabled = await get_config_value(db, "ha_enabled")
-    heater_entity = await get_config_value(db, "ha_heater_entity_id")
+
+    # Determine which entity to query
+    heater_entity = entity_id
+    if not heater_entity and batch_id:
+        batch = await db.get(Batch, batch_id)
+        if batch:
+            heater_entity = batch.heater_entity_id
+    if not heater_entity:
+        heater_entity = await get_config_value(db, "ha_heater_entity_id")
 
     if not ha_enabled or not heater_entity:
         return HeaterStateResponse(
             state=None,
             entity_id=heater_entity,
             last_changed=None,
-            available=False
+            available=False,
+            batch_id=batch_id
         )
 
     # Get or initialize HA client
@@ -184,7 +328,8 @@ async def get_heater_state(db: AsyncSession = Depends(get_db)):
             state=None,
             entity_id=heater_entity,
             last_changed=None,
-            available=False
+            available=False,
+            batch_id=batch_id
         )
 
     # Fetch live state from HA
@@ -200,26 +345,30 @@ async def get_heater_state(db: AsyncSession = Depends(get_db)):
                 state=None,
                 entity_id=heater_entity,
                 last_changed=entity_state.get("last_changed"),
-                available=False
+                available=False,
+                batch_id=batch_id
             )
         else:
             heater_state = None
 
-        # Keep controller cache aligned with the actual HA state so auto logic can react
-        sync_cached_heater_state(heater_state)
+        # Keep controller cache aligned with the actual HA state
+        if batch_id:
+            sync_cached_heater_state(heater_state, batch_id=batch_id)
 
         return HeaterStateResponse(
             state=heater_state,
             entity_id=heater_entity,
             last_changed=entity_state.get("last_changed"),
-            available=True
+            available=True,
+            batch_id=batch_id
         )
 
     return HeaterStateResponse(
         state=None,
         entity_id=heater_entity,
         last_changed=None,
-        available=False
+        available=False,
+        batch_id=batch_id
     )
 
 
@@ -230,24 +379,34 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
         return HeaterToggleResponse(
             success=False,
             message="State must be 'on' or 'off'",
-            new_state=None
+            new_state=None,
+            batch_id=request.batch_id
         )
 
     ha_enabled = await get_config_value(db, "ha_enabled")
-    heater_entity = await get_config_value(db, "ha_heater_entity_id")
-
     if not ha_enabled:
         return HeaterToggleResponse(
             success=False,
             message="Home Assistant integration is not enabled",
-            new_state=None
+            new_state=None,
+            batch_id=request.batch_id
         )
+
+    # Determine which entity to control
+    heater_entity = request.entity_id
+    if not heater_entity and request.batch_id:
+        batch = await db.get(Batch, request.batch_id)
+        if batch:
+            heater_entity = batch.heater_entity_id
+    if not heater_entity:
+        heater_entity = await get_config_value(db, "ha_heater_entity_id")
 
     if not heater_entity:
         return HeaterToggleResponse(
             success=False,
             message="No heater entity configured",
-            new_state=None
+            new_state=None,
+            batch_id=request.batch_id
         )
 
     # Get or initialize HA client
@@ -262,7 +421,8 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
         return HeaterToggleResponse(
             success=False,
             message="Failed to connect to Home Assistant",
-            new_state=None
+            new_state=None,
+            batch_id=request.batch_id
         )
 
     # Call HA service to toggle heater
@@ -270,17 +430,21 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
     success = await ha_client.call_service("switch", service, heater_entity)
 
     if success:
-        logger.info(f"Heater manually toggled to {request.state}")
-        # Keep controller cache aligned with manual toggles so auto logic can disable if needed
-        sync_cached_heater_state(request.state)
+        batch_info = f" (batch {request.batch_id})" if request.batch_id else ""
+        logger.info(f"Heater {heater_entity} manually toggled to {request.state}{batch_info}")
+        # Keep controller cache aligned with manual toggles
+        if request.batch_id:
+            sync_cached_heater_state(request.state, batch_id=request.batch_id)
         return HeaterToggleResponse(
             success=True,
             message=f"Heater turned {request.state}",
-            new_state=request.state
+            new_state=request.state,
+            batch_id=request.batch_id
         )
     else:
         return HeaterToggleResponse(
             success=False,
             message="Failed to control heater via Home Assistant",
-            new_state=None
+            new_state=None,
+            batch_id=request.batch_id
         )

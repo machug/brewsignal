@@ -163,6 +163,7 @@ class ControlEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
     tilt_id: Mapped[Optional[str]] = mapped_column(String(36))
+    batch_id: Mapped[Optional[int]] = mapped_column()  # Batch that triggered this control event
     action: Mapped[str] = mapped_column(String(20))  # heat_on, heat_off, cool_on, cool_off
     wort_temp: Mapped[Optional[float]] = mapped_column()
     ambient_temp: Mapped[Optional[float]] = mapped_column()
@@ -271,6 +272,11 @@ class Batch(Base):
     measured_abv: Mapped[Optional[float]] = mapped_column()
     measured_attenuation: Mapped[Optional[float]] = mapped_column()
 
+    # Temperature control - per-batch heater assignment
+    heater_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
+    temp_target: Mapped[Optional[float]] = mapped_column()  # Override target temp for this batch
+    temp_hysteresis: Mapped[Optional[float]] = mapped_column()  # Override hysteresis for this batch
+
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -358,6 +364,7 @@ class ControlEventResponse(BaseModel):
     id: int
     timestamp: datetime
     tilt_id: Optional[str]
+    batch_id: Optional[int]
     action: str
     wort_temp: Optional[float]
     ambient_temp: Optional[float]
@@ -570,6 +577,10 @@ class BatchCreate(BaseModel):
     brew_date: Optional[datetime] = None
     measured_og: Optional[float] = None
     notes: Optional[str] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
     @field_validator("status")
     @classmethod
@@ -577,6 +588,29 @@ class BatchCreate(BaseModel):
         valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+    @field_validator("heater_entity_id")
+    @classmethod
+    def validate_heater_entity(cls, v: Optional[str]) -> Optional[str]:
+        if v and not v.startswith(("switch.", "input_boolean.")):
+            raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        return v
+
+    @field_validator("temp_target")
+    @classmethod
+    def validate_temp_target(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 32.0 or v > 212.0:  # Fahrenheit range (0-100°C)
+                raise ValueError("temp_target must be between 32°F and 212°F (0-100°C)")
+        return v
+
+    @field_validator("temp_hysteresis")
+    @classmethod
+    def validate_temp_hysteresis(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 0.1 or v > 10.0:
+                raise ValueError("temp_hysteresis must be between 0.1 and 10.0 degrees")
         return v
 
 
@@ -590,6 +624,10 @@ class BatchUpdate(BaseModel):
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
     notes: Optional[str] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
     @field_validator("status")
     @classmethod
@@ -599,6 +637,29 @@ class BatchUpdate(BaseModel):
         valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+    @field_validator("heater_entity_id")
+    @classmethod
+    def validate_heater_entity(cls, v: Optional[str]) -> Optional[str]:
+        if v and not v.startswith(("switch.", "input_boolean.")):
+            raise ValueError("heater_entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        return v
+
+    @field_validator("temp_target")
+    @classmethod
+    def validate_temp_target(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 32.0 or v > 212.0:  # Fahrenheit range (0-100°C)
+                raise ValueError("temp_target must be between 32°F and 212°F (0-100°C)")
+        return v
+
+    @field_validator("temp_hysteresis")
+    @classmethod
+    def validate_temp_hysteresis(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 0.1 or v > 10.0:
+                raise ValueError("temp_hysteresis must be between 0.1 and 10.0 degrees")
         return v
 
 
@@ -621,6 +682,10 @@ class BatchResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     recipe: Optional[RecipeResponse] = None
+    # Temperature control
+    heater_entity_id: Optional[str] = None
+    temp_target: Optional[float] = None
+    temp_hysteresis: Optional[float] = None
 
 
 class BatchProgressResponse(BaseModel):

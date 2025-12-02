@@ -9,8 +9,9 @@ export interface DeviceResponse {
 	mac: string | null;
 }
 
-export async function fetchAllDevices(): Promise<DeviceResponse[]> {
-	return fetchApi('/api/tilts');
+export async function fetchAllDevices(pairedOnly: boolean = false): Promise<DeviceResponse[]> {
+	const queryParam = pairedOnly ? '?paired_only=true' : '';
+	return fetchApi(`/api/tilts${queryParam}`);
 }
 
 export async function pairDevice(deviceId: string): Promise<DeviceResponse> {

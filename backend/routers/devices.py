@@ -241,13 +241,17 @@ class CalibrationTestResponse(BaseModel):
 @router.get("", response_model=list[DeviceResponse])
 async def list_devices(
     device_type: Optional[str] = Query(None, description="Filter by device type"),
+    paired_only: bool = Query(False, description="Only return paired devices"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all devices, optionally filtered by device type."""
+    """List all devices, optionally filtered by device type and pairing status."""
     query = select(Device).order_by(Device.created_at.desc())
 
     if device_type:
         query = query.where(Device.device_type == device_type)
+
+    if paired_only:
+        query = query.where(Device.paired == True)
 
     result = await db.execute(query)
     devices = result.scalars().all()

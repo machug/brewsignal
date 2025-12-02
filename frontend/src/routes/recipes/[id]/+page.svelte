@@ -11,7 +11,7 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 
-	let recipeId = $derived(parseInt($page.params.id, 10));
+	let recipeId = $derived(parseInt($page.params.id ?? '0', 10));
 
 	onMount(async () => {
 		try {

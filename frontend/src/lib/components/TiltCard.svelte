@@ -186,21 +186,33 @@
 				</div>
 			</div>
 
-			<!-- Signal indicator -->
-			<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({tilt.rssi} dBm)">
-				<div class="flex items-end gap-0.5">
-					{#each Array(4) as _, i}
-						<div
-							class="w-1 rounded-sm transition-all"
-							style="
-								height: {8 + i * 4}px;
-								background: {i < signal.bars ? signal.color : 'var(--bg-hover)'};
-								opacity: {i < signal.bars ? 1 : 0.4};
-							"
-						></div>
-					{/each}
+			<div class="flex flex-col items-end gap-2">
+				<!-- Signal indicator -->
+				<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({tilt.rssi} dBm)">
+					<div class="flex items-end gap-0.5">
+						{#each Array(4) as _, i}
+							<div
+								class="w-1 rounded-sm transition-all"
+								style="
+									height: {8 + i * 4}px;
+									background: {i < signal.bars ? signal.color : 'var(--bg-hover)'};
+									opacity: {i < signal.bars ? 1 : 0.4};
+								"
+							></div>
+						{/each}
+					</div>
+					<span class="text-[10px] text-[var(--text-muted)] font-mono">{tilt.rssi} dBm</span>
 				</div>
-				<span class="text-[10px] text-[var(--text-muted)] font-mono">{tilt.rssi} dBm</span>
+
+				<!-- Pairing status indicator -->
+				{#if !tilt.paired}
+					<div class="pairing-badge" title="Device not paired - readings not being logged">
+						<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+						</svg>
+						Unpaired
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -455,5 +467,20 @@
 	.batch-link-icon {
 		width: 0.75rem;
 		height: 0.75rem;
+	}
+
+	.pairing-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.25rem 0.5rem;
+		background: var(--warning-muted);
+		color: var(--warning);
+		border: 1px solid var(--warning);
+		border-radius: 0.25rem;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
 	}
 </style>

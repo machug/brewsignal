@@ -89,7 +89,7 @@ async def handle_tilt_reading(reading: TiltReading):
             "temp": temp_calibrated,
             "temp_raw": reading.temp_f,
             "rssi": reading.rssi,
-            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "last_seen": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             "paired": tilt.paired,  # Include pairing status
         }
 

@@ -360,6 +360,10 @@ class TiltReading(BaseModel):
     beer_name: str
     paired: bool
 
+    @field_serializer('last_seen')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
 
 class ReadingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

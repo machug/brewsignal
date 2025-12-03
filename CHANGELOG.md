@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Chart Crosshair Tooltips** (#55) - Display exact reading values at crosshair position
+  - Shows timestamp, gravity (with proper unit formatting), wort temperature, ambient temperature, and trend line values
+  - Floating tooltip with semi-transparent background and backdrop blur for readability
+  - No more guessing values from axis labels
+- **Reading Smoothing at Source** (#55) - Moving average filter applied during BLE reading ingestion
+  - Uses existing `smoothing_enabled` and `smoothing_samples` config settings from System page
+  - Applied after calibration but before storage for consistent smoothed data across all consumers
+  - Per-device buffers maintain recent readings for window calculation
+  - Smoothed values stored in database benefit charts, exports, and Home Assistant integration
+
+### Fixed
+- **Chart Outlier Spikes** (#55) - Physically impossible readings no longer corrupt charts
+  - Added validation for SG range (0.500-1.200) and temperature range (32-212°F)
+  - Invalid readings marked with `status='invalid'` and filtered from all API responses
+  - Historical outliers cleaned up via migration (83 outliers marked invalid)
+  - Charts now only display validated readings
+
+### Technical
+- Created `SmoothingService` with moving average algorithm in `backend/services/smoothing.py`
+- Added outlier validation in `backend/main.py` `handle_tilt_reading()` function
+- Updated `backend/routers/tilts.py` to filter `status='valid'` readings in all queries
+- Migration script `backend/migrations/mark_outliers_invalid.py` to clean historical data
+- uPlot legend enabled with live updates and custom tooltip styling
+
 ## [2.3.2] - 2025-12-03
 
 ### Added

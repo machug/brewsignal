@@ -35,6 +35,26 @@ class ParsedStyle:
 
 
 @dataclass
+class ParsedFermentable:
+    """Fermentable ingredient data."""
+    name: str
+    type: Optional[str] = None
+    amount_kg: Optional[float] = None
+    yield_percent: Optional[float] = None
+    color_lovibond: Optional[float] = None
+    origin: Optional[str] = None
+    supplier: Optional[str] = None
+    notes: Optional[str] = None
+    add_after_boil: Optional[bool] = None
+    coarse_fine_diff: Optional[float] = None
+    moisture: Optional[float] = None
+    diastatic_power: Optional[float] = None
+    protein: Optional[float] = None
+    max_in_batch: Optional[float] = None
+    recommend_mash: Optional[bool] = None
+
+
+@dataclass
 class ParsedRecipe:
     """Recipe data extracted from BeerXML."""
     name: str
@@ -48,6 +68,7 @@ class ParsedRecipe:
     batch_size: Optional[float] = None  # Liters
     style: Optional[ParsedStyle] = None
     yeast: Optional[ParsedYeast] = None
+    fermentables: list[ParsedFermentable] = field(default_factory=list)
     raw_xml: str = ""
 
 
@@ -90,6 +111,33 @@ def _get_float(elem, tag: str) -> Optional[float]:
     return None
 
 
+def _parse_fermentables(recipe_elem) -> list[ParsedFermentable]:
+    """Parse FERMENTABLES section."""
+    fermentables = []
+
+    for ferm_elem in recipe_elem.findall('.//FERMENTABLES/FERMENTABLE'):
+        fermentable = ParsedFermentable(
+            name=_get_text(ferm_elem, 'NAME') or "Unknown",
+            type=_get_text(ferm_elem, 'TYPE'),
+            amount_kg=_get_float(ferm_elem, 'AMOUNT'),
+            yield_percent=_get_float(ferm_elem, 'YIELD'),
+            color_lovibond=_get_float(ferm_elem, 'COLOR'),
+            origin=_get_text(ferm_elem, 'ORIGIN'),
+            supplier=_get_text(ferm_elem, 'SUPPLIER'),
+            notes=_get_text(ferm_elem, 'NOTES'),
+            add_after_boil=_get_text(ferm_elem, 'ADD_AFTER_BOIL') == 'TRUE',
+            coarse_fine_diff=_get_float(ferm_elem, 'COARSE_FINE_DIFF'),
+            moisture=_get_float(ferm_elem, 'MOISTURE'),
+            diastatic_power=_get_float(ferm_elem, 'DIASTATIC_POWER'),
+            protein=_get_float(ferm_elem, 'PROTEIN'),
+            max_in_batch=_get_float(ferm_elem, 'MAX_IN_BATCH'),
+            recommend_mash=_get_text(ferm_elem, 'RECOMMEND_MASH') == 'TRUE',
+        )
+        fermentables.append(fermentable)
+
+    return fermentables
+
+
 def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
     """Parse a single RECIPE element."""
     recipe = ParsedRecipe(
@@ -127,5 +175,8 @@ def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
             temp_max=_get_float(yeast_elem, 'MAX_TEMPERATURE'),
             attenuation=_get_float(yeast_elem, 'ATTENUATION'),
         )
+
+    # Parse fermentables
+    recipe.fermentables = _parse_fermentables(elem)
 
     return recipe

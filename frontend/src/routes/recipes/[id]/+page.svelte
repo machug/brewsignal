@@ -4,6 +4,8 @@
 	import { page } from '$app/stores';
 	import type { RecipeResponse } from '$lib/api';
 	import { fetchRecipe, deleteRecipe } from '$lib/api';
+	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
+	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -145,6 +147,18 @@
 							</p>
 						{/if}
 					</div>
+				</div>
+			{/if}
+
+			{#if recipe.fermentables && recipe.fermentables.length > 0}
+				<div class="section">
+					<FermentablesList fermentables={recipe.fermentables} />
+				</div>
+			{/if}
+
+			{#if recipe.hops && recipe.hops.length > 0}
+				<div class="section">
+					<HopSchedule hops={recipe.hops} />
 				</div>
 			{/if}
 

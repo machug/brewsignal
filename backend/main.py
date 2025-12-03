@@ -79,6 +79,8 @@ async def handle_tilt_reading(reading: TiltReading):
         await session.commit()
 
         # Build reading data for WebSocket broadcast (always broadcast)
+        # Temperatures are in Fahrenheit (from Tilt devices)
+        # Frontend will convert based on user preference
         reading_data = {
             "id": reading.id,
             "color": reading.color,

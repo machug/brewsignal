@@ -272,7 +272,9 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # Get current SG from latest reading
+    # Get current SG and temperature from latest reading
+    # Temperature is in Fahrenheit (from Tilt device)
+    # Frontend will convert based on user preference
     current_sg = None
     current_temp = None
     if batch.device_id and batch.device_id in latest_readings:

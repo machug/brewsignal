@@ -2,10 +2,18 @@
 	import { onMount } from 'svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import { weatherState } from '$lib/stores/weather.svelte';
-	import TiltCard from '$lib/components/TiltCard.svelte';
+	import FermentationCard from '$lib/components/FermentationCard.svelte';
+	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
+	import { fetchBatches, fetchBatchProgress } from '$lib/api';
 
 	let alertsDismissed = $state(false);
 	let alertsCollapsed = $state(false);
+
+	// Batch state
+	let batches = $state<BatchResponse[]>([]);
+	let progressMap = $state<Map<number, BatchProgressResponse>>(new Map());
+	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	onMount(async () => {
 		// Load alert dismissal state from localStorage
@@ -18,15 +26,92 @@
 				alertsDismissed = true;
 			}
 		}
+
+		// Load batches
+		await loadBatches();
 	});
 
-	let tiltsList = $derived(Array.from(tiltsState.tilts.values()));
+	async function loadBatches() {
+		loading = true;
+		error = null;
+		try {
+			// Fetch only active batches (fermenting or conditioning)
+			const allBatches = await fetchBatches();
+			batches = allBatches.filter(b => b.status === 'fermenting' || b.status === 'conditioning');
 
-	// Track which tilt card is expanded (only one at a time)
-	let expandedTiltId = $state<string | null>(null);
+			// Load progress for each active batch
+			const progressPromises = batches.map(async (b) => {
+				try {
+					const progress = await fetchBatchProgress(b.id);
+					return [b.id, progress] as const;
+				} catch {
+					return null;
+				}
+			});
+			const results = await Promise.all(progressPromises);
+			const newMap = new Map<number, BatchProgressResponse>();
+			for (const result of results) {
+				if (result) {
+					newMap.set(result[0], result[1]);
+				}
+			}
+			progressMap = newMap;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load batches';
+		} finally {
+			loading = false;
+		}
+	}
 
-	function toggleExpand(tiltId: string) {
-		expandedTiltId = expandedTiltId === tiltId ? null : tiltId;
+	// Map device_id to batch_id for live updates
+	let deviceToBatch = $derived(
+		new Map(
+			batches
+				.filter((b) => b.device_id && (b.status === 'fermenting' || b.status === 'conditioning'))
+				.map((b) => [b.device_id!, b.id])
+		)
+	);
+
+	// Enhance progress with live WebSocket data
+	let liveProgressMap = $derived.by(() => {
+		const enhanced = new Map(progressMap);
+		for (const [deviceId, batchId] of deviceToBatch) {
+			const tiltReading = tiltsState.tilts.get(deviceId);
+			if (tiltReading) {
+				const existing = enhanced.get(batchId) || {
+					batch_id: batchId,
+					measured: {},
+					temperature: {},
+					progress: {},
+					targets: {}
+				};
+				// Update with live data
+				enhanced.set(batchId, {
+					...existing,
+					measured: {
+						...existing.measured,
+						current_sg: tiltReading.sg
+					},
+					temperature: {
+						...existing.temperature,
+						current: tiltReading.temp,
+						// Determine temperature status based on yeast thresholds (if available)
+						status: existing.temperature?.yeast_min !== undefined && existing.temperature?.yeast_max !== undefined
+							? (tiltReading.temp < existing.temperature.yeast_min ? 'too_cold' :
+							   tiltReading.temp > existing.temperature.yeast_max ? 'too_hot' : 'in_range')
+							: existing.temperature?.status
+					}
+				});
+			}
+		}
+		return enhanced;
+	});
+
+	// Track which batch card is expanded (only one at a time)
+	let expandedBatchId = $state<number | null>(null);
+
+	function toggleExpand(batchId: number) {
+		expandedBatchId = expandedBatchId === batchId ? null : batchId;
 	}
 
 	function dismissAlerts() {
@@ -79,40 +164,54 @@
 	</div>
 {/if}
 
-{#if tiltsList.length === 0}
+{#if loading}
 	<div class="empty-state">
 		<div class="empty-icon">
 			<span class="text-5xl">🍺</span>
 		</div>
-		<h2 class="empty-title">No Tilts Detected</h2>
+		<h2 class="empty-title">Loading Batches</h2>
 		<p class="empty-description">
-			{#if tiltsState.connected}
-				Waiting for Tilt hydrometers to broadcast...
-			{:else}
-				<span class="connecting-dots">Connecting to server</span>
-			{/if}
+			<span class="connecting-dots">Fetching active fermentations</span>
 		</p>
-		{#if tiltsState.connected}
-			<div class="empty-hint">
-				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
-					/>
-				</svg>
-				<span>Make sure your Tilt is floating in liquid and within Bluetooth range</span>
-			</div>
-		{/if}
+	</div>
+{:else if error}
+	<div class="empty-state">
+		<div class="empty-icon">
+			<span class="text-5xl">⚠️</span>
+		</div>
+		<h2 class="empty-title">Error Loading Batches</h2>
+		<p class="empty-description">{error}</p>
+	</div>
+{:else if batches.length === 0}
+	<div class="empty-state">
+		<div class="empty-icon">
+			<span class="text-5xl">🍺</span>
+		</div>
+		<h2 class="empty-title">No Active Fermentations</h2>
+		<p class="empty-description">
+			Start a batch and set status to "Fermenting" or "Conditioning" to track it here
+		</p>
+		<div class="empty-hint">
+			<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
+				/>
+			</svg>
+			<span>Go to Batches → Create a new batch or update an existing batch status</span>
+		</div>
 	</div>
 {:else}
-	<div class="tilt-grid" class:single-tilt={tiltsList.length === 1}>
-		{#each tiltsList as tilt (tilt.id)}
-			<TiltCard
-				{tilt}
-				expanded={expandedTiltId === tilt.id}
-				wide={tiltsList.length === 1}
-				onToggleExpand={() => toggleExpand(tilt.id)}
+	<div class="tilt-grid" class:single-tilt={batches.length === 1}>
+		{#each batches as batch (batch.id)}
+			<FermentationCard
+				{batch}
+				progress={liveProgressMap.get(batch.id)}
+				expanded={expandedBatchId === batch.id}
+				wide={batches.length === 1}
+				onToggleExpand={() => toggleExpand(batch.id)}
+				onBatchUpdated={loadBatches}
 			/>
 		{/each}
 	</div>

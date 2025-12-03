@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus, HeaterEntity } from '$lib/api';
 	import { fetchRecipes, fetchHeaterEntities } from '$lib/api';
-	import { configState } from '$lib/stores/config.svelte';
+	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 	import { fetchAllDevices, type DeviceResponse } from '$lib/api/devices';
 	import RecipeSelector from './RecipeSelector.svelte';
 
@@ -26,9 +26,53 @@
 	let notes = $state(batch?.notes || '');
 
 	// Temperature control fields
+	// Backend stores temps in F, convert for display based on user preference
 	let heaterEntityId = $state(batch?.heater_entity_id || '');
-	let tempTarget = $state(batch?.temp_target?.toString() || '');
-	let tempHysteresis = $state(batch?.temp_hysteresis?.toString() || '');
+
+	// Helper to convert backend F value to display value (F or C based on preference)
+	function tempToDisplay(tempF: number | null | undefined): string {
+		if (tempF === null || tempF === undefined) return '';
+		if (configState.config.temp_units === 'C') {
+			return fahrenheitToCelsius(tempF).toFixed(1);
+		}
+		return tempF.toFixed(1);
+	}
+
+	// Helper to convert temperature DELTA (difference) from F to display unit
+	// For deltas: ΔC = ΔF × 5/9 (no offset subtraction)
+	function tempDeltaToDisplay(deltaF: number | null | undefined): string {
+		if (deltaF === null || deltaF === undefined) return '';
+		if (configState.config.temp_units === 'C') {
+			return (deltaF * 5 / 9).toFixed(1);
+		}
+		return deltaF.toFixed(1);
+	}
+
+	// Helper to convert display value back to F for backend
+	function displayToTempF(displayValue: string): number | undefined {
+		if (!displayValue) return undefined;
+		const num = parseFloat(displayValue);
+		if (isNaN(num)) return undefined;
+		if (configState.config.temp_units === 'C') {
+			return celsiusToFahrenheit(num);
+		}
+		return num;
+	}
+
+	// Helper to convert display delta back to F delta for backend
+	// For deltas: ΔF = ΔC × 9/5 (no offset addition)
+	function displayToTempDeltaF(displayValue: string): number | undefined {
+		if (!displayValue) return undefined;
+		const num = parseFloat(displayValue);
+		if (isNaN(num)) return undefined;
+		if (configState.config.temp_units === 'C') {
+			return num * 9 / 5;
+		}
+		return num;
+	}
+
+	let tempTarget = $state(tempToDisplay(batch?.temp_target));
+	let tempHysteresis = $state(tempDeltaToDisplay(batch?.temp_hysteresis));
 
 	let recipes = $state<RecipeResponse[]>([]);
 	let heaterEntities = $state<HeaterEntity[]>([]);
@@ -37,6 +81,16 @@
 	let loadingHeaters = $state(false);
 	let loadingDevices = $state(false);
 	let saving = $state(false);
+
+	// Reactive temperature unit and validation ranges
+	let tempUnit = $derived(getTempUnit());
+
+	// Temperature validation ranges (depend on unit preference)
+	let tempTargetMin = $derived(configState.config.temp_units === 'C' ? 0 : 32);
+	let tempTargetMax = $derived(configState.config.temp_units === 'C' ? 38 : 100);
+	let tempHysteresisMin = $derived(configState.config.temp_units === 'C' ? 0.3 : 0.5);
+	let tempHysteresisMax = $derived(configState.config.temp_units === 'C' ? 5.5 : 10);
+
 	let error = $state<string | null>(null);
 	let selectedRecipe = $state<RecipeResponse | null>(null);
 
@@ -117,10 +171,10 @@
 				brew_date: brewDate ? new Date(brewDate).toISOString() : undefined,
 				measured_og: measuredOg ? parseFloat(measuredOg) : undefined,
 				notes: notes || undefined,
-				// Temperature control
+				// Temperature control - convert display values back to F for backend
 				heater_entity_id: heaterEntityId || undefined,
-				temp_target: tempTarget ? parseFloat(tempTarget) : undefined,
-				temp_hysteresis: tempHysteresis ? parseFloat(tempHysteresis) : undefined
+				temp_target: displayToTempF(tempTarget),
+				temp_hysteresis: displayToTempDeltaF(tempHysteresis)
 			};
 
 			// Set recipe_id for both create and update
@@ -351,7 +405,7 @@
 			{#if heaterEntityId}
 				<div class="form-row">
 					<div class="form-group">
-						<label class="form-label" for="tempTarget">Target Temperature (°F)</label>
+						<label class="form-label" for="tempTarget">Target Temperature ({tempUnit})</label>
 						<input
 							type="number"
 							id="tempTarget"
@@ -359,13 +413,13 @@
 							bind:value={tempTarget}
 							placeholder="68"
 							step="0.5"
-							min="32"
-							max="100"
+							min={tempTargetMin}
+							max={tempTargetMax}
 						/>
 						<span class="form-hint">Leave empty to use global setting</span>
 					</div>
 					<div class="form-group">
-						<label class="form-label" for="tempHysteresis">Hysteresis (°F)</label>
+						<label class="form-label" for="tempHysteresis">Hysteresis ({tempUnit})</label>
 						<input
 							type="number"
 							id="tempHysteresis"
@@ -373,8 +427,8 @@
 							bind:value={tempHysteresis}
 							placeholder="1.0"
 							step="0.5"
-							min="0.5"
-							max="10"
+							min={tempHysteresisMin}
+							max={tempHysteresisMax}
 						/>
 						<span class="form-hint">Leave empty to use global setting</span>
 					</div>

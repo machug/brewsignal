@@ -1,42 +1,46 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import type { TiltReading } from '$lib/stores/tilts.svelte';
-	import { updateTiltBeerName, updateTiltOriginalGravity } from '$lib/stores/tilts.svelte';
 	import { configState, formatTemp, getTempUnit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
-	import { fetchBatches, type BatchResponse } from '$lib/api';
-	import TiltChart from './TiltChart.svelte';
+	import { updateBatch, type BatchResponse, type BatchProgressResponse } from '$lib/api';
+	import FermentationChart from './FermentationChart.svelte';
+	import { tiltsState } from '$lib/stores/tilts.svelte';
 
 	interface Props {
-		tilt: TiltReading;
+		batch: BatchResponse;
+		progress?: BatchProgressResponse;
 		expanded?: boolean;
 		wide?: boolean;
 		onToggleExpand?: () => void;
+		onBatchUpdated?: () => Promise<void>;
 	}
 
-	let { tilt, expanded = false, wide = false, onToggleExpand }: Props = $props();
+	let { batch, progress, expanded = false, wide = false, onToggleExpand, onBatchUpdated }: Props = $props();
 
-	// Linked batch state
-	let linkedBatch = $state<BatchResponse | null>(null);
-
-	// Fetch linked batch on mount
-	onMount(async () => {
-		try {
-			// Try both device_id formats: "tilt-{color}" and "{COLOR}"
-			const color = tilt.color.toUpperCase();
-			let batches = await fetchBatches(undefined, color, 1);
-			if (batches.length === 0) {
-				// Try legacy format
-				batches = await fetchBatches(undefined, `tilt-${tilt.color.toLowerCase()}`, 1);
+	// Derive device reading from batch.device_id + WebSocket state
+	let deviceReading = $derived.by(() => {
+		if (!batch.device_id) return null;
+		// Extract color from device_id - handle both "tilt-red" and "RED" formats
+		const colorMatch = batch.device_id.match(/^(?:tilt-)?(\w+)$/i);
+		if (!colorMatch?.[1]) return null;
+		const targetColor = colorMatch[1].toUpperCase();
+		// Find tilt with matching color
+		for (const tilt of tiltsState.tilts.values()) {
+			if (tilt.color.toUpperCase() === targetColor) {
+				return tilt;
 			}
-			if (batches.length > 0) {
-				// Get the active (fermenting/conditioning) batch, or most recent
-				linkedBatch = batches.find(b => b.status === 'fermenting' || b.status === 'conditioning') || batches[0];
-			}
-		} catch (e) {
-			console.error('Failed to fetch linked batch:', e);
 		}
+		return null;
 	});
+
+	// Display values derived from batch/progress/device
+	let displayName = $derived(batch.name || batch.recipe?.name || `Batch #${batch.batch_number}`);
+	let currentSg = $derived(progress?.measured?.current_sg ?? batch.measured_og ?? 1.000);
+	let currentTemp = $derived(progress?.temperature?.current ?? null);
+	let deviceColor = $derived(deviceReading?.color ?? 'BLACK');
+	let rssi = $derived(deviceReading?.rssi ?? null);
+	let isPaired = $derived(deviceReading?.paired ?? true);
+	let lastSeen = $derived(deviceReading?.last_seen ?? new Date().toISOString());
+	let sgRaw = $derived(deviceReading?.sg_raw ?? currentSg);
+	let tempRaw = $derived(deviceReading?.temp_raw ?? currentTemp);
 
 	// Track if chart has ever been shown (to avoid mounting until first expand)
 	let chartMounted = $state(false);
@@ -51,10 +55,12 @@
 	let editValue = $state('');
 	let inputRef = $state<HTMLInputElement | null>(null);
 	let saving = $state(false);
+	let saveError = $state<string | null>(null);
 
 	function startEditing() {
-		editValue = tilt.beer_name;
+		editValue = displayName;
 		isEditing = true;
+		saveError = null;
 		// Focus input after DOM update
 		setTimeout(() => inputRef?.focus(), 0);
 	}
@@ -62,15 +68,26 @@
 	async function saveEdit() {
 		if (saving) return;
 		const trimmed = editValue.trim();
-		if (!trimmed || trimmed === tilt.beer_name) {
+		if (!trimmed || trimmed === displayName) {
 			isEditing = false;
+			saveError = null;
 			return;
 		}
 		saving = true;
-		const success = await updateTiltBeerName(tilt.id, trimmed);
-		saving = false;
-		if (success) {
+		saveError = null;
+		try {
+			await updateBatch(batch.id, { name: trimmed });
 			isEditing = false;
+			// Trigger parent to refetch batches
+			if (onBatchUpdated) {
+				await onBatchUpdated();
+			}
+		} catch (e) {
+			console.error('Failed to update batch name:', e);
+			saveError = e instanceof Error ? e.message : 'Failed to save batch name';
+			// Keep editing mode open on error so user can retry
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -80,11 +97,6 @@
 		} else if (e.key === 'Escape') {
 			isEditing = false;
 		}
-	}
-
-	// Handle OG change from FermentationStats
-	async function handleOgChange(og: number | null) {
-		await updateTiltOriginalGravity(tilt.id, og);
 	}
 
 	// Reactive units from config
@@ -130,9 +142,9 @@
 		return `${days}d ago`;
 	}
 
-	let accentColor = $derived(colorVars[tilt.color] || 'var(--tilt-black)');
-	let signal = $derived(getSignalStrength(tilt.rssi));
-	let lastSeenText = $derived(timeSince(tilt.last_seen));
+	let accentColor = $derived(colorVars[deviceColor] || 'var(--tilt-black)');
+	let signal = $derived(rssi !== null ? getSignalStrength(rssi) : { bars: 0, color: 'var(--text-muted)', label: 'No Signal' });
+	let lastSeenText = $derived(timeSince(lastSeen));
 </script>
 
 <div
@@ -152,25 +164,31 @@
 		<div class="flex justify-between items-start mb-5">
 			<div class="flex-1 min-w-0 mr-3">
 				{#if isEditing}
-					<input
-						type="text"
-						bind:this={inputRef}
-						bind:value={editValue}
-						onblur={saveEdit}
-						onkeydown={handleKeydown}
-						disabled={saving}
-						class="beer-name-input"
-						maxlength="100"
-					/>
+					<div class="flex flex-col gap-1">
+						<input
+							type="text"
+							bind:this={inputRef}
+							bind:value={editValue}
+							onblur={saveEdit}
+							onkeydown={handleKeydown}
+							disabled={saving}
+							class="beer-name-input"
+							class:error={saveError}
+							maxlength="100"
+						/>
+						{#if saveError}
+							<span class="error-message">{saveError}</span>
+						{/if}
+					</div>
 				{:else}
 					<button
 						type="button"
 						class="beer-name-btn"
 						onclick={startEditing}
-						title="Click to edit beer name"
+						title="Click to edit batch name"
 					>
 						<h3 class="text-lg font-semibold text-[var(--text-primary)] tracking-tight truncate">
-							{tilt.beer_name}
+							{displayName}
 						</h3>
 						<svg class="edit-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -182,13 +200,13 @@
 						class="w-2 h-2 rounded-full"
 						style="background: {accentColor};"
 					></span>
-					<span class="text-sm text-[var(--text-muted)] font-medium">{tilt.color}</span>
+					<span class="text-sm text-[var(--text-muted)] font-medium">{deviceColor}</span>
 				</div>
 			</div>
 
 			<div class="flex flex-col items-end gap-2">
 				<!-- Signal indicator -->
-				<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({tilt.rssi} dBm)">
+				<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({rssi ?? 'N/A'} dBm)">
 					<div class="flex items-end gap-0.5">
 						{#each Array(4) as _, i}
 							<div
@@ -201,11 +219,11 @@
 							></div>
 						{/each}
 					</div>
-					<span class="text-[10px] text-[var(--text-muted)] font-mono">{tilt.rssi} dBm</span>
+					<span class="text-[10px] text-[var(--text-muted)] font-mono">{rssi ?? 'N/A'} dBm</span>
 				</div>
 
 				<!-- Pairing status indicator -->
-				{#if !tilt.paired}
+				{#if !isPaired}
 					<div class="pairing-badge" title="Device not paired - readings not being logged">
 						<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -224,7 +242,7 @@
 				style="background: var(--bg-elevated);"
 			>
 				<p class="text-3xl font-medium font-mono tracking-tight" style="color: var(--text-primary);">
-					{formatSG(tilt.sg)}<span class="text-lg text-[var(--text-secondary)]">{gravityUnit !== 'SG' ? gravityUnit : ''}</span>
+					{formatSG(currentSg)}<span class="text-lg text-[var(--text-secondary)]">{gravityUnit !== 'SG' ? gravityUnit : ''}</span>
 				</p>
 				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
 					{gravityUnit === 'SG' ? 'Gravity' : gravityUnit === '°P' ? 'Plato' : 'Brix'}
@@ -237,7 +255,11 @@
 				style="background: var(--bg-elevated);"
 			>
 				<p class="text-3xl font-medium font-mono tracking-tight text-[var(--text-primary)]">
-					{formatTempValue(tilt.temp)}<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
+					{#if currentTemp !== null}
+						{formatTempValue(currentTemp)}<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
+					{:else}
+						--<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
+					{/if}
 				</p>
 				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
 					Temp
@@ -246,27 +268,26 @@
 		</div>
 
 		<!-- Raw values (if calibrated) -->
-		{#if tilt.sg !== tilt.sg_raw || tilt.temp !== tilt.temp_raw}
+		{#if (currentSg !== sgRaw || currentTemp !== tempRaw) && deviceReading}
 			<div
 				class="text-[11px] text-[var(--text-muted)] font-mono mb-3 px-1"
 			>
 				<span class="opacity-60">Raw:</span>
-				<span class="ml-1">{formatSG(tilt.sg_raw)}</span>
+				<span class="ml-1">{formatSG(sgRaw)}</span>
 				<span class="mx-1 opacity-40">·</span>
-				<span>{formatTempValue(tilt.temp_raw)}{tempUnit}</span>
+				<span>{tempRaw !== null ? formatTempValue(tempRaw) : '--'}{tempUnit}</span>
 			</div>
 		{/if}
 
 		<!-- Expandable chart section - use CSS to hide instead of destroying -->
-		<!-- Key on tilt.id ensures stable component identity across parent re-renders -->
+		<!-- Key on batch.id ensures stable component identity across parent re-renders -->
 		{#if chartMounted}
 			<div class="chart-section" class:hidden={!expanded}>
-				{#key tilt.id}
-					<TiltChart
-						tiltId={tilt.id}
-						tiltColor={tilt.color}
-						originalGravity={tilt.original_gravity}
-						onOgChange={handleOgChange}
+				{#key batch.id}
+					<FermentationChart
+						batchId={batch.id}
+						deviceColor={deviceColor}
+						originalGravity={batch.measured_og}
 					/>
 				{/key}
 			</div>
@@ -274,23 +295,17 @@
 
 		<!-- Footer -->
 		<div class="flex justify-between items-center pt-3 border-t border-[var(--bg-hover)]">
-			<div class="flex items-center gap-3">
-				<span class="text-[11px] text-[var(--text-muted)]">Updated {lastSeenText}</span>
-				{#if linkedBatch}
-					<button
-						type="button"
-						class="batch-link"
-						onclick={() => goto(`/batches/${linkedBatch!.id}`)}
-					>
-						<span class="batch-status-dot" style="background: {linkedBatch!.status === 'fermenting' ? '#f59e0b' : linkedBatch!.status === 'conditioning' ? '#8b5cf6' : 'var(--text-muted)'}"></span>
-						Batch #{linkedBatch!.batch_number}
-						<svg class="batch-link-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-						</svg>
-					</button>
-				{/if}
-			</div>
+			<span class="text-[11px] text-[var(--text-muted)]">Updated {lastSeenText}</span>
 			<div class="flex items-center gap-2">
+				<!-- View Details Link -->
+				<a
+					href="/batches/{batch.id}"
+					class="view-details-link"
+					aria-label="View batch details"
+				>
+					View Details
+				</a>
+
 				{#if onToggleExpand}
 					<button
 						type="button"
@@ -368,6 +383,27 @@
 		display: none;
 	}
 
+	.view-details-link {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.375rem 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+		background: var(--bg-elevated);
+		border: 1px solid var(--bg-hover);
+		border-radius: 0.375rem;
+		text-decoration: none;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.view-details-link:hover {
+		color: var(--accent);
+		border-color: var(--accent-muted);
+		background: var(--accent-muted);
+	}
+
 	.expand-btn {
 		display: flex;
 		align-items: center;
@@ -430,43 +466,14 @@
 		opacity: 0.6;
 	}
 
-	/* Batch link */
-	.batch-link {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		padding: 0.25rem 0.5rem;
-		border-radius: 9999px;
-		cursor: pointer;
-		transition: all var(--transition);
+	.beer-name-input.error {
+		border-color: var(--negative);
 	}
 
-	.batch-link:hover {
-		color: var(--accent);
-		border-color: var(--accent-muted);
-		background: var(--accent-muted);
-	}
-
-	.batch-status-dot {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		animation: pulse 2s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.4; }
-	}
-
-	.batch-link-icon {
-		width: 0.75rem;
-		height: 0.75rem;
+	.error-message {
+		font-size: 0.75rem;
+		color: var(--negative);
+		margin-top: 0.25rem;
 	}
 
 	.pairing-badge {

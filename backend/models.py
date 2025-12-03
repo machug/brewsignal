@@ -671,6 +671,7 @@ class BatchCreate(BaseModel):
 
 
 class BatchUpdate(BaseModel):
+    recipe_id: Optional[int] = None
     name: Optional[str] = None
     status: Optional[str] = None
     device_id: Optional[str] = None

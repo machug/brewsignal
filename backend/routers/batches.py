@@ -192,6 +192,8 @@ async def update_batch(
                 )
 
     # Update fields if provided
+    if update.recipe_id is not None:
+        batch.recipe_id = update.recipe_id
     if update.name is not None:
         batch.name = update.name
     if update.status is not None:

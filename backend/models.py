@@ -264,6 +264,42 @@ class Recipe(Base):
     # Raw BeerXML for future re-parsing
     beerxml_content: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Expanded BeerXML fields
+    brewer: Mapped[Optional[str]] = mapped_column(String(100))
+    asst_brewer: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Boil
+    boil_size_l: Mapped[Optional[float]] = mapped_column()  # Pre-boil volume (liters)
+    boil_time_min: Mapped[Optional[int]] = mapped_column()  # Total boil time
+
+    # Efficiency
+    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
+
+    # Fermentation stages
+    primary_age_days: Mapped[Optional[int]] = mapped_column()
+    primary_temp_c: Mapped[Optional[float]] = mapped_column()
+    secondary_age_days: Mapped[Optional[int]] = mapped_column()
+    secondary_temp_c: Mapped[Optional[float]] = mapped_column()
+    tertiary_age_days: Mapped[Optional[int]] = mapped_column()
+    tertiary_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Aging
+    age_days: Mapped[Optional[int]] = mapped_column()
+    age_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Carbonation
+    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+    forced_carbonation: Mapped[Optional[bool]] = mapped_column()
+    priming_sugar_name: Mapped[Optional[str]] = mapped_column(String(50))
+    priming_sugar_amount_kg: Mapped[Optional[float]] = mapped_column()
+
+    # Tasting
+    taste_notes: Mapped[Optional[str]] = mapped_column(Text)
+    taste_rating: Mapped[Optional[float]] = mapped_column()  # BJCP scale (0-50)
+
+    # Dates
+    date: Mapped[Optional[str]] = mapped_column(String(50))  # Brew date from BeerXML
+
     # Metadata
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

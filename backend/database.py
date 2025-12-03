@@ -56,6 +56,7 @@ async def init_db():
         await conn.run_sync(_migrate_create_recipe_hops_table)  # Create recipe_hops table
         await conn.run_sync(_migrate_create_recipe_yeasts_table)  # Create recipe_yeasts table
         await conn.run_sync(_migrate_create_recipe_miscs_table)  # Create recipe_miscs table
+        await conn.run_sync(_migrate_add_recipe_expanded_fields)  # Add expanded BeerXML fields to recipes
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
         await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events
@@ -602,6 +603,46 @@ def _migrate_create_recipe_miscs_table(conn):
 
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_miscs_recipe ON recipe_miscs(recipe_id)"))
     print("Migration: Created recipe_miscs table")
+
+
+def _migrate_add_recipe_expanded_fields(conn):
+    """Add expanded BeerXML fields to recipes table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipes" not in inspector.get_table_names():
+        return
+
+    columns = [c["name"] for c in inspector.get_columns("recipes")]
+
+    new_columns = [
+        ("brewer", "VARCHAR(100)"),
+        ("asst_brewer", "VARCHAR(100)"),
+        ("boil_size_l", "REAL"),
+        ("boil_time_min", "INTEGER"),
+        ("efficiency_percent", "REAL"),
+        ("primary_age_days", "INTEGER"),
+        ("primary_temp_c", "REAL"),
+        ("secondary_age_days", "INTEGER"),
+        ("secondary_temp_c", "REAL"),
+        ("tertiary_age_days", "INTEGER"),
+        ("tertiary_temp_c", "REAL"),
+        ("age_days", "INTEGER"),
+        ("age_temp_c", "REAL"),
+        ("carbonation_vols", "REAL"),
+        ("forced_carbonation", "INTEGER"),
+        ("priming_sugar_name", "VARCHAR(50)"),
+        ("priming_sugar_amount_kg", "REAL"),
+        ("taste_notes", "TEXT"),
+        ("taste_rating", "REAL"),
+        ("date", "VARCHAR(50)"),
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            conn.execute(text(f"ALTER TABLE recipes ADD COLUMN {col_name} {col_def}"))
+
+    print("Migration: Added expanded BeerXML fields to recipes table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

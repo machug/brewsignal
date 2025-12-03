@@ -123,8 +123,11 @@
 				temp_hysteresis: tempHysteresis ? parseFloat(tempHysteresis) : undefined
 			};
 
+			// Set recipe_id for both create and update
 			if (!isEditMode) {
 				(data as BatchCreate).recipe_id = recipeId || undefined;
+			} else {
+				(data as BatchUpdate).recipe_id = recipeId || undefined;
 			}
 
 			if (isEditMode && measuredFg) {
@@ -166,6 +169,16 @@
 		}
 	});
 
+	// Initialize selectedRecipe when editing batch with recipe
+	$effect(() => {
+		if (isEditMode && batch?.recipe && recipes.length > 0 && !selectedRecipe) {
+			const recipe = recipes.find((r) => r.id === batch.recipe_id);
+			if (recipe) {
+				selectedRecipe = recipe;
+			}
+		}
+	});
+
 	onMount(() => {
 		loadRecipes();
 		loadDevices();
@@ -189,12 +202,11 @@
 	{/if}
 
 	<div class="form-body">
-		<!-- Recipe Selection (only for new batches) -->
-		{#if !isEditMode}
-			<RecipeSelector
-				selectedRecipeId={selectedRecipe?.id}
-				onSelect={handleRecipeSelect}
-			/>
+		<!-- Recipe Selection -->
+		<RecipeSelector
+			selectedRecipeId={selectedRecipe?.id}
+			onSelect={handleRecipeSelect}
+		/>
 
 			{#if selectedRecipe}
 				<div class="recipe-reference">
@@ -211,7 +223,6 @@
 					{/if}
 				</div>
 			{/if}
-		{/if}
 
 		<!-- Batch Name -->
 		<div class="form-group">

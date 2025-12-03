@@ -66,9 +66,9 @@ def test_parse_beerxml_extracts_yeast_data():
     assert yeast is not None
     assert yeast.name == "Safale US-05"
     assert yeast.lab == "Fermentis"
-    assert yeast.temp_min == 15.0
-    assert yeast.temp_max == 22.0
-    assert yeast.attenuation == 77.0
+    assert yeast.temp_min_c == 15.0
+    assert yeast.temp_max_c == 22.0
+    assert yeast.attenuation_percent == 77.0
 
 
 def test_parse_beerxml_extracts_style():

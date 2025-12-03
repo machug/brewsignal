@@ -264,6 +264,42 @@ class Recipe(Base):
     # Raw BeerXML for future re-parsing
     beerxml_content: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Expanded BeerXML fields
+    brewer: Mapped[Optional[str]] = mapped_column(String(100))
+    asst_brewer: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Boil
+    boil_size_l: Mapped[Optional[float]] = mapped_column()  # Pre-boil volume (liters)
+    boil_time_min: Mapped[Optional[int]] = mapped_column()  # Total boil time
+
+    # Efficiency
+    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
+
+    # Fermentation stages
+    primary_age_days: Mapped[Optional[int]] = mapped_column()
+    primary_temp_c: Mapped[Optional[float]] = mapped_column()
+    secondary_age_days: Mapped[Optional[int]] = mapped_column()
+    secondary_temp_c: Mapped[Optional[float]] = mapped_column()
+    tertiary_age_days: Mapped[Optional[int]] = mapped_column()
+    tertiary_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Aging
+    age_days: Mapped[Optional[int]] = mapped_column()
+    age_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Carbonation
+    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+    forced_carbonation: Mapped[Optional[bool]] = mapped_column()
+    priming_sugar_name: Mapped[Optional[str]] = mapped_column(String(50))
+    priming_sugar_amount_kg: Mapped[Optional[float]] = mapped_column()
+
+    # Tasting
+    taste_notes: Mapped[Optional[str]] = mapped_column(Text)
+    taste_rating: Mapped[Optional[float]] = mapped_column()  # BJCP scale (0-50)
+
+    # Dates
+    date: Mapped[Optional[str]] = mapped_column(String(50))  # Brew date from BeerXML
+
     # Metadata
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -272,6 +308,10 @@ class Recipe(Base):
     # Relationships
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
+    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    yeasts: Mapped[list["RecipeYeast"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 
 class Batch(Base):
@@ -314,6 +354,126 @@ class Batch(Base):
     recipe: Mapped[Optional["Recipe"]] = relationship(back_populates="batches")
     device: Mapped[Optional["Device"]] = relationship()
     readings: Mapped[list["Reading"]] = relationship(back_populates="batch")
+
+
+class RecipeFermentable(Base):
+    """Fermentable ingredients (grains, extracts, sugars) in a recipe."""
+    __tablename__ = "recipe_fermentables"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # BeerXML fields
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(50))  # Grain, Sugar, Extract, Dry Extract, Adjunct
+    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
+    yield_percent: Mapped[Optional[float]] = mapped_column()  # % yield (0-100)
+    color_lovibond: Mapped[Optional[float]] = mapped_column()  # SRM/Lovibond
+
+    # Additional metadata
+    origin: Mapped[Optional[str]] = mapped_column(String(50))
+    supplier: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Advanced BeerXML fields (optional)
+    add_after_boil: Mapped[Optional[bool]] = mapped_column(default=False)
+    coarse_fine_diff: Mapped[Optional[float]] = mapped_column()  # %
+    moisture: Mapped[Optional[float]] = mapped_column()  # %
+    diastatic_power: Mapped[Optional[float]] = mapped_column()  # Lintner
+    protein: Mapped[Optional[float]] = mapped_column()  # %
+    max_in_batch: Mapped[Optional[float]] = mapped_column()  # %
+    recommend_mash: Mapped[Optional[bool]] = mapped_column()
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="fermentables")
+
+
+class RecipeHop(Base):
+    """Hop additions in a recipe."""
+    __tablename__ = "recipe_hops"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # BeerXML fields
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    alpha_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
+    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
+    use: Mapped[str] = mapped_column(String(20))  # Boil, Dry Hop, Mash, First Wort, Aroma
+    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (0 for dry hop timing, or days)
+
+    # Hop characteristics
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # Pellet, Plug, Leaf
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # Bittering, Aroma, Both
+    origin: Mapped[Optional[str]] = mapped_column(String(50))
+    substitutes: Mapped[Optional[str]] = mapped_column(String(200))
+
+    # Advanced BeerXML fields
+    beta_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %
+    hsi: Mapped[Optional[float]] = mapped_column()  # Hop Storage Index
+    humulene: Mapped[Optional[float]] = mapped_column()  # %
+    caryophyllene: Mapped[Optional[float]] = mapped_column()  # %
+    cohumulone: Mapped[Optional[float]] = mapped_column()  # %
+    myrcene: Mapped[Optional[float]] = mapped_column()  # %
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="hops")
+
+
+class RecipeYeast(Base):
+    """Yeast strains in a recipe."""
+    __tablename__ = "recipe_yeasts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # BeerXML fields
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    lab: Mapped[Optional[str]] = mapped_column(String(100))
+    product_id: Mapped[Optional[str]] = mapped_column(String(50))
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # Ale, Lager, Wheat, Wine, Champagne
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # Liquid, Dry, Slant, Culture
+
+    # Fermentation characteristics
+    attenuation_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
+    temp_min_c: Mapped[Optional[float]] = mapped_column()  # Celsius
+    temp_max_c: Mapped[Optional[float]] = mapped_column()  # Celsius
+    flocculation: Mapped[Optional[str]] = mapped_column(String(20))  # Low, Medium, High, Very High
+
+    # Pitching
+    amount_l: Mapped[Optional[float]] = mapped_column()  # Liters (if liquid)
+    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg (if dry)
+    add_to_secondary: Mapped[Optional[bool]] = mapped_column(default=False)
+
+    # Advanced fields
+    best_for: Mapped[Optional[str]] = mapped_column(Text)
+    times_cultured: Mapped[Optional[int]] = mapped_column()
+    max_reuse: Mapped[Optional[int]] = mapped_column()
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="yeasts")
+
+
+class RecipeMisc(Base):
+    """Misc ingredients (spices, finings, water agents, etc)."""
+    __tablename__ = "recipe_miscs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # Spice, Fining, Water Agent, Herb, Flavor, Other
+    use: Mapped[str] = mapped_column(String(20), nullable=False)  # Boil, Mash, Primary, Secondary, Bottling
+    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes
+    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg or L (check amount_is_weight)
+    amount_is_weight: Mapped[Optional[bool]] = mapped_column(default=True)
+    use_for: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    recipe: Mapped["Recipe"] = relationship(back_populates="miscs")
 
 
 # Pydantic Schemas
@@ -619,6 +779,92 @@ class RecipeResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
+
+    @field_serializer('created_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
+class FermentableResponse(BaseModel):
+    """Pydantic response model for fermentable ingredients."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: Optional[str] = None
+    amount_kg: Optional[float] = None
+    yield_percent: Optional[float] = None
+    color_lovibond: Optional[float] = None
+    origin: Optional[str] = None
+    supplier: Optional[str] = None
+
+
+class HopResponse(BaseModel):
+    """Pydantic response model for hop additions."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    alpha_percent: Optional[float] = None
+    amount_kg: Optional[float] = None
+    use: Optional[str] = None
+    time_min: Optional[float] = None
+    form: Optional[str] = None
+    type: Optional[str] = None
+
+
+class YeastResponse(BaseModel):
+    """Pydantic response model for yeast strains."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    lab: Optional[str] = None
+    product_id: Optional[str] = None
+    type: Optional[str] = None
+    attenuation_percent: Optional[float] = None
+    temp_min_c: Optional[float] = None
+    temp_max_c: Optional[float] = None
+    flocculation: Optional[str] = None
+
+
+class MiscResponse(BaseModel):
+    """Pydantic response model for misc ingredients."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: Optional[str] = None
+    use: Optional[str] = None
+    time_min: Optional[float] = None
+    amount_kg: Optional[float] = None
+    amount_is_weight: Optional[bool] = None
+
+
+class RecipeDetailResponse(BaseModel):
+    """Full recipe with all ingredients."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og_target: Optional[float] = None
+    fg_target: Optional[float] = None
+    ibu_target: Optional[float] = None
+    srm_target: Optional[float] = None
+    abv_target: Optional[float] = None
+    batch_size: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    style: Optional[StyleResponse] = None
+
+    # Ingredient lists
+    fermentables: list[FermentableResponse] = []
+    hops: list[HopResponse] = []
+    yeasts: list[YeastResponse] = []
+    miscs: list[MiscResponse] = []
 
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:

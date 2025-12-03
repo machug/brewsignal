@@ -69,6 +69,50 @@ export async function fetchAmbientHistory(hours: number = 24): Promise<AmbientHi
 
 export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
+export interface FermentableResponse {
+	id: number;
+	name: string;
+	type?: string;
+	amount_kg?: number;
+	yield_percent?: number;
+	color_lovibond?: number;
+	origin?: string;
+	supplier?: string;
+}
+
+export interface HopResponse {
+	id: number;
+	name: string;
+	alpha_percent?: number;
+	amount_kg?: number;
+	use?: string;
+	time_min?: number;
+	form?: string;
+	type?: string;
+}
+
+export interface YeastResponse {
+	id: number;
+	name: string;
+	lab?: string;
+	product_id?: string;
+	type?: string;
+	attenuation_percent?: number;
+	temp_min_c?: number;
+	temp_max_c?: number;
+	flocculation?: string;
+}
+
+export interface MiscResponse {
+	id: number;
+	name: string;
+	type?: string;
+	use?: string;
+	time_min?: number;
+	amount_kg?: number;
+	amount_is_weight?: boolean;
+}
+
 export interface RecipeResponse {
 	id: number;
 	name: string;
@@ -89,6 +133,11 @@ export interface RecipeResponse {
 	batch_size?: number;
 	notes?: string;
 	created_at: string;
+	// Ingredient lists (only in detail response)
+	fermentables?: FermentableResponse[];
+	hops?: HopResponse[];
+	yeasts?: YeastResponse[];
+	miscs?: MiscResponse[];
 }
 
 export interface BatchResponse {

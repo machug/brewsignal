@@ -40,6 +40,10 @@ async def init_db():
     1. Run migrations first (for existing DBs with data)
     2. Then create_all (for new tables/columns in fresh DBs)
     3. Then data migrations (copy tilts to devices)
+
+    IMPORTANT: This function is not thread-safe. Run with a single worker
+    during startup to avoid migration race conditions. After initial startup,
+    multiple workers can safely access the database for read/write operations.
     """
     async with engine.begin() as conn:
         # Step 1: Schema migrations for existing DBs
@@ -52,6 +56,11 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
         # Step 3: Migrations that depend on new tables existing
+        await conn.run_sync(_migrate_create_recipe_fermentables_table)  # Create recipe_fermentables table
+        await conn.run_sync(_migrate_create_recipe_hops_table)  # Create recipe_hops table
+        await conn.run_sync(_migrate_create_recipe_yeasts_table)  # Create recipe_yeasts table
+        await conn.run_sync(_migrate_create_recipe_miscs_table)  # Create recipe_miscs table
+        await conn.run_sync(_migrate_add_recipe_expanded_fields)  # Add expanded BeerXML fields to recipes
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
         await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events
@@ -466,6 +475,178 @@ def _migrate_add_paired_to_tilts_and_devices(conn):
         if "ix_devices_paired" not in indexes:
             conn.execute(text("CREATE INDEX ix_devices_paired ON devices (paired)"))
             print("Migration: Added index on devices.paired")
+
+
+def _migrate_create_recipe_fermentables_table(conn):
+    """Create recipe_fermentables table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipe_fermentables" in inspector.get_table_names():
+        return  # Table exists
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recipe_fermentables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            type VARCHAR(50),
+            amount_kg REAL,
+            yield_percent REAL,
+            color_lovibond REAL,
+            origin VARCHAR(50),
+            supplier VARCHAR(100),
+            notes TEXT,
+            add_after_boil INTEGER DEFAULT 0,
+            coarse_fine_diff REAL,
+            moisture REAL,
+            diastatic_power REAL,
+            protein REAL,
+            max_in_batch REAL,
+            recommend_mash INTEGER
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_fermentables_recipe ON recipe_fermentables(recipe_id)"))
+    print("Migration: Created recipe_fermentables table")
+
+
+def _migrate_create_recipe_hops_table(conn):
+    """Create recipe_hops table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipe_hops" in inspector.get_table_names():
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recipe_hops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            alpha_percent REAL,
+            amount_kg REAL NOT NULL,
+            use VARCHAR(20) NOT NULL,
+            time_min REAL,
+            form VARCHAR(20),
+            type VARCHAR(20),
+            origin VARCHAR(50),
+            substitutes VARCHAR(200),
+            beta_percent REAL,
+            hsi REAL,
+            humulene REAL,
+            caryophyllene REAL,
+            cohumulone REAL,
+            myrcene REAL,
+            notes TEXT
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_use ON recipe_hops(use)"))  # For dry hop queries
+    print("Migration: Created recipe_hops table")
+
+
+def _migrate_create_recipe_yeasts_table(conn):
+    """Create recipe_yeasts table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipe_yeasts" in inspector.get_table_names():
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recipe_yeasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            lab VARCHAR(100),
+            product_id VARCHAR(50),
+            type VARCHAR(20),
+            form VARCHAR(20),
+            attenuation_percent REAL,
+            temp_min_c REAL,
+            temp_max_c REAL,
+            flocculation VARCHAR(20),
+            amount_l REAL,
+            amount_kg REAL,
+            add_to_secondary INTEGER DEFAULT 0,
+            best_for TEXT,
+            times_cultured INTEGER,
+            max_reuse INTEGER,
+            notes TEXT
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_yeasts_recipe ON recipe_yeasts(recipe_id)"))
+    print("Migration: Created recipe_yeasts table")
+
+
+def _migrate_create_recipe_miscs_table(conn):
+    """Create recipe_miscs table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipe_miscs" in inspector.get_table_names():
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recipe_miscs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            use VARCHAR(20) NOT NULL,
+            time_min REAL,
+            amount_kg REAL,
+            amount_is_weight INTEGER DEFAULT 1,
+            use_for TEXT,
+            notes TEXT
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_miscs_recipe ON recipe_miscs(recipe_id)"))
+    print("Migration: Created recipe_miscs table")
+
+
+def _migrate_add_recipe_expanded_fields(conn):
+    """Add expanded BeerXML fields to recipes table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipes" not in inspector.get_table_names():
+        return
+
+    columns = [c["name"] for c in inspector.get_columns("recipes")]
+
+    new_columns = [
+        ("brewer", "VARCHAR(100)"),
+        ("asst_brewer", "VARCHAR(100)"),
+        ("boil_size_l", "REAL"),
+        ("boil_time_min", "INTEGER"),
+        ("efficiency_percent", "REAL"),
+        ("primary_age_days", "INTEGER"),
+        ("primary_temp_c", "REAL"),
+        ("secondary_age_days", "INTEGER"),
+        ("secondary_temp_c", "REAL"),
+        ("tertiary_age_days", "INTEGER"),
+        ("tertiary_temp_c", "REAL"),
+        ("age_days", "INTEGER"),
+        ("age_temp_c", "REAL"),
+        ("carbonation_vols", "REAL"),
+        ("forced_carbonation", "INTEGER"),
+        ("priming_sugar_name", "VARCHAR(50)"),
+        ("priming_sugar_amount_kg", "REAL"),
+        ("taste_notes", "TEXT"),
+        ("taste_rating", "REAL"),
+        ("date", "VARCHAR(50)"),
+    ]
+
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            conn.execute(text(f"ALTER TABLE recipes ADD COLUMN {col_name} {col_def}"))
+
+    print("Migration: Added expanded BeerXML fields to recipes table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

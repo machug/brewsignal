@@ -63,7 +63,49 @@
 		}
 	}
 
-	let tiltsList = $derived(Array.from(tiltsState.tilts.values()));
+	// Map device_id to batch_id for live updates
+	let deviceToBatch = $derived(
+		new Map(
+			batches
+				.filter((b) => b.device_id && (b.status === 'fermenting' || b.status === 'conditioning'))
+				.map((b) => [b.device_id!, b.id])
+		)
+	);
+
+	// Enhance progress with live WebSocket data
+	let liveProgressMap = $derived.by(() => {
+		const enhanced = new Map(progressMap);
+		for (const [deviceId, batchId] of deviceToBatch) {
+			const tiltReading = tiltsState.tilts.get(deviceId);
+			if (tiltReading) {
+				const existing = enhanced.get(batchId) || {
+					batch_id: batchId,
+					measured: {},
+					temperature: {},
+					progress: {},
+					targets: {}
+				};
+				// Update with live data
+				enhanced.set(batchId, {
+					...existing,
+					measured: {
+						...existing.measured,
+						current_sg: tiltReading.sg
+					},
+					temperature: {
+						...existing.temperature,
+						current: tiltReading.temp,
+						// Determine temperature status based on yeast thresholds (if available)
+						status: existing.temperature?.yeast_min !== undefined && existing.temperature?.yeast_max !== undefined
+							? (tiltReading.temp < existing.temperature.yeast_min ? 'too_cold' :
+							   tiltReading.temp > existing.temperature.yeast_max ? 'too_hot' : 'in_range')
+							: existing.temperature?.status
+					}
+				});
+			}
+		}
+		return enhanced;
+	});
 
 	// Track which tilt card is expanded (only one at a time)
 	let expandedTiltId = $state<string | null>(null);

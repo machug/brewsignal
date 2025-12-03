@@ -273,6 +273,7 @@ class Recipe(Base):
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
     fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 
 class Batch(Base):
@@ -347,6 +348,40 @@ class RecipeFermentable(Base):
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="fermentables")
+
+
+class RecipeHop(Base):
+    """Hop additions in a recipe."""
+    __tablename__ = "recipe_hops"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # BeerXML fields
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    alpha_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
+    amount_kg: Mapped[float] = mapped_column()  # Amount in kilograms
+    use: Mapped[str] = mapped_column(String(20))  # Boil, Dry Hop, Mash, First Wort, Aroma
+    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (0 for dry hop timing, or days)
+
+    # Hop characteristics
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # Pellet, Plug, Leaf
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # Bittering, Aroma, Both
+    origin: Mapped[Optional[str]] = mapped_column(String(50))
+    substitutes: Mapped[Optional[str]] = mapped_column(String(200))
+
+    # Advanced BeerXML fields
+    beta_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %
+    hsi: Mapped[Optional[float]] = mapped_column()  # Hop Storage Index
+    humulene: Mapped[Optional[float]] = mapped_column()  # %
+    caryophyllene: Mapped[Optional[float]] = mapped_column()  # %
+    cohumulone: Mapped[Optional[float]] = mapped_column()  # %
+    myrcene: Mapped[Optional[float]] = mapped_column()  # %
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="hops")
 
 
 # Pydantic Schemas

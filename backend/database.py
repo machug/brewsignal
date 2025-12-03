@@ -53,6 +53,7 @@ async def init_db():
 
         # Step 3: Migrations that depend on new tables existing
         await conn.run_sync(_migrate_create_recipe_fermentables_table)  # Create recipe_fermentables table
+        await conn.run_sync(_migrate_create_recipe_hops_table)  # Create recipe_hops table
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
         await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events
@@ -501,6 +502,42 @@ def _migrate_create_recipe_fermentables_table(conn):
 
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_fermentables_recipe ON recipe_fermentables(recipe_id)"))
     print("Migration: Created recipe_fermentables table")
+
+
+def _migrate_create_recipe_hops_table(conn):
+    """Create recipe_hops table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "recipe_hops" in inspector.get_table_names():
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS recipe_hops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            alpha_percent REAL,
+            amount_kg REAL,
+            use VARCHAR(20),
+            time_min REAL,
+            form VARCHAR(20),
+            type VARCHAR(20),
+            origin VARCHAR(50),
+            substitutes VARCHAR(200),
+            beta_percent REAL,
+            hsi REAL,
+            humulene REAL,
+            caryophyllene REAL,
+            cohumulone REAL,
+            myrcene REAL,
+            notes TEXT
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_use ON recipe_hops(use)"))  # For dry hop queries
+    print("Migration: Created recipe_hops table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

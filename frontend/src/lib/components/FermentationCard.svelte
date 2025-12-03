@@ -5,7 +5,7 @@
 	import { updateTiltBeerName, updateTiltOriginalGravity } from '$lib/stores/tilts.svelte';
 	import { configState, formatTemp, getTempUnit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import { fetchBatches, type BatchResponse } from '$lib/api';
-	import TiltChart from './TiltChart.svelte';
+	import FermentationChart from './FermentationChart.svelte';
 
 	interface Props {
 		tilt: TiltReading;
@@ -262,7 +262,7 @@
 		{#if chartMounted}
 			<div class="chart-section" class:hidden={!expanded}>
 				{#key tilt.id}
-					<TiltChart
+					<FermentationChart
 						tiltId={tilt.id}
 						tiltColor={tilt.color}
 						originalGravity={tilt.original_gravity}

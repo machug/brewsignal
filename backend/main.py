@@ -23,6 +23,7 @@ from .cleanup import CleanupService
 from .scanner import TiltReading, TiltScanner
 from .services.calibration import calibration_service
 from .services.batch_linker import link_reading_to_batch
+from .services.smoothing import smoothing_service
 from .state import latest_readings
 from .websocket import manager
 
@@ -54,6 +55,16 @@ async def handle_tilt_reading(reading: TiltReading):
         sg_calibrated, temp_calibrated = await calibration_service.calibrate_reading(
             session, reading.id, reading.sg, reading.temp_f
         )
+
+        # Apply smoothing if enabled
+        from .routers.config import get_config_value
+        smoothing_enabled = await get_config_value(session, "smoothing_enabled")
+        smoothing_samples = await get_config_value(session, "smoothing_samples")
+
+        if smoothing_enabled and smoothing_samples and smoothing_samples > 1:
+            sg_calibrated, temp_calibrated = await smoothing_service.smooth_reading(
+                session, reading.id, sg_calibrated, temp_calibrated, smoothing_samples
+            )
 
         # Validate reading for outliers (physical impossibility check)
         # Valid SG range: 0.500-1.200 (beer is typically 1.000-1.120)

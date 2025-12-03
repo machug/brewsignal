@@ -34,7 +34,7 @@ async def list_batches(
     """List batches with optional filters."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
         .order_by(Batch.created_at.desc())
     )
 
@@ -263,7 +263,7 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     # Get batch with recipe
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
         .where(Batch.id == batch_id)
     )
     result = await db.execute(query)

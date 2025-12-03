@@ -12,12 +12,19 @@ from backend.models import (
 async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
     """Import BeerXML and save to database.
 
+    Note: If the BeerXML file contains multiple recipes, only the first recipe
+    will be imported. This is the common case as most BeerXML exports contain
+    a single recipe.
+
     Args:
         db: Database session
         xml_content: BeerXML 1.0 string
 
     Returns:
         Recipe ID of first imported recipe
+
+    Raises:
+        ValueError: If no recipes found in BeerXML
     """
     # Parse XML
     parsed_recipes = parse_beerxml(xml_content)

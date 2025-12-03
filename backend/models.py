@@ -366,7 +366,7 @@ class RecipeFermentable(Base):
     # BeerXML fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str] = mapped_column(String(50))  # Grain, Sugar, Extract, Dry Extract, Adjunct
-    amount_kg: Mapped[float] = mapped_column()  # Amount in kilograms
+    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
     yield_percent: Mapped[Optional[float]] = mapped_column()  # % yield (0-100)
     color_lovibond: Mapped[Optional[float]] = mapped_column()  # SRM/Lovibond
 
@@ -398,7 +398,7 @@ class RecipeHop(Base):
     # BeerXML fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     alpha_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
-    amount_kg: Mapped[float] = mapped_column()  # Amount in kilograms
+    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
     use: Mapped[str] = mapped_column(String(20))  # Boil, Dry Hop, Mash, First Wort, Aroma
     time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (0 for dry hop timing, or days)
 

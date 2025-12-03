@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2025-12-03
+
+### Added
+- Modular card-based architecture for batch detail page
+- Live readings card with calibrated and raw values
+- Signal strength indicator with quality labels and dBm values
+- Real-time ABV calculation during active fermentation: `(OG - Current SG) × 131.25`
+- Real-time attenuation calculation during fermentation: `((OG - Current SG) / (OG - 1.000)) × 100%`
+- Enhanced device status card with signal diagnostics
+- Fermentation progress card with visual progress bar
+- Clear visual distinction between live/in-progress and final values
+
+### Changed
+- Refactored batch detail page sections into reusable card components
+- Improved responsive layout with better mobile experience
+- FG now shows current gravity during fermentation (instead of "--")
+- ABV and attenuation display live values during active fermentation
+
+### Fixed
+- Missing aria-label on delete button for accessibility
+- Batch detail page now shows same diagnostic data as dashboard
+
+### Technical
+- Created 7 new Svelte components in `src/lib/components/batch/`
+- Maintained backward compatibility with existing batch data
+- Architecture ready for future AI assistant features
+
 ## [2.3.1] - 2025-12-03
 
 ### Fixed

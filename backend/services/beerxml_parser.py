@@ -55,6 +55,27 @@ class ParsedFermentable:
 
 
 @dataclass
+class ParsedHop:
+    """Hop data extracted from BeerXML."""
+    name: str
+    alpha_percent: Optional[float] = None
+    amount_kg: Optional[float] = None
+    use: Optional[str] = None
+    time_min: Optional[float] = None
+    form: Optional[str] = None
+    type: Optional[str] = None
+    origin: Optional[str] = None
+    substitutes: Optional[str] = None
+    beta_percent: Optional[float] = None
+    hsi: Optional[float] = None
+    humulene: Optional[float] = None
+    caryophyllene: Optional[float] = None
+    cohumulone: Optional[float] = None
+    myrcene: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@dataclass
 class ParsedRecipe:
     """Recipe data extracted from BeerXML."""
     name: str
@@ -69,6 +90,7 @@ class ParsedRecipe:
     style: Optional[ParsedStyle] = None
     yeast: Optional[ParsedYeast] = None
     fermentables: list[ParsedFermentable] = field(default_factory=list)
+    hops: list[ParsedHop] = field(default_factory=list)
     raw_xml: str = ""
 
 
@@ -138,6 +160,32 @@ def _parse_fermentables(recipe_elem) -> list[ParsedFermentable]:
     return fermentables
 
 
+def _parse_hops(recipe_elem) -> list[ParsedHop]:
+    """Parse HOPS section."""
+    hops = []
+    for hop_elem in recipe_elem.findall('.//HOPS/HOP'):
+        hop = ParsedHop(
+            name=_get_text(hop_elem, 'NAME') or "Unknown",
+            alpha_percent=_get_float(hop_elem, 'ALPHA'),
+            amount_kg=_get_float(hop_elem, 'AMOUNT'),
+            use=_get_text(hop_elem, 'USE'),
+            time_min=_get_float(hop_elem, 'TIME'),
+            form=_get_text(hop_elem, 'FORM'),
+            type=_get_text(hop_elem, 'TYPE'),
+            origin=_get_text(hop_elem, 'ORIGIN'),
+            substitutes=_get_text(hop_elem, 'SUBSTITUTES'),
+            beta_percent=_get_float(hop_elem, 'BETA'),
+            hsi=_get_float(hop_elem, 'HSI'),
+            humulene=_get_float(hop_elem, 'HUMULENE'),
+            caryophyllene=_get_float(hop_elem, 'CARYOPHYLLENE'),
+            cohumulone=_get_float(hop_elem, 'COHUMULONE'),
+            myrcene=_get_float(hop_elem, 'MYRCENE'),
+            notes=_get_text(hop_elem, 'NOTES'),
+        )
+        hops.append(hop)
+    return hops
+
+
 def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
     """Parse a single RECIPE element."""
     recipe = ParsedRecipe(
@@ -178,5 +226,8 @@ def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
 
     # Parse fermentables
     recipe.fermentables = _parse_fermentables(elem)
+
+    # Parse hops
+    recipe.hops = _parse_hops(elem)
 
     return recipe

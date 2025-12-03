@@ -115,11 +115,11 @@
 		gap: 0.375rem;
 		margin-bottom: 1rem;
 		padding: 0.25rem 0.625rem;
-		background: rgba(245, 158, 11, 0.12);
+		background: color-mix(in srgb, var(--recipe-accent) 12%, transparent);
 		border-radius: 9999px;
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 		text-transform: uppercase;
 		letter-spacing: 0.025em;
 	}
@@ -127,7 +127,7 @@
 	.live-dot {
 		width: 6px;
 		height: 6px;
-		background: #f59e0b;
+		background: var(--recipe-accent);
 		border-radius: 50%;
 		animation: pulse 2s ease-in-out infinite;
 	}

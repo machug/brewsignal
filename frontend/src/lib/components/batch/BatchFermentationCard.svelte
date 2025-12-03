@@ -22,7 +22,8 @@
 		const abv = (batch.measured_og - sg) * 131.25;
 
 		// Attenuation: ((OG - Current SG) / (OG - 1.000)) × 100
-		const attenuation = ((batch.measured_og - sg) / (batch.measured_og - 1.0)) * 100;
+		const denominator = batch.measured_og - 1.0;
+		const attenuation = denominator !== 0 ? ((batch.measured_og - sg) / denominator) * 100 : 0;
 
 		return {
 			currentSg: sg,

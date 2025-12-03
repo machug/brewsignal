@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration script `backend/migrations/mark_outliers_invalid.py` to clean historical data
 - uPlot legend enabled with live updates and custom tooltip styling
 
+### Code Review Fixes (PR #56)
+- **Database Migration**: Added status column migration with index for query performance in `backend/database.py`
+- **Validation Order**: Moved outlier validation BEFORE smoothing to prevent invalid readings from contaminating moving average buffer
+- **HTTP Device Support**: Extended validation and smoothing to HTTP ingestion path (iSpindel/GravityMon) in `backend/services/ingest_manager.py`
+- **Config Caching**: Implemented 30-second cache for smoothing config to reduce DB queries from every-reading to periodic refresh
+- **Null Safety**: Fixed smoothing service query to use `is not None` check instead of truthiness to handle edge cases with zero values
+- **Buffer Cleanup**: Added automatic cleanup of inactive device buffers (1-hour TTL) to prevent memory growth
+- **Data Migration**: Integrated historical outlier marking into `init_db()` for automatic cleanup on deployment
+
 ## [2.3.2] - 2025-12-03
 
 ### Added

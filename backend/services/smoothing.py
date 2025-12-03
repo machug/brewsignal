@@ -1,6 +1,7 @@
 """Smoothing service for sensor readings using moving average."""
 
 from collections import deque
+import time
 from typing import Dict, Tuple
 
 from sqlalchemy import desc, select
@@ -16,6 +17,9 @@ class SmoothingService:
         # In-memory buffer of recent readings per device
         # Format: {device_id: deque([(sg, temp), ...], maxlen=N)}
         self._buffers: Dict[str, deque] = {}
+        # Track last access time for each buffer to enable cleanup
+        # Format: {device_id: timestamp}
+        self._buffer_access_times: Dict[str, float] = {}
 
     async def smooth_reading(
         self,
@@ -60,11 +64,13 @@ class SmoothingService:
 
             # Add recent readings in chronological order (oldest first)
             for row in reversed(recent):
-                if row.sg_calibrated and row.temp_calibrated:
+                if row.sg_calibrated is not None and row.temp_calibrated is not None:
                     self._buffers[device_id].append((row.sg_calibrated, row.temp_calibrated))
 
         # Add current reading to buffer
         self._buffers[device_id].append((sg, temp))
+        # Update last access time
+        self._buffer_access_times[device_id] = time.monotonic()
 
         # Calculate moving average
         buffer = self._buffers[device_id]
@@ -77,9 +83,41 @@ class SmoothingService:
         return avg_sg, avg_temp
 
     def clear_buffer(self, device_id: str):
-        """Clear the smoothing buffer for a device."""
+        """Clear the smoothing buffer for a device.
+
+        Call this when:
+        - A device is unpaired
+        - A batch is completed
+        - Smoothing config is changed
+        """
         if device_id in self._buffers:
             del self._buffers[device_id]
+        if device_id in self._buffer_access_times:
+            del self._buffer_access_times[device_id]
+
+    def cleanup_inactive_buffers(self, max_age_seconds: int = 3600):
+        """Remove buffers for devices that haven't been used recently.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before a buffer is considered stale (default: 1 hour)
+
+        This prevents memory growth from inactive/deleted devices.
+        Call this periodically (e.g., from a background task or on app startup).
+        """
+        now = time.monotonic()
+        inactive_devices = [
+            device_id
+            for device_id, last_access in self._buffer_access_times.items()
+            if now - last_access > max_age_seconds
+        ]
+
+        for device_id in inactive_devices:
+            del self._buffers[device_id]
+            del self._buffer_access_times[device_id]
+
+        if inactive_devices:
+            import logging
+            logging.info(f"Cleaned up {len(inactive_devices)} inactive smoothing buffers")
 
 
 # Global singleton instance

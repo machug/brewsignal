@@ -17,6 +17,7 @@ from . import models  # noqa: F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db
 from .models import Reading, Tilt, serialize_datetime_to_utc
 from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, recipes, system, tilts
+from .routers.config import get_config_value
 from .ambient_poller import start_ambient_poller, stop_ambient_poller
 from .temp_controller import start_temp_controller, stop_temp_controller
 from .cleanup import CleanupService
@@ -26,10 +27,16 @@ from .services.batch_linker import link_reading_to_batch
 from .services.smoothing import smoothing_service
 from .state import latest_readings
 from .websocket import manager
+import time
 
 # Global scanner instance
 scanner: Optional[TiltScanner] = None
 scanner_task: Optional[asyncio.Task] = None
+
+# Config cache for BLE reading handler (avoid DB query on every reading)
+_smoothing_config_cache: tuple[bool, Optional[int]] = (False, None)
+_smoothing_cache_time: float = 0
+CONFIG_CACHE_TTL = 30  # seconds
 cleanup_service: Optional[CleanupService] = None
 
 
@@ -56,19 +63,10 @@ async def handle_tilt_reading(reading: TiltReading):
             session, reading.id, reading.sg, reading.temp_f
         )
 
-        # Apply smoothing if enabled
-        from .routers.config import get_config_value
-        smoothing_enabled = await get_config_value(session, "smoothing_enabled")
-        smoothing_samples = await get_config_value(session, "smoothing_samples")
-
-        if smoothing_enabled and smoothing_samples and smoothing_samples > 1:
-            sg_calibrated, temp_calibrated = await smoothing_service.smooth_reading(
-                session, reading.id, sg_calibrated, temp_calibrated, smoothing_samples
-            )
-
         # Validate reading for outliers (physical impossibility check)
         # Valid SG range: 0.500-1.200 (beer is typically 1.000-1.120)
         # Valid temp range: 32-212°F (freezing to boiling)
+        # IMPORTANT: Validate BEFORE smoothing to prevent invalid readings from polluting the moving average buffer
         status = "valid"
         if not (0.500 <= sg_calibrated <= 1.200):
             status = "invalid"
@@ -80,6 +78,25 @@ async def handle_tilt_reading(reading: TiltReading):
             logging.warning(
                 f"Outlier temperature detected: {temp_calibrated:.1f}°F (valid: 32-212) for device {reading.id}"
             )
+
+        # Apply smoothing if enabled (only for valid readings)
+        if status == "valid":
+            global _smoothing_config_cache, _smoothing_cache_time
+            now = time.monotonic()
+
+            # Refresh cache if expired
+            if now - _smoothing_cache_time > CONFIG_CACHE_TTL:
+                smoothing_enabled = await get_config_value(session, "smoothing_enabled")
+                smoothing_samples = await get_config_value(session, "smoothing_samples")
+                _smoothing_config_cache = (smoothing_enabled or False, smoothing_samples)
+                _smoothing_cache_time = now
+            else:
+                smoothing_enabled, smoothing_samples = _smoothing_config_cache
+
+            if smoothing_enabled and smoothing_samples and smoothing_samples > 1:
+                sg_calibrated, temp_calibrated = await smoothing_service.smooth_reading(
+                    session, reading.id, sg_calibrated, temp_calibrated, smoothing_samples
+                )
 
         # Only store reading if device is paired
         if tilt.paired:

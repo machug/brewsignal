@@ -16,12 +16,22 @@ import defusedxml.ElementTree as ET
 @dataclass
 class ParsedYeast:
     """Yeast data extracted from BeerXML."""
-    name: Optional[str] = None
+    name: str
     lab: Optional[str] = None
     product_id: Optional[str] = None
-    temp_min: Optional[float] = None  # Celsius
-    temp_max: Optional[float] = None  # Celsius
-    attenuation: Optional[float] = None
+    type: Optional[str] = None  # Ale, Lager, Wheat, Wine, Champagne
+    form: Optional[str] = None  # Liquid, Dry, Slant, Culture
+    attenuation_percent: Optional[float] = None  # % (0-100)
+    temp_min_c: Optional[float] = None  # Celsius
+    temp_max_c: Optional[float] = None  # Celsius
+    flocculation: Optional[str] = None  # Low, Medium, High, Very High
+    amount_l: Optional[float] = None  # Liters (if liquid)
+    amount_kg: Optional[float] = None  # Kg (if dry)
+    add_to_secondary: Optional[bool] = None
+    best_for: Optional[str] = None
+    times_cultured: Optional[int] = None
+    max_reuse: Optional[int] = None
+    notes: Optional[str] = None
 
 
 @dataclass
@@ -76,6 +86,19 @@ class ParsedHop:
 
 
 @dataclass
+class ParsedMisc:
+    """Misc ingredient data extracted from BeerXML."""
+    name: str
+    type: Optional[str] = None  # Spice, Fining, Water Agent, Herb, Flavor, Other
+    use: Optional[str] = None  # Boil, Mash, Primary, Secondary, Bottling
+    time_min: Optional[float] = None  # Minutes
+    amount_kg: Optional[float] = None  # Kg or L (check amount_is_weight)
+    amount_is_weight: Optional[bool] = None
+    use_for: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@dataclass
 class ParsedRecipe:
     """Recipe data extracted from BeerXML."""
     name: str
@@ -91,6 +114,8 @@ class ParsedRecipe:
     yeast: Optional[ParsedYeast] = None
     fermentables: list[ParsedFermentable] = field(default_factory=list)
     hops: list[ParsedHop] = field(default_factory=list)
+    yeasts: list[ParsedYeast] = field(default_factory=list)
+    miscs: list[ParsedMisc] = field(default_factory=list)
     raw_xml: str = ""
 
 
@@ -186,6 +211,73 @@ def _parse_hops(recipe_elem) -> list[ParsedHop]:
     return hops
 
 
+def _get_int(elem, tag: str) -> Optional[int]:
+    """Get integer value of child element."""
+    text = _get_text(elem, tag)
+    if text:
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _get_bool(elem, tag: str) -> Optional[bool]:
+    """Get boolean value of child element."""
+    text = _get_text(elem, tag)
+    if text:
+        return text.upper() == 'TRUE'
+    return None
+
+
+def _parse_yeasts(recipe_elem) -> list[ParsedYeast]:
+    """Parse YEASTS section."""
+    yeasts = []
+    for yeast_elem in recipe_elem.findall('.//YEASTS/YEAST'):
+        # Determine if amount is weight (dry) or volume (liquid)
+        amount = _get_float(yeast_elem, 'AMOUNT')
+        amount_is_weight = _get_bool(yeast_elem, 'AMOUNT_IS_WEIGHT')
+
+        yeast = ParsedYeast(
+            name=_get_text(yeast_elem, 'NAME') or "Unknown",
+            lab=_get_text(yeast_elem, 'LABORATORY'),
+            product_id=_get_text(yeast_elem, 'PRODUCT_ID'),
+            type=_get_text(yeast_elem, 'TYPE'),
+            form=_get_text(yeast_elem, 'FORM'),
+            attenuation_percent=_get_float(yeast_elem, 'ATTENUATION'),
+            temp_min_c=_get_float(yeast_elem, 'MIN_TEMPERATURE'),
+            temp_max_c=_get_float(yeast_elem, 'MAX_TEMPERATURE'),
+            flocculation=_get_text(yeast_elem, 'FLOCCULATION'),
+            amount_kg=amount if amount_is_weight else None,
+            amount_l=amount if amount_is_weight is False else None,
+            add_to_secondary=_get_bool(yeast_elem, 'ADD_TO_SECONDARY'),
+            best_for=_get_text(yeast_elem, 'BEST_FOR'),
+            times_cultured=_get_int(yeast_elem, 'TIMES_CULTURED'),
+            max_reuse=_get_int(yeast_elem, 'MAX_REUSE'),
+            notes=_get_text(yeast_elem, 'NOTES'),
+        )
+        yeasts.append(yeast)
+    return yeasts
+
+
+def _parse_miscs(recipe_elem) -> list[ParsedMisc]:
+    """Parse MISCS section."""
+    miscs = []
+    for misc_elem in recipe_elem.findall('.//MISCS/MISC'):
+        misc = ParsedMisc(
+            name=_get_text(misc_elem, 'NAME') or "Unknown",
+            type=_get_text(misc_elem, 'TYPE'),
+            use=_get_text(misc_elem, 'USE'),
+            time_min=_get_float(misc_elem, 'TIME'),
+            amount_kg=_get_float(misc_elem, 'AMOUNT'),
+            amount_is_weight=_get_bool(misc_elem, 'AMOUNT_IS_WEIGHT'),
+            use_for=_get_text(misc_elem, 'USE_FOR'),
+            notes=_get_text(misc_elem, 'NOTES'),
+        )
+        miscs.append(misc)
+    return miscs
+
+
 def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
     """Parse a single RECIPE element."""
     recipe = ParsedRecipe(
@@ -212,16 +304,29 @@ def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
             guide=_get_text(style_elem, 'STYLE_GUIDE'),
         )
 
-    # Parse first yeast
+    # Parse first yeast (for backward compatibility with old single-yeast field)
     yeast_elem = elem.find('.//YEASTS/YEAST')
     if yeast_elem is not None:
+        amount = _get_float(yeast_elem, 'AMOUNT')
+        amount_is_weight = _get_bool(yeast_elem, 'AMOUNT_IS_WEIGHT')
+
         recipe.yeast = ParsedYeast(
-            name=_get_text(yeast_elem, 'NAME'),
+            name=_get_text(yeast_elem, 'NAME') or "Unknown",
             lab=_get_text(yeast_elem, 'LABORATORY'),
             product_id=_get_text(yeast_elem, 'PRODUCT_ID'),
-            temp_min=_get_float(yeast_elem, 'MIN_TEMPERATURE'),
-            temp_max=_get_float(yeast_elem, 'MAX_TEMPERATURE'),
-            attenuation=_get_float(yeast_elem, 'ATTENUATION'),
+            type=_get_text(yeast_elem, 'TYPE'),
+            form=_get_text(yeast_elem, 'FORM'),
+            attenuation_percent=_get_float(yeast_elem, 'ATTENUATION'),
+            temp_min_c=_get_float(yeast_elem, 'MIN_TEMPERATURE'),
+            temp_max_c=_get_float(yeast_elem, 'MAX_TEMPERATURE'),
+            flocculation=_get_text(yeast_elem, 'FLOCCULATION'),
+            amount_kg=amount if amount_is_weight else None,
+            amount_l=amount if amount_is_weight is False else None,
+            add_to_secondary=_get_bool(yeast_elem, 'ADD_TO_SECONDARY'),
+            best_for=_get_text(yeast_elem, 'BEST_FOR'),
+            times_cultured=_get_int(yeast_elem, 'TIMES_CULTURED'),
+            max_reuse=_get_int(yeast_elem, 'MAX_REUSE'),
+            notes=_get_text(yeast_elem, 'NOTES'),
         )
 
     # Parse fermentables
@@ -229,5 +334,11 @@ def _parse_recipe(elem, raw_xml: str) -> ParsedRecipe:
 
     # Parse hops
     recipe.hops = _parse_hops(elem)
+
+    # Parse yeasts (all yeasts, not just first one)
+    recipe.yeasts = _parse_yeasts(elem)
+
+    # Parse misc ingredients
+    recipe.miscs = _parse_miscs(elem)
 
     return recipe

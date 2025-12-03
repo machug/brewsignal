@@ -285,16 +285,45 @@ async def update_batch(
     return batch
 
 
-@router.delete("/{batch_id}")
-async def delete_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete a batch."""
+@router.post("/{batch_id}/delete")
+async def soft_delete_batch(
+    batch_id: int,
+    hard_delete: bool = Query(False, description="Cascade delete readings"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft delete or hard delete a batch.
+
+    - Soft delete (default): Sets deleted_at timestamp, preserves all data
+    - Hard delete: Cascade removes all readings via relationship
+    """
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    await db.delete(batch)
+    if hard_delete:
+        # Hard delete: cascade removes readings via relationship
+        await db.delete(batch)
+        await db.commit()
+        return {"status": "deleted", "type": "hard", "batch_id": batch_id}
+    else:
+        # Soft delete: set timestamp
+        batch.deleted_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"status": "deleted", "type": "soft", "batch_id": batch_id}
+
+
+@router.post("/{batch_id}/restore")
+async def restore_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Restore a soft-deleted batch."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not batch.deleted_at:
+        raise HTTPException(status_code=400, detail="Batch is not deleted")
+
+    batch.deleted_at = None
     await db.commit()
-    return {"status": "deleted"}
+    return {"status": "restored", "batch_id": batch_id}
 
 
 @router.get("/{batch_id}/progress", response_model=BatchProgressResponse)

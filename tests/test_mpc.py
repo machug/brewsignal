@@ -128,3 +128,42 @@ class TestMPCTemperatureController:
 
         assert controller.has_cooling is False
         assert controller.cooling_rate is None
+
+    def test_learns_cooling_rate_from_cooler_data(self):
+        """Controller learns cooling rate from cooler-ON periods."""
+        controller = MPCTemperatureController()
+
+        # History with mixed heating/cooling/idle periods
+        # Cooler provides active cooling beyond natural ambient exchange
+        result = controller.learn_thermal_model(
+            temp_history=[21.1, 21.7, 22.2, 20.6, 19.4, 19.2, 19.0],
+            time_history=[0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
+            heater_history=[False, True, True, False, False, False, False],
+            ambient_history=[18.3, 18.3, 18.3, 18.3, 18.3, 18.3, 18.3],
+            cooler_history=[False, False, False, True, True, False, False],
+        )
+
+        assert result["success"] is True
+        assert result["has_cooling"] is True
+        assert result["cooling_rate"] is not None
+        assert result["cooling_rate"] > 0  # Cooling rate should be positive
+        assert controller.has_cooling is True
+        assert controller.cooling_rate is not None
+
+    def test_backward_compatibility_heater_only(self):
+        """Controller works in heater-only mode when no cooler data provided."""
+        controller = MPCTemperatureController()
+
+        # Learn without providing cooler_history
+        result = controller.learn_thermal_model(
+            temp_history=[20.0, 20.3, 20.6, 20.7],
+            time_history=[0, 0.25, 0.5, 0.75],
+            heater_history=[True, True, True, False],
+            ambient_history=[18.3, 18.3, 18.3, 18.3],
+            # NO cooler_history parameter
+        )
+
+        assert result["success"] is True
+        assert result["has_cooling"] is False
+        assert result["cooling_rate"] is None
+        assert controller.has_cooling is False

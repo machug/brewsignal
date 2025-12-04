@@ -61,6 +61,7 @@ class MPCTemperatureController:
         time_history: list[float],
         heater_history: list[bool],
         ambient_history: list[float],
+        cooler_history: Optional[list[bool]] = None,
     ) -> dict:
         """Learn thermal model parameters from historical data.
 
@@ -69,24 +70,25 @@ class MPCTemperatureController:
             time_history: Time stamps (hours)
             heater_history: Heater state (True=ON, False=OFF)
             ambient_history: Ambient temperature (°C)
+            cooler_history: Cooler state (True=ON, False=OFF), optional
 
         Returns:
             Dictionary with learned parameters and fit quality
         """
         # Validate all histories have same length
-        min_len = min(
-            len(temp_history),
-            len(time_history),
-            len(heater_history),
-            len(ambient_history),
-        )
+        histories = [temp_history, time_history, heater_history, ambient_history]
+        if cooler_history is not None:
+            histories.append(cooler_history)
+        min_len = min(len(h) for h in histories)
 
         if min_len < 3:
             return {
                 "success": False,
                 "reason": "insufficient_data",
                 "heating_rate": None,
+                "cooling_rate": None,
                 "ambient_coeff": None,
+                "has_cooling": False,
             }
 
         # Slice all histories to same length to prevent IndexError
@@ -94,10 +96,13 @@ class MPCTemperatureController:
         time_history = time_history[-min_len:]
         heater_history = heater_history[-min_len:]
         ambient_history = ambient_history[-min_len:]
+        if cooler_history is not None:
+            cooler_history = cooler_history[-min_len:]
 
         # Calculate temperature rates (dT/dt)
-        heating_rates = []
-        cooling_rates = []
+        idle_rates = []      # Both heater and cooler OFF
+        heating_rates = []   # Heater ON, cooler OFF
+        cooling_rates = []   # Cooler ON, heater OFF
 
         for i in range(1, len(temp_history)):
             dt = time_history[i] - time_history[i - 1]
@@ -110,19 +115,35 @@ class MPCTemperatureController:
             # Temperature difference from ambient
             temp_above_ambient = temp_history[i - 1] - ambient_history[i - 1]
 
-            if heater_history[i - 1]:
+            heater_on = heater_history[i - 1]
+            cooler_on = cooler_history[i - 1] if cooler_history else False
+
+            # Validate mutual exclusion
+            if heater_on and cooler_on:
+                import logging
+                logging.warning(f"Point {i}: Both heater and cooler ON (mutual exclusion violation)")
+                continue  # Skip this point
+
+            # Categorize by regime
+            if heater_on:
                 # Heater ON: rate = heating_rate - ambient_coeff * (T - T_ambient)
                 heating_rates.append((rate, temp_above_ambient))
-            else:
-                # Heater OFF: rate = -ambient_coeff * (T - T_ambient)
+            elif cooler_on:
+                # Cooler ON: rate = -cooling_rate - ambient_coeff * (T - T_ambient)
                 cooling_rates.append((rate, temp_above_ambient))
+            else:
+                # Both OFF: rate = -ambient_coeff * (T - T_ambient)
+                idle_rates.append((rate, temp_above_ambient))
 
-        # Estimate cooling coefficient from cooling periods
-        if cooling_rates:
+        # Estimate ambient coefficient from idle periods (both OFF)
+        # Fallback to cooling periods if no idle data
+        coeff_sources = idle_rates if idle_rates else cooling_rates
+
+        if coeff_sources:
             # rate = -ambient_coeff * temp_above_ambient
             # ambient_coeff = -rate / temp_above_ambient
             coeffs = []
-            for rate, temp_diff in cooling_rates:
+            for rate, temp_diff in coeff_sources:
                 if abs(temp_diff) > 0.1:  # Avoid division by near-zero
                     coeff = -rate / temp_diff
                     if coeff > 0:  # Sanity check
@@ -145,13 +166,35 @@ class MPCTemperatureController:
         else:
             self.heating_rate = 1.1  # Default fallback (1.1°C/hour, ~2°F/hour equivalent)
 
+        # Learn cooling rate from cooling periods (if cooler_history provided)
+        if cooler_history and cooling_rates:
+            # rate = -cooling_rate - ambient_coeff * temp_above_ambient
+            # cooling_rate = -rate - ambient_coeff * temp_above_ambient
+            net_cooling_rates = []
+            for rate, temp_diff in cooling_rates:
+                net_rate = -rate - self.ambient_coeff * temp_diff
+                if net_rate > 0:  # Sanity check (cooling_rate should be positive)
+                    net_cooling_rates.append(net_rate)
+
+            if net_cooling_rates:
+                self.cooling_rate = float(np.median(net_cooling_rates))
+                self.has_cooling = True
+            else:
+                self.cooling_rate = None
+                self.has_cooling = False
+        else:
+            self.cooling_rate = None
+            self.has_cooling = False
+
         self.has_model = True
 
         return {
             "success": True,
             "reason": None,
             "heating_rate": self.heating_rate,
+            "cooling_rate": self.cooling_rate,
             "ambient_coeff": self.ambient_coeff,
+            "has_cooling": self.has_cooling,
         }
 
     def compute_action(

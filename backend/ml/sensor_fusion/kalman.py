@@ -65,13 +65,14 @@ class TiltKalmanFilter:
         # Initial state
         self.kf.x = np.array([initial_sg, 0.0, initial_temp, 0.0], dtype=float)
 
-        # Process noise covariance
-        self.kf.Q = np.diag([
+        # Base process noise covariance (scaled by dt in update())
+        self.base_Q = np.diag([
             process_noise_sg,      # sg variance
             process_noise_sg / 10, # sg_rate variance
             process_noise_temp,    # temp variance
             process_noise_temp / 10,  # temp_rate variance
         ])
+        self.kf.Q = self.base_Q.copy()
 
         # Base measurement noise covariance (adjusted by RSSI)
         self.base_R = np.diag([measurement_noise_sg, measurement_noise_temp])
@@ -81,16 +82,16 @@ class TiltKalmanFilter:
         self.kf.P = np.diag([1e-4, 1e-6, 1.0, 0.01])
 
     def _rssi_to_noise_factor(self, rssi: float) -> float:
-        """Convert RSSI to measurement noise multiplier.
+        """Convert RSSI to measurement noise standard deviation multiplier.
 
-        Strong signal (-40 dBm) = 1x noise (trust measurement)
-        Weak signal (-90 dBm) = 10x noise (distrust measurement)
+        Strong signal (-40 dBm) = 1x std (trust measurement)
+        Weak signal (-90 dBm) = 10x std (distrust measurement)
 
         Args:
             rssi: Bluetooth signal strength in dBm
 
         Returns:
-            Noise multiplier (1.0 to 10.0)
+            Standard deviation multiplier (1.0 to 10.0)
         """
         # Normalize RSSI: -40 dBm -> 0, -90 dBm -> 1
         rssi_normalized = np.clip((rssi + 40) / -50, 0, 1)
@@ -124,9 +125,19 @@ class TiltKalmanFilter:
         self.kf.F[0, 1] = dt_hours  # sg += sg_rate * dt
         self.kf.F[2, 3] = dt_hours  # temp += temp_rate * dt
 
+        # Scale process noise with time delta
+        # Process noise accumulates over time, so scale by dt
+        self.kf.Q = np.diag([
+            self.base_Q[0, 0] * dt_hours,  # sg variance scales with time
+            self.base_Q[1, 1] * dt_hours,  # sg_rate variance scales with time
+            self.base_Q[2, 2] * dt_hours,  # temp variance scales with time
+            self.base_Q[3, 3] * dt_hours,  # temp_rate variance scales with time
+        ])
+
         # Adjust measurement noise based on signal quality
+        # rssi_factor is a std multiplier, so square it for variance
         rssi_factor = self._rssi_to_noise_factor(rssi)
-        self.kf.R = self.base_R * rssi_factor
+        self.kf.R = self.base_R * (rssi_factor ** 2)
 
         # Predict next state
         self.kf.predict()

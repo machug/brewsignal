@@ -344,6 +344,7 @@ async def control_batch_temperature(
                     _batch_heater_states[batch_id] = {"state": ha_heater_state}
             elif ha_heater_state == "unavailable":
                 logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
+                return  # Early return - cannot control unavailable entity
 
     # Sync cached cooler state with actual HA state
     if cooler_entity:
@@ -361,6 +362,7 @@ async def control_batch_temperature(
                     _batch_cooler_states[batch_id] = {"state": ha_cooler_state}
             elif ha_cooler_state == "unavailable":
                 logger.warning(f"Batch {batch_id}: Cooler entity {cooler_entity} is unavailable in HA")
+                return  # Early return - cannot control unavailable entity
 
     current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
     current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
@@ -418,37 +420,49 @@ async def control_batch_temperature(
     )
 
     # Automatic control logic with mutual exclusion
+    # CRITICAL: Turn OFF opposite device FIRST, then turn ON current device
+    # This prevents both devices from being ON simultaneously
     if wort_temp <= heat_on_threshold:
-        # Need heating
-        if heater_entity and current_heater_state != "on":
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/below threshold {heat_on_threshold:.1f}F, turning heater ON")
-            await set_heater_state_for_batch(
-                ha_client, heater_entity, "on", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
-        # Ensure cooler is OFF (mutual exclusion)
+        # Need heating - FIRST ensure cooler is OFF
         if cooler_entity and current_cooler_state == "on":
             logger.info(f"Batch {batch_id}: Turning cooler OFF (heater needs to run)")
             await set_cooler_state_for_batch(
                 ha_client, cooler_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
+            # Refresh state after change
+            current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
 
-    elif wort_temp >= cool_on_threshold:
-        # Need cooling
-        if cooler_entity and current_cooler_state != "on":
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {cool_on_threshold:.1f}F, turning cooler ON")
-            await set_cooler_state_for_batch(
-                ha_client, cooler_entity, "on", db, batch_id,
+        # THEN turn heater ON (only if cooler is confirmed off)
+        if heater_entity and current_heater_state != "on":
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/below threshold {heat_on_threshold:.1f}F, turning heater ON")
+            await set_heater_state_for_batch(
+                ha_client, heater_entity, "on", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
-        # Ensure heater is OFF (mutual exclusion)
+            # Refresh state after change
+            current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
+
+    elif wort_temp >= cool_on_threshold:
+        # Need cooling - FIRST ensure heater is OFF
         if heater_entity and current_heater_state == "on":
             logger.info(f"Batch {batch_id}: Turning heater OFF (cooler needs to run)")
             await set_heater_state_for_batch(
                 ha_client, heater_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
+            # Refresh state after change
+            current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
+
+        # THEN turn cooler ON (only if heater is confirmed off)
+        if cooler_entity and current_cooler_state != "on":
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {cool_on_threshold:.1f}F, turning cooler ON")
+            await set_cooler_state_for_batch(
+                ha_client, cooler_entity, "on", db, batch_id,
+                wort_temp, ambient_temp, target_temp, device_id
+            )
+            # Refresh state after change
+            current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
 
     else:
         # Within deadband - maintain current states

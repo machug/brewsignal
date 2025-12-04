@@ -72,6 +72,9 @@ async def init_db():
         await conn.run_sync(_migrate_tilts_to_devices)
         await conn.run_sync(_migrate_mark_outliers_invalid)  # Mark historical outliers
 
+    # Add cooler support (runs outside conn.begin() context since it has its own)
+    await _migrate_add_cooler_entity()
+
 
 def _migrate_add_original_gravity(conn):
     """Add original_gravity column to tilts table if not present."""
@@ -423,6 +426,21 @@ def _migrate_add_batch_heater_columns(conn):
             print("Migration: Added unique constraint for fermenting batch devices")
         except Exception as e:
             print(f"Migration: Skipping unique device index creation - {e}")
+
+
+async def _migrate_add_cooler_entity():
+    """Add cooler_entity_id column to batches table."""
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        # Check if column exists
+        result = await conn.execute(text("PRAGMA table_info(batches)"))
+        columns = {row[1] for row in result}
+
+        if "cooler_entity_id" not in columns:
+            await conn.execute(text(
+                "ALTER TABLE batches ADD COLUMN cooler_entity_id VARCHAR(100)"
+            ))
+            print("Migration: Added cooler_entity_id column to batches table")
 
 
 def _migrate_add_batch_id_to_control_events(conn):

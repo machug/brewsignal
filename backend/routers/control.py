@@ -17,7 +17,7 @@ from ..temp_controller import (
     set_manual_override,
     get_latest_tilt_temp,
     get_device_temp,
-    sync_cached_heater_state,
+    sync_cached_state,
 )
 from ..services.ha_client import get_ha_client, init_ha_client
 from .config import get_config_value
@@ -44,8 +44,10 @@ class BatchControlStatusResponse(BaseModel):
     enabled: bool
     heater_state: Optional[str]
     heater_entity: Optional[str]
+    cooler_state: Optional[str]  # NEW: Cooler state ("on", "off", or None)
+    cooler_entity: Optional[str]  # NEW: Cooler entity ID
     override_active: bool
-    override_state: Optional[str]
+    override_state: Optional[str]  # Deprecated - kept for backward compatibility
     override_until: Optional[str]
     target_temp: Optional[float]
     hysteresis: Optional[float]
@@ -54,9 +56,10 @@ class BatchControlStatusResponse(BaseModel):
 
 
 class OverrideRequest(BaseModel):
+    device_type: str = "heater"  # "heater" or "cooler"
     state: Optional[str] = None  # "on", "off", or null to cancel
     duration_minutes: int = 60
-    batch_id: Optional[int] = None  # For batch-specific override
+    batch_id: Optional[int] = None  # Required for batch-specific override
 
 
 class OverrideResponse(BaseModel):
@@ -99,6 +102,40 @@ async def get_heater_entities(db: AsyncSession = Depends(get_db)):
     """Get available heater entities from Home Assistant.
 
     Returns switch.* and input_boolean.* entities that can be used as heaters.
+    """
+    ha_enabled = await get_config_value(db, "ha_enabled")
+    if not ha_enabled:
+        return []
+
+    # Get or initialize HA client
+    ha_client = get_ha_client()
+    if not ha_client:
+        ha_url = await get_config_value(db, "ha_url")
+        ha_token = await get_config_value(db, "ha_token")
+        if ha_url and ha_token:
+            ha_client = init_ha_client(ha_url, ha_token)
+
+    if not ha_client:
+        return []
+
+    # Fetch switch and input_boolean entities
+    entities = await ha_client.get_entities_by_domain(["switch", "input_boolean"])
+
+    return [
+        HeaterEntityResponse(
+            entity_id=e["entity_id"],
+            friendly_name=e["friendly_name"],
+            state=e["state"]
+        )
+        for e in entities
+    ]
+
+
+@router.get("/cooler-entities", response_model=list[HeaterEntityResponse])
+async def get_cooler_entities(db: AsyncSession = Depends(get_db)):
+    """Get available cooler entities from Home Assistant.
+
+    Returns switch.* and input_boolean.* entities that can be used as coolers.
     """
     ha_enabled = await get_config_value(db, "ha_enabled")
     if not ha_enabled:
@@ -172,9 +209,11 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
 
     return BatchControlStatusResponse(
         batch_id=batch_id,
-        enabled=temp_control_enabled and batch.heater_entity_id is not None,
+        enabled=temp_control_enabled and (batch.heater_entity_id is not None or batch.cooler_entity_id is not None),
         heater_state=batch_status["heater_state"],
         heater_entity=batch.heater_entity_id,
+        cooler_state=batch_status["cooler_state"],
+        cooler_entity=batch.cooler_entity_id,
         override_active=batch_status["override_active"],
         override_state=batch_status["override_state"],
         override_until=batch_status["override_until"],
@@ -206,24 +245,37 @@ async def get_events(
 
 @router.post("/override", response_model=OverrideResponse)
 async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_db)):
-    """Set or cancel manual heater override.
+    """Set or cancel manual heater or cooler override.
 
-    - state: "on" to force heater on, "off" to force heater off, null to cancel override
+    Each device type (heater/cooler) has independent override state.
+    - device_type: "heater" or "cooler" (default: "heater")
+    - state: "on" to force device on, "off" to force device off, null to cancel override
     - duration_minutes: how long override lasts (default 60 min, 0 = indefinite)
     - batch_id: required for batch-specific override
     """
     temp_control_enabled = await get_config_value(db, "temp_control_enabled")
+
+    # Validate device_type
+    if request.device_type not in ("heater", "cooler"):
+        return OverrideResponse(
+            success=False,
+            message=f"Invalid device_type: {request.device_type}. Must be 'heater' or 'cooler'.",
+            override_state=None,
+            override_until=None,
+            batch_id=request.batch_id
+        )
+
     # Require batch_id for override (multi-batch mode) - validate early
     if request.batch_id is None:
         return OverrideResponse(
             success=False,
-            message="batch_id is required for heater override",
+            message=f"batch_id is required for {request.device_type} override",
             override_state=None,
             override_until=None,
             batch_id=None
         )
 
-    # Verify batch exists and has heater configured - validate early before other checks
+    # Verify batch exists and has device configured - validate early before other checks
     batch = await db.get(Batch, request.batch_id)
     if not batch:
         return OverrideResponse(
@@ -252,24 +304,31 @@ async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_
             batch_id=request.batch_id
         )
 
-    if not batch.heater_entity_id:
+    # Validate that batch has the requested device entity configured
+    entity_id = batch.heater_entity_id if request.device_type == "heater" else batch.cooler_entity_id
+    if not entity_id:
         return OverrideResponse(
             success=False,
-            message=f"Batch {request.batch_id} has no heater entity configured",
+            message=f"Batch {request.batch_id} has no {request.device_type} entity configured",
             override_state=None,
             override_until=None,
             batch_id=request.batch_id
         )
 
-    success = set_manual_override(request.state, request.duration_minutes, batch_id=request.batch_id)
+    success = set_manual_override(
+        state=request.state,
+        duration_minutes=request.duration_minutes,
+        batch_id=request.batch_id,
+        device_type=request.device_type
+    )
 
     if success:
         batch_status = get_batch_control_status(request.batch_id)
         if request.state is None:
-            message = f"Override cancelled for batch {request.batch_id}, returning to automatic control"
+            message = f"{request.device_type.capitalize()} override cancelled for batch {request.batch_id}, returning to automatic control"
         else:
             duration_msg = f"for {request.duration_minutes} minutes" if request.duration_minutes > 0 else "indefinitely"
-            message = f"Heater override for batch {request.batch_id} set to {request.state} {duration_msg}"
+            message = f"{request.device_type.capitalize()} override for batch {request.batch_id} set to {request.state} {duration_msg}"
 
         return OverrideResponse(
             success=True,
@@ -281,7 +340,7 @@ async def set_override(request: OverrideRequest, db: AsyncSession = Depends(get_
     else:
         return OverrideResponse(
             success=False,
-            message="Failed to set override",
+            message=f"Failed to set {request.device_type} override",
             override_state=None,
             override_until=None,
             batch_id=request.batch_id
@@ -353,7 +412,7 @@ async def get_heater_state(
 
         # Keep controller cache aligned with the actual HA state
         if batch_id:
-            sync_cached_heater_state(heater_state, batch_id=batch_id)
+            sync_cached_state(heater_state, batch_id=batch_id, device_type="heater")
 
         return HeaterStateResponse(
             state=heater_state,
@@ -434,7 +493,7 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
         logger.info(f"Heater {heater_entity} manually toggled to {request.state}{batch_info}")
         # Keep controller cache aligned with manual toggles
         if request.batch_id:
-            sync_cached_heater_state(request.state, batch_id=request.batch_id)
+            sync_cached_state(request.state, batch_id=request.batch_id, device_type="heater")
         return HeaterToggleResponse(
             success=True,
             message=f"Heater turned {request.state}",

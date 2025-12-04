@@ -261,21 +261,32 @@ Devices (Tilts) must be **paired** before logging readings. This prevents data p
 
 ### Temperature Control
 
-**Per-Batch Control:** Each batch can have independent temperature control with its own heater entity, target, and hysteresis.
+**Per-Batch Control:** Each batch can have independent temperature control with its own heater and/or cooler entity, target, and hysteresis.
 
 **Architecture:**
 
-- `temp_controller.py` runs background loop (every 10s)
-- Fetches fermenting batches with heaters
+- `temp_controller.py` runs background loop (every 60s)
+- Fetches fermenting batches with heater/cooler entities
 - Compares current temp (from latest_readings state) to target
 - Sends Home Assistant API calls to control switch entities
-- Supports manual override (Force ON/OFF) per batch
+- Supports manual override (Force ON/OFF) per device per batch
+- Enforces mutual exclusion (heater and cooler never run simultaneously)
 
-**Control Logic:**
+**Control Logic (Symmetric Hysteresis):**
 
-- Turn ON if: `current_temp < (target - hysteresis/2)`
-- Turn OFF if: `current_temp > (target + hysteresis/2)`
-- Within band: maintain current state (prevent oscillation)
+- Turn heater ON if: `current_temp <= (target - hysteresis)`
+- Turn heater OFF if: `current_temp >= (target + hysteresis)`
+- Turn cooler ON if: `current_temp >= (target + hysteresis)`
+- Turn cooler OFF if: `current_temp <= (target - hysteresis)`
+- Within deadband: maintain current states (prevent oscillation)
+- Mutual exclusion: Turning heater ON ensures cooler is OFF (and vice versa)
+
+**Operational Modes:**
+- Heating-only: `heater_entity_id` set, `cooler_entity_id` NULL
+- Cooling-only: `cooler_entity_id` set, `heater_entity_id` NULL
+- Dual-mode: Both entities set (full temperature regulation)
+
+**Min Cycle Time:** 5 minutes for both heater and cooler to prevent equipment damage and compressor short-cycling.
 
 ### Calibration
 

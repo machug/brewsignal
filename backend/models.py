@@ -342,6 +342,7 @@ class Batch(Base):
 
     # Temperature control - per-batch heater assignment
     heater_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
+    cooler_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
     temp_target: Mapped[Optional[float]] = mapped_column()  # Override target temp for this batch
     temp_hysteresis: Mapped[Optional[float]] = mapped_column()  # Override hysteresis for this batch
 

@@ -159,6 +159,7 @@ export interface BatchResponse {
 	recipe?: RecipeResponse;
 	// Temperature control
 	heater_entity_id?: string;
+	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
 	// Soft delete
@@ -175,6 +176,7 @@ export interface BatchCreate {
 	notes?: string;
 	// Temperature control
 	heater_entity_id?: string;
+	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
 }
@@ -191,6 +193,7 @@ export interface BatchUpdate {
 	notes?: string;
 	// Temperature control
 	heater_entity_id?: string;
+	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
 }
@@ -229,6 +232,8 @@ export interface BatchControlStatus {
 	enabled: boolean;
 	heater_state?: string;
 	heater_entity?: string;
+	cooler_state?: string;
+	cooler_entity?: string;
 	override_active: boolean;
 	override_state?: string;
 	override_until?: string;
@@ -247,12 +252,33 @@ export interface HeaterEntity {
 }
 
 /**
+ * Override request for heater or cooler control
+ */
+export interface OverrideRequest {
+	device_type?: string; // "heater" or "cooler" (defaults to "heater")
+	state: string | null;
+	duration_minutes?: number;
+	batch_id?: number;
+}
+
+/**
  * Fetch available heater entities from Home Assistant
  */
 export async function fetchHeaterEntities(): Promise<HeaterEntity[]> {
 	const response = await fetch(`${BASE_URL}/control/heater-entities`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch heater entities: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch available cooler entities from Home Assistant
+ */
+export async function fetchCoolerEntities(): Promise<HeaterEntity[]> {
+	const response = await fetch(`${BASE_URL}/control/cooler-entities`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch cooler entities: ${response.statusText}`);
 	}
 	return response.json();
 }
@@ -286,12 +312,18 @@ export async function toggleBatchHeater(batchId: number, state: 'on' | 'off'): P
 export async function setBatchHeaterOverride(
 	batchId: number,
 	state: 'on' | 'off' | null,
-	durationMinutes: number = 60
+	durationMinutes: number = 60,
+	deviceType: string = 'heater'
 ): Promise<{ success: boolean; message: string; override_state?: string; override_until?: string }> {
 	const response = await fetch(`${BASE_URL}/control/override`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ state, duration_minutes: durationMinutes, batch_id: batchId })
+		body: JSON.stringify({
+			state,
+			duration_minutes: durationMinutes,
+			batch_id: batchId,
+			device_type: deviceType
+		})
 	});
 	return response.json();
 }

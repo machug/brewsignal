@@ -173,9 +173,15 @@ async def create_batch(
     await db.commit()
     await db.refresh(db_batch)
 
-    # Load recipe relationship for response
+    # Load recipe relationship with nested style for response
     if db_batch.recipe_id:
-        await db.refresh(db_batch, ["recipe"])
+        query = (
+            select(Batch)
+            .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+            .where(Batch.id == db_batch.id)
+        )
+        result = await db.execute(query)
+        db_batch = result.scalar_one()
 
     return db_batch
 

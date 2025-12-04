@@ -27,6 +27,7 @@ class TestMPCTemperatureController:
         )
 
         assert action["heater_on"] is None
+        assert action["cooler_on"] is None
         assert action["reason"] == "no_model"
 
     def test_computes_heater_action_heating(self):
@@ -97,6 +98,7 @@ class TestMPCTemperatureController:
         )
 
         assert action["heater_on"] is False
+        assert action["cooler_on"] is False or action["cooler_on"] is None  # Could be False (dual) or None (heater-only)
         assert "cooling" in action["reason"].lower() or "above" in action["reason"].lower()
 
     def test_predicts_future_temperature_trajectory(self):
@@ -114,6 +116,7 @@ class TestMPCTemperatureController:
         trajectory = controller.predict_trajectory(
             initial_temp=20.0,
             heater_sequence=[True, True, False, False],  # 4 time steps
+            cooler_sequence=[False, False, False, False],  # 4 time steps
             ambient_temp=18.3
         )
 
@@ -167,3 +170,29 @@ class TestMPCTemperatureController:
         assert result["has_cooling"] is False
         assert result["cooling_rate"] is None
         assert controller.has_cooling is False
+
+    def test_computes_cooler_action_when_above_target(self):
+        """Controller turns on cooler when above target."""
+        controller = MPCTemperatureController()
+
+        # Learn dual-mode model
+        controller.learn_thermal_model(
+            temp_history=[21.1, 21.7, 22.2, 21.7, 21.1, 20.6],
+            time_history=[0, 0.5, 1.0, 1.5, 2.0, 2.5],
+            heater_history=[False, True, True, False, False, False],
+            ambient_history=[18.3, 18.3, 18.3, 18.3, 18.3, 18.3],
+            cooler_history=[False, False, False, True, True, False],
+        )
+
+        # Above target: should activate cooler
+        action = controller.compute_action(
+            current_temp=22.2,
+            target_temp=21.1,
+            ambient_temp=18.3,
+            heater_currently_on=False,
+            cooler_currently_on=False,
+        )
+
+        assert action["heater_on"] is False
+        assert action["cooler_on"] is True
+        assert "cooling" in action["reason"].lower()

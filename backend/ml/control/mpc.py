@@ -203,18 +203,21 @@ class MPCTemperatureController:
         target_temp: float,
         ambient_temp: float,
         heater_currently_on: Optional[bool] = None,
+        cooler_currently_on: Optional[bool] = None,
     ) -> dict:
-        """Compute optimal heater action using MPC.
+        """Compute optimal heater/cooler action using MPC.
 
         Args:
             current_temp: Current fermentation temperature (°C)
             target_temp: Target temperature (°C)
             ambient_temp: Ambient/room temperature (°C)
             heater_currently_on: Current heater state (for continuity preference)
+            cooler_currently_on: Current cooler state (for continuity preference)
 
         Returns:
             Dictionary with control decision:
             - heater_on: True/False/None (None if no model)
+            - cooler_on: True/False/None (None if no model or no cooling)
             - reason: Explanation for decision
             - predicted_temp: Predicted temperature at end of horizon
             - cost: Optimization cost (lower is better)
@@ -222,16 +225,18 @@ class MPCTemperatureController:
         if not self.has_model:
             return {
                 "heater_on": None,
+                "cooler_on": None,
                 "reason": "no_model",
                 "predicted_temp": None,
                 "cost": None,
             }
 
-        # If already above target, don't heat
-        if current_temp >= target_temp:
+        # If above target and no cooling available, turn off heater
+        if current_temp >= target_temp and not self.has_cooling:
             return {
                 "heater_on": False,
-                "reason": "above_target",
+                "cooler_on": False,
+                "reason": "above_target_no_cooling",
                 "predicted_temp": current_temp,
                 "cost": 0,
             }
@@ -239,19 +244,46 @@ class MPCTemperatureController:
         # Compute number of time steps in horizon
         n_steps = int(self.horizon_hours / self.dt_hours)
 
-        # Evaluate both heater ON and OFF for first action
+        # Build list of actions to evaluate
+        actions_to_evaluate = []
+
+        # Action 1: Heater ON, Cooler OFF
+        actions_to_evaluate.append({
+            "heater_on": True,
+            "cooler_on": False,
+            "heater_seq": [True] * n_steps,
+            "cooler_seq": [False] * n_steps,
+        })
+
+        # Action 2: Both OFF
+        actions_to_evaluate.append({
+            "heater_on": False,
+            "cooler_on": False,
+            "heater_seq": [False] * n_steps,
+            "cooler_seq": [False] * n_steps,
+        })
+
+        # Action 3: Cooler ON, Heater OFF (only if cooling available)
+        if self.has_cooling:
+            actions_to_evaluate.append({
+                "heater_on": False,
+                "cooler_on": True,
+                "heater_seq": [False] * n_steps,
+                "cooler_seq": [True] * n_steps,
+            })
+
+        # Evaluate all actions
         best_action = None
         best_cost = float("inf")
         best_trajectory = None
 
-        for first_action in [True, False]:
-            # Simple heuristic: maintain first action for entire horizon
-            # More sophisticated MPC would try all 2^n_steps sequences
-            heater_sequence = [first_action] * n_steps
-
+        for action in actions_to_evaluate:
             # Predict trajectory
             trajectory = self.predict_trajectory(
-                current_temp, heater_sequence, ambient_temp
+                current_temp,
+                action["heater_seq"],
+                action["cooler_seq"],
+                ambient_temp
             )
 
             # Calculate cost: penalize distance from target and overshoot
@@ -265,26 +297,32 @@ class MPCTemperatureController:
                     # Below target: normal penalty
                     cost += error ** 2
 
-            # Small penalty for switching heater state (reduce cycling)
-            if heater_currently_on is not None and first_action != heater_currently_on:
+            # Small penalty for switching state (reduce cycling)
+            if heater_currently_on is not None and action["heater_on"] != heater_currently_on:
+                cost += 0.1
+            if cooler_currently_on is not None and action["cooler_on"] != cooler_currently_on:
                 cost += 0.1
 
             if cost < best_cost:
                 best_cost = cost
-                best_action = first_action
+                best_action = action
                 best_trajectory = trajectory
 
         # Determine reason
-        if best_action:
-            if best_trajectory[-1] < target_temp:
-                reason = "heating_to_target"
-            else:
-                reason = "maintaining_target"
-        else:
+        if best_action["heater_on"]:
+            reason = "heating_to_target"
+        elif best_action["cooler_on"]:
+            reason = "cooling_to_target"
+        elif best_trajectory and best_trajectory[-1] > target_temp:
             reason = "preventing_overshoot"
+        elif best_trajectory and best_trajectory[-1] < target_temp:
+            reason = "preventing_undershoot"
+        else:
+            reason = "maintaining_target"
 
         return {
-            "heater_on": best_action,
+            "heater_on": best_action["heater_on"],
+            "cooler_on": best_action["cooler_on"],
             "reason": reason,
             "predicted_temp": best_trajectory[-1] if best_trajectory else current_temp,
             "cost": best_cost,
@@ -294,33 +332,49 @@ class MPCTemperatureController:
         self,
         initial_temp: float,
         heater_sequence: list[bool],
+        cooler_sequence: list[bool],
         ambient_temp: float,
     ) -> list[float]:
-        """Predict temperature trajectory given heater sequence.
+        """Predict temperature trajectory given heater and cooler sequences.
 
         Args:
             initial_temp: Starting temperature (°C)
             heater_sequence: Sequence of heater states over horizon
+            cooler_sequence: Sequence of cooler states over horizon
             ambient_temp: Ambient temperature (°C)
 
         Returns:
             List of predicted temperatures at each time step
+
+        Raises:
+            ValueError: If heater and cooler both ON at same time step (mutual exclusion)
         """
         if not self.has_model:
             return [initial_temp] * len(heater_sequence)
 
+        # Validate sequences have same length
+        if len(heater_sequence) != len(cooler_sequence):
+            raise ValueError("Heater and cooler sequences must have same length")
+
         trajectory = []
         temp = initial_temp
 
-        for heater_on in heater_sequence:
-            # Calculate temperature change rate
+        for heater_on, cooler_on in zip(heater_sequence, cooler_sequence):
+            # Enforce mutual exclusion
+            if heater_on and cooler_on:
+                raise ValueError("Cannot have both heater and cooler ON (mutual exclusion)")
+
+            # Calculate temperature change rate based on active system
             temp_above_ambient = temp - ambient_temp
 
             if heater_on:
-                # Heater ON: add heating power, subtract natural cooling
+                # Heater ON: add heating power, subtract ambient cooling
                 rate = self.heating_rate - self.ambient_coeff * temp_above_ambient
+            elif cooler_on and self.has_cooling:
+                # Cooler ON: subtract cooling power and ambient effect
+                rate = -self.cooling_rate - self.ambient_coeff * temp_above_ambient
             else:
-                # Heater OFF: only natural cooling
+                # Both OFF: only ambient effect
                 rate = -self.ambient_coeff * temp_above_ambient
 
             # Clamp rate to physical limits

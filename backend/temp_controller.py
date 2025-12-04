@@ -296,7 +296,7 @@ async def set_cooler_state_for_batch(
     return success
 
 
-async def control_batch_heater(
+async def control_batch_temperature(
     ha_client,
     batch: Batch,
     db,
@@ -304,12 +304,13 @@ async def control_batch_heater(
     global_hysteresis: float,
     ambient_temp: Optional[float],
 ) -> None:
-    """Control heater for a single batch."""
+    """Control both heating and cooling for a single batch."""
     batch_id = batch.id
     device_id = batch.device_id
     heater_entity = batch.heater_entity_id
+    cooler_entity = batch.cooler_entity_id
 
-    if not heater_entity:
+    if not heater_entity and not cooler_entity:
         return
 
     # Get temperature from batch's linked device
@@ -328,77 +329,132 @@ async def control_batch_heater(
     # but does NOT reset the last_change timestamp. This means external changes won't
     # bypass the MIN_CYCLE_MINUTES protection, which is intentional to prevent rapid
     # cycling even when users manually toggle the heater.
-    actual_state = await ha_client.get_state(heater_entity)
-    if actual_state:
-        ha_state = actual_state.get("state", "").lower()
-        if ha_state in ("on", "off"):
-            if batch_id in _batch_heater_states:
-                if _batch_heater_states[batch_id].get("state") != ha_state:
-                    logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {ha_state} (from HA)")
-                # Only update the state, preserve the existing last_change timestamp
-                _batch_heater_states[batch_id]["state"] = ha_state
-            else:
-                # Initialize state tracking for new batch (no last_change yet)
-                _batch_heater_states[batch_id] = {"state": ha_state}
-        elif ha_state == "unavailable":
-            logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
-            return
+    if heater_entity:
+        actual_heater_state = await ha_client.get_state(heater_entity)
+        if actual_heater_state:
+            ha_heater_state = actual_heater_state.get("state", "").lower()
+            if ha_heater_state in ("on", "off"):
+                if batch_id in _batch_heater_states:
+                    if _batch_heater_states[batch_id].get("state") != ha_heater_state:
+                        logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {ha_heater_state} (from HA)")
+                    # Only update the state, preserve the existing last_change timestamp
+                    _batch_heater_states[batch_id]["state"] = ha_heater_state
+                else:
+                    # Initialize state tracking for new batch (no last_change yet)
+                    _batch_heater_states[batch_id] = {"state": ha_heater_state}
+            elif ha_heater_state == "unavailable":
+                logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
 
-    current_state = _batch_heater_states.get(batch_id, {}).get("state")
+    # Sync cached cooler state with actual HA state
+    if cooler_entity:
+        actual_cooler_state = await ha_client.get_state(cooler_entity)
+        if actual_cooler_state:
+            ha_cooler_state = actual_cooler_state.get("state", "").lower()
+            if ha_cooler_state in ("on", "off"):
+                if batch_id in _batch_cooler_states:
+                    if _batch_cooler_states[batch_id].get("state") != ha_cooler_state:
+                        logger.debug(f"Batch {batch_id}: Syncing cooler cache: {_batch_cooler_states[batch_id].get('state')} -> {ha_cooler_state} (from HA)")
+                    # Only update the state, preserve the existing last_change timestamp
+                    _batch_cooler_states[batch_id]["state"] = ha_cooler_state
+                else:
+                    # Initialize state tracking for new batch (no last_change yet)
+                    _batch_cooler_states[batch_id] = {"state": ha_cooler_state}
+            elif ha_cooler_state == "unavailable":
+                logger.warning(f"Batch {batch_id}: Cooler entity {cooler_entity} is unavailable in HA")
 
-    # Check for manual override for this batch
+    current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
+    current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
+
+    # Check for manual overrides for this batch
     if batch_id in _batch_overrides:
         override = _batch_overrides[batch_id]
-        override_until = override.get("until")
-        if override_until and datetime.now(timezone.utc) > override_until:
-            # Override expired
-            logger.info(f"Batch {batch_id}: Manual override expired, returning to auto mode")
-            del _batch_overrides[batch_id]
-        else:
-            # Override active
-            desired_state = override.get("state")
-            if current_state != desired_state:
-                await set_heater_state_for_batch(
-                    ha_client, heater_entity, desired_state, db, batch_id,
-                    wort_temp, ambient_temp, target_temp, device_id, force=True
-                )
+
+        # Handle heater override
+        heater_override = override.get("heater")
+        if heater_override:
+            override_until = heater_override.get("until")
+            if override_until and datetime.now(timezone.utc) > override_until:
+                # Override expired
+                logger.info(f"Batch {batch_id}: Heater override expired, returning to auto mode")
+                del _batch_overrides[batch_id]["heater"]
+            else:
+                # Override active
+                desired_state = heater_override.get("state")
+                if heater_entity and current_heater_state != desired_state:
+                    await set_heater_state_for_batch(
+                        ha_client, heater_entity, desired_state, db, batch_id,
+                        wort_temp, ambient_temp, target_temp, device_id, force=True
+                    )
+
+        # Handle cooler override
+        cooler_override = override.get("cooler")
+        if cooler_override:
+            override_until = cooler_override.get("until")
+            if override_until and datetime.now(timezone.utc) > override_until:
+                # Override expired
+                logger.info(f"Batch {batch_id}: Cooler override expired, returning to auto mode")
+                del _batch_overrides[batch_id]["cooler"]
+            else:
+                # Override active
+                desired_state = cooler_override.get("state")
+                if cooler_entity and current_cooler_state != desired_state:
+                    await set_cooler_state_for_batch(
+                        ha_client, cooler_entity, desired_state, db, batch_id,
+                        wort_temp, ambient_temp, target_temp, device_id, force=True
+                    )
+
+        # If either override is active, skip automatic control
+        if heater_override or cooler_override:
             return
 
-    # Calculate thresholds
+    # Calculate thresholds (symmetric hysteresis)
     heat_on_threshold = round(target_temp - hysteresis, 1)
-    heat_off_threshold = round(target_temp + hysteresis, 1)
+    cool_on_threshold = round(target_temp + hysteresis, 1)
 
     logger.debug(
         f"Batch {batch_id}: Control check: wort={wort_temp:.2f}F, target={target_temp:.2f}F, "
-        f"hysteresis={hysteresis:.2f}F, on_threshold={heat_on_threshold:.2f}F, "
-        f"off_threshold={heat_off_threshold:.2f}F, cached_state={current_state}"
+        f"hysteresis={hysteresis:.2f}F, heat_on<={heat_on_threshold:.2f}F, "
+        f"cool_on>={cool_on_threshold:.2f}F, heater={current_heater_state}, cooler={current_cooler_state}"
     )
 
-    # Automatic control logic with hysteresis
+    # Automatic control logic with mutual exclusion
     if wort_temp <= heat_on_threshold:
-        if current_state != "on":
+        # Need heating
+        if heater_entity and current_heater_state != "on":
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/below threshold {heat_on_threshold:.1f}F, turning heater ON")
             await set_heater_state_for_batch(
                 ha_client, heater_entity, "on", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
-        else:
-            logger.debug(f"Batch {batch_id}: Heater already ON, wort={wort_temp:.1f}F <= on_threshold={heat_on_threshold:.1f}F")
+        # Ensure cooler is OFF (mutual exclusion)
+        if cooler_entity and current_cooler_state == "on":
+            logger.info(f"Batch {batch_id}: Turning cooler OFF (heater needs to run)")
+            await set_cooler_state_for_batch(
+                ha_client, cooler_entity, "off", db, batch_id,
+                wort_temp, ambient_temp, target_temp, device_id
+            )
 
-    elif wort_temp >= heat_off_threshold:
-        if current_state != "off":
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {heat_off_threshold:.1f}F, turning heater OFF")
+    elif wort_temp >= cool_on_threshold:
+        # Need cooling
+        if cooler_entity and current_cooler_state != "on":
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {cool_on_threshold:.1f}F, turning cooler ON")
+            await set_cooler_state_for_batch(
+                ha_client, cooler_entity, "on", db, batch_id,
+                wort_temp, ambient_temp, target_temp, device_id
+            )
+        # Ensure heater is OFF (mutual exclusion)
+        if heater_entity and current_heater_state == "on":
+            logger.info(f"Batch {batch_id}: Turning heater OFF (cooler needs to run)")
             await set_heater_state_for_batch(
                 ha_client, heater_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
-        else:
-            logger.debug(f"Batch {batch_id}: Heater already OFF, wort={wort_temp:.1f}F >= off_threshold={heat_off_threshold:.1f}F")
 
     else:
+        # Within deadband - maintain current states
         logger.debug(
-            f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}F-{heat_off_threshold:.1f}F), "
-            f"maintaining heater state: {current_state}"
+            f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}F-{cool_on_threshold:.1f}F), "
+            f"maintaining states: heater={current_heater_state}, cooler={current_cooler_state}"
         )
 
 
@@ -455,20 +511,20 @@ async def temperature_control_loop() -> None:
                 global_hysteresis = await get_config_value(db, "temp_hysteresis") or 1.0
                 ambient_temp = await get_latest_ambient_temp(db)
 
-                # Get all active batches with heater entities configured
+                # Get all active batches with heater OR cooler entities configured
                 result = await db.execute(
                     select(Batch).where(
                         Batch.status == "fermenting",
-                        Batch.heater_entity_id.isnot(None),
                         Batch.device_id.isnot(None),
+                        (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
                     )
                 )
                 batches = result.scalars().all()
 
-                # Control each batch's heater concurrently for better performance
+                # Control each batch's temperature concurrently for better performance
                 if batches:
                     await asyncio.gather(*[
-                        control_batch_heater(
+                        control_batch_temperature(
                             ha_client, batch, db, global_target, global_hysteresis, ambient_temp
                         )
                         for batch in batches
@@ -480,6 +536,10 @@ async def temperature_control_loop() -> None:
                     if batch_id not in active_batch_ids:
                         logger.debug(f"Cleaning up heater state for inactive batch {batch_id}")
                         del _batch_heater_states[batch_id]
+                for batch_id in list(_batch_cooler_states.keys()):
+                    if batch_id not in active_batch_ids:
+                        logger.debug(f"Cleaning up cooler state for inactive batch {batch_id}")
+                        del _batch_cooler_states[batch_id]
                 for batch_id in list(_batch_overrides.keys()):
                     if batch_id not in active_batch_ids:
                         logger.debug(f"Cleaning up override for inactive batch {batch_id}")

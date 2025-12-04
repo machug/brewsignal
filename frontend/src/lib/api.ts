@@ -185,6 +185,7 @@ export interface BatchUpdate {
 	name?: string;
 	status?: BatchStatus;
 	device_id?: string;
+	recipe_id?: number;
 	brew_date?: string;
 	start_time?: string;
 	end_time?: string;

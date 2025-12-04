@@ -166,11 +166,11 @@
 	function saveOg() {
 		const trimmed = ogEditValue.trim();
 		if (!trimmed) {
-			onOgChange(null);
+			onOgChange?.(null);
 		} else {
 			const parsed = parseFloat(trimmed);
 			if (!isNaN(parsed) && parsed >= 0.99 && parsed <= 1.2) {
-				onOgChange(parsed);
+				onOgChange?.(parsed);
 			}
 		}
 		isEditingOg = false;

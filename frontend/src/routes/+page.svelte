@@ -80,8 +80,9 @@
 			if (tiltReading) {
 				const existing = enhanced.get(batchId) || {
 					batch_id: batchId,
+					status: 'fermenting' as const,
 					measured: {},
-					temperature: {},
+					temperature: { status: 'unknown' as const },
 					progress: {},
 					targets: {}
 				};
@@ -96,10 +97,10 @@
 						...existing.temperature,
 						current: tiltReading.temp,
 						// Determine temperature status based on yeast thresholds (if available)
-						status: existing.temperature?.yeast_min !== undefined && existing.temperature?.yeast_max !== undefined
+						status: existing.temperature.yeast_min !== undefined && existing.temperature.yeast_max !== undefined
 							? (tiltReading.temp < existing.temperature.yeast_min ? 'too_cold' :
 							   tiltReading.temp > existing.temperature.yeast_max ? 'too_hot' : 'in_range')
-							: existing.temperature?.status
+							: existing.temperature.status
 					}
 				});
 			}

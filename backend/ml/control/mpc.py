@@ -23,8 +23,8 @@ class MPCTemperatureController:
     """Model Predictive Controller for fermentation temperature.
 
     The controller learns a simple thermal model from historical data:
-    - Heater ON: dT/dt = heating_rate - cooling_coeff * (T - T_ambient)
-    - Heater OFF: dT/dt = -cooling_coeff * (T - T_ambient)
+    - Heater ON: dT/dt = heating_rate - ambient_coeff * (T - T_ambient)
+    - Heater OFF: dT/dt = -ambient_coeff * (T - T_ambient)
 
     At each control step, it predicts temperature trajectories for all
     possible heater sequences over the horizon and selects the sequence
@@ -86,7 +86,7 @@ class MPCTemperatureController:
                 "success": False,
                 "reason": "insufficient_data",
                 "heating_rate": None,
-                "cooling_coeff": None,
+                "ambient_coeff": None,
             }
 
         # Slice all histories to same length to prevent IndexError
@@ -111,16 +111,16 @@ class MPCTemperatureController:
             temp_above_ambient = temp_history[i - 1] - ambient_history[i - 1]
 
             if heater_history[i - 1]:
-                # Heater ON: rate = heating_rate - cooling_coeff * (T - T_ambient)
+                # Heater ON: rate = heating_rate - ambient_coeff * (T - T_ambient)
                 heating_rates.append((rate, temp_above_ambient))
             else:
-                # Heater OFF: rate = -cooling_coeff * (T - T_ambient)
+                # Heater OFF: rate = -ambient_coeff * (T - T_ambient)
                 cooling_rates.append((rate, temp_above_ambient))
 
         # Estimate cooling coefficient from cooling periods
         if cooling_rates:
-            # rate = -cooling_coeff * temp_above_ambient
-            # cooling_coeff = -rate / temp_above_ambient
+            # rate = -ambient_coeff * temp_above_ambient
+            # ambient_coeff = -rate / temp_above_ambient
             coeffs = []
             for rate, temp_diff in cooling_rates:
                 if abs(temp_diff) > 0.1:  # Avoid division by near-zero
@@ -128,17 +128,17 @@ class MPCTemperatureController:
                     if coeff > 0:  # Sanity check
                         coeffs.append(coeff)
 
-            self.cooling_coeff = float(np.median(coeffs)) if coeffs else 0.1
+            self.ambient_coeff = float(np.median(coeffs)) if coeffs else 0.1
         else:
-            self.cooling_coeff = 0.1  # Default fallback
+            self.ambient_coeff = 0.1  # Default fallback
 
         # Estimate heating rate from heating periods
         if heating_rates:
-            # rate = heating_rate - cooling_coeff * temp_above_ambient
-            # heating_rate = rate + cooling_coeff * temp_above_ambient
+            # rate = heating_rate - ambient_coeff * temp_above_ambient
+            # heating_rate = rate + ambient_coeff * temp_above_ambient
             net_heating_rates = []
             for rate, temp_diff in heating_rates:
-                net_rate = rate + self.cooling_coeff * temp_diff
+                net_rate = rate + self.ambient_coeff * temp_diff
                 net_heating_rates.append(net_rate)
 
             self.heating_rate = float(np.median(net_heating_rates))
@@ -151,7 +151,7 @@ class MPCTemperatureController:
             "success": True,
             "reason": None,
             "heating_rate": self.heating_rate,
-            "cooling_coeff": self.cooling_coeff,
+            "ambient_coeff": self.ambient_coeff,
         }
 
     def compute_action(
@@ -275,10 +275,10 @@ class MPCTemperatureController:
 
             if heater_on:
                 # Heater ON: add heating power, subtract natural cooling
-                rate = self.heating_rate - self.cooling_coeff * temp_above_ambient
+                rate = self.heating_rate - self.ambient_coeff * temp_above_ambient
             else:
                 # Heater OFF: only natural cooling
-                rate = -self.cooling_coeff * temp_above_ambient
+                rate = -self.ambient_coeff * temp_above_ambient
 
             # Clamp rate to physical limits
             rate = np.clip(rate, -self.max_temp_rate, self.max_temp_rate)

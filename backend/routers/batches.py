@@ -276,6 +276,8 @@ async def update_batch(
     # Temperature control fields
     if update.heater_entity_id is not None:
         batch.heater_entity_id = update.heater_entity_id
+    if update.cooler_entity_id is not None:
+        batch.cooler_entity_id = update.cooler_entity_id
     if update.temp_target is not None:
         batch.temp_target = update.temp_target
     if update.temp_hysteresis is not None:
@@ -284,9 +286,13 @@ async def update_batch(
     await db.commit()
     await db.refresh(batch)
 
-    # Load recipe relationship for response
+    # Load recipe relationship for response with eager loading of nested style
     if batch.recipe_id:
-        await db.refresh(batch, ["recipe"])
+        stmt = select(Batch).where(Batch.id == batch_id).options(
+            selectinload(Batch.recipe).selectinload(Recipe.style)
+        )
+        result = await db.execute(stmt)
+        batch = result.scalar_one()
 
     return batch
 

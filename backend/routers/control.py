@@ -56,9 +56,10 @@ class BatchControlStatusResponse(BaseModel):
 
 
 class OverrideRequest(BaseModel):
+    device_type: str = "heater"  # "heater" or "cooler"
     state: Optional[str] = None  # "on", "off", or null to cancel
     duration_minutes: int = 60
-    batch_id: Optional[int] = None  # For batch-specific override
+    batch_id: Optional[int] = None  # Required for batch-specific override
 
 
 class OverrideResponse(BaseModel):

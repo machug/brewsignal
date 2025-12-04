@@ -23,6 +23,9 @@ MIN_CYCLE_MINUTES = 5  # Minimum time between heater state changes
 # Keys are batch_id, values are {"state": "on"/"off", "last_change": datetime}
 _batch_heater_states: dict[int, dict] = {}
 
+# Track per-batch cooler states (same structure as heater states)
+_batch_cooler_states: dict[int, dict] = {}
+
 # Track per-batch manual overrides
 # Keys are batch_id, values are {"state": "on"/"off", "until": datetime or None}
 _batch_overrides: dict[int, dict] = {}
@@ -35,6 +38,9 @@ def cleanup_batch_state(batch_id: int) -> None:
     if batch_id in _batch_heater_states:
         logger.debug(f"Cleaning up heater state for batch {batch_id}")
         del _batch_heater_states[batch_id]
+    if batch_id in _batch_cooler_states:
+        logger.debug(f"Cleaning up cooler state for batch {batch_id}")
+        del _batch_cooler_states[batch_id]
     if batch_id in _batch_overrides:
         logger.debug(f"Cleaning up override for batch {batch_id}")
         del _batch_overrides[batch_id]

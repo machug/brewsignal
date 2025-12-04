@@ -121,3 +121,10 @@ class TestMPCTemperatureController:
         # Temperatures should change based on heater state
         # With heater on, temp should increase
         assert trajectory[1] > trajectory[0]  # Heater on → warming
+
+    def test_initializes_without_cooling_model(self):
+        """Controller initializes without cooling capability."""
+        controller = MPCTemperatureController()
+
+        assert controller.has_cooling is False
+        assert controller.cooling_rate is None

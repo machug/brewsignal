@@ -49,9 +49,11 @@ class MPCTemperatureController:
         self.dt_hours = dt_hours
 
         # Thermal model parameters (learned from data)
-        self.heating_rate: Optional[float] = None  # °C/hour when heater ON
-        self.cooling_coeff: Optional[float] = None  # Cooling coefficient
+        self.heating_rate: Optional[float] = None      # °C/hour when heater ON
+        self.cooling_rate: Optional[float] = None      # °C/hour when cooler ON (active cooling)
+        self.ambient_coeff: Optional[float] = None     # Natural cooling coefficient
         self.has_model = False
+        self.has_cooling = False  # True if cooling model available
 
     def learn_thermal_model(
         self,

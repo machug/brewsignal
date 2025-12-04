@@ -158,7 +158,7 @@
 					</div>
 				</div>
 				<div class="card-body">
-					{#if hasOrphanedData}
+					{#if hasOrphanedData && orphanedReport}
 						<div class="orphaned-summary">
 							<div class="stat-item">
 								<span class="stat-value font-mono text-orange-400">
@@ -201,7 +201,7 @@
 			</div>
 
 			<!-- Cleanup Preview Section -->
-			{#if hasOrphanedData}
+			{#if hasOrphanedData && orphanedReport}
 				<div class="card">
 					<div class="card-header">
 						<h2 class="card-title">Cleanup Preview</h2>

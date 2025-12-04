@@ -15,6 +15,7 @@ MPC solves an optimization problem at each time step:
 4. Repeat at next time step (receding horizon)
 """
 
+import logging
 import numpy as np
 from typing import Optional
 
@@ -120,7 +121,6 @@ class MPCTemperatureController:
 
             # Validate mutual exclusion
             if heater_on and cooler_on:
-                import logging
                 logging.warning(f"Point {i}: Both heater and cooler ON (mutual exclusion violation)")
                 continue  # Skip this point
 

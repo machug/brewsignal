@@ -348,6 +348,24 @@ async def serve_system():
     return FileResponse(static_dir / "system.html")
 
 
+@app.get("/system/{path:path}", response_class=FileResponse)
+async def serve_system_subpages(path: str):
+    """Serve system subpages (maintenance, etc.) - SPA handles routing."""
+    # Try to find a prerendered HTML file for this path
+    # e.g., /system/maintenance -> static/system/maintenance.html
+    html_path = static_dir / "system" / f"{path}.html"
+    if html_path.exists():
+        return FileResponse(html_path)
+
+    # Check if path is a directory with index.html
+    index_path = static_dir / "system" / path / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+
+    # Fall back to index.html for dynamic routes
+    return FileResponse(static_dir / "index.html")
+
+
 @app.get("/devices", response_class=FileResponse)
 async def serve_devices():
     """Serve the devices page."""

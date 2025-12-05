@@ -15,7 +15,7 @@
 	}
 
 	// Calculate ABV from recipe targets if not provided in BeerXML
-	let calculatedABV = $derived(() => {
+	let calculatedABV = $derived.by(() => {
 		if (recipe.abv_target != null) return recipe.abv_target;
 		if (recipe.og_target && recipe.fg_target) {
 			return (recipe.og_target - recipe.fg_target) * 131.25;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { RecipeResponse } from '$lib/api';
 	import { formatGravity } from '$lib/stores/config.svelte';
+	import { ABV_MULTIPLIER } from '$lib/constants';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
@@ -18,7 +19,7 @@
 	let calculatedABV = $derived.by(() => {
 		if (recipe.abv_target != null) return recipe.abv_target;
 		if (recipe.og_target && recipe.fg_target) {
-			return (recipe.og_target - recipe.fg_target) * 131.25;
+			return (recipe.og_target - recipe.fg_target) * ABV_MULTIPLIER;
 		}
 		return null;
 	});

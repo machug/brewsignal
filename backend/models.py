@@ -574,6 +574,16 @@ class ReadingResponse(BaseModel):
     rssi: Optional[int]
     status: Optional[str] = None  # 'valid', 'invalid', 'uncalibrated', 'incomplete'
 
+    # ML outputs
+    sg_filtered: Optional[float] = None
+    temp_filtered: Optional[float] = None
+    confidence: Optional[float] = None
+    sg_rate: Optional[float] = None
+    temp_rate: Optional[float] = None
+    is_anomaly: Optional[bool] = None
+    anomaly_score: Optional[float] = None
+    anomaly_reasons: Optional[str] = None
+
     @field_serializer('timestamp')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt)

@@ -51,4 +51,8 @@ extracted/
 # Git worktrees
 .worktrees/
 
+# Project documentation (development only)
+CLAUDE.md
+docs/plans/
+
 # Other

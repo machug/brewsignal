@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { RecipeResponse } from '$lib/api';
 	import { formatGravity } from '$lib/stores/config.svelte';
+	import { ABV_MULTIPLIER } from '$lib/constants';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
@@ -13,6 +14,15 @@
 		if (value === undefined || value === null) return '--';
 		return formatGravity(value);
 	}
+
+	// Calculate ABV from recipe targets if not provided in BeerXML
+	let calculatedABV = $derived.by(() => {
+		if (recipe.abv_target != null) return recipe.abv_target;
+		if (recipe.og_target && recipe.fg_target) {
+			return (recipe.og_target - recipe.fg_target) * ABV_MULTIPLIER;
+		}
+		return null;
+	});
 </script>
 
 <BatchCard title="Recipe Targets">
@@ -28,7 +38,7 @@
 		<div class="target">
 			<span class="target-label">ABV</span>
 			<span class="target-value">
-				{recipe.abv_target != null ? `${recipe.abv_target.toFixed(1)}%` : '--'}
+				{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}
 			</span>
 		</div>
 		{#if recipe.yeast_name}

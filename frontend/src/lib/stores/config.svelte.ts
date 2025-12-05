@@ -112,11 +112,12 @@ export function celsiusToFahrenheit(c: number): number {
 	return c * (9 / 5) + 32;
 }
 
-export function formatTemp(tempF: number, units: 'C' | 'F' = configState.config.temp_units): string {
-	if (units === 'C') {
-		return fahrenheitToCelsius(tempF).toFixed(1);
+export function formatTemp(tempC: number, units: 'C' | 'F' = configState.config.temp_units): string {
+	// Backend now sends temperatures in Celsius
+	if (units === 'F') {
+		return celsiusToFahrenheit(tempC).toFixed(1);
 	}
-	return tempF.toFixed(1);
+	return tempC.toFixed(1);
 }
 
 export function getTempUnit(): string {

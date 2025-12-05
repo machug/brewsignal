@@ -80,6 +80,7 @@ class MLPipeline:
         self.temp_history: list[float] = []
         self.time_history: list[float] = []
         self.heater_history: list[bool] = []
+        self.cooler_history: list[bool] = []
         self.ambient_history: list[float] = []
 
     def process_reading(
@@ -90,18 +91,20 @@ class MLPipeline:
         time_hours: float,
         ambient_temp: Optional[float] = None,
         heater_on: Optional[bool] = None,
+        cooler_on: Optional[bool] = None,
         target_temp: Optional[float] = None,
     ) -> dict:
         """Process a fermentation reading through the ML pipeline.
 
         Args:
             sg: Raw specific gravity reading
-            temp: Raw temperature reading (°F)
+            temp: Raw temperature reading (°C)
             rssi: Bluetooth signal strength (dBm)
             time_hours: Time since fermentation start (hours)
-            ambient_temp: Ambient/room temperature (°F)
+            ambient_temp: Ambient/room temperature (°C)
             heater_on: Current heater state (for MPC learning)
-            target_temp: Target temperature (°F, for MPC control)
+            cooler_on: Current cooler state (for MPC learning)
+            target_temp: Target temperature (°C, for MPC control)
 
         Returns:
             Dictionary with results from each component:
@@ -156,6 +159,9 @@ class MLPipeline:
         if heater_on is not None:
             self.heater_history.append(heater_on)
 
+        if cooler_on is not None:
+            self.cooler_history.append(cooler_on)
+
         if ambient_temp is not None:
             self.ambient_history.append(ambient_temp)
 
@@ -179,11 +185,17 @@ class MLPipeline:
                 len(self.ambient_history),
             )
             if min_history_len >= 3:
+                # Pass cooler_history only if we have cooler data
+                cooler_hist = None
+                if self.cooler_history:
+                    cooler_hist = self.cooler_history[-min_history_len:]
+
                 self.mpc_controller.learn_thermal_model(
                     temp_history=self.temp_history[-min_history_len:],
                     time_history=self.time_history[-min_history_len:],
                     heater_history=self.heater_history[-min_history_len:],
                     ambient_history=self.ambient_history[-min_history_len:],
+                    cooler_history=cooler_hist,
                 )
 
             # Compute control action
@@ -192,6 +204,7 @@ class MLPipeline:
                 target_temp=target_temp,
                 ambient_temp=ambient_temp,
                 heater_currently_on=heater_on,
+                cooler_currently_on=cooler_on,
             )
             result["mpc"] = mpc_result
         else:
@@ -199,12 +212,12 @@ class MLPipeline:
 
         return result
 
-    def reset(self, initial_sg: float = 1.050, initial_temp: float = 68.0) -> None:
+    def reset(self, initial_sg: float = 1.050, initial_temp: float = 20.0) -> None:
         """Reset pipeline state for a new fermentation batch.
 
         Args:
             initial_sg: Starting specific gravity
-            initial_temp: Starting temperature (°F)
+            initial_temp: Starting temperature (°C)
         """
         # Reset Kalman filter
         if self.kalman_filter:
@@ -219,6 +232,7 @@ class MLPipeline:
         self.temp_history = []
         self.time_history = []
         self.heater_history = []
+        self.cooler_history = []
         self.ambient_history = []
 
         # Note: curve_fitter and mpc_controller don't maintain state,

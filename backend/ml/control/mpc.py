@@ -144,6 +144,12 @@ class MPCTemperatureController:
         # Fallback to cooling periods if no idle data
         coeff_sources = idle_rates if idle_rates else cooling_rates
 
+        if not idle_rates and cooling_rates:
+            logging.warning(
+                "No idle periods found for ambient coefficient estimation. "
+                "Using cooling periods as fallback may overestimate ambient effect."
+            )
+
         if coeff_sources:
             # rate = -ambient_coeff * temp_above_ambient
             # ambient_coeff = -rate / temp_above_ambient
@@ -357,7 +363,9 @@ class MPCTemperatureController:
         if not self.has_model:
             return [initial_temp] * len(heater_sequence)
 
-        # Validate sequences have same length
+        # Validate sequences
+        if not heater_sequence:
+            raise ValueError("Sequences cannot be empty")
         if len(heater_sequence) != len(cooler_sequence):
             raise ValueError("Heater and cooler sequences must have same length")
 

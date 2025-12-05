@@ -2,6 +2,24 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+## Implementation Status
+
+| Task | Status | PR/Branch |
+|------|--------|-----------|
+| Task 1: Test Infrastructure | ✅ COMPLETED | Merged to main |
+| Task 2: Kalman Filter | ✅ COMPLETED | Merged to main |
+| Task 3: Anomaly Detection | ✅ COMPLETED | Merged to main |
+| Task 4: Fermentation Curve Fitting | ✅ COMPLETED | Merged to main |
+| Task 5: ML Configuration | ✅ COMPLETED | Merged to main |
+| Task 6: MPC Temperature Controller | ✅ COMPLETED | PR #65 (pending merge) |
+| Task 7: ML Pipeline Orchestrator | ⏳ PENDING | Not started |
+| Task 8: Integration with temp_controller.py | ⏳ PENDING | Not started |
+| Task 9: Optional SLM Assistant | ⏳ PENDING | Optional/future |
+
+**Recent Completion:** Task 6 (MPC with dual-mode support) completed in PR #65, including temperature unit conversion to Celsius and comprehensive testing.
+
+---
+
 **Goal:** Add AI/ML capabilities to Tilt UI for noise reduction (Kalman filter), anomaly detection, fermentation predictions, smart heater control (MPC with overshoot prevention), and optional small language model assistant.
 
 **Architecture:** Local-first classical ML using filterpy, scipy, and scikit-learn running entirely on Raspberry Pi. Optional SLM (Mistral Ministral 3B via llama-cpp-python) for natural language queries. All ML processing happens in a new `backend/ml/` module that integrates with the existing reading pipeline in `backend/main.py:handle_tilt_reading()`.
@@ -10,9 +28,9 @@
 
 **Note on Overshoot Prevention:** Task 6 (MPC Temperature Controller) includes thermal inertia modeling inspired by BrewPi's overshoot prevention techniques. This solves Issue #60 where cooling overshoots target temperature and triggers unnecessary heating. The MPC predicts post-shutdown temperature drift using self-learning coefficients that adapt to your specific chamber characteristics.
 
-**Dual-Mode Extension (Issue #64):** The MPC now supports active cooling in addition to heating. The thermal model learns separate heating_rate and cooling_rate parameters from historical data, with shared ambient_coeff for natural heat exchange. Control decisions evaluate three actions: heater ON, cooler ON, or both OFF. Mutual exclusion is enforced in both learning and predictions. See `docs/plans/2025-12-05-mpc-dual-mode.md` for full design details.
+**Dual-Mode Extension (Issue #64) - ✅ COMPLETED (PR #65):** The MPC now supports active cooling in addition to heating. The thermal model learns separate heating_rate and cooling_rate parameters from historical data, with shared ambient_coeff for natural heat exchange. Control decisions evaluate three actions: heater ON, cooler ON, or both OFF. Mutual exclusion is enforced in both learning and predictions. See `docs/plans/2025-12-05-mpc-dual-mode.md` for full design details. Implemented in PR #65 (merged: TBD).
 
-**Temperature Units:** All MPC calculations now use Celsius (°C) to align with project standards (CLAUDE.md). Previously used Fahrenheit.
+**Temperature Units - ✅ COMPLETED (PR #65):** All MPC calculations now use Celsius (°C) to align with project standards (CLAUDE.md). Converted from Fahrenheit as part of PR #65.
 
 ---
 
@@ -1124,12 +1142,24 @@ git commit -m "feat(ml): implement fermentation curve fitting and predictions"
 
 ---
 
-## Task 6: Implement MPC Temperature Controller
+## Task 6: Implement MPC Temperature Controller - ✅ COMPLETED (PR #65)
+
+**Status:** COMPLETED - Dual-mode MPC with heater and cooler support implemented and tested. All temperatures converted to Celsius. See PR #65 for implementation details.
+
+**Implementation Highlights:**
+- ✅ Dual-mode thermal model (heating_rate, cooling_rate, ambient_coeff)
+- ✅ Three-regime learning algorithm (idle, heating, cooling)
+- ✅ Mutual exclusion enforcement (heater and cooler never run simultaneously)
+- ✅ Robust parameter bounds (MAX_AMBIENT_COEFF, MAX_COOLING_RATE)
+- ✅ Asymmetric cost function (heavily penalizes high temps that damage yeast)
+- ✅ Temperature unit conversion to Celsius (°C)
+- ✅ Backward compatibility for heater-only mode
+- ✅ 14 comprehensive tests covering dual-mode scenarios
 
 **Files:**
-- Create: `backend/ml/control/__init__.py`
-- Create: `backend/ml/control/mpc.py`
-- Create: `tests/test_mpc.py`
+- Created: `backend/ml/control/__init__.py`
+- Created: `backend/ml/control/mpc.py`
+- Created: `tests/test_mpc.py`
 
 **Step 1: Write the failing test**
 

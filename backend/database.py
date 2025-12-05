@@ -163,11 +163,14 @@ async def _migrate_temps_fahrenheit_to_celsius(engine):
             "SELECT name FROM sqlite_master WHERE type='table' AND name='batches'"
         ))
         if result.fetchone():
-            # Check if any batch has temperature values that need conversion (>50 = Fahrenheit)
-            # Note: Only check temp_target since hysteresis values are small deltas (<10)
+            # Check if any batch has temperature values that need conversion
+            # Detect Fahrenheit: temp_target >= 50 OR temp_hysteresis > 10
+            # (50°F = 10°C is the boundary - lagers can ferment at 50°F)
+            # (Hysteresis >10 must be Fahrenheit since typical values are 0.5-5°C / 1-9°F)
             result = await conn.execute(text("""
                 SELECT COUNT(*) FROM batches
-                WHERE temp_target IS NOT NULL AND temp_target > 50
+                WHERE (temp_target IS NOT NULL AND temp_target >= 50)
+                   OR (temp_hysteresis IS NOT NULL AND temp_hysteresis > 10)
             """))
             count = result.scalar()
 
@@ -178,12 +181,18 @@ async def _migrate_temps_fahrenheit_to_celsius(engine):
                 await conn.execute(text("""
                     UPDATE batches
                     SET
-                        temp_target = (temp_target - 32) * 5.0 / 9.0,
+                        temp_target = CASE
+                            WHEN temp_target IS NOT NULL AND temp_target >= 50
+                            THEN (temp_target - 32) * 5.0 / 9.0
+                            ELSE temp_target
+                        END,
                         temp_hysteresis = CASE
-                            WHEN temp_hysteresis IS NOT NULL THEN temp_hysteresis * 5.0 / 9.0
+                            WHEN temp_hysteresis IS NOT NULL AND temp_hysteresis > 10
+                            THEN temp_hysteresis * 5.0 / 9.0
                             ELSE temp_hysteresis
                         END
-                    WHERE temp_target > 50
+                    WHERE (temp_target IS NOT NULL AND temp_target >= 50)
+                       OR (temp_hysteresis IS NOT NULL AND temp_hysteresis > 10)
                 """))
 
         # NOTE: ambient_readings table is NOT converted - Home Assistant already sends Celsius

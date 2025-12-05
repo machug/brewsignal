@@ -228,4 +228,4 @@ class TestMPCAmbientHistorySafety:
         # Check that model was learned
         assert pipeline.mpc_controller.has_model is True
         assert pipeline.mpc_controller.heating_rate is not None
-        assert pipeline.mpc_controller.cooling_coeff is not None
+        assert pipeline.mpc_controller.ambient_coeff is not None

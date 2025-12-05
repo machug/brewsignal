@@ -33,6 +33,52 @@ def _migrate_add_batch_id_to_readings(conn):
         print("Migration: Added batch_id column to readings table")
 
 
+def _migrate_add_ml_columns(conn):
+    """Add ML output columns to readings table."""
+    from sqlalchemy import inspect, text
+    import logging
+    inspector = inspect(conn)
+
+    if "readings" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("readings")]
+
+    if "sg_filtered" in columns:
+        logging.info("ML columns already exist, skipping migration")
+        return
+
+    logging.info("Adding ML output columns to readings table")
+
+    # Add ML columns
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN sg_filtered REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN temp_filtered REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN confidence REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN sg_rate REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN temp_rate REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN is_anomaly INTEGER DEFAULT 0
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN anomaly_score REAL
+    """))
+    conn.execute(text("""
+        ALTER TABLE readings ADD COLUMN anomaly_reasons TEXT
+    """))
+
+    logging.info("ML columns added successfully")
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -51,6 +97,7 @@ async def init_db():
         await conn.run_sync(_migrate_create_devices_table)
         await conn.run_sync(_migrate_add_reading_columns)
         await conn.run_sync(_migrate_readings_nullable_tilt_id)
+        await conn.run_sync(_migrate_add_ml_columns)
 
         # Step 2: Create any missing tables (includes new Style, Recipe, Batch tables)
         await conn.run_sync(Base.metadata.create_all)

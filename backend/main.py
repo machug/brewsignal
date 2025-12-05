@@ -41,6 +41,34 @@ CONFIG_CACHE_TTL = 30  # seconds
 cleanup_service: Optional[CleanupService] = None
 
 
+async def calculate_time_since_batch_start(session, batch_id: Optional[int]) -> float:
+    """Calculate hours since batch start.
+
+    Args:
+        session: Database session
+        batch_id: Batch ID
+
+    Returns:
+        Hours since batch start_time (0.0 if no batch or no start_time)
+    """
+    if not batch_id:
+        return 0.0
+
+    batch = await session.get(models.Batch, batch_id)
+    if not batch or not batch.start_time:
+        return 0.0
+
+    now = datetime.now(timezone.utc)
+    start_time = batch.start_time
+
+    # Handle naive datetime (database stores in UTC but without timezone info)
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+
+    delta = now - start_time
+    return delta.total_seconds() / 3600.0  # Convert to hours
+
+
 async def handle_tilt_reading(reading: TiltReading):
     """Process a new Tilt reading: update DB and broadcast to WebSocket clients."""
     async with async_session_factory() as session:

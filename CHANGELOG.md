@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2025-12-05
+
+### Added
+- **ML Pipeline Integration** (#66) - Integrated ML pipeline into production reading handler
+  - MLPipelineManager now processes all readings through Kalman filter, anomaly detection, and predictions
+  - Per-device ML state isolation prevents cross-contamination between Tilts
+  - ML outputs (filtered values, confidence, anomaly flags, predictions) stored in database
+  - WebSocket broadcasts include ML data for real-time frontend updates
+  - Graceful degradation on ML errors (falls back to calibrated values)
+
+### Fixed
+- **Temperature Migration Edge Cases** - Fixed hysteresis conversion bugs
+  - Lager temperatures at exactly 50°F now detected correctly (changed `>` to `>=`)
+  - Orphaned hysteresis values (without temp_target) now detected and converted
+  - Added explicit migration tracking via config table to prevent double-migration
+  - Independent CASE statements prevent hysteresis/target coupling issues
+- **Production Database Corruption** - Manually fixed corrupted hysteresis value (-17.48°C → 1.0°C)
+  - Root cause: Old migration code used wrong formula `(F - 32) * 5/9` for delta values
+  - Delta values should use `F * 5/9` (no -32 offset)
+- **Anomaly Reasons Type Consistency** - Fixed unnecessary JSON encode/decode
+  - Kept as list in memory, only JSON encode for database storage
+  - WebSocket broadcasts use list directly (no decode needed)
+- **Frontend Null Safety** - Added fallback defaults for temperature units
+  - `formatTemp()` now handles undefined config gracefully
+  - `getTempUnit()` defaults to 'C' if config not loaded
+
+### Changed
+- Replaced simple moving average smoothing with Kalman filtering
+- Removed `backend/services/smoothing.py` (superseded by ML pipeline)
+- Temperature migration now uses explicit config flag tracking
+- All temperatures standardized to Celsius throughout system
+
+### Technical
+- ML pipeline processes readings after calibration but before storage
+- Database schema includes new ML output columns (sg_filtered, temp_filtered, confidence, etc.)
+- Frontend receives all temperatures in Celsius, converts for display
+- Migration tracking prevents double-conversion on redeployment
+
 ## [2.5.0] - 2025-12-04
 
 ### Added

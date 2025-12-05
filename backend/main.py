@@ -155,8 +155,9 @@ async def handle_tilt_reading(reading: TiltReading):
                 if ml_result.get("anomaly"):
                     anomaly = ml_result["anomaly"]
                     is_anomaly = anomaly["is_anomaly"]
-                    anomaly_score = anomaly["anomaly_score"]
-                    anomaly_reasons = json.dumps(anomaly["reasons"])
+                    # Anomaly detector returns "reason" string, not "anomaly_score"
+                    anomaly_score = 1.0 if is_anomaly else 0.0  # Binary score for now
+                    anomaly_reasons = json.dumps([anomaly.get("reason", "normal")])
 
                 # Predictions (may be None if not enough history)
                 predictions = ml_result.get("predictions")

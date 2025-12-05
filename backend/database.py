@@ -248,6 +248,7 @@ async def init_db():
         # Step 4: Data migrations
         await conn.run_sync(_migrate_tilts_to_devices)
         await conn.run_sync(_migrate_mark_outliers_invalid)  # Mark historical outliers
+        await conn.run_sync(_migrate_fix_temp_outlier_detection)  # Fix F→C temp check bug
 
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
@@ -863,7 +864,7 @@ def _migrate_mark_outliers_invalid(conn):
 
     Valid ranges:
     - SG: 0.500-1.200 (beer is typically 1.000-1.120)
-    - Temp: 32-212°F (freezing to boiling)
+    - Temp: 0-100°C (freezing to boiling)
     """
     from sqlalchemy import inspect, text
     inspector = inspect(conn)
@@ -884,18 +885,50 @@ def _migrate_mark_outliers_invalid(conn):
     """))
     sg_count = result.rowcount
 
-    # Mark temperature outliers
+    # Mark temperature outliers (Celsius range: 0-100°C)
     result = conn.execute(text("""
         UPDATE readings
         SET status = 'invalid'
         WHERE status = 'valid'
-        AND (temp_calibrated < 32.0 OR temp_calibrated > 212.0)
+        AND (temp_calibrated < 0.0 OR temp_calibrated > 100.0)
     """))
     temp_count = result.rowcount
 
     total = sg_count + temp_count
     if total > 0:
         print(f"Migration: Marked {total} outlier readings as invalid ({sg_count} SG, {temp_count} temp)")
+
+
+def _migrate_fix_temp_outlier_detection(conn):
+    """Fix readings incorrectly marked invalid by Fahrenheit temp check.
+
+    After the F→C migration, the outlier detection was still using Fahrenheit
+    ranges (32-212°F) against Celsius data, incorrectly marking valid readings
+    as invalid. This migration restores readings that have valid Celsius temps
+    (0-100°C) and valid SG (0.5-1.2).
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "readings" not in inspector.get_table_names():
+        return
+
+    columns = [c["name"] for c in inspector.get_columns("readings")]
+    if "status" not in columns:
+        return
+
+    # Fix readings that are invalid but have valid Celsius temps and valid SG
+    result = conn.execute(text("""
+        UPDATE readings
+        SET status = 'valid'
+        WHERE status = 'invalid'
+        AND temp_calibrated >= 0.0 AND temp_calibrated <= 100.0
+        AND sg_calibrated >= 0.500 AND sg_calibrated <= 1.200
+    """))
+    fixed_count = result.rowcount
+
+    if fixed_count > 0:
+        print(f"Migration: Fixed {fixed_count} readings incorrectly marked invalid by F→C temp check")
 
 
 def _migrate_add_deleted_at(conn):

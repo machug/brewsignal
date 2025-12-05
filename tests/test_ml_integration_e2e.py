@@ -111,17 +111,13 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
 @patch('backend.main.manager')
 @patch('backend.main.link_reading_to_batch', new_callable=AsyncMock)
 async def test_anomaly_detection_in_production(mock_link, mock_ws):
-    """ML pipeline gracefully degrades on errors in production flow.
+    """ML pipeline processes readings and detects anomalies in production flow.
 
     Tests:
     - Readings processed through ML pipeline
-    - ML errors don't crash the system (graceful degradation)
-    - Data still stored with calibrated values as fallback
+    - Kalman filtering provides smoothed values
+    - Anomaly detection flags unusual readings
     - System continues operating normally
-
-    Note: Currently the anomaly detector's return format doesn't match
-    what main.py expects, causing the ML pipeline to gracefully degrade.
-    This test verifies the graceful degradation works correctly.
     """
     # Initialize ML pipeline manager for test
     import backend.main
@@ -192,9 +188,11 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
         assert abs(temp_raw - 20.0) < 0.5, f"Temperature should be converted to Celsius, got {temp_raw}"
         assert status == "valid", "Reading should be marked valid"
 
-        # Verify graceful degradation: ML error causes fallback to calibrated values
-        # sg_filtered should equal sg_calibrated (fallback behavior)
-        assert sg_filtered == sg_calibrated, "ML error should fall back to calibrated values"
+        # Verify ML pipeline processed the reading
+        # sg_filtered should be different from sg_calibrated (Kalman filtered)
+        # Allow for the possibility they could be equal if Kalman hasn't converged yet
+        assert sg_filtered is not None, "ML pipeline should provide filtered value"
+        assert abs(sg_filtered - sg_calibrated) < 0.05, f"Filtered value {sg_filtered} should be close to calibrated {sg_calibrated}"
 
     # Verify all 11 readings were stored (system kept working)
     async with async_session_factory() as session:

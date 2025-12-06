@@ -84,6 +84,16 @@ async def handle_tilt_reading(reading: TiltReading):
                 paired=False,  # New devices start unpaired
             )
             session.add(tilt)
+            try:
+                await session.flush()  # Flush to catch IntegrityError from concurrent Tilt creation
+            except IntegrityError:
+                # Another task created this Tilt concurrently - rollback and refetch
+                await session.rollback()
+                tilt = await session.get(Tilt, reading.id)
+                if not tilt:
+                    # Should never happen, but handle gracefully
+                    logging.error(f"Failed to create or fetch Tilt {reading.id} after IntegrityError")
+                    return
 
         timestamp = datetime.now(timezone.utc)
         tilt.last_seen = timestamp

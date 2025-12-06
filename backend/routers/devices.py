@@ -1,6 +1,6 @@
 """Device API endpoints for universal hydrometer device registry."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -491,20 +491,29 @@ async def clear_device_calibration_points(
 @router.get("/{device_id}/readings", response_model=list[ReadingResponse])
 async def get_device_readings(
     device_id: str,
-    limit: int = Query(default=100, le=1000),
+    hours: Optional[int] = Query(default=None, description="Time window in hours (e.g., 24 for last 24 hours)"),
+    limit: int = Query(default=5000, le=10000, description="Maximum number of readings to return"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get recent readings for any device type."""
+    """Get readings for any device type, optionally filtered by time window.
+
+    Returns readings in ascending order (oldest → newest) for charting.
+    """
     device = await db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    result = await db.execute(
-        select(Reading)
-        .where(Reading.device_id == device_id)
-        .order_by(desc(Reading.timestamp))
-        .limit(limit)
-    )
+    query = select(Reading).where(Reading.device_id == device_id)
+
+    # Apply time window filter if hours is provided
+    if hours is not None:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        query = query.where(Reading.timestamp >= cutoff_time)
+
+    # Sort ASC for charting (oldest → newest)
+    query = query.order_by(Reading.timestamp.asc()).limit(limit)
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 

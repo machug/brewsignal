@@ -510,11 +510,15 @@ async def get_device_readings(
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         query = query.where(Reading.timestamp >= cutoff_time)
 
-    # Sort ASC for charting (oldest → newest)
-    query = query.order_by(Reading.timestamp.asc()).limit(limit)
-
+    # Get newest N readings by sorting DESC, limiting, then reversing
+    # This ensures we get the most recent data, not the oldest data in the window
+    query = query.order_by(Reading.timestamp.desc()).limit(limit)
     result = await db.execute(query)
-    return result.scalars().all()
+    readings = list(result.scalars().all())
+
+    # Reverse to return in ASC order (oldest → newest) for charting
+    readings.reverse()
+    return readings
 
 
 # Calibration Endpoints (JSON-based calibration data)

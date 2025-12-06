@@ -40,6 +40,10 @@ cleanup_service: Optional[CleanupService] = None
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
 
+# Cache for first reading timestamps (device_id -> datetime)
+# Prevents N+1 query on every reading when using wall-clock fallback
+_first_reading_cache: dict[str, datetime] = {}
+
 
 async def calculate_time_since_batch_start(
     session,
@@ -71,6 +75,15 @@ async def calculate_time_since_batch_start(
 
     # Fallback: Use wall-clock time since first reading for this device
     # This prevents ML pipeline from being stuck at time_hours=0
+
+    # Check cache first to avoid N+1 query
+    if device_id in _first_reading_cache:
+        first_time = _first_reading_cache[device_id]
+        now = datetime.now(timezone.utc)
+        delta = now - first_time
+        return delta.total_seconds() / 3600.0
+
+    # Cache miss - query database for first reading
     first_reading = await session.execute(
         select(models.Reading)
         .where(models.Reading.device_id == device_id)
@@ -86,6 +99,9 @@ async def calculate_time_since_batch_start(
         # Handle naive datetime
         if first_time.tzinfo is None:
             first_time = first_time.replace(tzinfo=timezone.utc)
+
+        # Cache for future calls
+        _first_reading_cache[device_id] = first_time
 
         delta = now - first_time
         return delta.total_seconds() / 3600.0

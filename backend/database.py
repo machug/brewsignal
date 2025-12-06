@@ -1105,27 +1105,40 @@ def _migrate_tilts_to_devices_final(conn):
                     CREATE TABLE readings_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         device_id VARCHAR(100),
-                        timestamp DATETIME NOT NULL,
+                        batch_id INTEGER,
+                        device_type VARCHAR(20) DEFAULT 'tilt',
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                         sg_raw FLOAT,
                         sg_calibrated FLOAT,
                         temp_raw FLOAT,
                         temp_calibrated FLOAT,
                         rssi INTEGER,
-                        status VARCHAR(20),
+                        battery_voltage FLOAT,
+                        battery_percent INTEGER,
+                        angle FLOAT,
+                        source_protocol VARCHAR(20) DEFAULT 'ble',
+                        status VARCHAR(20) DEFAULT 'valid',
+                        is_pre_filtered INTEGER DEFAULT 0,
                         sg_filtered FLOAT,
                         temp_filtered FLOAT,
                         confidence FLOAT,
                         sg_rate FLOAT,
                         temp_rate FLOAT,
-                        is_anomaly BOOLEAN,
+                        is_anomaly INTEGER DEFAULT 0,
                         anomaly_score FLOAT,
                         anomaly_reasons TEXT,
-                        FOREIGN KEY(device_id) REFERENCES devices(id)
+                        FOREIGN KEY(device_id) REFERENCES devices(id),
+                        FOREIGN KEY(batch_id) REFERENCES batches(id)
                     )
                 """))
                 conn.execute(text("INSERT INTO readings_new SELECT * FROM readings"))
                 conn.execute(text("DROP TABLE readings"))
                 conn.execute(text("ALTER TABLE readings_new RENAME TO readings"))
+                # Recreate indexes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_device_id ON readings(device_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_timestamp ON readings(timestamp)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_id ON readings(batch_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_timestamp ON readings(batch_id, timestamp)"))
                 print("Migration: Recreated readings table with device_id")
 
     # Step 3: Update foreign keys in calibration_points table
@@ -1154,7 +1167,6 @@ def _migrate_tilts_to_devices_final(conn):
                     type VARCHAR(20) NOT NULL,
                     raw_value FLOAT NOT NULL,
                     actual_value FLOAT NOT NULL,
-                    reference_value FLOAT NOT NULL,
                     created_at DATETIME NOT NULL,
                     FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
                 )
@@ -1162,6 +1174,8 @@ def _migrate_tilts_to_devices_final(conn):
             conn.execute(text(f"INSERT INTO calibration_points_new SELECT {columns_str} FROM calibration_points"))
             conn.execute(text("DROP TABLE calibration_points"))
             conn.execute(text("ALTER TABLE calibration_points_new RENAME TO calibration_points"))
+            # Recreate indexes
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
             print("Migration: Dropped tilt_id column from calibration_points table")
         else:
             # Only tilt_id exists - rename it to device_id
@@ -1171,6 +1185,9 @@ def _migrate_tilts_to_devices_final(conn):
 
             if int(major) >= 3 and int(minor) >= 25:
                 conn.execute(text("ALTER TABLE calibration_points RENAME COLUMN tilt_id TO device_id"))
+                # Drop old index and create new one with correct name
+                conn.execute(text("DROP INDEX IF EXISTS ix_calibration_points_tilt_id"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
                 print("Migration: Renamed calibration_points.tilt_id to device_id")
             else:
                 print("Migration: Recreating calibration_points table with device_id column")
@@ -1180,7 +1197,7 @@ def _migrate_tilts_to_devices_final(conn):
                         device_id VARCHAR(100) NOT NULL,
                         type VARCHAR(20) NOT NULL,
                         raw_value FLOAT NOT NULL,
-                        reference_value FLOAT NOT NULL,
+                        actual_value FLOAT NOT NULL,
                         created_at DATETIME NOT NULL,
                         FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
                     )
@@ -1188,6 +1205,8 @@ def _migrate_tilts_to_devices_final(conn):
                 conn.execute(text("INSERT INTO calibration_points_new SELECT * FROM calibration_points"))
                 conn.execute(text("DROP TABLE calibration_points"))
                 conn.execute(text("ALTER TABLE calibration_points_new RENAME TO calibration_points"))
+                # Recreate indexes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
                 print("Migration: Recreated calibration_points table with device_id")
 
     # Step 4: Drop tilts table

@@ -16,20 +16,10 @@
 	let { batch, progress, expanded = false, wide = false, onToggleExpand, onBatchUpdated }: Props = $props();
 
 	// Derive device reading from batch.device_id + WebSocket state
-	let deviceReading = $derived.by(() => {
-		if (!batch.device_id) return null;
-		// Extract color from device_id - handle both "tilt-red" and "RED" formats
-		const colorMatch = batch.device_id.match(/^(?:tilt-)?(\w+)$/i);
-		if (!colorMatch?.[1]) return null;
-		const targetColor = colorMatch[1].toUpperCase();
-		// Find tilt with matching color
-		for (const tilt of tiltsState.tilts.values()) {
-			if (tilt.color.toUpperCase() === targetColor) {
-				return tilt;
-			}
-		}
-		return null;
-	});
+	// Direct lookup by device_id (no color-based heuristics)
+	let deviceReading = $derived(
+		batch.device_id ? tiltsState.tilts.get(batch.device_id) ?? null : null
+	);
 
 	// Display values derived from batch/progress/device
 	let displayName = $derived(batch.name || batch.recipe?.name || `Batch #${batch.batch_number}`);

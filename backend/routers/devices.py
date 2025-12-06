@@ -367,33 +367,22 @@ async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "device_id": device_id}
 
 
-# Pairing Endpoints
 @router.post("/{device_id}/pair", response_model=DeviceResponse)
 async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Pair a device to enable reading storage.
+    """Pair any device type to enable reading storage.
 
-    Works for all device types (Tilt, iSpindel, GravityMon, etc.).
+    Works for Tilt, iSpindel, GravityMon, and future device types.
     """
     device = await db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    paired_at = datetime.now(timezone.utc)
     device.paired = True
-    device.paired_at = paired_at
-
-    # If this is a Tilt, also update legacy Tilt table for backwards compatibility
-    if device.device_type == "tilt":
-        from ..models import Tilt
-        tilt = await db.get(Tilt, device_id)
-        if tilt:
-            tilt.paired = True
-            tilt.paired_at = paired_at
-
+    device.paired_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(device)
 
-    # Update in-memory cache if present
+    # Update in-memory cache (if device has readings)
     from ..state import latest_readings
     from ..websocket import manager
     if device_id in latest_readings:
@@ -405,9 +394,9 @@ async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{device_id}/unpair", response_model=DeviceResponse)
 async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Unpair a device to stop reading storage.
+    """Unpair device to stop reading storage.
 
-    Works for all device types (Tilt, iSpindel, GravityMon, etc.).
+    Works for all device types.
     """
     device = await db.get(Device, device_id)
     if not device:
@@ -415,19 +404,10 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
     device.paired = False
     device.paired_at = None
-
-    # If this is a Tilt, also update legacy Tilt table for backwards compatibility
-    if device.device_type == "tilt":
-        from ..models import Tilt
-        tilt = await db.get(Tilt, device_id)
-        if tilt:
-            tilt.paired = False
-            tilt.paired_at = None
-
     await db.commit()
     await db.refresh(device)
 
-    # Update in-memory cache if present
+    # Update in-memory cache (if device has readings)
     from ..state import latest_readings
     from ..websocket import manager
     if device_id in latest_readings:

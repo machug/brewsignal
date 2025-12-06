@@ -94,7 +94,7 @@ class CalibrationService:
     async def load_calibration(self, db: AsyncSession, tilt_id: str) -> None:
         """Load calibration points for a Tilt from the database into cache."""
         result = await db.execute(
-            select(CalibrationPoint).where(CalibrationPoint.tilt_id == tilt_id)
+            select(CalibrationPoint).where(CalibrationPoint.device_id == tilt_id)
         )
         points = result.scalars().all()
 

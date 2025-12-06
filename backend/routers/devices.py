@@ -1,15 +1,24 @@
 """Device API endpoints for universal hydrometer device registry."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..database import get_db
-from ..models import Device, serialize_datetime_to_utc
+from ..models import (
+    Device,
+    CalibrationPoint,
+    Reading,
+    CalibrationPointCreate,
+    CalibrationPointResponse,
+    ReadingResponse,
+    serialize_datetime_to_utc,
+)
 from ..services.calibration import calibration_service
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -367,33 +376,22 @@ async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "device_id": device_id}
 
 
-# Pairing Endpoints
 @router.post("/{device_id}/pair", response_model=DeviceResponse)
 async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Pair a device to enable reading storage.
+    """Pair any device type to enable reading storage.
 
-    Works for all device types (Tilt, iSpindel, GravityMon, etc.).
+    Works for Tilt, iSpindel, GravityMon, and future device types.
     """
     device = await db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    paired_at = datetime.now(timezone.utc)
     device.paired = True
-    device.paired_at = paired_at
-
-    # If this is a Tilt, also update legacy Tilt table for backwards compatibility
-    if device.device_type == "tilt":
-        from ..models import Tilt
-        tilt = await db.get(Tilt, device_id)
-        if tilt:
-            tilt.paired = True
-            tilt.paired_at = paired_at
-
+    device.paired_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(device)
 
-    # Update in-memory cache if present
+    # Update in-memory cache (if device has readings)
     from ..state import latest_readings
     from ..websocket import manager
     if device_id in latest_readings:
@@ -405,9 +403,9 @@ async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{device_id}/unpair", response_model=DeviceResponse)
 async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Unpair a device to stop reading storage.
+    """Unpair device to stop reading storage.
 
-    Works for all device types (Tilt, iSpindel, GravityMon, etc.).
+    Works for all device types.
     """
     device = await db.get(Device, device_id)
     if not device:
@@ -415,19 +413,10 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
     device.paired = False
     device.paired_at = None
-
-    # If this is a Tilt, also update legacy Tilt table for backwards compatibility
-    if device.device_type == "tilt":
-        from ..models import Tilt
-        tilt = await db.get(Tilt, device_id)
-        if tilt:
-            tilt.paired = False
-            tilt.paired_at = None
-
     await db.commit()
     await db.refresh(device)
 
-    # Update in-memory cache if present
+    # Update in-memory cache (if device has readings)
     from ..state import latest_readings
     from ..websocket import manager
     if device_id in latest_readings:
@@ -437,7 +426,131 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
     return DeviceResponse.from_orm_with_calibration(device)
 
 
-# Calibration Endpoints
+# CalibrationPoint Endpoints (table-based calibration for Tilt devices)
+@router.get("/{device_id}/calibration_points", response_model=list[CalibrationPointResponse])
+async def get_device_calibration_points(device_id: str, db: AsyncSession = Depends(get_db)):
+    """Get calibration points for any device type."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    result = await db.execute(
+        select(CalibrationPoint)
+        .where(CalibrationPoint.device_id == device_id)
+        .order_by(CalibrationPoint.type, CalibrationPoint.raw_value)
+    )
+    return result.scalars().all()
+
+
+@router.post("/{device_id}/calibration_points", response_model=CalibrationPointResponse)
+async def add_device_calibration_point(
+    device_id: str,
+    point: CalibrationPointCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Add calibration point for any device type."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    calibration_point = CalibrationPoint(
+        device_id=device_id,
+        **point.model_dump()
+    )
+    db.add(calibration_point)
+    await db.commit()
+    await db.refresh(calibration_point)
+
+    return calibration_point
+
+
+@router.delete("/{device_id}/calibration_points/{type}")
+async def clear_device_calibration_points(
+    device_id: str,
+    type: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Clear calibration points for a specific type (sg or temp)."""
+    if type not in ["sg", "temp"]:
+        raise HTTPException(status_code=400, detail="Type must be 'sg' or 'temp'")
+
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    await db.execute(
+        delete(CalibrationPoint)
+        .where(CalibrationPoint.device_id == device_id)
+        .where(CalibrationPoint.type == type)
+    )
+    await db.commit()
+
+    return {"message": f"Cleared {type} calibration for device {device_id}"}
+
+
+@router.get("/{device_id}/readings", response_model=list[ReadingResponse])
+async def get_device_readings(
+    device_id: str,
+    hours: Optional[int] = Query(default=None, description="Time window in hours (e.g., 24 for last 24 hours)"),
+    limit: int = Query(default=5000, le=10000, description="Maximum number of readings to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get readings for any device type, optionally filtered by time window.
+
+    Implements intelligent downsampling for longer time windows to ensure
+    the data covers the full requested range rather than just recent hours.
+
+    Downsampling strategy:
+    - 1H, 6H: Every reading (limit controls max)
+    - 24H: Every 5th reading (~2.5 min intervals)
+    - 7D: Every 60th reading (~30 min intervals)
+    - 30D: Every 360th reading (~3 hour intervals)
+
+    Returns readings in ascending order (oldest → newest) for charting.
+    """
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    query = select(Reading).where(Reading.device_id == device_id)
+
+    # Apply time window filter if hours is provided
+    if hours is not None:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        query = query.where(Reading.timestamp >= cutoff_time)
+
+    # Determine downsampling interval based on time window
+    # This ensures we get data spanning the full time range
+    downsample_interval = 1
+    if hours is not None:
+        if hours >= 720:  # 30 days
+            downsample_interval = 360  # ~3 hour intervals
+        elif hours >= 168:  # 7 days
+            downsample_interval = 60   # ~30 min intervals
+        elif hours >= 24:  # 24 hours
+            downsample_interval = 5    # ~2.5 min intervals
+        # else: 1H, 6H use every reading (interval=1)
+
+    # Get all readings in time window, ordered DESC
+    query = query.order_by(Reading.timestamp.desc())
+    result = await db.execute(query)
+    all_readings = list(result.scalars().all())
+
+    # Apply downsampling by taking every Nth reading
+    if downsample_interval > 1:
+        downsampled = all_readings[::downsample_interval]
+    else:
+        downsampled = all_readings
+
+    # Apply limit after downsampling
+    readings = downsampled[:limit]
+
+    # Reverse to return in ASC order (oldest → newest) for charting
+    readings.reverse()
+    return readings
+
+
+# Calibration Endpoints (JSON-based calibration data)
 @router.put("/{device_id}/calibration", response_model=CalibrationResponse)
 async def set_calibration(
     device_id: str,

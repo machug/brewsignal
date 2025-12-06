@@ -193,7 +193,7 @@ export function stopHeaterPolling(): void {
 
 export async function updateTiltBeerName(tiltId: string, beerName: string): Promise<boolean> {
 	try {
-		const response = await fetch(`/api/tilts/${tiltId}`, {
+		const response = await fetch(`/api/devices/${tiltId}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ beer_name: beerName })
@@ -215,7 +215,7 @@ export async function updateTiltBeerName(tiltId: string, beerName: string): Prom
 
 export async function updateTiltOriginalGravity(tiltId: string, og: number | null): Promise<boolean> {
 	try {
-		const response = await fetch(`/api/tilts/${tiltId}`, {
+		const response = await fetch(`/api/devices/${tiltId}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ original_gravity: og })

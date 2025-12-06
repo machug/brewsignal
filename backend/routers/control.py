@@ -197,8 +197,8 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
 
     temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
-    global_target = await get_config_value(db, "temp_target") or 68.0
-    global_hysteresis = await get_config_value(db, "temp_hysteresis") or 1.0
+    global_target = await get_config_value(db, "temp_target") or 20.0  # Default 20°C (68°F)
+    global_hysteresis = await get_config_value(db, "temp_hysteresis") or 0.5  # Default 0.5°C (~1°F)
 
     # Get batch-specific status
     batch_status = get_batch_control_status(batch_id)

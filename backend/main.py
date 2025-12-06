@@ -113,15 +113,24 @@ async def handle_tilt_reading(reading: TiltReading):
 
         # Only store readings if device is paired
         if device.paired:
+            # Link reading to active batch (if any)
+            batch_id = await link_reading_to_batch(session, reading.id)
+
+            # Calculate time since batch start for ML pipeline
+            time_hours = await calculate_time_since_batch_start(session, batch_id)
+
             # Process through ML pipeline if available
             ml_outputs = {}
             if ml_pipeline_manager:
                 try:
-                    ml_outputs = await ml_pipeline_manager.process_reading(
+                    # Call synchronous process_reading (no await)
+                    ml_outputs = ml_pipeline_manager.process_reading(
                         device_id=reading.id,
                         sg=sg_calibrated,
                         temp=temp_calibrated_c,
-                        timestamp=timestamp,
+                        rssi=reading.rssi,
+                        time_hours=time_hours,
+                        # TODO: Add ambient_temp, heater_on, cooler_on, target_temp when available
                     )
                 except Exception as e:
                     logging.error(f"ML pipeline failed for {reading.id}: {e}")
@@ -129,6 +138,7 @@ async def handle_tilt_reading(reading: TiltReading):
             # Create reading record
             db_reading = Reading(
                 device_id=reading.id,
+                batch_id=batch_id,
                 timestamp=timestamp,
                 sg_raw=reading.sg,
                 sg_calibrated=sg_calibrated,
@@ -155,8 +165,11 @@ async def handle_tilt_reading(reading: TiltReading):
             "device_id": reading.id,
             "color": reading.color,
             "sg": sg_calibrated,
+            "sg_raw": reading.sg,
             "temp": temp_calibrated_c,
+            "temp_raw": temp_raw_c,
             "timestamp": serialize_datetime_to_utc(timestamp),
+            "last_seen": serialize_datetime_to_utc(timestamp),
             "paired": device.paired,
             "mac": reading.mac,
         }

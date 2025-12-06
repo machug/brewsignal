@@ -70,3 +70,43 @@ class MLPipelineManager:
     def get_pipeline_count(self) -> int:
         """Get count of active pipelines."""
         return len(self.pipelines)
+
+    def process_reading(
+        self,
+        device_id: str,
+        sg: float,
+        temp: float,
+        rssi: float,
+        time_hours: float,
+        ambient_temp: Optional[float] = None,
+        heater_on: Optional[bool] = None,
+        cooler_on: Optional[bool] = None,
+        target_temp: Optional[float] = None,
+    ) -> dict:
+        """Process a reading through the device's ML pipeline.
+
+        Args:
+            device_id: Unique device identifier
+            sg: Specific gravity reading
+            temp: Temperature reading (°C)
+            rssi: Bluetooth signal strength (dBm)
+            time_hours: Time since fermentation start (hours)
+            ambient_temp: Ambient/room temperature (°C)
+            heater_on: Current heater state (for MPC learning)
+            cooler_on: Current cooler state (for MPC learning)
+            target_temp: Target temperature (°C)
+
+        Returns:
+            Dictionary with ML outputs (filtered values, anomalies, predictions)
+        """
+        pipeline = self.get_or_create_pipeline(device_id)
+        return pipeline.process_reading(
+            sg=sg,
+            temp=temp,
+            rssi=rssi,
+            time_hours=time_hours,
+            ambient_temp=ambient_temp,
+            heater_on=heater_on,
+            cooler_on=cooler_on,
+            target_temp=target_temp,
+        )

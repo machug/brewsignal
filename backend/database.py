@@ -250,6 +250,7 @@ async def init_db():
         await conn.run_sync(_migrate_mark_outliers_invalid)  # Mark historical outliers
         await conn.run_sync(_migrate_fix_temp_outlier_detection)  # Fix F→C temp check bug
         await conn.run_sync(_migrate_tilts_to_devices_final)  # Final migration: drop tilts table
+        await conn.run_sync(_migrate_control_events_tilt_id_to_device_id)  # Migrate control_events to use device_id
 
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
@@ -1004,7 +1005,7 @@ def _migrate_tilts_to_devices_final(conn):
     result = conn.execute(text("""
         INSERT OR IGNORE INTO devices (
             id, device_type, name, display_name, beer_name, original_gravity,
-            native_gravity_unit, native_temp_unit, calibration_type,
+            native_gravity_unit, native_temp_unit, calibration_type, calibration_data,
             mac, color, last_seen, paired, paired_at, created_at
         )
         SELECT
@@ -1015,8 +1016,9 @@ def _migrate_tilts_to_devices_final(conn):
             beer_name,
             original_gravity,
             'sg' as native_gravity_unit,
-            'F' as native_temp_unit,
+            'f' as native_temp_unit,
             'linear' as calibration_type,
+            '{"sg_offset": 0.0, "temp_offset": 0.0, "sg_points": [], "temp_points": []}' as calibration_data,
             mac,
             color,
             last_seen,
@@ -1212,6 +1214,58 @@ def _migrate_tilts_to_devices_final(conn):
     # Step 4: Drop tilts table
     conn.execute(text("DROP TABLE tilts"))
     print("Migration: Dropped tilts table - migration complete!")
+
+
+def _migrate_control_events_tilt_id_to_device_id(conn):
+    """Rename tilt_id column to device_id in control_events table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "control_events" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("control_events")]
+
+    if "tilt_id" not in columns:
+        return  # Already migrated or fresh install
+
+    print("Migration: Renaming control_events.tilt_id to device_id")
+
+    # Check SQLite version for RENAME COLUMN support
+    version_result = conn.execute(text("SELECT sqlite_version()"))
+    sqlite_version = version_result.scalar()
+    major, minor, _ = sqlite_version.split('.')
+
+    if int(major) >= 3 and int(minor) >= 25:
+        # SQLite 3.25+ supports ALTER TABLE RENAME COLUMN
+        conn.execute(text("ALTER TABLE control_events RENAME COLUMN tilt_id TO device_id"))
+        print("Migration: Renamed control_events.tilt_id to device_id")
+    else:
+        # Older SQLite - recreate table
+        print("Migration: Recreating control_events table with device_id column")
+        conn.execute(text("""
+            CREATE TABLE control_events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                device_id VARCHAR(100),
+                batch_id INTEGER,
+                action VARCHAR(20),
+                wort_temp FLOAT,
+                ambient_temp FLOAT,
+                target_temp FLOAT,
+                FOREIGN KEY(device_id) REFERENCES devices(id),
+                FOREIGN KEY(batch_id) REFERENCES batches(id)
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO control_events_new (id, timestamp, device_id, batch_id, action, wort_temp, ambient_temp, target_temp)
+            SELECT id, timestamp, tilt_id, batch_id, action, wort_temp, ambient_temp, target_temp FROM control_events
+        """))
+        conn.execute(text("DROP TABLE control_events"))
+        conn.execute(text("ALTER TABLE control_events_new RENAME TO control_events"))
+        # Recreate index
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_control_timestamp ON control_events(timestamp)"))
+        print("Migration: Recreated control_events table with device_id")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

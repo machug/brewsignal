@@ -185,12 +185,12 @@ class ControlEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
-    tilt_id: Mapped[Optional[str]] = mapped_column(String(36))
-    batch_id: Mapped[Optional[int]] = mapped_column()  # Batch that triggered this control event
+    device_id: Mapped[Optional[str]] = mapped_column(String(100), ForeignKey("devices.id"))
+    batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("batches.id"))
     action: Mapped[str] = mapped_column(String(20))  # heat_on, heat_off, cool_on, cool_off
-    wort_temp: Mapped[Optional[float]] = mapped_column()
-    ambient_temp: Mapped[Optional[float]] = mapped_column()
-    target_temp: Mapped[Optional[float]] = mapped_column()
+    wort_temp: Mapped[Optional[float]] = mapped_column()  # Temperature in Celsius
+    ambient_temp: Mapped[Optional[float]] = mapped_column()  # Temperature in Celsius
+    target_temp: Mapped[Optional[float]] = mapped_column()  # Temperature in Celsius
 
 
 class Config(Base):
@@ -546,12 +546,12 @@ class ControlEventResponse(BaseModel):
 
     id: int
     timestamp: datetime
-    tilt_id: Optional[str]
+    device_id: Optional[str]
     batch_id: Optional[int]
     action: str
-    wort_temp: Optional[float]
-    ambient_temp: Optional[float]
-    target_temp: Optional[float]
+    wort_temp: Optional[float]  # Temperature in Celsius
+    ambient_temp: Optional[float]  # Temperature in Celsius
+    target_temp: Optional[float]  # Temperature in Celsius
 
     @field_serializer('timestamp')
     def serialize_dt(self, dt: datetime) -> str:
@@ -644,22 +644,22 @@ class ConfigUpdate(BaseModel):
     @field_validator("temp_target")
     @classmethod
     def validate_temp_target(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and (v < 32 or v > 100):
-            raise ValueError("temp_target must be between 32 and 100 (Fahrenheit)")
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("temp_target must be between 0-100°C (32-212°F)")
         return v
 
     @field_validator("temp_hysteresis")
     @classmethod
     def validate_temp_hysteresis(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and (v < 0.5 or v > 10):
-            raise ValueError("temp_hysteresis must be between 0.5 and 10")
+        if v is not None and (v < 0.05 or v > 5.5):
+            raise ValueError("temp_hysteresis must be between 0.05-5.5°C (0.1-10°F)")
         return v
 
     @field_validator("alert_temp_threshold")
     @classmethod
     def validate_alert_temp_threshold(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and (v < 1 or v > 20):
-            raise ValueError("alert_temp_threshold must be between 1 and 20")
+        if v is not None and (v < 0.5 or v > 11):
+            raise ValueError("alert_temp_threshold must be between 0.5-11°C (1-20°F)")
         return v
 
 

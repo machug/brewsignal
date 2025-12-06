@@ -75,7 +75,7 @@ def _trigger_immediate_check() -> None:
 def get_device_temp(device_id: str) -> Optional[float]:
     """Get the latest wort temperature for a specific device.
 
-    Returns temperature in Fahrenheit (calibrated if available).
+    Returns temperature in Celsius (calibrated if available).
     """
     from .state import latest_readings
 
@@ -90,7 +90,7 @@ def get_device_temp(device_id: str) -> Optional[float]:
 def get_latest_tilt_temp() -> Optional[float]:
     """Get the latest wort temperature from any active Tilt.
 
-    Returns temperature in Fahrenheit (calibrated if available).
+    Returns temperature in Celsius (calibrated if available).
     """
     # Import here to avoid circular imports
     from .state import latest_readings
@@ -164,7 +164,7 @@ async def log_control_event(
     wort_temp: Optional[float],
     ambient_temp: Optional[float],
     target_temp: Optional[float],
-    tilt_id: Optional[str],
+    device_id: Optional[str],
     batch_id: Optional[int] = None,
 ) -> None:
     """Log a control event to the database."""
@@ -173,7 +173,7 @@ async def log_control_event(
         wort_temp=wort_temp,
         ambient_temp=ambient_temp,
         target_temp=target_temp,
-        tilt_id=tilt_id,
+        device_id=device_id,
         batch_id=batch_id,
     )
     db.add(event)

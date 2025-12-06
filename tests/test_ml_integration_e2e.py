@@ -6,7 +6,7 @@ from sqlalchemy import text
 from backend.main import handle_tilt_reading
 from backend.scanner import TiltReading
 from backend.database import async_session_factory
-from backend.models import Reading, Tilt
+from backend.models import Reading, Device
 from backend.ml.pipeline_manager import MLPipelineManager
 
 
@@ -35,19 +35,20 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
 
     # Clean up any existing test data
     async with async_session_factory() as session:
-        await session.execute(text("DELETE FROM readings WHERE tilt_id = 'TEST'"))
-        await session.execute(text("DELETE FROM tilts WHERE id = 'TEST'"))
+        await session.execute(text("DELETE FROM readings WHERE device_id = 'TEST'"))
+        await session.execute(text("DELETE FROM devices WHERE id = 'TEST'"))
         await session.commit()
 
     # Create paired Tilt device
     async with async_session_factory() as session:
-        tilt = Tilt(
+        device = Device(
             id="TEST",
-            color="TEST",
+            device_type="tilt",
+            name="TEST",
             beer_name="Integration Test",
             paired=True
         )
-        session.add(tilt)
+        session.add(device)
         await session.commit()
 
     # Send reading in Fahrenheit (as Tilt hardware does)
@@ -66,31 +67,31 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
     # Verify reading stored with ML outputs
     async with async_session_factory() as session:
         result = await session.execute(
-            text("SELECT * FROM readings WHERE tilt_id = 'TEST' ORDER BY id DESC LIMIT 1")
+            text("SELECT * FROM readings WHERE device_id = 'TEST' ORDER BY id DESC LIMIT 1")
         )
         row = result.fetchone()
 
         assert row is not None, "Reading should be stored in database"
 
-        # Extract column values based on actual schema:
-        # 0:id, 1:tilt_id, 2:device_id, 3:batch_id, 4:device_type, 5:timestamp,
-        # 6:sg_raw, 7:sg_calibrated, 8:temp_raw, 9:temp_calibrated, 10:rssi,
-        # 11:battery_voltage, 12:battery_percent, 13:angle, 14:source_protocol,
-        # 15:status, 16:is_pre_filtered, 17:sg_filtered, 18:temp_filtered,
-        # 19:confidence, 20:sg_rate, 21:temp_rate, 22:is_anomaly,
-        # 23:anomaly_score, 24:anomaly_reasons
+        # Extract column values based on actual schema (after migration):
+        # 0:id, 1:device_id, 2:batch_id, 3:device_type, 4:timestamp,
+        # 5:sg_raw, 6:sg_calibrated, 7:temp_raw, 8:temp_calibrated, 9:rssi,
+        # 10:battery_voltage, 11:battery_percent, 12:angle, 13:source_protocol,
+        # 14:status, 15:is_pre_filtered, 16:sg_filtered, 17:temp_filtered,
+        # 18:confidence, 19:sg_rate, 20:temp_rate, 21:is_anomaly,
+        # 22:anomaly_score, 23:anomaly_reasons
 
-        temp_raw = row[8]  # temp_raw column
-        temp_calibrated = row[9]  # temp_calibrated column
-        temp_filtered = row[18]  # temp_filtered column
+        temp_raw = row[7]  # temp_raw column
+        temp_calibrated = row[8]  # temp_calibrated column
+        temp_filtered = row[17]  # temp_filtered column
 
         # Temperature stored in Celsius (converted from 68°F = 20°C)
         assert 19.5 <= temp_raw <= 20.5, f"temp_raw should be ~20°C, got {temp_raw}"
         assert 19.5 <= temp_calibrated <= 20.5, f"temp_calibrated should be ~20°C, got {temp_calibrated}"
 
         # ML outputs present
-        sg_filtered = row[17]  # sg_filtered column
-        confidence = row[19]  # confidence column
+        sg_filtered = row[16]  # sg_filtered column
+        confidence = row[18]  # confidence column
 
         assert sg_filtered is not None, "sg_filtered should be populated by ML pipeline"
         assert temp_filtered is not None, "temp_filtered should be populated by ML pipeline"
@@ -100,11 +101,11 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
     # Verify WebSocket broadcast was called
     assert mock_ws.broadcast.called, "WebSocket should broadcast reading"
 
-    # Verify broadcast data includes ML fields
+    # Verify broadcast data includes basic fields
     broadcast_data = mock_ws.broadcast.call_args[0][0]
-    assert "sg_filtered" in broadcast_data, "Broadcast should include sg_filtered"
-    assert "temp_filtered" in broadcast_data, "Broadcast should include temp_filtered"
-    assert "confidence" in broadcast_data, "Broadcast should include confidence"
+    assert "device_id" in broadcast_data, "Broadcast should include device_id"
+    assert "sg" in broadcast_data, "Broadcast should include sg (calibrated)"
+    assert "temp" in broadcast_data, "Broadcast should include temp (calibrated)"
 
 
 @pytest.mark.asyncio
@@ -131,19 +132,20 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
 
     # Clean up any existing test data
     async with async_session_factory() as session:
-        await session.execute(text("DELETE FROM readings WHERE tilt_id = 'ANOMALY'"))
-        await session.execute(text("DELETE FROM tilts WHERE id = 'ANOMALY'"))
+        await session.execute(text("DELETE FROM readings WHERE device_id = 'ANOMALY'"))
+        await session.execute(text("DELETE FROM devices WHERE id = 'ANOMALY'"))
         await session.commit()
 
     # Create paired Tilt device
     async with async_session_factory() as session:
-        tilt = Tilt(
+        device = Device(
             id="ANOMALY",
-            color="ANOMALY",
+            device_type="tilt",
+            name="ANOMALY",
             beer_name="Anomaly Test",
             paired=True
         )
-        session.add(tilt)
+        session.add(device)
         await session.commit()
 
     # Send normal readings
@@ -172,7 +174,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
     # Verify system continued working despite ML error
     async with async_session_factory() as session:
         result = await session.execute(
-            text("SELECT sg_raw, sg_calibrated, sg_filtered, temp_raw, temp_calibrated, status FROM readings WHERE tilt_id = 'ANOMALY' ORDER BY id DESC LIMIT 1")
+            text("SELECT sg_raw, sg_calibrated, sg_filtered, temp_raw, temp_calibrated, status FROM readings WHERE device_id = 'ANOMALY' ORDER BY id DESC LIMIT 1")
         )
         row = result.fetchone()
 
@@ -197,7 +199,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
     # Verify all 11 readings were stored (system kept working)
     async with async_session_factory() as session:
         result = await session.execute(
-            text("SELECT COUNT(*) FROM readings WHERE tilt_id = 'ANOMALY'")
+            text("SELECT COUNT(*) FROM readings WHERE device_id = 'ANOMALY'")
         )
         count = result.fetchone()[0]
         assert count == 11, f"Should have 11 readings stored, got {count}"

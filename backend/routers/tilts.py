@@ -12,6 +12,7 @@ from ..models import (
     CalibrationPoint,
     CalibrationPointCreate,
     CalibrationPointResponse,
+    Device,
     Reading,
     ReadingResponse,
     Tilt,
@@ -201,8 +202,18 @@ async def pair_tilt(tilt_id: str, db: AsyncSession = Depends(get_db)):
     if not tilt:
         raise HTTPException(status_code=404, detail="Tilt not found")
 
+    paired_at = datetime.now(timezone.utc)
+
+    # Update legacy Tilt table
     tilt.paired = True
-    tilt.paired_at = datetime.now(timezone.utc)
+    tilt.paired_at = paired_at
+
+    # Also update Device table for universal device support
+    device = await db.get(Device, tilt_id)
+    if device:
+        device.paired = True
+        device.paired_at = paired_at
+
     await db.commit()
     await db.refresh(tilt)
 
@@ -221,8 +232,16 @@ async def unpair_tilt(tilt_id: str, db: AsyncSession = Depends(get_db)):
     if not tilt:
         raise HTTPException(status_code=404, detail="Tilt not found")
 
+    # Update legacy Tilt table
     tilt.paired = False
     tilt.paired_at = None
+
+    # Also update Device table for universal device support
+    device = await db.get(Device, tilt_id)
+    if device:
+        device.paired = False
+        device.paired_at = None
+
     await db.commit()
     await db.refresh(tilt)
 

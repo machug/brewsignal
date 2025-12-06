@@ -1016,7 +1016,7 @@ def _migrate_tilts_to_devices_final(conn):
             beer_name,
             original_gravity,
             'sg' as native_gravity_unit,
-            'f' as native_temp_unit,
+            'c' as native_temp_unit,
             'linear' as calibration_type,
             '{"sg_offset": 0.0, "temp_offset": 0.0, "sg_points": [], "temp_points": []}' as calibration_data,
             mac,

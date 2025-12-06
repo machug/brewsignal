@@ -47,9 +47,10 @@ class Device(Base):
     beer_name: Mapped[Optional[str]] = mapped_column(String(100))
     original_gravity: Mapped[Optional[float]] = mapped_column()
 
-    # Native units (for display and conversion)
+    # Stored units (all temperatures stored in Celsius, all gravity in SG)
+    # NOTE: Tilt devices broadcast in Fahrenheit but are converted to Celsius on ingestion
     native_gravity_unit: Mapped[str] = mapped_column(String(10), default="sg")
-    native_temp_unit: Mapped[str] = mapped_column(String(5), default="f")
+    native_temp_unit: Mapped[str] = mapped_column(String(5), default="c")
 
     # Calibration - stored as JSON string, use properties for access
     calibration_type: Mapped[str] = mapped_column(String(20), default="none")

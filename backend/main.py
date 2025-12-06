@@ -41,32 +41,57 @@ cleanup_service: Optional[CleanupService] = None
 ml_pipeline_manager: Optional[MLPipelineManager] = None
 
 
-async def calculate_time_since_batch_start(session, batch_id: Optional[int]) -> float:
-    """Calculate hours since batch start.
+async def calculate_time_since_batch_start(
+    session,
+    batch_id: Optional[int],
+    device_id: str
+) -> float:
+    """Calculate hours since batch start, with wall-clock fallback.
 
     Args:
         session: Database session
-        batch_id: Batch ID
+        batch_id: Batch ID (may be None for unlinked readings)
+        device_id: Device ID for wall-clock fallback
 
     Returns:
-        Hours since batch start_time (0.0 if no batch or no start_time)
+        Hours since batch start_time, or hours since first reading if no batch
     """
-    if not batch_id:
-        return 0.0
+    if batch_id:
+        batch = await session.get(models.Batch, batch_id)
+        if batch and batch.start_time:
+            now = datetime.now(timezone.utc)
+            start_time = batch.start_time
 
-    batch = await session.get(models.Batch, batch_id)
-    if not batch or not batch.start_time:
-        return 0.0
+            # Handle naive datetime (database stores in UTC but without timezone info)
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
 
-    now = datetime.now(timezone.utc)
-    start_time = batch.start_time
+            delta = now - start_time
+            return delta.total_seconds() / 3600.0
 
-    # Handle naive datetime (database stores in UTC but without timezone info)
-    if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=timezone.utc)
+    # Fallback: Use wall-clock time since first reading for this device
+    # This prevents ML pipeline from being stuck at time_hours=0
+    first_reading = await session.execute(
+        select(models.Reading)
+        .where(models.Reading.device_id == device_id)
+        .order_by(models.Reading.timestamp.asc())
+        .limit(1)
+    )
+    first = first_reading.scalar_one_or_none()
 
-    delta = now - start_time
-    return delta.total_seconds() / 3600.0  # Convert to hours
+    if first:
+        now = datetime.now(timezone.utc)
+        first_time = first.timestamp
+
+        # Handle naive datetime
+        if first_time.tzinfo is None:
+            first_time = first_time.replace(tzinfo=timezone.utc)
+
+        delta = now - first_time
+        return delta.total_seconds() / 3600.0
+
+    # Absolute fallback: return 0.0 for very first reading
+    return 0.0
 
 
 async def handle_tilt_reading(reading: TiltReading):
@@ -78,12 +103,12 @@ async def handle_tilt_reading(reading: TiltReading):
         # Get or create Device record (single source of truth)
         device = await session.get(Device, reading.id)
         if not device:
-            # Create new Tilt device
+            # Create new Tilt device (temps converted from F to C on ingestion)
             device = Device(
                 id=reading.id,
                 device_type='tilt',
                 name=reading.color,
-                native_temp_unit='F',
+                native_temp_unit='c',  # Stored in Celsius (converted from F at BLE boundary)
                 native_gravity_unit='sg',
                 calibration_type='linear',
                 paired=False,  # New devices start unpaired
@@ -116,8 +141,8 @@ async def handle_tilt_reading(reading: TiltReading):
             # Link reading to active batch (if any)
             batch_id = await link_reading_to_batch(session, reading.id)
 
-            # Calculate time since batch start for ML pipeline
-            time_hours = await calculate_time_since_batch_start(session, batch_id)
+            # Calculate time since batch start for ML pipeline (with wall-clock fallback)
+            time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
 
             # Process through ML pipeline if available
             ml_outputs = {}

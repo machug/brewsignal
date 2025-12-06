@@ -97,10 +97,14 @@ class MLPipelineManager:
             target_temp: Target temperature (°C)
 
         Returns:
-            Dictionary with ML outputs (filtered values, anomalies, predictions)
+            Flattened dictionary with ML outputs for database storage:
+            - sg_filtered, temp_filtered: Kalman filtered values
+            - confidence: Reading quality (0.0-1.0)
+            - sg_rate, temp_rate: Derivatives
+            - is_anomaly, anomaly_score, anomaly_reasons: Anomaly detection
         """
         pipeline = self.get_or_create_pipeline(device_id)
-        return pipeline.process_reading(
+        nested_result = pipeline.process_reading(
             sg=sg,
             temp=temp,
             rssi=rssi,
@@ -110,3 +114,27 @@ class MLPipelineManager:
             cooler_on=cooler_on,
             target_temp=target_temp,
         )
+
+        # Flatten nested structure for database storage
+        flat_result = {}
+
+        # Extract Kalman filter outputs
+        if nested_result.get("kalman"):
+            kalman = nested_result["kalman"]
+            flat_result["sg_filtered"] = kalman.get("sg_filtered")
+            flat_result["temp_filtered"] = kalman.get("temp_filtered")
+            flat_result["confidence"] = kalman.get("confidence")
+            flat_result["sg_rate"] = kalman.get("sg_rate")
+            flat_result["temp_rate"] = kalman.get("temp_rate")
+
+        # Extract anomaly detection outputs
+        if nested_result.get("anomaly"):
+            anomaly = nested_result["anomaly"]
+            flat_result["is_anomaly"] = anomaly.get("is_anomaly", False)
+            flat_result["anomaly_score"] = anomaly.get("score")
+            flat_result["anomaly_reasons"] = anomaly.get("reasons", [])
+        else:
+            flat_result["is_anomaly"] = False
+            flat_result["anomaly_reasons"] = []
+
+        return flat_result

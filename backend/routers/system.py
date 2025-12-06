@@ -5,6 +5,7 @@ Safety: Destructive operations (reboot/shutdown) require:
 2. Explicit confirmation in request body
 """
 
+import logging
 import socket
 import subprocess
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 
 from ..cleanup import cleanup_old_readings, get_reading_stats
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 # Read version from VERSION file
@@ -152,21 +154,27 @@ async def list_timezones():
 async def get_timezone():
     """Get current timezone."""
     try:
-        # Use timedatectl (most reliable on modern systems)
+        # Use timedatectl (most reliable on modern systems) - use full path
         result = subprocess.run(
-            ["timedatectl", "show", "--property=Timezone", "--value"],
+            ["/usr/bin/timedatectl", "show", "--property=Timezone", "--value"],
             capture_output=True,
             text=True,
             timeout=5,
         )
+        logger.info(f"timedatectl returncode: {result.returncode}, stdout: '{result.stdout.strip()}', stderr: '{result.stderr.strip()}'")
         if result.returncode == 0 and result.stdout.strip():
-            return {"timezone": result.stdout.strip()}
+            tz = result.stdout.strip()
+            logger.info(f"Returning timezone from timedatectl: {tz}")
+            return {"timezone": tz}
         # Fallback to /etc/timezone
         tz_file = Path("/etc/timezone")
         if tz_file.exists():
-            return {"timezone": tz_file.read_text().strip()}
-    except Exception:
-        pass
+            tz = tz_file.read_text().strip()
+            logger.info(f"Returning timezone from /etc/timezone: {tz}")
+            return {"timezone": tz}
+    except Exception as e:
+        logger.error(f"Error getting timezone: {e}")
+    logger.warning("Falling back to UTC timezone")
     return {"timezone": "UTC"}
 
 
@@ -184,7 +192,7 @@ async def set_timezone(update: TimezoneUpdate, request: Request):
         raise HTTPException(status_code=400, detail=f"Unknown timezone: {update.timezone}")
     try:
         subprocess.run(
-            ["sudo", "timedatectl", "set-timezone", update.timezone],
+            ["/usr/bin/sudo", "/usr/bin/timedatectl", "set-timezone", update.timezone],
             check=True,
             timeout=10,
         )

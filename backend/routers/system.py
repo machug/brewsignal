@@ -6,7 +6,6 @@ Safety: Destructive operations (reboot/shutdown) require:
 """
 
 import logging
-import shutil
 import socket
 import subprocess
 from datetime import datetime, timezone

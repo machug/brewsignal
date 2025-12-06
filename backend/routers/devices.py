@@ -5,11 +5,20 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..database import get_db
-from ..models import Device, serialize_datetime_to_utc
+from ..models import (
+    Device,
+    CalibrationPoint,
+    Reading,
+    CalibrationPointCreate,
+    CalibrationPointResponse,
+    ReadingResponse,
+    serialize_datetime_to_utc,
+)
 from ..services.calibration import calibration_service
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -417,7 +426,89 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
     return DeviceResponse.from_orm_with_calibration(device)
 
 
-# Calibration Endpoints
+# CalibrationPoint Endpoints (table-based calibration for Tilt devices)
+@router.get("/{device_id}/calibration_points", response_model=list[CalibrationPointResponse])
+async def get_device_calibration_points(device_id: str, db: AsyncSession = Depends(get_db)):
+    """Get calibration points for any device type."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    result = await db.execute(
+        select(CalibrationPoint)
+        .where(CalibrationPoint.device_id == device_id)
+        .order_by(CalibrationPoint.type, CalibrationPoint.raw_value)
+    )
+    return result.scalars().all()
+
+
+@router.post("/{device_id}/calibration_points", response_model=CalibrationPointResponse)
+async def add_device_calibration_point(
+    device_id: str,
+    point: CalibrationPointCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Add calibration point for any device type."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    calibration_point = CalibrationPoint(
+        device_id=device_id,
+        **point.model_dump()
+    )
+    db.add(calibration_point)
+    await db.commit()
+    await db.refresh(calibration_point)
+
+    return calibration_point
+
+
+@router.delete("/{device_id}/calibration_points/{type}")
+async def clear_device_calibration_points(
+    device_id: str,
+    type: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Clear calibration points for a specific type (sg or temp)."""
+    if type not in ["sg", "temp"]:
+        raise HTTPException(status_code=400, detail="Type must be 'sg' or 'temp'")
+
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    await db.execute(
+        delete(CalibrationPoint)
+        .where(CalibrationPoint.device_id == device_id)
+        .where(CalibrationPoint.type == type)
+    )
+    await db.commit()
+
+    return {"message": f"Cleared {type} calibration for device {device_id}"}
+
+
+@router.get("/{device_id}/readings", response_model=list[ReadingResponse])
+async def get_device_readings(
+    device_id: str,
+    limit: int = Query(default=100, le=1000),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get recent readings for any device type."""
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    result = await db.execute(
+        select(Reading)
+        .where(Reading.device_id == device_id)
+        .order_by(desc(Reading.timestamp))
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+# Calibration Endpoints (JSON-based calibration data)
 @router.put("/{device_id}/calibration", response_model=CalibrationResponse)
 async def set_calibration(
     device_id: str,

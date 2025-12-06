@@ -155,24 +155,23 @@ async def list_timezones():
 async def get_timezone():
     """Get current timezone."""
     try:
-        # Use timedatectl (most reliable on modern systems)
-        timedatectl_path = shutil.which("timedatectl") or "/usr/bin/timedatectl"
+        # Use timedatectl (most reliable on modern systems) - use full path
         result = subprocess.run(
-            [timedatectl_path, "show", "--property=Timezone", "--value"],
+            ["/usr/bin/timedatectl", "show", "--property=Timezone", "--value"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        logger.debug(f"timedatectl returncode: {result.returncode}, stdout: '{result.stdout.strip()}', stderr: '{result.stderr.strip()}'")
+        logger.info(f"timedatectl returncode: {result.returncode}, stdout: '{result.stdout.strip()}', stderr: '{result.stderr.strip()}'")
         if result.returncode == 0 and result.stdout.strip():
             tz = result.stdout.strip()
-            logger.debug(f"Returning timezone from timedatectl: {tz}")
+            logger.info(f"Returning timezone from timedatectl: {tz}")
             return {"timezone": tz}
         # Fallback to /etc/timezone
         tz_file = Path("/etc/timezone")
         if tz_file.exists():
             tz = tz_file.read_text().strip()
-            logger.debug(f"Returning timezone from /etc/timezone: {tz}")
+            logger.info(f"Returning timezone from /etc/timezone: {tz}")
             return {"timezone": tz}
     except Exception as e:
         logger.error(f"Error getting timezone: {e}")
@@ -193,10 +192,8 @@ async def set_timezone(update: TimezoneUpdate, request: Request):
     if not tz_path.exists():
         raise HTTPException(status_code=400, detail=f"Unknown timezone: {update.timezone}")
     try:
-        sudo_path = shutil.which("sudo") or "/usr/bin/sudo"
-        timedatectl_path = shutil.which("timedatectl") or "/usr/bin/timedatectl"
         subprocess.run(
-            [sudo_path, timedatectl_path, "set-timezone", update.timezone],
+            ["/usr/bin/sudo", "/usr/bin/timedatectl", "set-timezone", update.timezone],
             check=True,
             timeout=10,
         )

@@ -497,6 +497,15 @@ async def get_device_readings(
 ):
     """Get readings for any device type, optionally filtered by time window.
 
+    Implements intelligent downsampling for longer time windows to ensure
+    the data covers the full requested range rather than just recent hours.
+
+    Downsampling strategy:
+    - 1H, 6H: Every reading (limit controls max)
+    - 24H: Every 5th reading (~2.5 min intervals)
+    - 7D: Every 60th reading (~30 min intervals)
+    - 30D: Every 360th reading (~3 hour intervals)
+
     Returns readings in ascending order (oldest → newest) for charting.
     """
     device = await db.get(Device, device_id)
@@ -510,11 +519,31 @@ async def get_device_readings(
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         query = query.where(Reading.timestamp >= cutoff_time)
 
-    # Get newest N readings by sorting DESC, limiting, then reversing
-    # This ensures we get the most recent data, not the oldest data in the window
-    query = query.order_by(Reading.timestamp.desc()).limit(limit)
+    # Determine downsampling interval based on time window
+    # This ensures we get data spanning the full time range
+    downsample_interval = 1
+    if hours is not None:
+        if hours >= 720:  # 30 days
+            downsample_interval = 360  # ~3 hour intervals
+        elif hours >= 168:  # 7 days
+            downsample_interval = 60   # ~30 min intervals
+        elif hours >= 24:  # 24 hours
+            downsample_interval = 5    # ~2.5 min intervals
+        # else: 1H, 6H use every reading (interval=1)
+
+    # Get all readings in time window, ordered DESC
+    query = query.order_by(Reading.timestamp.desc())
     result = await db.execute(query)
-    readings = list(result.scalars().all())
+    all_readings = list(result.scalars().all())
+
+    # Apply downsampling by taking every Nth reading
+    if downsample_interval > 1:
+        downsampled = all_readings[::downsample_interval]
+    else:
+        downsampled = all_readings
+
+    # Apply limit after downsampling
+    readings = downsampled[:limit]
 
     # Reverse to return in ASC order (oldest → newest) for charting
     readings.reverse()

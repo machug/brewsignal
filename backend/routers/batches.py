@@ -257,6 +257,10 @@ async def update_batch(
         if old_status == "fermenting" and update.status != "fermenting":
             from ..temp_controller import cleanup_batch_state
             cleanup_batch_state(batch_id)
+
+        # Release device when batch is completed or archived
+        if update.status in ["completed", "archived"]:
+            batch.device_id = None
     if update.device_id is not None:
         batch.device_id = update.device_id
     if update.brew_date is not None:

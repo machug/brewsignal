@@ -177,6 +177,20 @@ class AmbientReading(Base):
     entity_id: Mapped[Optional[str]] = mapped_column(String(100))
 
 
+class ChamberReading(Base):
+    """Chamber temperature/humidity readings from Home Assistant sensors."""
+    __tablename__ = "chamber_readings"
+    __table_args__ = (
+        Index("ix_chamber_timestamp", "timestamp"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
+    temperature: Mapped[Optional[float]] = mapped_column()  # Celsius
+    humidity: Mapped[Optional[float]] = mapped_column()
+    entity_id: Mapped[Optional[str]] = mapped_column(String(100))
+
+
 class ControlEvent(Base):
     """Temperature control events (heater on/off, cooler on/off)."""
     __tablename__ = "control_events"
@@ -530,6 +544,19 @@ class ReadingResponse(BaseModel):
 
 
 class AmbientReadingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    timestamp: datetime
+    temperature: Optional[float]
+    humidity: Optional[float]
+
+    @field_serializer('timestamp')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
+class ChamberReadingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int

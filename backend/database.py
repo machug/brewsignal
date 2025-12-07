@@ -226,6 +226,8 @@ async def init_db():
         await conn.run_sync(_migrate_add_ml_columns)
 
         # Step 2: Create any missing tables (includes new Style, Recipe, Batch tables)
+        # Import ChamberReading model to ensure it's in metadata
+        from .models import ChamberReading
         await conn.run_sync(Base.metadata.create_all)
 
         # Step 3: Migrations that depend on new tables existing

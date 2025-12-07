@@ -568,8 +568,9 @@ async function loadData(userTriggered = false) {
 		// Only fetch readings if we have a device_id
 		if (deviceId) {
 			// Fetch device readings and ambient history in parallel
+			// Filter readings by batchId to show only this batch's data
 			const [deviceData, ambientData] = await Promise.all([
-				fetchReadings(deviceId, selectedRange),
+				fetchReadings(deviceId, selectedRange, batchId),
 				fetchAmbientHistory(selectedRange).catch(() => []) // Don't fail if ambient unavailable
 			]);
 			readings = deviceData;

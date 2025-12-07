@@ -30,12 +30,10 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
     # Mock WebSocket manager
     mock_ws.broadcast = AsyncMock()
 
-    # Mock batch linking
-    mock_link.return_value = None
-
     # Clean up any existing test data
     async with async_session_factory() as session:
         await session.execute(text("DELETE FROM readings WHERE device_id = 'TEST'"))
+        await session.execute(text("DELETE FROM batches WHERE device_id = 'TEST'"))
         await session.execute(text("DELETE FROM devices WHERE id = 'TEST'"))
         await session.commit()
 
@@ -49,7 +47,20 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
             paired=True
         )
         session.add(device)
+
+        # Create active batch (required for reading storage - two-tier gate)
+        from backend.models import Batch
+        batch = Batch(
+            device_id="TEST",
+            status="fermenting",
+            start_time=datetime.now(timezone.utc),
+        )
+        session.add(batch)
         await session.commit()
+        batch_id = batch.id  # Store for mock
+
+    # Mock batch linking to return the actual batch ID we created
+    mock_link.return_value = batch_id
 
     # Send reading in Fahrenheit (as Tilt hardware does)
     reading = TiltReading(
@@ -127,12 +138,10 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
     # Mock WebSocket manager
     mock_ws.broadcast = AsyncMock()
 
-    # Mock batch linking
-    mock_link.return_value = None
-
     # Clean up any existing test data
     async with async_session_factory() as session:
         await session.execute(text("DELETE FROM readings WHERE device_id = 'ANOMALY'"))
+        await session.execute(text("DELETE FROM batches WHERE device_id = 'ANOMALY'"))
         await session.execute(text("DELETE FROM devices WHERE id = 'ANOMALY'"))
         await session.commit()
 
@@ -146,7 +155,20 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
             paired=True
         )
         session.add(device)
+
+        # Create active batch (required for reading storage - two-tier gate)
+        from backend.models import Batch
+        batch = Batch(
+            device_id="ANOMALY",
+            status="fermenting",
+            start_time=datetime.now(timezone.utc),
+        )
+        session.add(batch)
         await session.commit()
+        batch_id = batch.id  # Store for mock
+
+    # Mock batch linking to return the actual batch ID we created
+    mock_link.return_value = batch_id
 
     # Send normal readings
     for i in range(10):

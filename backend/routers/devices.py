@@ -492,10 +492,11 @@ async def clear_device_calibration_points(
 async def get_device_readings(
     device_id: str,
     hours: Optional[int] = Query(default=None, description="Time window in hours (e.g., 24 for last 24 hours)"),
+    batch_id: Optional[int] = Query(default=None, description="Filter readings by batch ID"),
     limit: int = Query(default=5000, le=10000, description="Maximum number of readings to return"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get readings for any device type, optionally filtered by time window.
+    """Get readings for any device type, optionally filtered by time window and/or batch.
 
     Implements intelligent downsampling for longer time windows to ensure
     the data covers the full requested range rather than just recent hours.
@@ -513,6 +514,10 @@ async def get_device_readings(
         raise HTTPException(status_code=404, detail="Device not found")
 
     query = select(Reading).where(Reading.device_id == device_id)
+
+    # Filter by batch_id if provided
+    if batch_id is not None:
+        query = query.where(Reading.batch_id == batch_id)
 
     # Apply time window filter if hours is provided
     if hours is not None:

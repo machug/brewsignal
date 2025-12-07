@@ -37,9 +37,14 @@ export const TIME_RANGES: TimeRangeOption[] = [
 
 export async function fetchReadings(
 	deviceId: string,
-	hours: number = 24
+	hours: number = 24,
+	batchId?: number
 ): Promise<HistoricalReading[]> {
-	const response = await fetch(`${BASE_URL}/devices/${deviceId}/readings?hours=${hours}&limit=5000`);
+	let url = `${BASE_URL}/devices/${deviceId}/readings?hours=${hours}&limit=5000`;
+	if (batchId !== undefined) {
+		url += `&batch_id=${batchId}`;
+	}
+	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch readings: ${response.statusText}`);
 	}

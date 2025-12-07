@@ -4,13 +4,10 @@
 	import {
 		fetchReadings,
 		fetchAmbientHistory,
-		fetchChamberHistory,
 		fetchBatch,
 		TIME_RANGES,
 		type HistoricalReading,
-		type AmbientHistoricalReading,
-		type ChamberHistoricalReading,
-		type ControlEvent
+		type AmbientHistoricalReading
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import FermentationStats from './FermentationStats.svelte';
@@ -37,10 +34,9 @@
 		batchId: number;
 		deviceColor?: string;
 		originalGravity?: number | null;
-		controlEvents?: ControlEvent[];
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [] }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -53,7 +49,6 @@
 	let selectedRange = $state(24); // hours
 	let readings = $state<HistoricalReading[]>([]);
 	let ambientReadings = $state<AmbientHistoricalReading[]>([]);
-	let chamberReadings = $state<ChamberHistoricalReading[]>([]);
 	let currentTrend = $state<TrendResult | null>(null);
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 
@@ -76,43 +71,11 @@
 	const TEXT_SECONDARY = '#a1a1aa';
 	const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';
 	const CYAN = '#22d3ee'; // Ambient temp color
-	const PURPLE = '#a78bfa'; // Chamber temp color
 	const TREND_COLOR = 'rgba(250, 204, 21, 0.5)'; // Semi-transparent yellow for trend line
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
-
-	// Filtered series visibility
-	const SHOW_FILTERED_SG = 'brewsignal_chart_show_filtered_sg';
-	const SHOW_FILTERED_TEMP = 'brewsignal_chart_show_filtered_temp';
-	let showFilteredSg = $state(false);
-	let showFilteredTemp = $state(false);
-
-	// Anomaly markers visibility
-	const SHOW_ANOMALY_MARKERS = 'brewsignal_chart_show_anomaly_markers';
-	let showAnomalyMarkers = $state(false);
-
-	// Control period bands visibility
-	const SHOW_CONTROL_BANDS = 'brewsignal_chart_show_control_bands';
-	let showControlBands = $state(false);
-
-	// Anomaly marker data
-	interface AnomalyMarker {
-		timestamp: number;
-		sgValue: number | null;
-		anomalyScore: number | null;
-		anomalyReasons: string | null;
-	}
-	let anomalyMarkers = $state<AnomalyMarker[]>([]);
-
-	// Control period data
-	interface ControlPeriod {
-		type: 'heating' | 'cooling';
-		startTime: number;
-		endTime: number;
-	}
-	let controlPeriods = $state<ControlPeriod[]>([]);
 
 	// Linear regression for trend line calculation
 	interface TrendResult {
@@ -265,32 +228,6 @@
 						const legendEl = u.root.querySelector('.u-legend') as HTMLElement;
 						if (!legendEl) return;
 
-						let extraInfo = '';
-
-						// Check if cursor is near an anomaly marker
-						if (showAnomalyMarkers && anomalyMarkers.length > 0) {
-							const cursorTime = u.data[0][idx];
-							if (cursorTime !== null && cursorTime !== undefined) {
-								// Find anomaly marker within 5 minutes of cursor
-								const tolerance = 5 * 60; // 5 minutes in seconds
-								const nearbyAnomaly = anomalyMarkers.find(
-									m => Math.abs(m.timestamp - cursorTime) < tolerance
-								);
-
-								if (nearbyAnomaly) {
-									const score = nearbyAnomaly.anomalyScore?.toFixed(3) ?? 'N/A';
-									const reasons = nearbyAnomaly.anomalyReasons ?? 'Unknown';
-									extraInfo = `
-										<div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
-											<div style="color: #ef4444; font-weight: 600; margin-bottom: 0.25rem;">⚠ ANOMALY</div>
-											<div style="color: var(--text-muted);">Score: ${score}</div>
-											<div style="color: var(--text-muted); margin-top: 0.25rem; max-width: 200px; white-space: normal;">${reasons}</div>
-										</div>
-									`;
-								}
-							}
-						}
-
 						legendEl.style.cssText = `
 							position: absolute;
 							top: 12px;
@@ -305,106 +242,6 @@
 							box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
 							backdrop-filter: blur(8px);
 						`;
-
-						// Add anomaly info if found
-						if (extraInfo) {
-							const seriesEls = legendEl.querySelectorAll('.u-series');
-							if (seriesEls.length > 0) {
-								const lastSeries = seriesEls[seriesEls.length - 1];
-								const existingAnomaly = legendEl.querySelector('.anomaly-info');
-								if (existingAnomaly) {
-									existingAnomaly.remove();
-								}
-								const infoDiv = document.createElement('div');
-								infoDiv.className = 'anomaly-info';
-								infoDiv.innerHTML = extraInfo;
-								legendEl.appendChild(infoDiv);
-							}
-						} else {
-							// Remove anomaly info if no longer hovering
-							const existingAnomaly = legendEl.querySelector('.anomaly-info');
-							if (existingAnomaly) {
-								existingAnomaly.remove();
-							}
-						}
-					}
-				],
-				draw: [
-					(u: uPlot) => {
-						const ctx = u.ctx;
-						const { left, top, width, height } = u.bbox;
-
-						// Draw control period bands if enabled (render FIRST so they're behind everything)
-						if (showControlBands && controlPeriods.length > 0) {
-							ctx.save();
-
-							for (const period of controlPeriods) {
-								// Convert timestamps to pixel coordinates
-								const x1 = u.valToPos(period.startTime, 'x', true);
-								const x2 = u.valToPos(period.endTime, 'x', true);
-
-								// Only draw if within visible range
-								if (x2 >= left && x1 <= left + width) {
-									// Clamp to visible area
-									const visibleX1 = Math.max(x1, left);
-									const visibleX2 = Math.min(x2, left + width);
-
-									// Set color based on period type
-									if (period.type === 'heating') {
-										ctx.fillStyle = 'rgba(239, 68, 68, 0.1)'; // Semi-transparent red
-									} else {
-										ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'; // Semi-transparent blue
-									}
-
-									// Draw rectangle spanning full chart height
-									ctx.fillRect(visibleX1, top, visibleX2 - visibleX1, height);
-								}
-							}
-
-							ctx.restore();
-						}
-
-						// Draw anomaly markers if enabled
-						if (!showAnomalyMarkers || anomalyMarkers.length === 0) return;
-
-						ctx.save();
-
-						// Draw each anomaly marker
-						for (const marker of anomalyMarkers) {
-							if (marker.sgValue === null) continue;
-
-							// Convert timestamp to x pixel coordinate
-							const xPx = u.valToPos(marker.timestamp, 'x', true);
-							// Convert SG value to y pixel coordinate on SG scale
-							const yPx = u.valToPos(marker.sgValue, 'sg', true);
-
-							// Only draw if within chart bounds
-							if (xPx >= left && xPx <= left + width && yPx >= top && yPx <= top + height) {
-								// Draw red warning triangle
-								ctx.fillStyle = '#ef4444'; // red-500
-								ctx.strokeStyle = '#991b1b'; // red-900
-								ctx.lineWidth = 1.5;
-
-								// Draw triangle pointing up
-								const size = 8;
-								ctx.beginPath();
-								ctx.moveTo(xPx, yPx - size); // top point
-								ctx.lineTo(xPx - size * 0.866, yPx + size * 0.5); // bottom left
-								ctx.lineTo(xPx + size * 0.866, yPx + size * 0.5); // bottom right
-								ctx.closePath();
-								ctx.fill();
-								ctx.stroke();
-
-								// Add exclamation mark
-								ctx.fillStyle = '#ffffff';
-								ctx.font = 'bold 8px sans-serif';
-								ctx.textAlign = 'center';
-								ctx.textBaseline = 'middle';
-								ctx.fillText('!', xPx, yPx);
-							}
-						}
-
-						ctx.restore();
 					}
 				]
 			},
@@ -510,41 +347,6 @@
 					paths: uPlot.paths.spline?.() // Smooth spline interpolation
 				},
 				{
-					// Chamber Temp series
-					label: 'Chamber',
-					scale: 'temp',
-					stroke: PURPLE,
-					width: 1.5,
-					dash: [4, 2],
-					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
-					points: { show: false },
-					paths: uPlot.paths.spline?.() // Smooth spline interpolation
-				},
-				{
-					// Filtered SG series
-					label: 'Filtered SG',
-					show: showFilteredSg,
-					scale: 'sg',
-					stroke: sgColor,
-					width: 1.5,
-					dash: [2, 2],
-					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
-					points: { show: false },
-					paths: uPlot.paths.spline?.()
-				},
-				{
-					// Filtered Temp series
-					label: 'Filtered Temp',
-					show: showFilteredTemp,
-					scale: 'temp',
-					stroke: tempColor,
-					width: 1,
-					dash: [2, 2],
-					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
-					points: { show: false },
-					paths: uPlot.paths.spline?.()
-				},
-				{
 					// SG Trend line series
 					label: 'Trend',
 					scale: 'sg',
@@ -590,16 +392,10 @@
 		sgValues: (number | null)[],
 		tempValues: (number | null)[],
 		ambientValues: (number | null)[],
-		chamberValues: (number | null)[],
-		filteredSgValues: (number | null)[],
-		filteredTempValues: (number | null)[],
-		anomalyFlags: boolean[],
-		anomalyScores: (number | null)[],
-		anomalyReasons: (string | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], boolean[], (number | null)[], (string | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgValues, filteredTempValues, anomalyFlags, anomalyScores, anomalyReasons];
+			return [timestamps, sgValues, tempValues, ambientValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -607,12 +403,6 @@
 		const newSg: (number | null)[] = [];
 		const newTemp: (number | null)[] = [];
 		const newAmbient: (number | null)[] = [];
-		const newChamber: (number | null)[] = [];
-		const newFilteredSg: (number | null)[] = [];
-		const newFilteredTemp: (number | null)[] = [];
-		const newAnomalyFlags: boolean[] = [];
-		const newAnomalyScores: (number | null)[] = [];
-		const newAnomalyReasons: (string | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -620,29 +410,11 @@
 			let sgSum = 0, sgCount = 0;
 			let tempSum = 0, tempCount = 0;
 			let ambientSum = 0, ambientCount = 0;
-			let chamberSum = 0, chamberCount = 0;
-			let filteredSgSum = 0, filteredSgCount = 0;
-			let filteredTempSum = 0, filteredTempCount = 0;
-
-			// For anomaly data, use the first anomaly found in bucket (if any)
-			let hasAnomaly = false;
-			let bucketAnomalyScore: number | null = null;
-			let bucketAnomalyReason: string | null = null;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
 				if (tempValues[j] !== null) { tempSum += tempValues[j]!; tempCount++; }
 				if (ambientValues[j] !== null) { ambientSum += ambientValues[j]!; ambientCount++; }
-				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
-				if (filteredSgValues[j] !== null) { filteredSgSum += filteredSgValues[j]!; filteredSgCount++; }
-				if (filteredTempValues[j] !== null) { filteredTempSum += filteredTempValues[j]!; filteredTempCount++; }
-
-				// If bucket contains any anomaly, mark the downsampled point as anomaly
-				if (anomalyFlags[j] && !hasAnomaly) {
-					hasAnomaly = true;
-					bucketAnomalyScore = anomalyScores[j];
-					bucketAnomalyReason = anomalyReasons[j];
-				}
 			}
 
 			// Use middle timestamp of bucket
@@ -650,15 +422,9 @@
 			newSg.push(sgCount > 0 ? sgSum / sgCount : null);
 			newTemp.push(tempCount > 0 ? tempSum / tempCount : null);
 			newAmbient.push(ambientCount > 0 ? ambientSum / ambientCount : null);
-			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
-			newFilteredSg.push(filteredSgCount > 0 ? filteredSgSum / filteredSgCount : null);
-			newFilteredTemp.push(filteredTempCount > 0 ? filteredTempSum / filteredTempCount : null);
-			newAnomalyFlags.push(hasAnomaly);
-			newAnomalyScores.push(bucketAnomalyScore);
-			newAnomalyReasons.push(bucketAnomalyReason);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newFilteredSg, newFilteredTemp, newAnomalyFlags, newAnomalyScores, newAnomalyReasons];
+		return [newTimestamps, newSg, newTemp, newAmbient];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -668,58 +434,6 @@
 			timestamp = timestamp + 'Z';
 		}
 		return new Date(timestamp).getTime() / 1000;
-	}
-
-	// Convert control events to heating/cooling periods
-	function processControlEvents(events: ControlEvent[]): ControlPeriod[] {
-		const periods: ControlPeriod[] = [];
-
-		// Track active periods
-		let heatingStart: number | null = null;
-		let coolingStart: number | null = null;
-
-		for (const event of events) {
-			const timestamp = parseUtcTimestamp(event.timestamp);
-
-			if (event.action === 'heat_on') {
-				heatingStart = timestamp;
-			} else if (event.action === 'heat_off' && heatingStart !== null) {
-				periods.push({
-					type: 'heating',
-					startTime: heatingStart,
-					endTime: timestamp
-				});
-				heatingStart = null;
-			} else if (event.action === 'cool_on') {
-				coolingStart = timestamp;
-			} else if (event.action === 'cool_off' && coolingStart !== null) {
-				periods.push({
-					type: 'cooling',
-					startTime: coolingStart,
-					endTime: timestamp
-				});
-				coolingStart = null;
-			}
-		}
-
-		// Handle unpaired events - extend to current time
-		const now = Date.now() / 1000;
-		if (heatingStart !== null) {
-			periods.push({
-				type: 'heating',
-				startTime: heatingStart,
-				endTime: now
-			});
-		}
-		if (coolingStart !== null) {
-			periods.push({
-				type: 'cooling',
-				startTime: coolingStart,
-				endTime: now
-			});
-		}
-
-		return periods;
 	}
 
 	// Interpolate ambient readings to match tilt timestamps
@@ -779,7 +493,6 @@
 	function processData(
 		readings: HistoricalReading[],
 		ambient: AmbientHistoricalReading[],
-		chamber: ChamberHistoricalReading[],
 		celsius: boolean
 	): uPlot.AlignedData {
 		// Readings come newest first, reverse for chronological order
@@ -789,21 +502,9 @@
 		let sgValues: (number | null)[] = [];
 		let tempValues: (number | null)[] = [];
 
-		// Store anomaly flags for later extraction (after downsampling)
-		const anomalyFlags: boolean[] = [];
-		const anomalyScores: (number | null)[] = [];
-		const anomalyReasons: (string | null)[] = [];
-
 		for (const r of sorted) {
-			const ts = parseUtcTimestamp(r.timestamp);
-			timestamps.push(ts);
-			const sgVal = r.sg_calibrated ?? r.sg_raw;
-			sgValues.push(sgVal);
-
-			// Store anomaly data in parallel arrays
-			anomalyFlags.push(r.is_anomaly ?? false);
-			anomalyScores.push(r.anomaly_score ?? null);
-			anomalyReasons.push(r.anomaly_reasons ?? null);
+			timestamps.push(parseUtcTimestamp(r.timestamp));
+			sgValues.push(r.sg_calibrated ?? r.sg_raw);
 
 			// Temperature is already in Celsius from API (since PR #66)
 			// Convert to Fahrenheit only if user preference is F
@@ -815,61 +516,19 @@
 			}
 		}
 
-		// Interpolate ambient and chamber readings to match tilt timestamps
+		// Interpolate ambient readings to match tilt timestamps
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
-		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
-
-		// Extract filtered ML data (store raw SG, will convert in series formatter)
-		const filteredSgMap = new Map(
-			sorted.filter(r => r.sg_filtered !== null && r.sg_filtered !== undefined)
-				.map(r => [parseUtcTimestamp(r.timestamp), r.sg_filtered!])
-		);
-		const filteredTempMap = new Map(
-			sorted.filter(r => r.temp_filtered !== null && r.temp_filtered !== undefined)
-				.map(r => [parseUtcTimestamp(r.timestamp), r.temp_filtered!])
-		);
-
-		let filteredSgData = timestamps.map(ts => {
-			const sg = filteredSgMap.get(ts);
-			return sg !== undefined ? sg : null;  // Store raw SG values
-		});
-		let filteredTempData = timestamps.map(ts => {
-			const temp = filteredTempMap.get(ts);
-			return temp !== undefined && temp !== null ? (celsius ? temp : temp * 9/5 + 32) : null;
-		});
 
 		// Apply smoothing if enabled in config
 		if (smoothingEnabled && smoothingSamples > 1) {
 			sgValues = smoothData(sgValues, smoothingSamples);
 			tempValues = smoothData(tempValues, smoothingSamples);
 			ambientValues = smoothData(ambientValues, smoothingSamples);
-			chamberValues = smoothData(chamberValues, smoothingSamples);
 		}
 
-		// Downsample for performance (max 500 points) - includes filtered data and anomaly data
+			// Downsample for performance (max 500 points)
 		const maxPoints = 500;
-		let downsampledAnomalyFlags: boolean[];
-		let downsampledAnomalyScores: (number | null)[];
-		let downsampledAnomalyReasons: (string | null)[];
-
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData,
-		 downsampledAnomalyFlags, downsampledAnomalyScores, downsampledAnomalyReasons] =
-			downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData,
-						   anomalyFlags, anomalyScores, anomalyReasons, maxPoints);
-
-		// Extract anomaly markers AFTER downsampling (to ensure timestamp alignment)
-		const newAnomalyMarkers: AnomalyMarker[] = [];
-		for (let i = 0; i < timestamps.length; i++) {
-			if (downsampledAnomalyFlags[i] && sgValues[i] !== null) {
-				newAnomalyMarkers.push({
-					timestamp: timestamps[i],
-					sgValue: sgValues[i],
-					anomalyScore: downsampledAnomalyScores[i],
-					anomalyReasons: downsampledAnomalyReasons[i]
-				});
-			}
-		}
-		anomalyMarkers = newAnomalyMarkers;
+		[timestamps, sgValues, tempValues, ambientValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, maxPoints);
 
 		// Calculate trend line
 		const trend = calculateLinearRegression(timestamps, sgValues);
@@ -880,7 +539,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData, trendValues];
+		return [timestamps, sgValues, tempValues, ambientValues, trendValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -908,21 +567,19 @@ async function loadData(userTriggered = false) {
 
 		// Only fetch readings if we have a device_id
 		if (deviceId) {
-			// Fetch device readings, ambient history, and chamber history in parallel
-			const [deviceData, ambientData, chamberData] = await Promise.all([
-				fetchReadings(deviceId, selectedRange),
-				fetchAmbientHistory(selectedRange).catch(() => []), // Don't fail if ambient unavailable
-				fetchChamberHistory(selectedRange).catch(() => []) // Don't fail if chamber unavailable
+			// Fetch device readings and ambient history in parallel
+			// Filter readings by batchId to show only this batch's data
+			const [deviceData, ambientData] = await Promise.all([
+				fetchReadings(deviceId, selectedRange, batchId),
+				fetchAmbientHistory(selectedRange).catch(() => []) // Don't fail if ambient unavailable
 			]);
 			readings = deviceData;
 			ambientReadings = ambientData;
-			chamberReadings = chamberData;
 			updateChart();
 		} else {
 			// No device assigned to batch
 			readings = [];
 			ambientReadings = [];
-			chamberReadings = [];
 			error = 'No device assigned to this batch';
 		}
 	} catch (e) {
@@ -936,7 +593,7 @@ async function loadData(userTriggered = false) {
 	function updateChart() {
 		if (!chartContainer || readings.length === 0) return;
 
-		const data = processData(readings, ambientReadings, chamberReadings, useCelsius);
+		const data = processData(readings, ambientReadings, useCelsius);
 		const opts = getChartOptions(chartContainer.clientWidth, useCelsius, systemTimezone);
 
 		if (chart) {
@@ -987,28 +644,6 @@ onMount(async () => {
 		showTrendLine = storedTrend === 'true';
 	}
 
-	// Load filtered series toggles
-	const savedFilteredSg = localStorage.getItem(SHOW_FILTERED_SG);
-	if (savedFilteredSg !== null) {
-		showFilteredSg = savedFilteredSg === 'true';
-	}
-	const savedFilteredTemp = localStorage.getItem(SHOW_FILTERED_TEMP);
-	if (savedFilteredTemp !== null) {
-		showFilteredTemp = savedFilteredTemp === 'true';
-	}
-
-	// Load anomaly markers toggle
-	const savedAnomalyMarkers = localStorage.getItem(SHOW_ANOMALY_MARKERS);
-	if (savedAnomalyMarkers !== null) {
-		showAnomalyMarkers = savedAnomalyMarkers === 'true';
-	}
-
-	// Load control bands toggle
-	const savedControlBands = localStorage.getItem(SHOW_CONTROL_BANDS);
-	if (savedControlBands !== null) {
-		showControlBands = savedControlBands === 'true';
-	}
-
 	// Fetch system timezone for chart display
 	try {
 		const response = await fetch('/api/system/timezone');
@@ -1034,15 +669,6 @@ onMount(async () => {
 		}
 	});
 
-	// Process control events into periods when they change
-	$effect(() => {
-		if (controlEvents && controlEvents.length > 0) {
-			controlPeriods = processControlEvents(controlEvents);
-		} else {
-			controlPeriods = [];
-		}
-	});
-
 	// Re-render chart when temp units or smoothing settings change
 	$effect(() => {
 		if (useCelsius !== undefined && readings.length > 0 && chartContainer) {
@@ -1059,14 +685,6 @@ onMount(async () => {
 		}
 	});
 
-	// Re-render chart when control bands toggle or periods change
-	$effect(() => {
-		const _ = [showControlBands, controlPeriods];
-		if (readings.length > 0 && chartContainer && chart) {
-			chart.redraw();
-		}
-	});
-
 	function handleRefreshChange(event: Event) {
 		const minutes = Number((event.target as HTMLSelectElement).value);
 		refreshMinutes = minutes;
@@ -1079,14 +697,9 @@ onMount(async () => {
 	function toggleTrendLine() {
 		showTrendLine = !showTrendLine;
 		localStorage.setItem(TREND_STORAGE_KEY, String(showTrendLine));
-		// Recreate chart to update series visibility
-		updateChart();
-	}
-
-	function recreateChart() {
-		// Recreate entire chart to update filtered series visibility
-		if (readings.length > 0 && chartContainer) {
-			updateChart();
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(4, { show: showTrendLine });
 		}
 	}
 </script>
@@ -1146,51 +759,6 @@ onMount(async () => {
 					<span class="legend-line legend-line-dashed" style="background: {TREND_COLOR};"></span>
 					<span>Trend</span>
 				</button>
-				<label class="toggle-label">
-					<input
-						type="checkbox"
-						bind:checked={showFilteredSg}
-						onchange={() => {
-							localStorage.setItem(SHOW_FILTERED_SG, String(showFilteredSg));
-							recreateChart();
-						}}
-					/>
-					<span>Filtered SG</span>
-				</label>
-				<label class="toggle-label">
-					<input
-						type="checkbox"
-						bind:checked={showFilteredTemp}
-						onchange={() => {
-							localStorage.setItem(SHOW_FILTERED_TEMP, String(showFilteredTemp));
-							recreateChart();
-						}}
-					/>
-					<span>Filtered Temp</span>
-				</label>
-				<label class="toggle-label">
-					<input
-						type="checkbox"
-						bind:checked={showAnomalyMarkers}
-						onchange={() => {
-							localStorage.setItem(SHOW_ANOMALY_MARKERS, String(showAnomalyMarkers));
-							recreateChart();
-						}}
-					/>
-					<span>Anomalies</span>
-				</label>
-				<label class="toggle-label">
-					<input
-						type="checkbox"
-						bind:checked={showControlBands}
-						onchange={() => {
-							localStorage.setItem(SHOW_CONTROL_BANDS, String(showControlBands));
-							// Just redraw, no need to recreate chart
-							if (chart) chart.redraw();
-						}}
-					/>
-					<span>Control Periods</span>
-				</label>
 			</div>
 		</div>
 	</div>
@@ -1363,30 +931,6 @@ onMount(async () => {
 
 	.legend-disabled .legend-line-dashed {
 		background: linear-gradient(90deg, var(--text-muted) 6px, transparent 6px) !important;
-	}
-
-	.toggle-label {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.6875rem;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-secondary);
-		cursor: pointer;
-		padding: 0.25rem 0.375rem;
-		border-radius: 0.25rem;
-		transition: all 0.15s ease;
-	}
-
-	.toggle-label:hover {
-		background: var(--bg-hover);
-	}
-
-	.toggle-label input[type="checkbox"] {
-		width: 0.875rem;
-		height: 0.875rem;
-		cursor: pointer;
-		accent-color: var(--accent);
 	}
 
 	.chart-container {

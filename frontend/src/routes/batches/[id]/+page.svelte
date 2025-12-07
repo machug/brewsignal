@@ -103,6 +103,20 @@
 
 	async function handleStatusChange(newStatus: BatchStatus) {
 		if (!batch || statusUpdating) return;
+
+		// Show reminder when entering conditioning from fermenting
+		if (newStatus === 'conditioning' && batch.status === 'fermenting') {
+			const message =
+				'💡 Entering Conditioning Phase\n\n' +
+				'Reminder: Adjust target temperature if cold crashing.\n' +
+				'Temperature control will continue during conditioning.\n\n' +
+				'Continue?';
+
+			if (!confirm(message)) {
+				return;
+			}
+		}
+
 		statusUpdating = true;
 		try {
 			batch = await updateBatch(batch.id, { status: newStatus });
@@ -398,7 +412,7 @@
 				<MLPredictions batchId={batch.id} />
 
 				<!-- Temperature Control Card -->
-				{#if hasTempControl && batch.status === 'fermenting'}
+				{#if hasTempControl && (batch.status === 'fermenting' || batch.status === 'conditioning')}
 					<div class="info-card temp-control-card"
 						class:heater-on={controlStatus?.heater_state === 'on'}
 						class:cooler-on={controlStatus?.cooler_state === 'on'}>

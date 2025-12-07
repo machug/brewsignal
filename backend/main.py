@@ -200,26 +200,28 @@ async def handle_tilt_reading(reading: TiltReading):
             session.add(db_reading)
             await session.commit()
 
-        # Update in-memory latest_readings cache
-        latest_readings[reading.id] = {
-            "id": reading.id,  # Frontend expects this field
-            "device_id": reading.id,
-            "color": reading.color,
-            "beer_name": device.beer_name or "Untitled",
-            "original_gravity": device.original_gravity,
-            "sg": sg_calibrated,
-            "sg_raw": reading.sg,
-            "temp": temp_calibrated_c,
-            "temp_raw": temp_raw_c,
-            "rssi": reading.rssi,
-            "timestamp": serialize_datetime_to_utc(timestamp),
-            "last_seen": serialize_datetime_to_utc(timestamp),
-            "paired": device.paired,
-            "mac": reading.mac,
-        }
+        # Only broadcast/cache readings for paired devices (prevent pollution from nearby Tilts)
+        if device.paired:
+            # Update in-memory latest_readings cache
+            latest_readings[reading.id] = {
+                "id": reading.id,  # Frontend expects this field
+                "device_id": reading.id,
+                "color": reading.color,
+                "beer_name": device.beer_name or "Untitled",
+                "original_gravity": device.original_gravity,
+                "sg": sg_calibrated,
+                "sg_raw": reading.sg,
+                "temp": temp_calibrated_c,
+                "temp_raw": temp_raw_c,
+                "rssi": reading.rssi,
+                "timestamp": serialize_datetime_to_utc(timestamp),
+                "last_seen": serialize_datetime_to_utc(timestamp),
+                "paired": device.paired,
+                "mac": reading.mac,
+            }
 
-        # Broadcast to WebSocket clients
-        await manager.broadcast(latest_readings[reading.id])
+            # Broadcast to WebSocket clients
+            await manager.broadcast(latest_readings[reading.id])
 
 
 @asynccontextmanager

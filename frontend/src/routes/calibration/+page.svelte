@@ -120,6 +120,7 @@
 		const actual = parseFloat(actualValue);
 
 		if (isNaN(raw) || isNaN(actual)) {
+			alert('Please enter valid numbers for both raw and actual gravity values');
 			return;
 		}
 
@@ -158,6 +159,7 @@
 		const actual = parseFloat(actualValue);
 
 		if (isNaN(raw) || isNaN(actual)) {
+			alert('Please enter valid numbers for both raw and actual temperature values');
 			return;
 		}
 
@@ -171,16 +173,22 @@
 			return;
 		}
 
-		// Convert to Celsius for backend storage
-		const [rawC, actualC] = convertTempPointToCelsius(raw, actual, useCelsius);
-
-		// Check for duplicate raw values (in Celsius)
+		// Check for duplicate raw values in user's preferred unit
 		const existingTempPoints = calibrationData?.temp_points || [];
-		const isDuplicate = existingTempPoints.some(point => Math.abs(point[0] - rawC) < 0.1);
+		const tolerance = useCelsius ? 0.1 : 0.18; // 0.1°C ≈ 0.18°F
+		const isDuplicate = existingTempPoints.some(point => {
+			// Convert stored Celsius point back to user's unit for comparison
+			const [storedRaw, _] = convertTempPointFromCelsius(point[0], point[1], useCelsius);
+			return Math.abs(storedRaw - raw) < tolerance;
+		});
 		if (isDuplicate) {
-			alert('A calibration point with this raw value already exists');
+			const unit = useCelsius ? '°C' : '°F';
+			alert(`A calibration point with this raw value already exists (within ${tolerance}${unit})`);
 			return;
 		}
+
+		// Convert to Celsius for backend storage
+		const [rawC, actualC] = convertTempPointToCelsius(raw, actual, useCelsius);
 
 		// Add new point to existing points
 		const newTempPoints = [...existingTempPoints, [rawC, actualC] as [number, number]];

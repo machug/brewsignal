@@ -87,6 +87,33 @@
 		}
 	}
 
+	async function saveCalibration(data: CalibrationData) {
+		if (!selectedDeviceId) return;
+		saving = true;
+		try {
+			const payload: CalibrationRequest = {
+				calibration_type: 'linear',
+				calibration_data: data
+			};
+			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			if (response.ok) {
+				await loadCalibration();
+			} else {
+				const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+				alert(`Failed to save calibration: ${errorData.detail || response.statusText}`);
+			}
+		} catch (e) {
+			console.error('Failed to save calibration:', e);
+			alert(`Failed to save calibration: ${e instanceof Error ? e.message : 'Unknown error'}`);
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function addCalibrationPoint(type: 'sg' | 'temp', rawValue: string, actualValue: string) {
 		if (!selectedDeviceId) return;
 

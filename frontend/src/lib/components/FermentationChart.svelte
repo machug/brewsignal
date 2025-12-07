@@ -4,10 +4,13 @@
 	import {
 		fetchReadings,
 		fetchAmbientHistory,
+		fetchChamberHistory,
 		fetchBatch,
 		TIME_RANGES,
 		type HistoricalReading,
-		type AmbientHistoricalReading
+		type AmbientHistoricalReading,
+		type ChamberHistoricalReading,
+		type ControlEvent
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import FermentationStats from './FermentationStats.svelte';
@@ -34,9 +37,10 @@
 		batchId: number;
 		deviceColor?: string;
 		originalGravity?: number | null;
+		controlEvents?: ControlEvent[];
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [] }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -76,6 +80,14 @@
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
+
+	// Control period data for heating/cooling bands
+	interface ControlPeriod {
+		type: 'heating' | 'cooling';
+		startTime: number;
+		endTime: number;
+	}
+	let controlPeriods = $state<ControlPeriod[]>([]);
 
 	// Linear regression for trend line calculation
 	interface TrendResult {
@@ -154,6 +166,57 @@
 		}
 
 		return { slope, intercept, r2, predictedFg, daysToFg };
+	}
+
+	function processControlEvents(events: ControlEvent[]): ControlPeriod[] {
+		const periods: ControlPeriod[] = [];
+
+		// Track active periods
+		let heatingStart: number | null = null;
+		let coolingStart: number | null = null;
+
+		for (const event of events) {
+			const timestamp = parseUtcTimestamp(event.timestamp);
+
+			if (event.action === 'heat_on') {
+				heatingStart = timestamp;
+			} else if (event.action === 'heat_off' && heatingStart !== null) {
+				periods.push({
+					type: 'heating',
+					startTime: heatingStart,
+					endTime: timestamp
+				});
+				heatingStart = null;
+			} else if (event.action === 'cool_on') {
+				coolingStart = timestamp;
+			} else if (event.action === 'cool_off' && coolingStart !== null) {
+				periods.push({
+					type: 'cooling',
+					startTime: coolingStart,
+					endTime: timestamp
+				});
+				coolingStart = null;
+			}
+		}
+
+		// Handle unpaired events - extend to current time
+		const now = Date.now() / 1000;
+		if (heatingStart !== null) {
+			periods.push({
+				type: 'heating',
+				startTime: heatingStart,
+				endTime: now
+			});
+		}
+		if (coolingStart !== null) {
+			periods.push({
+				type: 'cooling',
+				startTime: coolingStart,
+				endTime: now
+			});
+		}
+
+		return periods;
 	}
 
 	function generateTrendLine(
@@ -666,6 +729,15 @@ onMount(async () => {
 		window.removeEventListener('resize', handleResize);
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
+		}
+	});
+
+	// Process control events into periods when they change
+	$effect(() => {
+		if (controlEvents && controlEvents.length > 0) {
+			controlPeriods = processControlEvents(controlEvents);
+		} else {
+			controlPeriods = [];
 		}
 	});
 

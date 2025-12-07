@@ -138,3 +138,34 @@ class MLPipelineManager:
             flat_result["anomaly_reasons"] = []
 
         return flat_result
+
+    def get_device_state(self, device_id: str) -> Optional[dict]:
+        """Get current ML state and predictions for a device.
+
+        Args:
+            device_id: Unique device identifier
+
+        Returns:
+            Dictionary with device ML state including predictions, or None if no pipeline exists
+        """
+        if device_id not in self.pipelines:
+            return None
+
+        pipeline = self.pipelines[device_id]
+
+        # If we have enough history for predictions, get latest prediction
+        if pipeline.curve_fitter and len(pipeline.sg_history) >= self.config.prediction_min_readings:
+            prediction_result = pipeline.curve_fitter.fit(
+                times=pipeline.time_history,
+                sgs=pipeline.sg_history,
+            )
+
+            return {
+                "predictions": prediction_result,
+                "history_count": len(pipeline.sg_history)
+            }
+
+        return {
+            "predictions": None,
+            "history_count": len(pipeline.sg_history)
+        }

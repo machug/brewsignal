@@ -1,6 +1,6 @@
 """Batch API endpoints."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,9 +12,12 @@ from ..database import get_db
 from ..models import (
     Batch,
     BatchCreate,
+    BatchPredictionsResponse,
     BatchProgressResponse,
     BatchResponse,
     BatchUpdate,
+    ControlEvent,
+    ControlEventResponse,
     Recipe,
 )
 from ..state import latest_readings
@@ -254,6 +257,10 @@ async def update_batch(
         if old_status == "fermenting" and update.status != "fermenting":
             from ..temp_controller import cleanup_batch_state
             cleanup_batch_state(batch_id)
+
+        # Release device when batch is completed or archived
+        if update.status in ["completed", "archived"]:
+            batch.device_id = None
     if update.device_id is not None:
         batch.device_id = update.device_id
     if update.brew_date is not None:
@@ -285,13 +292,13 @@ async def update_batch(
     await db.commit()
     await db.refresh(batch)
 
+    # Always reload batch with eager loading to avoid MissingGreenlet errors
     # Load recipe relationship for response with eager loading of nested style
-    if batch.recipe_id:
-        stmt = select(Batch).where(Batch.id == batch_id).options(
-            selectinload(Batch.recipe).selectinload(Recipe.style)
-        )
-        result = await db.execute(stmt)
-        batch = result.scalar_one()
+    stmt = select(Batch).where(Batch.id == batch_id).options(
+        selectinload(Batch.recipe).selectinload(Recipe.style)
+    )
+    result = await db.execute(stmt)
+    batch = result.scalar_one()
 
     return batch
 
@@ -431,3 +438,111 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         progress=progress,
         temperature=temperature,
     )
+
+
+@router.get("/{batch_id}/predictions", response_model=BatchPredictionsResponse)
+async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Get ML predictions for a batch.
+
+    Returns:
+        Dictionary containing:
+        - available (bool): Whether predictions are available
+        - predicted_fg (float): Predicted final gravity
+        - predicted_og (float): Predicted original gravity
+        - estimated_completion (str): ISO timestamp of predicted completion
+        - hours_to_completion (float): Hours until fermentation completes
+        - model_type (str): Type of model used ("exponential")
+        - r_squared (float): Model fit quality (0.0-1.0)
+        - num_readings (int): Number of readings used for prediction
+        - error (str): Error message if available=False
+        - reason (str): Reason why predictions unavailable
+    """
+    from ..main import get_ml_manager
+
+    # Get batch
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.deleted_at.is_(None))
+    )
+    batch = result.scalar_one_or_none()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if not batch.device_id:
+        return {"available": False, "error": "No device linked"}
+
+    # Query ML manager for predictions
+    ml_mgr = get_ml_manager()
+    if not ml_mgr:
+        return {"available": False}
+
+    # Get device state
+    device_state = ml_mgr.get_device_state(batch.device_id)
+    if not device_state or not device_state.get("predictions"):
+        return {"available": False}
+
+    predictions = device_state["predictions"]
+
+    # predictions can be None (insufficient history) or dict with fitted=False (fit failed)
+    if not predictions.get("fitted"):
+        return {"available": False, "reason": predictions.get("reason", "unknown")}
+
+    # Calculate completion date from hours_to_completion
+    # Note: hours_to_completion is relative to NOW, not batch start time
+    completion_date = None
+    hours_to_completion = predictions.get("hours_to_completion")
+    if hours_to_completion is not None and hours_to_completion > 0:
+        completion_date = datetime.now(timezone.utc) + timedelta(hours=hours_to_completion)
+
+    return {
+        "available": True,
+        "predicted_fg": predictions.get("predicted_fg"),
+        "predicted_og": predictions.get("predicted_og"),
+        "estimated_completion": completion_date.isoformat() if completion_date else None,
+        "hours_to_completion": hours_to_completion,
+        "model_type": predictions.get("model_type"),
+        "r_squared": predictions.get("r_squared"),
+        "num_readings": device_state.get("history_count", 0)
+    }
+
+
+@router.get("/{batch_id}/control-events", response_model=list[ControlEventResponse])
+async def get_batch_control_events(
+    batch_id: int,
+    hours: int = Query(24, ge=1, le=720, description="Hours of history to retrieve (max 30 days)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get control event history for a batch.
+
+    Returns heating/cooling control events (heat_on, heat_off, cool_on, cool_off)
+    for visualization on the fermentation chart.
+
+    Args:
+        batch_id: The batch ID to retrieve events for
+        hours: Number of hours of history (default 24, max 720 for 30 days)
+
+    Returns:
+        List of control events ordered chronologically (oldest first)
+    """
+    # Verify batch exists
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Calculate time range
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    # Query control events for this batch
+    query = (
+        select(ControlEvent)
+        .where(
+            ControlEvent.batch_id == batch_id,
+            ControlEvent.timestamp >= cutoff_time
+        )
+        .order_by(ControlEvent.timestamp.asc())  # Chronological order (oldest first)
+    )
+
+    result = await db.execute(query)
+    events = result.scalars().all()
+
+    return events

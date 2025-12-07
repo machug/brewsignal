@@ -177,11 +177,26 @@ class AmbientReading(Base):
     entity_id: Mapped[Optional[str]] = mapped_column(String(100))
 
 
+class ChamberReading(Base):
+    """Chamber temperature/humidity readings from Home Assistant sensors."""
+    __tablename__ = "chamber_readings"
+    __table_args__ = (
+        Index("ix_chamber_timestamp", "timestamp"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True)
+    temperature: Mapped[Optional[float]] = mapped_column()  # Celsius
+    humidity: Mapped[Optional[float]] = mapped_column()
+    entity_id: Mapped[Optional[str]] = mapped_column(String(100))
+
+
 class ControlEvent(Base):
     """Temperature control events (heater on/off, cooler on/off)."""
     __tablename__ = "control_events"
     __table_args__ = (
         Index("ix_control_timestamp", "timestamp"),
+        Index("ix_control_batch_timestamp", "batch_id", "timestamp"),  # Composite index for batch queries
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -542,6 +557,19 @@ class AmbientReadingResponse(BaseModel):
         return serialize_datetime_to_utc(dt)
 
 
+class ChamberReadingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    timestamp: datetime
+    temperature: Optional[float]
+    humidity: Optional[float]
+
+    @field_serializer('timestamp')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
 class ControlEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -589,6 +617,9 @@ class ConfigUpdate(BaseModel):
     ha_token: Optional[str] = None
     ha_ambient_temp_entity_id: Optional[str] = None
     ha_ambient_humidity_entity_id: Optional[str] = None
+    # Chamber settings
+    ha_chamber_temp_entity_id: Optional[str] = None
+    ha_chamber_humidity_entity_id: Optional[str] = None
     # Temperature control
     temp_control_enabled: Optional[bool] = None
     temp_target: Optional[float] = None
@@ -679,6 +710,9 @@ class ConfigResponse(BaseModel):
     ha_token: str = ""
     ha_ambient_temp_entity_id: str = ""
     ha_ambient_humidity_entity_id: str = ""
+    # Chamber settings
+    ha_chamber_temp_entity_id: str = ""
+    ha_chamber_humidity_entity_id: str = ""
     # Temperature control
     temp_control_enabled: bool = False
     temp_target: float = 68.0
@@ -984,3 +1018,19 @@ class BatchProgressResponse(BaseModel):
     measured: dict  # og, current_sg, attenuation, abv
     progress: dict  # percent_complete, sg_remaining, estimated_days_remaining
     temperature: dict  # current, yeast_min, yeast_max, status
+
+
+class BatchPredictionsResponse(BaseModel):
+    """ML predictions response for a batch."""
+    model_config = ConfigDict(from_attributes=True)
+
+    available: bool
+    predicted_fg: Optional[float] = None
+    predicted_og: Optional[float] = None
+    estimated_completion: Optional[str] = None
+    hours_to_completion: Optional[float] = None
+    model_type: Optional[str] = None
+    r_squared: Optional[float] = None
+    num_readings: int = 0
+    error: Optional[str] = None
+    reason: Optional[str] = None

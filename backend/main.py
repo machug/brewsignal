@@ -18,9 +18,10 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, maintenance, recipes, system  # noqa: E402
+from .routers import alerts, ambient, batches, chamber, config, control, devices, ha, ingest, maintenance, recipes, system  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
+from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
 from .cleanup import CleanupService  # noqa: E402
 from .scanner import TiltReading, TiltScanner  # noqa: E402
@@ -39,6 +40,12 @@ cleanup_service: Optional[CleanupService] = None
 
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
+
+
+def get_ml_manager() -> Optional[MLPipelineManager]:
+    """Get the global ML pipeline manager instance."""
+    return ml_pipeline_manager
+
 
 # Cache for first reading timestamps (device_id -> datetime)
 # Prevents N+1 query on every reading when using wall-clock fallback
@@ -253,6 +260,10 @@ async def lifespan(app: FastAPI):
     start_ambient_poller()
     print("Ambient poller started")
 
+    # Start chamber poller for fermentation chamber environment
+    await start_chamber_poller()
+    print("Chamber poller started")
+
     # Start temperature controller for HA-based temperature control
     start_temp_controller()
     print("Temperature controller started")
@@ -262,6 +273,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("Shutting down BrewSignal...")
     stop_temp_controller()
+    stop_chamber_poller()
     stop_ambient_poller()
     if cleanup_service:
         await cleanup_service.stop()
@@ -285,6 +297,7 @@ app.include_router(devices.router)
 app.include_router(config.router)
 app.include_router(system.router)
 app.include_router(ambient.router)
+app.include_router(chamber.router)
 app.include_router(ha.router)
 app.include_router(control.router)
 app.include_router(alerts.router)

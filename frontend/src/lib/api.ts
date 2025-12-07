@@ -11,6 +11,15 @@ export interface HistoricalReading {
 	temp_calibrated: number | null;
 	rssi: number | null;
 	status?: string; // 'valid', 'invalid', 'uncalibrated', 'incomplete'
+	// ML fields
+	sg_filtered?: number | null;
+	temp_filtered?: number | null;
+	confidence?: number | null;
+	sg_rate?: number | null;
+	temp_rate?: number | null;
+	is_anomaly?: boolean;
+	anomaly_score?: number | null;
+	anomaly_reasons?: string | null;
 }
 
 export interface TimeRangeOption {
@@ -68,9 +77,45 @@ export async function fetchAmbientHistory(hours: number = 24): Promise<AmbientHi
 	return response.json();
 }
 
+export interface ChamberHistoricalReading {
+	id: number;
+	timestamp: string;
+	temperature: number | null;
+	humidity: number | null;
+}
+
+export async function fetchChamberHistory(hours: number = 24): Promise<ChamberHistoricalReading[]> {
+	const response = await fetch(`${BASE_URL}/chamber/history?hours=${hours}`);
+	if (!response.ok) {
+		throw new Error('Failed to fetch chamber history');
+	}
+	return response.json();
+}
+
 // ============================================================================
 // Batch Types & API
 // ============================================================================
+
+export interface MLPredictions {
+	available: boolean;
+	predicted_fg?: number;
+	predicted_og?: number;
+	estimated_completion?: string;
+	hours_to_completion?: number;
+	model_type?: string;
+	r_squared?: number;
+	num_readings?: number;
+	error?: string;
+	reason?: string;
+}
+
+export async function fetchBatchPredictions(batchId: number): Promise<MLPredictions> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/predictions`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch batch predictions: ${response.statusText}`);
+	}
+	return response.json();
+}
 
 export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
@@ -579,6 +624,35 @@ export async function executeCleanup(batchIds: number[]): Promise<CleanupPreview
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
 		throw new Error(error.detail || 'Failed to execute cleanup');
+	}
+	return response.json();
+}
+
+// ============================================================================
+// Control Events Types & API
+// ============================================================================
+
+export interface ControlEvent {
+	id: number;
+	timestamp: string;
+	device_id?: string;
+	batch_id?: number;
+	action: string; // 'heat_on', 'heat_off', 'cool_on', 'cool_off'
+	wort_temp?: number | null; // Temperature in Celsius
+	ambient_temp?: number | null; // Temperature in Celsius
+	target_temp?: number | null; // Temperature in Celsius
+}
+
+/**
+ * Fetch control event history for a batch
+ */
+export async function fetchBatchControlEvents(
+	batchId: number,
+	hours: number = 24
+): Promise<ControlEvent[]> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/control-events?hours=${hours}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch control events: ${response.statusText}`);
 	}
 	return response.json();
 }

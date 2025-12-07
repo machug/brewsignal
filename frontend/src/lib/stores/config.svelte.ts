@@ -15,6 +15,9 @@ export interface AppConfig {
 	ha_token: string;
 	ha_ambient_temp_entity_id: string;
 	ha_ambient_humidity_entity_id: string;
+	// Chamber sensors
+	ha_chamber_temp_entity_id: string;
+	ha_chamber_humidity_entity_id: string;
 	// Temperature control
 	temp_control_enabled: boolean;
 	temp_target: number;
@@ -42,6 +45,9 @@ const DEFAULT_CONFIG: AppConfig = {
 	ha_token: '',
 	ha_ambient_temp_entity_id: '',
 	ha_ambient_humidity_entity_id: '',
+	// Chamber sensors
+	ha_chamber_temp_entity_id: '',
+	ha_chamber_humidity_entity_id: '',
 	// Temperature control
 	temp_control_enabled: false,
 	temp_target: 68.0,

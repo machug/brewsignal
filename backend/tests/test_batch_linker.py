@@ -45,3 +45,33 @@ async def test_no_active_batch_for_device(test_db):
     active_batch = await get_active_batch_for_device(test_db, "tilt-blue")
 
     assert active_batch is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_batch_for_device_conditioning(test_db):
+    """Should return batch in conditioning status."""
+    from backend.services.batch_linker import get_active_batch_for_device
+
+    # Create device
+    device = Device(
+        id="TEST_DEVICE",
+        device_type="tilt",
+        name="Test Device",
+        paired=True,
+    )
+    test_db.add(device)
+
+    # Create conditioning batch
+    batch = Batch(
+        device_id="TEST_DEVICE",
+        status="conditioning",
+        start_time=datetime.now(timezone.utc),
+    )
+    test_db.add(batch)
+    await test_db.commit()
+
+    # Should find conditioning batch
+    result = await get_active_batch_for_device(test_db, "TEST_DEVICE")
+    assert result is not None
+    assert result.id == batch.id
+    assert result.status == "conditioning"

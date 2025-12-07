@@ -44,6 +44,8 @@
 	let haToken = $state('');
 	let haAmbientTempEntityId = $state('');
 	let haAmbientHumidityEntityId = $state('');
+	let haChamberTempEntityId = $state('');
+	let haChamberHumidityEntityId = $state('');
 	let haWeatherEntityId = $state('');
 	let haTesting = $state(false);
 	let haTestResult = $state<{ success: boolean; message: string } | null>(null);
@@ -141,6 +143,8 @@
 		haToken = configState.config.ha_token;
 		haAmbientTempEntityId = configState.config.ha_ambient_temp_entity_id;
 		haAmbientHumidityEntityId = configState.config.ha_ambient_humidity_entity_id;
+		haChamberTempEntityId = configState.config.ha_chamber_temp_entity_id;
+		haChamberHumidityEntityId = configState.config.ha_chamber_humidity_entity_id;
 		haWeatherEntityId = configState.config.ha_weather_entity_id;
 		// Temperature Control - convert from Fahrenheit to display units
 		tempControlEnabled = configState.config.temp_control_enabled;
@@ -189,6 +193,8 @@
 				ha_token: haToken,
 				ha_ambient_temp_entity_id: haAmbientTempEntityId,
 				ha_ambient_humidity_entity_id: haAmbientHumidityEntityId,
+				ha_chamber_temp_entity_id: haChamberTempEntityId,
+				ha_chamber_humidity_entity_id: haChamberHumidityEntityId,
 				ha_weather_entity_id: haWeatherEntityId
 			});
 			if (result.success) {
@@ -786,6 +792,34 @@
 								type="text"
 								bind:value={haWeatherEntityId}
 								placeholder="weather.home"
+								class="input-field"
+							/>
+						</div>
+
+						<!-- Chamber Temperature Entity -->
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Chamber Temperature Entity</span>
+								<span class="setting-description">Temperature sensor inside fermentation chamber</span>
+							</div>
+							<input
+								type="text"
+								bind:value={haChamberTempEntityId}
+								placeholder="sensor.chamber_temperature"
+								class="input-field"
+							/>
+						</div>
+
+						<!-- Chamber Humidity Entity -->
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Chamber Humidity Entity</span>
+								<span class="setting-description">Humidity sensor inside fermentation chamber</span>
+							</div>
+							<input
+								type="text"
+								bind:value={haChamberHumidityEntityId}
+								placeholder="sensor.chamber_humidity"
 								class="input-field"
 							/>
 						</div>

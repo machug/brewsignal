@@ -83,6 +83,12 @@
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
 
+	// Ambient and Chamber visibility toggles
+	const AMBIENT_STORAGE_KEY = 'brewsignal_chart_ambient_enabled';
+	const CHAMBER_STORAGE_KEY = 'brewsignal_chart_chamber_enabled';
+	let showAmbient = $state(true);
+	let showChamber = $state(true);
+
 	// Control period data for heating/cooling bands
 	interface ControlPeriod {
 		type: 'heating' | 'cooling';
@@ -409,7 +415,8 @@
 					dash: [2, 4],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
 					points: { show: false },
-					paths: uPlot.paths.spline?.() // Smooth spline interpolation
+					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
+					show: showAmbient
 				},
 				{
 					// Chamber Temp series
@@ -420,7 +427,8 @@
 					dash: [4, 2],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
 					points: { show: false },
-					paths: uPlot.paths.spline?.() // Smooth spline interpolation
+					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
+					show: showChamber
 				},
 				{
 					// SG Trend line series
@@ -725,10 +733,18 @@ onMount(async () => {
 		}
 	}
 
-	// Load trend line preference from localStorage
+	// Load preferences from localStorage
 	const storedTrend = localStorage.getItem(TREND_STORAGE_KEY);
 	if (storedTrend !== null) {
 		showTrendLine = storedTrend === 'true';
+	}
+	const storedAmbient = localStorage.getItem(AMBIENT_STORAGE_KEY);
+	if (storedAmbient !== null) {
+		showAmbient = storedAmbient === 'true';
+	}
+	const storedChamber = localStorage.getItem(CHAMBER_STORAGE_KEY);
+	if (storedChamber !== null) {
+		showChamber = storedChamber === 'true';
 	}
 
 	// Fetch system timezone for chart display
@@ -795,7 +811,25 @@ onMount(async () => {
 		localStorage.setItem(TREND_STORAGE_KEY, String(showTrendLine));
 		// Update the series visibility in the existing chart
 		if (chart) {
-			chart.setSeries(4, { show: showTrendLine });
+			chart.setSeries(5, { show: showTrendLine });
+		}
+	}
+
+	function toggleAmbient() {
+		showAmbient = !showAmbient;
+		localStorage.setItem(AMBIENT_STORAGE_KEY, String(showAmbient));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(3, { show: showAmbient });
+		}
+	}
+
+	function toggleChamber() {
+		showChamber = !showChamber;
+		localStorage.setItem(CHAMBER_STORAGE_KEY, String(showChamber));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(4, { show: showChamber });
 		}
 	}
 </script>
@@ -841,10 +875,26 @@ onMount(async () => {
 					></span>
 					<span>Wort</span>
 				</span>
-				<span class="legend-item">
-					<span class="legend-line legend-line-dotted" style="background: #22d3ee;"></span>
+				<button
+					type="button"
+					class="legend-item legend-toggle"
+					class:legend-disabled={!showAmbient}
+					onclick={toggleAmbient}
+					title={showAmbient ? 'Hide ambient temp' : 'Show ambient temp'}
+				>
+					<span class="legend-line legend-line-dotted" style="background: {CYAN};"></span>
 					<span>Ambient</span>
-				</span>
+				</button>
+				<button
+					type="button"
+					class="legend-item legend-toggle"
+					class:legend-disabled={!showChamber}
+					onclick={toggleChamber}
+					title={showChamber ? 'Hide chamber temp' : 'Show chamber temp'}
+				>
+					<span class="legend-line legend-line-dashed" style="background: {PURPLE};"></span>
+					<span>Chamber</span>
+				</button>
 				<button
 					type="button"
 					class="legend-item legend-toggle"

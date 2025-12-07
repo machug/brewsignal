@@ -243,7 +243,20 @@
 	// Load calibration when device changes
 	$effect(() => {
 		if (selectedDeviceId) {
-			loadCalibration();
+			// Clear form state to prevent accidentally adding points from one device to another
+			sgRawValue = '';
+			sgActualValue = '';
+			tempRawValue = '';
+			tempActualValue = '';
+
+			// Load calibration for the new device
+			const deviceId = selectedDeviceId;
+			loadCalibration().catch((error) => {
+				// Only log error if still on same device (avoid stale errors)
+				if (deviceId === selectedDeviceId) {
+					console.error('Failed to load calibration:', error);
+				}
+			});
 		}
 	});
 </script>

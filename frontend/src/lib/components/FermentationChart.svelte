@@ -549,10 +549,13 @@
 		chamberValues: (number | null)[],
 		filteredSgValues: (number | null)[],
 		filteredTempValues: (number | null)[],
+		anomalyFlags: boolean[],
+		anomalyScores: (number | null)[],
+		anomalyReasons: (string | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], boolean[], (number | null)[], (string | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgValues, filteredTempValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgValues, filteredTempValues, anomalyFlags, anomalyScores, anomalyReasons];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -563,6 +566,9 @@
 		const newChamber: (number | null)[] = [];
 		const newFilteredSg: (number | null)[] = [];
 		const newFilteredTemp: (number | null)[] = [];
+		const newAnomalyFlags: boolean[] = [];
+		const newAnomalyScores: (number | null)[] = [];
+		const newAnomalyReasons: (string | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -574,6 +580,11 @@
 			let filteredSgSum = 0, filteredSgCount = 0;
 			let filteredTempSum = 0, filteredTempCount = 0;
 
+			// For anomaly data, use the first anomaly found in bucket (if any)
+			let hasAnomaly = false;
+			let bucketAnomalyScore: number | null = null;
+			let bucketAnomalyReason: string | null = null;
+
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
 				if (tempValues[j] !== null) { tempSum += tempValues[j]!; tempCount++; }
@@ -581,6 +592,13 @@
 				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
 				if (filteredSgValues[j] !== null) { filteredSgSum += filteredSgValues[j]!; filteredSgCount++; }
 				if (filteredTempValues[j] !== null) { filteredTempSum += filteredTempValues[j]!; filteredTempCount++; }
+
+				// If bucket contains any anomaly, mark the downsampled point as anomaly
+				if (anomalyFlags[j] && !hasAnomaly) {
+					hasAnomaly = true;
+					bucketAnomalyScore = anomalyScores[j];
+					bucketAnomalyReason = anomalyReasons[j];
+				}
 			}
 
 			// Use middle timestamp of bucket
@@ -591,9 +609,12 @@
 			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
 			newFilteredSg.push(filteredSgCount > 0 ? filteredSgSum / filteredSgCount : null);
 			newFilteredTemp.push(filteredTempCount > 0 ? filteredTempSum / filteredTempCount : null);
+			newAnomalyFlags.push(hasAnomaly);
+			newAnomalyScores.push(bucketAnomalyScore);
+			newAnomalyReasons.push(bucketAnomalyReason);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newFilteredSg, newFilteredTemp];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newFilteredSg, newFilteredTemp, newAnomalyFlags, newAnomalyScores, newAnomalyReasons];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -672,8 +693,10 @@
 		let sgValues: (number | null)[] = [];
 		let tempValues: (number | null)[] = [];
 
-		// Extract anomaly markers
-		const newAnomalyMarkers: AnomalyMarker[] = [];
+		// Store anomaly flags for later extraction (after downsampling)
+		const anomalyFlags: boolean[] = [];
+		const anomalyScores: (number | null)[] = [];
+		const anomalyReasons: (string | null)[] = [];
 
 		for (const r of sorted) {
 			const ts = parseUtcTimestamp(r.timestamp);
@@ -681,15 +704,10 @@
 			const sgVal = r.sg_calibrated ?? r.sg_raw;
 			sgValues.push(sgVal);
 
-			// Extract anomaly data if present
-			if (r.is_anomaly) {
-				newAnomalyMarkers.push({
-					timestamp: ts,
-					sgValue: sgVal,
-					anomalyScore: r.anomaly_score ?? null,
-					anomalyReasons: r.anomaly_reasons ?? null
-				});
-			}
+			// Store anomaly data in parallel arrays
+			anomalyFlags.push(r.is_anomaly ?? false);
+			anomalyScores.push(r.anomaly_score ?? null);
+			anomalyReasons.push(r.anomaly_reasons ?? null);
 
 			// Temperature is already in Celsius from API (since PR #66)
 			// Convert to Fahrenheit only if user preference is F
@@ -700,9 +718,6 @@
 				tempValues.push(null);
 			}
 		}
-
-		// Update anomaly markers state
-		anomalyMarkers = newAnomalyMarkers;
 
 		// Interpolate ambient and chamber readings to match tilt timestamps
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
@@ -735,10 +750,30 @@
 			chamberValues = smoothData(chamberValues, smoothingSamples);
 		}
 
-		// Downsample for performance (max 500 points) - includes filtered data
+		// Downsample for performance (max 500 points) - includes filtered data and anomaly data
 		const maxPoints = 500;
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData] =
-			downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData, maxPoints);
+		let downsampledAnomalyFlags: boolean[];
+		let downsampledAnomalyScores: (number | null)[];
+		let downsampledAnomalyReasons: (string | null)[];
+
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData,
+		 downsampledAnomalyFlags, downsampledAnomalyScores, downsampledAnomalyReasons] =
+			downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData,
+						   anomalyFlags, anomalyScores, anomalyReasons, maxPoints);
+
+		// Extract anomaly markers AFTER downsampling (to ensure timestamp alignment)
+		const newAnomalyMarkers: AnomalyMarker[] = [];
+		for (let i = 0; i < timestamps.length; i++) {
+			if (downsampledAnomalyFlags[i] && sgValues[i] !== null) {
+				newAnomalyMarkers.push({
+					timestamp: timestamps[i],
+					sgValue: sgValues[i],
+					anomalyScore: downsampledAnomalyScores[i],
+					anomalyReasons: downsampledAnomalyReasons[i]
+				});
+			}
+		}
+		anomalyMarkers = newAnomalyMarkers;
 
 		// Calculate trend line
 		const trend = calculateLinearRegression(timestamps, sgValues);

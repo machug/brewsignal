@@ -141,10 +141,10 @@ class CalibrationService:
         Args:
             db: Database session
             tilt_id: The Tilt identifier
-            raw_temp: Raw temperature reading (in Fahrenheit)
+            raw_temp: Raw temperature reading (in Celsius)
 
         Returns:
-            Calibrated temperature (in Fahrenheit)
+            Calibrated temperature (in Celsius)
         """
         if tilt_id not in self._cache:
             await self.load_calibration(db, tilt_id)

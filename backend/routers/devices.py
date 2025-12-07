@@ -212,6 +212,23 @@ class CalibrationRequest(BaseModel):
                     raise ValueError("each point must be [raw_value, actual_value]")
                 if not all(isinstance(v, (int, float)) for v in point):
                     raise ValueError("point values must be numbers")
+                # Validate SG ranges (0.990-1.200)
+                if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
+                    raise ValueError("SG calibration points must be between 0.990 and 1.200")
+
+            # Validate temp_points if present
+            if "temp_points" in cal_data:
+                temp_points = cal_data["temp_points"]
+                if not isinstance(temp_points, list):
+                    raise ValueError("temp_points must be a list")
+                for point in temp_points:
+                    if not isinstance(point, list) or len(point) != 2:
+                        raise ValueError("each temp point must be [raw_value, actual_value]")
+                    if not all(isinstance(v, (int, float)) for v in point):
+                        raise ValueError("temp point values must be numbers")
+                    # Validate temperature ranges (in Celsius: -10 to 50)
+                    if not (-10 <= point[0] <= 50 and -10 <= point[1] <= 50):
+                        raise ValueError("Temperature calibration points must be between -10°C and 50°C")
 
         elif cal_type == "polynomial":
             # Polynomial requires coefficients array

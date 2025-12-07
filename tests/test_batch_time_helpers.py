@@ -21,8 +21,8 @@ async def test_calculate_time_since_batch_start():
         await session.commit()
         await session.refresh(batch)
 
-        # Calculate time
-        hours = await calculate_time_since_batch_start(session, batch.id)
+        # Calculate time (device_id not used when batch has start_time)
+        hours = await calculate_time_since_batch_start(session, batch.id, "TEST_DEVICE")
 
         # Should be approximately 48 hours (allow 1 minute tolerance)
         assert 47.9 <= hours <= 48.1
@@ -30,15 +30,15 @@ async def test_calculate_time_since_batch_start():
 
 @pytest.mark.asyncio
 async def test_calculate_time_returns_zero_for_no_batch():
-    """Returns 0.0 when batch_id is None."""
+    """Returns 0.0 when batch_id is None and no readings exist."""
     async with async_session_factory() as session:
-        hours = await calculate_time_since_batch_start(session, None)
+        hours = await calculate_time_since_batch_start(session, None, "NONEXISTENT_DEVICE")
         assert hours == 0.0
 
 
 @pytest.mark.asyncio
 async def test_calculate_time_returns_zero_for_no_start_time():
-    """Returns 0.0 when batch has no start_time."""
+    """Returns 0.0 when batch has no start_time and no readings exist."""
     async with async_session_factory() as session:
         batch = Batch(
             name="Test Batch",
@@ -49,5 +49,5 @@ async def test_calculate_time_returns_zero_for_no_start_time():
         await session.commit()
         await session.refresh(batch)
 
-        hours = await calculate_time_since_batch_start(session, batch.id)
+        hours = await calculate_time_since_batch_start(session, batch.id, "NONEXISTENT_DEVICE")
         assert hours == 0.0

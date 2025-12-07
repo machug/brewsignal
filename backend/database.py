@@ -249,6 +249,8 @@ async def init_db():
         await conn.run_sync(_migrate_tilts_to_devices)
         await conn.run_sync(_migrate_mark_outliers_invalid)  # Mark historical outliers
         await conn.run_sync(_migrate_fix_temp_outlier_detection)  # Fix F→C temp check bug
+        await conn.run_sync(_migrate_tilts_to_devices_final)  # Final migration: drop tilts table
+        await conn.run_sync(_migrate_control_events_tilt_id_to_device_id)  # Migrate control_events to use device_id
 
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
@@ -976,6 +978,309 @@ def _migrate_add_deleted_at_index(conn):
         print("Migration: deleted_at index added successfully")
     else:
         print("Migration: deleted_at index already exists, skipping")
+
+
+def _migrate_tilts_to_devices_final(conn):
+    """Final migration: Consolidate Tilt table into Device table.
+
+    This migration:
+    1. Copies all Tilt records to Device table (if not already there)
+    2. Updates foreign keys: tilt_id -> device_id in readings and calibration_points
+    3. Drops the legacy tilts table
+
+    Idempotent: Can run multiple times safely.
+
+    Error handling: This function is called within engine.begin() transaction context,
+    so any exception will automatically trigger a rollback, leaving the database
+    in its pre-migration state.
+    """
+    from sqlalchemy import inspect, text
+    import logging
+    logger = logging.getLogger(__name__)
+
+    inspector = inspect(conn)
+
+    # Check if tilts table exists
+    if "tilts" not in inspector.get_table_names():
+        print("Migration: tilts table already migrated")
+        return
+
+    print("Migration: Starting Tilt -> Device consolidation")
+
+    try:
+
+        # Step 1: Migrate Tilt data to Device table
+        # Uses INSERT OR IGNORE to handle devices that already exist (from PR #73)
+        result = conn.execute(text("""
+            INSERT OR IGNORE INTO devices (
+                id, device_type, name, display_name, beer_name, original_gravity,
+                native_gravity_unit, native_temp_unit, calibration_type, calibration_data,
+                mac, color, last_seen, paired, paired_at, created_at
+            )
+            SELECT
+                id,
+                'tilt' as device_type,
+                color as name,
+                NULL as display_name,
+                beer_name,
+                original_gravity,
+                'sg' as native_gravity_unit,
+                'c' as native_temp_unit,
+                'linear' as calibration_type,
+                '{"sg_offset": 0.0, "temp_offset": 0.0, "sg_points": [], "temp_points": []}' as calibration_data,
+                mac,
+                color,
+                last_seen,
+                paired,
+                paired_at,
+                CURRENT_TIMESTAMP as created_at
+            FROM tilts
+        """))
+        migrated_count = result.rowcount
+        print(f"Migration: Copied {migrated_count} Tilt records to Device table")
+
+        # Step 2: Update foreign keys in readings table
+        # Check if column needs renaming or migrating
+        readings_columns = [c["name"] for c in inspector.get_columns("readings")]
+        if "tilt_id" in readings_columns:
+            if "device_id" in readings_columns:
+                # Both columns exist - copy tilt_id to device_id where device_id is NULL
+                print("Migration: Copying tilt_id to device_id in readings table")
+                conn.execute(text("""
+                    UPDATE readings
+                    SET device_id = tilt_id
+                    WHERE device_id IS NULL AND tilt_id IS NOT NULL
+                """))
+                # Now drop the tilt_id column by recreating the table
+                print("Migration: Dropping tilt_id column from readings table")
+                # Get all columns except tilt_id
+                all_columns = [c["name"] for c in inspector.get_columns("readings")]
+                columns_to_keep = [c for c in all_columns if c != "tilt_id"]
+                columns_str = ", ".join(columns_to_keep)
+
+                # Recreate table without tilt_id - match exact column order from original table
+                conn.execute(text("""
+                    CREATE TABLE readings_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        device_id VARCHAR(100),
+                        batch_id INTEGER,
+                        device_type VARCHAR(20) DEFAULT 'tilt',
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        sg_raw FLOAT,
+                        sg_calibrated FLOAT,
+                        temp_raw FLOAT,
+                        temp_calibrated FLOAT,
+                        rssi INTEGER,
+                        battery_voltage FLOAT,
+                        battery_percent INTEGER,
+                        angle FLOAT,
+                        source_protocol VARCHAR(20) DEFAULT 'ble',
+                        status VARCHAR(20) DEFAULT 'valid',
+                        is_pre_filtered INTEGER DEFAULT 0,
+                        sg_filtered FLOAT,
+                        temp_filtered FLOAT,
+                        confidence FLOAT,
+                        sg_rate FLOAT,
+                        temp_rate FLOAT,
+                        is_anomaly INTEGER DEFAULT 0,
+                        anomaly_score FLOAT,
+                        anomaly_reasons TEXT,
+                        FOREIGN KEY(device_id) REFERENCES devices(id),
+                        FOREIGN KEY(batch_id) REFERENCES batches(id)
+                    )
+                """))
+                # Use explicit column list in same order
+                conn.execute(text(f"INSERT INTO readings_new ({columns_str}) SELECT {columns_str} FROM readings"))
+                conn.execute(text("DROP TABLE readings"))
+                conn.execute(text("ALTER TABLE readings_new RENAME TO readings"))
+                # Recreate indexes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_device_id ON readings(device_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_timestamp ON readings(timestamp)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_id ON readings(batch_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_timestamp ON readings(batch_id, timestamp)"))
+                print("Migration: Dropped tilt_id column from readings table")
+            else:
+                # Only tilt_id exists - rename it to device_id
+                version_result = conn.execute(text("SELECT sqlite_version()"))
+                sqlite_version = version_result.scalar()
+                major, minor, _ = sqlite_version.split('.')
+
+                if int(major) >= 3 and int(minor) >= 25:
+                    # SQLite 3.25+ supports ALTER TABLE RENAME COLUMN
+                    conn.execute(text("ALTER TABLE readings RENAME COLUMN tilt_id TO device_id"))
+                    print("Migration: Renamed readings.tilt_id to device_id")
+                else:
+                    # Older SQLite: recreate table
+                    print("Migration: Recreating readings table with device_id column")
+                    conn.execute(text("""
+                        CREATE TABLE readings_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            device_id VARCHAR(100),
+                            batch_id INTEGER,
+                            device_type VARCHAR(20) DEFAULT 'tilt',
+                            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            sg_raw FLOAT,
+                            sg_calibrated FLOAT,
+                            temp_raw FLOAT,
+                            temp_calibrated FLOAT,
+                            rssi INTEGER,
+                            battery_voltage FLOAT,
+                            battery_percent INTEGER,
+                            angle FLOAT,
+                            source_protocol VARCHAR(20) DEFAULT 'ble',
+                            status VARCHAR(20) DEFAULT 'valid',
+                            is_pre_filtered INTEGER DEFAULT 0,
+                            sg_filtered FLOAT,
+                            temp_filtered FLOAT,
+                            confidence FLOAT,
+                            sg_rate FLOAT,
+                            temp_rate FLOAT,
+                            is_anomaly INTEGER DEFAULT 0,
+                            anomaly_score FLOAT,
+                            anomaly_reasons TEXT,
+                            FOREIGN KEY(device_id) REFERENCES devices(id),
+                            FOREIGN KEY(batch_id) REFERENCES batches(id)
+                        )
+                    """))
+                    conn.execute(text("INSERT INTO readings_new SELECT * FROM readings"))
+                    conn.execute(text("DROP TABLE readings"))
+                    conn.execute(text("ALTER TABLE readings_new RENAME TO readings"))
+                    # Recreate indexes
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_device_id ON readings(device_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_timestamp ON readings(timestamp)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_id ON readings(batch_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_readings_batch_timestamp ON readings(batch_id, timestamp)"))
+                    print("Migration: Recreated readings table with device_id")
+
+        # Step 3: Update foreign keys in calibration_points table
+        calibration_columns = [c["name"] for c in inspector.get_columns("calibration_points")]
+        if "tilt_id" in calibration_columns:
+            if "device_id" in calibration_columns:
+                # Both columns exist - copy tilt_id to device_id where device_id is NULL
+                print("Migration: Copying tilt_id to device_id in calibration_points table")
+                conn.execute(text("""
+                    UPDATE calibration_points
+                    SET device_id = tilt_id
+                    WHERE device_id IS NULL AND tilt_id IS NOT NULL
+                """))
+                # Now drop the tilt_id column by recreating the table
+                print("Migration: Dropping tilt_id column from calibration_points table")
+                # Get all columns except tilt_id
+                all_columns = [c["name"] for c in inspector.get_columns("calibration_points")]
+                columns_to_keep = [c for c in all_columns if c != "tilt_id"]
+                columns_str = ", ".join(columns_to_keep)
+
+                # Recreate table without tilt_id
+                conn.execute(text("""
+                    CREATE TABLE calibration_points_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        device_id VARCHAR(100) NOT NULL,
+                        type VARCHAR(20) NOT NULL,
+                        raw_value FLOAT NOT NULL,
+                        actual_value FLOAT NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
+                    )
+                """))
+                conn.execute(text(f"INSERT INTO calibration_points_new SELECT {columns_str} FROM calibration_points"))
+                conn.execute(text("DROP TABLE calibration_points"))
+                conn.execute(text("ALTER TABLE calibration_points_new RENAME TO calibration_points"))
+                # Recreate indexes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
+                print("Migration: Dropped tilt_id column from calibration_points table")
+            else:
+                # Only tilt_id exists - rename it to device_id
+                version_result = conn.execute(text("SELECT sqlite_version()"))
+                sqlite_version = version_result.scalar()
+                major, minor, _ = sqlite_version.split('.')
+
+                if int(major) >= 3 and int(minor) >= 25:
+                    conn.execute(text("ALTER TABLE calibration_points RENAME COLUMN tilt_id TO device_id"))
+                    # Drop old index and create new one with correct name
+                    conn.execute(text("DROP INDEX IF EXISTS ix_calibration_points_tilt_id"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
+                    print("Migration: Renamed calibration_points.tilt_id to device_id")
+                else:
+                    print("Migration: Recreating calibration_points table with device_id column")
+                    conn.execute(text("""
+                        CREATE TABLE calibration_points_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            device_id VARCHAR(100) NOT NULL,
+                            type VARCHAR(20) NOT NULL,
+                            raw_value FLOAT NOT NULL,
+                            actual_value FLOAT NOT NULL,
+                            created_at DATETIME NOT NULL,
+                            FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.execute(text("INSERT INTO calibration_points_new SELECT * FROM calibration_points"))
+                    conn.execute(text("DROP TABLE calibration_points"))
+                    conn.execute(text("ALTER TABLE calibration_points_new RENAME TO calibration_points"))
+                    # Recreate indexes
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calibration_points_device_id ON calibration_points(device_id)"))
+                    print("Migration: Recreated calibration_points table with device_id")
+
+        # Step 4: Drop tilts table
+        conn.execute(text("DROP TABLE tilts"))
+        print("Migration: Dropped tilts table - migration complete!")
+
+    except Exception as e:
+        # Log the error - transaction will automatically rollback
+        logger.error(f"Migration failed during Tilt->Device consolidation: {e}")
+        logger.error("Transaction will be rolled back. Database remains in pre-migration state.")
+        raise  # Re-raise to trigger rollback
+
+
+def _migrate_control_events_tilt_id_to_device_id(conn):
+    """Rename tilt_id column to device_id in control_events table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "control_events" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("control_events")]
+
+    if "tilt_id" not in columns:
+        return  # Already migrated or fresh install
+
+    print("Migration: Renaming control_events.tilt_id to device_id")
+
+    # Check SQLite version for RENAME COLUMN support
+    version_result = conn.execute(text("SELECT sqlite_version()"))
+    sqlite_version = version_result.scalar()
+    major, minor, _ = sqlite_version.split('.')
+
+    if int(major) >= 3 and int(minor) >= 25:
+        # SQLite 3.25+ supports ALTER TABLE RENAME COLUMN
+        conn.execute(text("ALTER TABLE control_events RENAME COLUMN tilt_id TO device_id"))
+        print("Migration: Renamed control_events.tilt_id to device_id")
+    else:
+        # Older SQLite - recreate table
+        print("Migration: Recreating control_events table with device_id column")
+        conn.execute(text("""
+            CREATE TABLE control_events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                device_id VARCHAR(100),
+                batch_id INTEGER,
+                action VARCHAR(20),
+                wort_temp FLOAT,
+                ambient_temp FLOAT,
+                target_temp FLOAT,
+                FOREIGN KEY(device_id) REFERENCES devices(id),
+                FOREIGN KEY(batch_id) REFERENCES batches(id)
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO control_events_new (id, timestamp, device_id, batch_id, action, wort_temp, ambient_temp, target_temp)
+            SELECT id, timestamp, tilt_id, batch_id, action, wort_temp, ambient_temp, target_temp FROM control_events
+        """))
+        conn.execute(text("DROP TABLE control_events"))
+        conn.execute(text("ALTER TABLE control_events_new RENAME TO control_events"))
+        # Recreate index
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_control_timestamp ON control_events(timestamp)"))
+        print("Migration: Recreated control_events table with device_id")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

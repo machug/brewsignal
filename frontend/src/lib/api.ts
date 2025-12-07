@@ -27,10 +27,10 @@ export const TIME_RANGES: TimeRangeOption[] = [
 ];
 
 export async function fetchReadings(
-	tiltId: string,
+	deviceId: string,
 	hours: number = 24
 ): Promise<HistoricalReading[]> {
-	const response = await fetch(`${BASE_URL}/tilts/${tiltId}/readings?hours=${hours}&limit=5000`);
+	const response = await fetch(`${BASE_URL}/devices/${deviceId}/readings?hours=${hours}&limit=5000`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch readings: ${response.statusText}`);
 	}

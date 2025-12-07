@@ -3,7 +3,7 @@ import asyncio
 from httpx import AsyncClient, ASGITransport
 from backend.main import app
 from backend.database import init_db, async_session_factory
-from backend.models import Tilt, Reading
+from backend.models import Device, Reading
 from sqlalchemy import select, func
 
 @pytest.mark.asyncio
@@ -13,14 +13,14 @@ async def test_full_pairing_workflow():
     # Initialize test database
     await init_db()
 
-    # Clean up any existing GREEN tilt from previous test runs
+    # Clean up any existing GREEN device from previous test runs
     async with async_session_factory() as session:
-        existing_tilt = await session.get(Tilt, "GREEN")
-        if existing_tilt:
-            await session.delete(existing_tilt)
+        existing_device = await session.get(Device, "GREEN")
+        if existing_device:
+            await session.delete(existing_device)
         # Also clean up any readings
         result = await session.execute(
-            select(Reading).where(Reading.tilt_id == "GREEN")
+            select(Reading).where(Reading.device_id == "GREEN")
         )
         for reading in result.scalars():
             await session.delete(reading)
@@ -29,21 +29,22 @@ async def test_full_pairing_workflow():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Step 1: Simulate device detection (unpaired by default)
         async with async_session_factory() as session:
-            tilt = Tilt(
+            device = Device(
                 id="GREEN",
-                color="GREEN",
+                device_type="tilt",
+                name="GREEN",
                 beer_name="Untitled",
                 paired=False
             )
-            session.add(tilt)
+            session.add(device)
             await session.commit()
 
         # Step 2: Verify device appears in list as unpaired
-        response = await client.get("/api/tilts")
+        response = await client.get("/api/devices")
         assert response.status_code == 200
-        tilts = response.json()
-        green_tilt = next(t for t in tilts if t["id"] == "GREEN")
-        assert green_tilt["paired"] is False
+        devices = response.json()
+        green_device = next(d for d in devices if d["id"] == "GREEN")
+        assert green_device["paired"] is False
 
         # Step 3: Simulate reading - should NOT be stored
         from backend.scanner import TiltReading
@@ -64,13 +65,13 @@ async def test_full_pairing_workflow():
         # Verify no reading was stored
         async with async_session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(Reading).where(Reading.tilt_id == "GREEN")
+                select(func.count()).select_from(Reading).where(Reading.device_id == "GREEN")
             )
             count = result.scalar()
             assert count == 0, "Reading should not be stored for unpaired device"
 
         # Step 4: Pair the device
-        response = await client.post("/api/tilts/GREEN/pair")
+        response = await client.post("/api/devices/GREEN/pair")
         assert response.status_code == 200
         data = response.json()
         assert data["paired"] is True
@@ -90,13 +91,13 @@ async def test_full_pairing_workflow():
         # Verify reading WAS stored
         async with async_session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(Reading).where(Reading.tilt_id == "GREEN")
+                select(func.count()).select_from(Reading).where(Reading.device_id == "GREEN")
             )
             count = result.scalar()
             assert count == 1, "Reading should be stored for paired device"
 
         # Step 6: Unpair the device
-        response = await client.post("/api/tilts/GREEN/unpair")
+        response = await client.post("/api/devices/GREEN/unpair")
         assert response.status_code == 200
         data = response.json()
         assert data["paired"] is False
@@ -116,7 +117,7 @@ async def test_full_pairing_workflow():
         # Verify reading count unchanged (still 1)
         async with async_session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(Reading).where(Reading.tilt_id == "GREEN")
+                select(func.count()).select_from(Reading).where(Reading.device_id == "GREEN")
             )
             count = result.scalar()
             assert count == 1, "No additional reading should be stored after unpairing"

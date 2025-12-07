@@ -64,9 +64,14 @@ async def test_paired_tilt_stores_reading():
         mock_tilt.original_gravity = 1.055
         mock_session.get.return_value = mock_tilt
 
+        # Mock execute for first reading query (wall-clock fallback)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # No previous readings
+        mock_session.execute.return_value = mock_result
+
         with patch('backend.main.calibration_service.calibrate_reading',
                    return_value=(1.048, 66.0)):
-            with patch('backend.main.link_reading_to_batch', return_value=None):
+            with patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=None):
                 await handle_tilt_reading(reading)
 
         # Verify that a Reading object WAS added to session
@@ -74,4 +79,4 @@ async def test_paired_tilt_stores_reading():
         reading_adds = [call for call in mock_session.add.call_args_list
                        if call[0] and isinstance(call[0][0], Reading)]
         assert len(reading_adds) == 1, "Expected exactly one Reading object to be added for paired tilt"
-        assert reading_adds[0][0][0].tilt_id == "BLUE"
+        assert reading_adds[0][0][0].device_id == "BLUE"

@@ -17,8 +17,8 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
-from .models import Device, Reading, Tilt, serialize_datetime_to_utc  # noqa: E402
-from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, maintenance, recipes, system, tilts  # noqa: E402
+from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
+from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, maintenance, recipes, system  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
@@ -29,7 +29,6 @@ from .services.batch_linker import link_reading_to_batch  # noqa: E402
 from .state import latest_readings  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
-from .device_utils import create_tilt_device_record  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
 
@@ -41,88 +40,99 @@ cleanup_service: Optional[CleanupService] = None
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
 
+# Cache for first reading timestamps (device_id -> datetime)
+# Prevents N+1 query on every reading when using wall-clock fallback
+_first_reading_cache: dict[str, datetime] = {}
 
-async def calculate_time_since_batch_start(session, batch_id: Optional[int]) -> float:
-    """Calculate hours since batch start.
+
+async def calculate_time_since_batch_start(
+    session,
+    batch_id: Optional[int],
+    device_id: str
+) -> float:
+    """Calculate hours since batch start, with wall-clock fallback.
 
     Args:
         session: Database session
-        batch_id: Batch ID
+        batch_id: Batch ID (may be None for unlinked readings)
+        device_id: Device ID for wall-clock fallback
 
     Returns:
-        Hours since batch start_time (0.0 if no batch or no start_time)
+        Hours since batch start_time, or hours since first reading if no batch
     """
-    if not batch_id:
-        return 0.0
+    if batch_id:
+        batch = await session.get(models.Batch, batch_id)
+        if batch and batch.start_time:
+            now = datetime.now(timezone.utc)
+            start_time = batch.start_time
 
-    batch = await session.get(models.Batch, batch_id)
-    if not batch or not batch.start_time:
-        return 0.0
+            # Handle naive datetime (database stores in UTC but without timezone info)
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
 
-    now = datetime.now(timezone.utc)
-    start_time = batch.start_time
+            delta = now - start_time
+            return delta.total_seconds() / 3600.0
 
-    # Handle naive datetime (database stores in UTC but without timezone info)
-    if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=timezone.utc)
+    # Fallback: Use wall-clock time since first reading for this device
+    # This prevents ML pipeline from being stuck at time_hours=0
 
-    delta = now - start_time
-    return delta.total_seconds() / 3600.0  # Convert to hours
+    # Check cache first to avoid N+1 query
+    if device_id in _first_reading_cache:
+        first_time = _first_reading_cache[device_id]
+        now = datetime.now(timezone.utc)
+        delta = now - first_time
+        return delta.total_seconds() / 3600.0
+
+    # Cache miss - query database for first reading
+    first_reading = await session.execute(
+        select(models.Reading)
+        .where(models.Reading.device_id == device_id)
+        .order_by(models.Reading.timestamp.asc())
+        .limit(1)
+    )
+    first = first_reading.scalar_one_or_none()
+
+    if first:
+        now = datetime.now(timezone.utc)
+        first_time = first.timestamp
+
+        # Handle naive datetime
+        if first_time.tzinfo is None:
+            first_time = first_time.replace(tzinfo=timezone.utc)
+
+        # Cache for future calls
+        _first_reading_cache[device_id] = first_time
+
+        delta = now - first_time
+        return delta.total_seconds() / 3600.0
+
+    # Absolute fallback: return 0.0 for very first reading
+    return 0.0
 
 
 async def handle_tilt_reading(reading: TiltReading):
-    """Process a new Tilt reading: update DB and broadcast to WebSocket clients."""
+    """Process Tilt BLE reading and store if paired.
+
+    Simplified: Only manages Device table (no dual-table sync).
+    """
     async with async_session_factory() as session:
-        # Upsert Tilt record (always track detected devices)
-        tilt = await session.get(Tilt, reading.id)
-        if not tilt:
-            tilt = Tilt(
-                id=reading.id,
-                color=reading.color,
-                mac=reading.mac,
-                beer_name="Untitled",
-                paired=False,  # New devices start unpaired
-            )
-            session.add(tilt)
-            try:
-                await session.flush()  # Flush to catch IntegrityError from concurrent Tilt creation
-            except IntegrityError:
-                # Another task created this Tilt concurrently - rollback and refetch
-                await session.rollback()
-                tilt = await session.get(Tilt, reading.id)
-                if not tilt:
-                    # Should never happen, but handle gracefully
-                    logging.error(f"Failed to create or fetch Tilt {reading.id} after IntegrityError")
-                    return
-
-        timestamp = datetime.now(timezone.utc)
-        tilt.last_seen = timestamp
-        tilt.mac = reading.mac
-
-        # Also update/create universal Device record for consistency
+        # Get or create Device record (single source of truth)
         device = await session.get(Device, reading.id)
         if not device:
-            # Create new Device record - paired status should only be set via pairing endpoints
-            device = create_tilt_device_record(
-                device_id=reading.id,
-                color=reading.color,
-                mac=reading.mac,
-                last_seen=timestamp,
+            # Create new Tilt device (temps converted from F to C on ingestion)
+            device = Device(
+                id=reading.id,
+                device_type='tilt',
+                name=reading.color,
+                native_temp_unit='c',  # Stored in Celsius (converted from F at BLE boundary)
+                native_gravity_unit='sg',
+                calibration_type='linear',
                 paired=False,  # New devices start unpaired
             )
             session.add(device)
-            try:
-                await session.flush()  # Flush to catch IntegrityError from concurrent creation
-            except IntegrityError:
-                # Another task created this device concurrently - rollback and refetch
-                await session.rollback()
-                device = await session.get(Device, reading.id)
-                if not device:
-                    # Should never happen, but handle gracefully
-                    logging.error(f"Failed to create or fetch Device {reading.id} after IntegrityError")
-                    return
-        # Only update non-pairing fields from readings (last_seen, color, mac)
-        # Paired status is controlled exclusively via pairing endpoints
+
+        # Update device metadata from reading
+        timestamp = datetime.now(timezone.utc)
         device.last_seen = timestamp
         device.color = reading.color
         device.mac = reading.mac
@@ -138,136 +148,79 @@ async def handle_tilt_reading(reading: TiltReading):
         # Validate reading for outliers (physical impossibility check)
         # Valid SG range: 0.500-1.200 (beer is typically 1.000-1.120)
         # Valid temp range: 0-100°C (freezing to boiling)
-        # IMPORTANT: Validate BEFORE ML processing to prevent invalid readings from polluting the Kalman filter
         status = "valid"
-        if not (0.500 <= sg_calibrated <= 1.200):
+        if not (0.500 <= sg_calibrated <= 1.200) or not (0.0 <= temp_calibrated_c <= 100.0):
             status = "invalid"
-            logging.warning(
-                f"Outlier SG detected: {sg_calibrated:.4f} (valid: 0.500-1.200) for device {reading.id}"
-            )
-        elif not (0.0 <= temp_calibrated_c <= 100.0):
-            status = "invalid"
-            logging.warning(
-                f"Outlier temperature detected: {temp_calibrated_c:.1f}°C (valid: 0-100) for device {reading.id}"
-            )
 
-        # Link reading to batch (if paired) - calculate once and reuse
-        device_id = reading.id
-        batch_id = None
-        time_hours = 0.0
+        # Only store readings if device is paired
+        if device.paired:
+            # Link reading to active batch (if any)
+            batch_id = await link_reading_to_batch(session, reading.id)
 
-        if tilt.paired:
-            batch_id = await link_reading_to_batch(session, device_id)
-            time_hours = await calculate_time_since_batch_start(session, batch_id)
+            # Calculate time since batch start for ML pipeline (with wall-clock fallback)
+            time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
 
-        # Process through ML pipeline if paired and valid
-        sg_filtered = sg_calibrated
-        temp_filtered = temp_calibrated_c
-        confidence = None
-        sg_rate = None
-        temp_rate = None
-        is_anomaly = False
-        anomaly_score = None
-        anomaly_reasons_list = []  # Keep as list in memory
-        predictions = None
+            # Process through ML pipeline if available
+            ml_outputs = {}
+            if ml_pipeline_manager:
+                try:
+                    # Call synchronous process_reading (no await)
+                    ml_outputs = ml_pipeline_manager.process_reading(
+                        device_id=reading.id,
+                        sg=sg_calibrated,
+                        temp=temp_calibrated_c,
+                        rssi=reading.rssi,
+                        time_hours=time_hours,
+                        # TODO: Add ambient_temp, heater_on, cooler_on, target_temp when available
+                    )
+                except Exception as e:
+                    logging.error(f"ML pipeline failed for {reading.id}: {e}")
 
-        if tilt.paired and status == "valid" and ml_pipeline_manager is not None:
-            # Get or create pipeline for this device
-            pipeline = ml_pipeline_manager.get_or_create_pipeline(reading.id)
-
-            # Process through ML pipeline
-            try:
-                ml_result = pipeline.process_reading(
-                    sg=sg_calibrated,
-                    temp=temp_calibrated_c,
-                    rssi=reading.rssi,
-                    time_hours=time_hours,
-                )
-
-                # Extract ML outputs
-                if ml_result.get("kalman"):
-                    sg_filtered = ml_result["kalman"]["sg_filtered"]
-                    temp_filtered = ml_result["kalman"]["temp_filtered"]
-                    confidence = ml_result["kalman"]["confidence"]
-                    sg_rate = ml_result["kalman"]["sg_rate"]
-                    temp_rate = ml_result["kalman"]["temp_rate"]
-
-                # Anomaly detection
-                if ml_result.get("anomaly"):
-                    anomaly = ml_result["anomaly"]
-                    is_anomaly = anomaly["is_anomaly"]
-                    # Anomaly detector returns "reason" string, not "anomaly_score"
-                    anomaly_score = 1.0 if is_anomaly else 0.0  # Binary score for now
-                    # Store reason as list to support multiple reasons in future
-                    anomaly_reasons_list = [anomaly.get("reason", "normal")]
-
-                # Predictions (may be None if not enough history)
-                predictions = ml_result.get("predictions")
-
-            except Exception as e:
-                logging.error(f"ML pipeline error for {reading.id}: {e}")
-                # Fallback: use calibrated values (graceful degradation)
-                sg_filtered = sg_calibrated
-                temp_filtered = temp_calibrated_c
-
-        # Only store reading if device is paired
-        if tilt.paired:
-            # Store reading in DB with ML outputs
-            # Encode anomaly_reasons list as JSON for database storage
-            anomaly_reasons_json = json.dumps(anomaly_reasons_list) if anomaly_reasons_list else None
-
+            # Create reading record
             db_reading = Reading(
-                tilt_id=reading.id,
-                device_id=device_id,
+                device_id=reading.id,
                 batch_id=batch_id,
+                timestamp=timestamp,
                 sg_raw=reading.sg,
                 sg_calibrated=sg_calibrated,
-                sg_filtered=sg_filtered,
                 temp_raw=temp_raw_c,
                 temp_calibrated=temp_calibrated_c,
-                temp_filtered=temp_filtered,
                 rssi=reading.rssi,
                 status=status,
-                confidence=confidence,
-                sg_rate=sg_rate,
-                temp_rate=temp_rate,
-                is_anomaly=is_anomaly,
-                anomaly_score=anomaly_score,
-                anomaly_reasons=anomaly_reasons_json,
+                # ML outputs
+                sg_filtered=ml_outputs.get("sg_filtered"),
+                temp_filtered=ml_outputs.get("temp_filtered"),
+                confidence=ml_outputs.get("confidence"),
+                sg_rate=ml_outputs.get("sg_rate"),
+                temp_rate=ml_outputs.get("temp_rate"),
+                is_anomaly=ml_outputs.get("is_anomaly", False),
+                anomaly_score=ml_outputs.get("anomaly_score"),
+                anomaly_reasons=json.dumps(ml_outputs.get("anomaly_reasons", [])) if ml_outputs.get("anomaly_reasons") else None,
             )
             session.add(db_reading)
 
         await session.commit()
 
-        # Build reading data for WebSocket broadcast (always broadcast)
-        # Temperatures are in Celsius (converted from Tilt's Fahrenheit)
-        # Frontend will convert based on user preference
-        reading_data = {
-            "id": reading.id,
+        # Update in-memory latest_readings cache
+        latest_readings[reading.id] = {
+            "id": reading.id,  # Frontend expects this field
+            "device_id": reading.id,
             "color": reading.color,
-            "beer_name": tilt.beer_name,
-            "original_gravity": tilt.original_gravity,
+            "beer_name": device.beer_name or "Untitled",
+            "original_gravity": device.original_gravity,
             "sg": sg_calibrated,
             "sg_raw": reading.sg,
-            "sg_filtered": sg_filtered,
             "temp": temp_calibrated_c,
             "temp_raw": temp_raw_c,
-            "temp_filtered": temp_filtered,
-            "confidence": confidence,
-            "is_anomaly": is_anomaly,
-            "anomaly_reasons": anomaly_reasons_list,
-            "predicted_fg": predictions.get("predicted_fg") if predictions else None,
-            "hours_to_complete": predictions.get("hours_to_complete") if predictions else None,
             "rssi": reading.rssi,
-            "last_seen": serialize_datetime_to_utc(datetime.now(timezone.utc)),
-            "paired": tilt.paired,  # Include pairing status
+            "timestamp": serialize_datetime_to_utc(timestamp),
+            "last_seen": serialize_datetime_to_utc(timestamp),
+            "paired": device.paired,
+            "mac": reading.mac,
         }
 
-        # Update in-memory cache
-        latest_readings[reading.id] = reading_data
-
-        # Broadcast to all WebSocket clients
-        await manager.broadcast(reading_data)
+        # Broadcast to WebSocket clients
+        await manager.broadcast(latest_readings[reading.id])
 
 
 @asynccontextmanager
@@ -324,7 +277,6 @@ from .routers.system import VERSION  # noqa: E402
 app = FastAPI(title="BrewSignal", version=VERSION, lifespan=lifespan)
 
 # Register routers
-app.include_router(tilts.router)
 app.include_router(devices.router)
 app.include_router(config.router)
 app.include_router(system.router)

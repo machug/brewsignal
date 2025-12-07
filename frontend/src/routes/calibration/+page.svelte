@@ -234,8 +234,8 @@
 
 <div class="page-container">
 	<div class="page-header">
-		<h1 class="page-title">Calibration</h1>
-		<p class="page-description">Fine-tune SG and temperature readings with calibration points</p>
+		<h1 class="page-title">Tilt Calibration</h1>
+		<p class="page-description">Calibrate your Tilt hydrometer's gravity and temperature readings</p>
 	</div>
 
 	{#if loading}
@@ -469,19 +469,23 @@
 
 		<!-- Calibration Info -->
 		<div class="info-section mt-6">
-			<h3 class="info-title">How Calibration Works</h3>
+			<h3 class="info-title">How Tilt Calibration Works</h3>
 			<p class="info-text">
-				Add at least two calibration points for best results. The system uses linear interpolation
-				between points to correct readings. For single-point calibration, only an offset is applied.
+				Tilt calibration is applied in software to raw BLE readings. Add at least two calibration
+				points for accurate linear interpolation. Calibration happens app-side, not on the device.
 			</p>
 			<div class="info-tips">
 				<div class="tip">
-					<span class="tip-label">Tip:</span>
-					<span>For SG, use distilled water (1.000) and a known sugar solution for two-point calibration.</span>
+					<span class="tip-label">Gravity:</span>
+					<span>Use distilled water (1.000 SG) and a known sugar solution (1.061 or 1.110 SG) for best results.</span>
 				</div>
 				<div class="tip">
-					<span class="tip-label">Tip:</span>
-					<span>For temperature, ice water (0°C/32°F) and room temp make good reference points.</span>
+					<span class="tip-label">Temperature:</span>
+					<span>Rarely needed for Tilts (accurate 38°F-98°F range). Calibrate only if you notice consistent offsets.</span>
+				</div>
+				<div class="tip">
+					<span class="tip-label">iSpindel/GravityMon:</span>
+					<span>These devices calibrate on-board via polynomial formulas. Configure calibration through the device's web interface.</span>
 				</div>
 			</div>
 		</div>

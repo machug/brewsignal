@@ -13,18 +13,26 @@
 		beer_name: string;
 		mac: string | null;
 		last_seen: string | null;
+		device_type: string;
+		paired: boolean;
+		calibration_type: string;
+		calibration_data: CalibrationData | null;
 	}
 
-	interface CalibrationPoint {
-		id: number;
-		type: 'sg' | 'temp';
-		raw_value: number;
-		actual_value: number;
+	interface CalibrationData {
+		points?: [number, number][];      // SG points: [raw, actual]
+		temp_points?: [number, number][]; // Temp points: [raw, actual]
+	}
+
+	interface CalibrationRequest {
+		calibration_type: 'linear' | 'none';
+		calibration_data: CalibrationData | null;
 	}
 
 	let devices = $state<Device[]>([]);
 	let selectedDeviceId = $state<string | null>(null);
-	let calibrationPoints = $state<CalibrationPoint[]>([]);
+	let calibrationData = $state<CalibrationData | null>(null);
+	let calibrationType = $state<string>('none');
 	let loading = $state(true);
 	let loadingPoints = $state(false);
 	let saving = $state(false);
@@ -40,8 +48,8 @@
 	let useCelsius = $derived(configState.config.temp_units === 'C');
 
 	// Filter points by type
-	let sgPoints = $derived(calibrationPoints.filter((p) => p.type === 'sg').sort((a, b) => a.raw_value - b.raw_value));
-	let tempPoints = $derived(calibrationPoints.filter((p) => p.type === 'temp').sort((a, b) => a.raw_value - b.raw_value));
+	let sgPoints = $derived((calibrationData?.points || []).sort((a, b) => a[0] - b[0]));
+	let tempPoints = $derived((calibrationData?.temp_points || []).sort((a, b) => a[0] - b[0]));
 
 	// Selected device object
 	let selectedDevice = $derived(devices.find((d) => d.id === selectedDeviceId));
@@ -62,16 +70,18 @@
 		}
 	}
 
-	async function loadCalibrationPoints() {
+	async function loadCalibration() {
 		if (!selectedDeviceId) return;
 		loadingPoints = true;
 		try {
 			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`);
 			if (response.ok) {
-				calibrationPoints = await response.json();
+				const data = await response.json();
+				calibrationType = data.calibration_type;
+				calibrationData = data.calibration_data;
 			}
 		} catch (e) {
-			console.error('Failed to load calibration points:', e);
+			console.error('Failed to load calibration:', e);
 		} finally {
 			loadingPoints = false;
 		}
@@ -108,7 +118,7 @@
 					tempRawValue = '';
 					tempActualValue = '';
 				}
-				await loadCalibrationPoints();
+				await loadCalibration();
 			}
 		} catch (e) {
 			console.error('Failed to add calibration point:', e);
@@ -131,7 +141,7 @@
 			});
 
 			if (response.ok) {
-				await loadCalibrationPoints();
+				await loadCalibration();
 			}
 		} catch (e) {
 			console.error('Failed to clear calibration:', e);
@@ -159,7 +169,7 @@
 	// Load calibration when device changes
 	$effect(() => {
 		if (selectedDeviceId) {
-			loadCalibrationPoints();
+			loadCalibration();
 		}
 	});
 </script>
@@ -254,9 +264,9 @@
 								</div>
 								{#each sgPoints as point}
 									<div class="table-row">
-										<span class="font-mono">{formatSG(point.raw_value)}</span>
+										<span class="font-mono">{formatSG(point[0])}</span>
 										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatSG(point.actual_value)}</span>
+										<span class="font-mono text-[var(--accent)]">{formatSG(point[1])}</span>
 									</div>
 								{/each}
 							</div>
@@ -346,9 +356,9 @@
 								</div>
 								{#each tempPoints as point}
 									<div class="table-row">
-										<span class="font-mono">{formatTempDisplay(point.raw_value)}°</span>
+										<span class="font-mono">{formatTempDisplay(point[0])}°</span>
 										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatTempDisplay(point.actual_value)}°</span>
+										<span class="font-mono text-[var(--accent)]">{formatTempDisplay(point[1])}°</span>
 									</div>
 								{/each}
 							</div>

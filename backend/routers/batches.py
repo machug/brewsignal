@@ -1,6 +1,6 @@
 """Batch API endpoints."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +12,7 @@ from ..database import get_db
 from ..models import (
     Batch,
     BatchCreate,
+    BatchPredictionsResponse,
     BatchProgressResponse,
     BatchResponse,
     BatchUpdate,
@@ -433,9 +434,23 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/{batch_id}/predictions")
+@router.get("/{batch_id}/predictions", response_model=BatchPredictionsResponse)
 async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db)):
-    """Get ML predictions for a batch."""
+    """Get ML predictions for a batch.
+
+    Returns:
+        Dictionary containing:
+        - available (bool): Whether predictions are available
+        - predicted_fg (float): Predicted final gravity
+        - predicted_og (float): Predicted original gravity
+        - estimated_completion (str): ISO timestamp of predicted completion
+        - hours_to_completion (float): Hours until fermentation completes
+        - model_type (str): Type of model used ("exponential")
+        - r_squared (float): Model fit quality (0.0-1.0)
+        - num_readings (int): Number of readings used for prediction
+        - error (str): Error message if available=False
+        - reason (str): Reason why predictions unavailable
+    """
     from ..main import get_ml_manager
 
     # Get batch
@@ -444,7 +459,10 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
     )
     batch = result.scalar_one_or_none()
 
-    if not batch or not batch.device_id:
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if not batch.device_id:
         return {"available": False, "error": "No device linked"}
 
     # Query ML manager for predictions
@@ -459,16 +477,16 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
 
     predictions = device_state["predictions"]
 
-    # If predictions not fitted, return unavailable
+    # predictions can be None (insufficient history) or dict with fitted=False (fit failed)
     if not predictions.get("fitted"):
         return {"available": False, "reason": predictions.get("reason", "unknown")}
 
     # Calculate completion date from hours_to_completion
+    # Note: hours_to_completion is relative to NOW, not batch start time
     completion_date = None
     hours_to_completion = predictions.get("hours_to_completion")
-    if hours_to_completion is not None and batch.start_time:
-        from datetime import timedelta
-        completion_date = batch.start_time + timedelta(hours=hours_to_completion)
+    if hours_to_completion is not None and hours_to_completion > 0:
+        completion_date = datetime.now(timezone.utc) + timedelta(hours=hours_to_completion)
 
     return {
         "available": True,

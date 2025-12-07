@@ -42,7 +42,7 @@ cleanup_service: Optional[CleanupService] = None
 ml_pipeline_manager: Optional[MLPipelineManager] = None
 
 
-def get_ml_manager() -> MLPipelineManager:
+def get_ml_manager() -> Optional[MLPipelineManager]:
     """Get the global ML pipeline manager instance."""
     return ml_pipeline_manager
 

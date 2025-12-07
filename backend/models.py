@@ -1017,3 +1017,19 @@ class BatchProgressResponse(BaseModel):
     measured: dict  # og, current_sg, attenuation, abv
     progress: dict  # percent_complete, sg_remaining, estimated_days_remaining
     temperature: dict  # current, yeast_min, yeast_max, status
+
+
+class BatchPredictionsResponse(BaseModel):
+    """ML predictions response for a batch."""
+    model_config = ConfigDict(from_attributes=True)
+
+    available: bool
+    predicted_fg: Optional[float] = None
+    predicted_og: Optional[float] = None
+    estimated_completion: Optional[str] = None
+    hours_to_completion: Optional[float] = None
+    model_type: Optional[str] = None
+    r_squared: Optional[float] = None
+    num_readings: int = 0
+    error: Optional[str] = None
+    reason: Optional[str] = None

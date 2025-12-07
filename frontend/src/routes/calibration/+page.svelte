@@ -246,11 +246,12 @@
 	{:else if devices.length === 0}
 		<div class="empty-state">
 			<div class="empty-icon">📊</div>
-			<h3 class="empty-title">No Devices Found</h3>
+			<h3 class="empty-title">No Tilt Devices Found</h3>
 			<p class="empty-description">
-				Pair a device to start calibrating.
-				Devices will appear here once paired.
+				Pair a Tilt hydrometer on the Devices page to calibrate it.
+				Only Tilt devices appear here (iSpindel/GravityMon calibrate on-device).
 			</p>
+			<a href="/devices" class="btn-primary mt-4">Go to Devices</a>
 		</div>
 	{:else}
 		<!-- Device Selector -->
@@ -839,9 +840,32 @@
 		line-height: 1.6;
 	}
 
+	.btn-primary {
+		display: inline-block;
+		padding: 0.625rem 1.25rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: white;
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		border-radius: 0.5rem;
+		text-decoration: none;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-primary:hover {
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
+	}
+
 	/* Grid utilities */
 	.mb-6 {
 		margin-bottom: 1.5rem;
+	}
+
+	.mt-4 {
+		margin-top: 1rem;
 	}
 
 	.mt-6 {

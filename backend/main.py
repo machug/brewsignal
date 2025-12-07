@@ -155,8 +155,10 @@ async def handle_tilt_reading(reading: TiltReading):
         # Link reading to active batch (if any)
         batch_id = await link_reading_to_batch(session, reading.id)
 
-        # Only store readings if linked to active batch (fermenting or conditioning)
-        if batch_id is not None:
+        # Only store readings if BOTH conditions met:
+        # 1. Device is paired (prevents pollution from nearby unpaired Tilts)
+        # 2. Reading linked to active batch (fermenting or conditioning status)
+        if device.paired and batch_id is not None:
             # Calculate time since batch start for ML pipeline (with wall-clock fallback)
             time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
 
@@ -175,6 +177,7 @@ async def handle_tilt_reading(reading: TiltReading):
                     )
                 except Exception as e:
                     logging.error(f"ML pipeline failed for {reading.id}: {e}")
+                    # ML failure is non-fatal - continue with empty outputs
 
             # Create reading record
             db_reading = Reading(

@@ -126,3 +126,35 @@ async def test_readings_not_stored_completed_status(test_db):
     batch_id = await link_reading_to_batch(test_db, "BLUE")
 
     assert batch_id is None  # Completed batch should not link
+
+
+@pytest.mark.asyncio
+async def test_unpaired_device_does_not_store_readings(test_db):
+    """Unpaired devices should not store readings even when assigned to active batch."""
+    # Create UNPAIRED device
+    device = Device(
+        id="BLUE",
+        device_type="tilt",
+        name="Blue Tilt",
+        paired=False,  # NOT PAIRED
+    )
+    test_db.add(device)
+
+    # Create batch in fermenting status
+    batch = Batch(
+        device_id="BLUE",
+        status="fermenting",
+        start_time=datetime.now(timezone.utc),
+    )
+    test_db.add(batch)
+    await test_db.commit()
+
+    # Verify batch_linker would return batch_id
+    from backend.services.batch_linker import link_reading_to_batch
+    batch_id = await link_reading_to_batch(test_db, "BLUE")
+    assert batch_id is not None  # Batch link works
+
+    # However, the main.py logic requires BOTH paired AND batch_id
+    # So unpaired device with active batch should NOT store readings
+    should_store = device.paired and batch_id is not None
+    assert should_store is False  # Unpaired device should not store

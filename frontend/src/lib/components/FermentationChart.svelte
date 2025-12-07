@@ -53,6 +53,7 @@
 	let selectedRange = $state(24); // hours
 	let readings = $state<HistoricalReading[]>([]);
 	let ambientReadings = $state<AmbientHistoricalReading[]>([]);
+	let chamberReadings = $state<ChamberHistoricalReading[]>([]);
 	let currentTrend = $state<TrendResult | null>(null);
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 
@@ -75,11 +76,18 @@
 	const TEXT_SECONDARY = '#a1a1aa';
 	const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';
 	const CYAN = '#22d3ee'; // Ambient temp color
+	const PURPLE = '#a78bfa'; // Chamber temp color
 	const TREND_COLOR = 'rgba(250, 204, 21, 0.5)'; // Semi-transparent yellow for trend line
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
+
+	// Ambient and Chamber visibility toggles
+	const AMBIENT_STORAGE_KEY = 'brewsignal_chart_ambient_enabled';
+	const CHAMBER_STORAGE_KEY = 'brewsignal_chart_chamber_enabled';
+	let showAmbient = $state(true);
+	let showChamber = $state(true);
 
 	// Control period data for heating/cooling bands
 	interface ControlPeriod {
@@ -407,7 +415,20 @@
 					dash: [2, 4],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
 					points: { show: false },
-					paths: uPlot.paths.spline?.() // Smooth spline interpolation
+					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
+					show: showAmbient
+				},
+				{
+					// Chamber Temp series
+					label: 'Chamber',
+					scale: 'temp',
+					stroke: PURPLE,
+					width: 1.5,
+					dash: [4, 2],
+					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
+					show: showChamber
 				},
 				{
 					// SG Trend line series
@@ -455,10 +476,11 @@
 		sgValues: (number | null)[],
 		tempValues: (number | null)[],
 		ambientValues: (number | null)[],
+		chamberValues: (number | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -466,6 +488,7 @@
 		const newSg: (number | null)[] = [];
 		const newTemp: (number | null)[] = [];
 		const newAmbient: (number | null)[] = [];
+		const newChamber: (number | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -473,11 +496,13 @@
 			let sgSum = 0, sgCount = 0;
 			let tempSum = 0, tempCount = 0;
 			let ambientSum = 0, ambientCount = 0;
+			let chamberSum = 0, chamberCount = 0;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
 				if (tempValues[j] !== null) { tempSum += tempValues[j]!; tempCount++; }
 				if (ambientValues[j] !== null) { ambientSum += ambientValues[j]!; ambientCount++; }
+				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
 			}
 
 			// Use middle timestamp of bucket
@@ -485,9 +510,10 @@
 			newSg.push(sgCount > 0 ? sgSum / sgCount : null);
 			newTemp.push(tempCount > 0 ? tempSum / tempCount : null);
 			newAmbient.push(ambientCount > 0 ? ambientSum / ambientCount : null);
+			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -556,6 +582,7 @@
 	function processData(
 		readings: HistoricalReading[],
 		ambient: AmbientHistoricalReading[],
+		chamber: ChamberHistoricalReading[],
 		celsius: boolean
 	): uPlot.AlignedData {
 		// Readings come newest first, reverse for chronological order
@@ -579,19 +606,21 @@
 			}
 		}
 
-		// Interpolate ambient readings to match tilt timestamps
+		// Interpolate ambient and chamber readings to match tilt timestamps
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
+		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
 
 		// Apply smoothing if enabled in config
 		if (smoothingEnabled && smoothingSamples > 1) {
 			sgValues = smoothData(sgValues, smoothingSamples);
 			tempValues = smoothData(tempValues, smoothingSamples);
 			ambientValues = smoothData(ambientValues, smoothingSamples);
+			chamberValues = smoothData(chamberValues, smoothingSamples);
 		}
 
 			// Downsample for performance (max 500 points)
 		const maxPoints = 500;
-		[timestamps, sgValues, tempValues, ambientValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, maxPoints);
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, maxPoints);
 
 		// Calculate trend line
 		const trend = calculateLinearRegression(timestamps, sgValues);
@@ -602,7 +631,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, trendValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -630,19 +659,22 @@ async function loadData(userTriggered = false) {
 
 		// Only fetch readings if we have a device_id
 		if (deviceId) {
-			// Fetch device readings and ambient history in parallel
+			// Fetch device readings, ambient history, and chamber history in parallel
 			// Filter readings by batchId to show only this batch's data
-			const [deviceData, ambientData] = await Promise.all([
+			const [deviceData, ambientData, chamberData] = await Promise.all([
 				fetchReadings(deviceId, selectedRange, batchId),
-				fetchAmbientHistory(selectedRange).catch(() => []) // Don't fail if ambient unavailable
+				fetchAmbientHistory(selectedRange).catch(() => []), // Don't fail if ambient unavailable
+				fetchChamberHistory(selectedRange).catch(() => []) // Don't fail if chamber unavailable
 			]);
 			readings = deviceData;
 			ambientReadings = ambientData;
+			chamberReadings = chamberData;
 			updateChart();
 		} else {
 			// No device assigned to batch
 			readings = [];
 			ambientReadings = [];
+			chamberReadings = [];
 			error = 'No device assigned to this batch';
 		}
 	} catch (e) {
@@ -656,7 +688,7 @@ async function loadData(userTriggered = false) {
 	function updateChart() {
 		if (!chartContainer || readings.length === 0) return;
 
-		const data = processData(readings, ambientReadings, useCelsius);
+		const data = processData(readings, ambientReadings, chamberReadings, useCelsius);
 		const opts = getChartOptions(chartContainer.clientWidth, useCelsius, systemTimezone);
 
 		if (chart) {
@@ -701,10 +733,18 @@ onMount(async () => {
 		}
 	}
 
-	// Load trend line preference from localStorage
+	// Load preferences from localStorage
 	const storedTrend = localStorage.getItem(TREND_STORAGE_KEY);
 	if (storedTrend !== null) {
 		showTrendLine = storedTrend === 'true';
+	}
+	const storedAmbient = localStorage.getItem(AMBIENT_STORAGE_KEY);
+	if (storedAmbient !== null) {
+		showAmbient = storedAmbient === 'true';
+	}
+	const storedChamber = localStorage.getItem(CHAMBER_STORAGE_KEY);
+	if (storedChamber !== null) {
+		showChamber = storedChamber === 'true';
 	}
 
 	// Fetch system timezone for chart display
@@ -771,7 +811,25 @@ onMount(async () => {
 		localStorage.setItem(TREND_STORAGE_KEY, String(showTrendLine));
 		// Update the series visibility in the existing chart
 		if (chart) {
-			chart.setSeries(4, { show: showTrendLine });
+			chart.setSeries(5, { show: showTrendLine });
+		}
+	}
+
+	function toggleAmbient() {
+		showAmbient = !showAmbient;
+		localStorage.setItem(AMBIENT_STORAGE_KEY, String(showAmbient));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(3, { show: showAmbient });
+		}
+	}
+
+	function toggleChamber() {
+		showChamber = !showChamber;
+		localStorage.setItem(CHAMBER_STORAGE_KEY, String(showChamber));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(4, { show: showChamber });
 		}
 	}
 </script>
@@ -817,10 +875,26 @@ onMount(async () => {
 					></span>
 					<span>Wort</span>
 				</span>
-				<span class="legend-item">
-					<span class="legend-line legend-line-dotted" style="background: #22d3ee;"></span>
+				<button
+					type="button"
+					class="legend-item legend-toggle"
+					class:legend-disabled={!showAmbient}
+					onclick={toggleAmbient}
+					title={showAmbient ? 'Hide ambient temp' : 'Show ambient temp'}
+				>
+					<span class="legend-line legend-line-dotted" style="background: {CYAN};"></span>
 					<span>Ambient</span>
-				</span>
+				</button>
+				<button
+					type="button"
+					class="legend-item legend-toggle"
+					class:legend-disabled={!showChamber}
+					onclick={toggleChamber}
+					title={showChamber ? 'Hide chamber temp' : 'Show chamber temp'}
+				>
+					<span class="legend-line legend-line-dashed" style="background: {PURPLE};"></span>
+					<span>Chamber</span>
+				</button>
 				<button
 					type="button"
 					class="legend-item legend-toggle"

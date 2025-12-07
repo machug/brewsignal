@@ -249,10 +249,18 @@ Control logic:
 
 ### Batch Statuses
 
-- **Planning** - Recipe selected, not started
-- **Fermenting** - Active fermentation in progress
-- **Conditioning** - Fermentation complete, conditioning
-- **Completed** - Finished, ready for packaging
+- **Planning** - Pre-fermentation planning phase. Device can be assigned and readings are visible on dashboard for OG validation, but readings are NOT stored in database.
+- **Fermenting** - Active fermentation. Readings are logged to database and linked to batch. Temperature control is active.
+- **Conditioning** - Post-fermentation conditioning/cold crash phase. Readings continue to be logged for temperature monitoring. Temperature control remains active.
+- **Completed** - Batch is finished and packaged. Readings are no longer stored in database. Temperature control is stopped.
+
+### Reading Storage Rules
+
+- Readings are ONLY stored when batch status is "Fermenting" or "Conditioning"
+- Live readings always visible on dashboard (via WebSocket) regardless of status
+- Device must be paired for readings to appear on dashboard
+- Planning phase allows OG validation without database pollution
+- Completed phase stops logging to preserve final state
 
 ### Batch Lifecycle (v2.4.0)
 

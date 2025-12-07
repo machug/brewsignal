@@ -97,7 +97,10 @@
 				body: JSON.stringify(payload)
 			});
 			if (response.ok) {
-				await loadCalibration();
+				// Use the response from PUT instead of making redundant GET call
+				const updatedDevice = await response.json();
+				calibrationType = updatedDevice.calibration_type;
+				calibrationData = updatedDevice.calibration_data;
 			} else {
 				const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
 				alert(`Failed to save calibration: ${errorData.detail || response.statusText}`);
@@ -301,6 +304,7 @@
 							class="btn-danger-small"
 							onclick={() => clearSGCalibration()}
 							disabled={saving}
+							aria-label="Clear all gravity calibration points"
 						>
 							Clear All
 						</button>
@@ -393,6 +397,7 @@
 							class="btn-danger-small"
 							onclick={() => clearTempCalibration()}
 							disabled={saving}
+							aria-label="Clear all temperature calibration points"
 						>
 							Clear All
 						</button>

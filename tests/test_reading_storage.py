@@ -43,7 +43,7 @@ async def test_unpaired_tilt_does_not_store_reading():
 
 @pytest.mark.asyncio
 async def test_paired_tilt_stores_reading():
-    """Test that readings from paired Tilts are stored."""
+    """Test that readings from paired Tilts with active batches are stored."""
     reading = TiltReading(
         color="BLUE",
         mac="BB:CC:DD:EE:FF:AA",
@@ -71,12 +71,15 @@ async def test_paired_tilt_stores_reading():
 
         with patch('backend.main.calibration_service.calibrate_reading',
                    return_value=(1.048, 66.0)):
-            with patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=None):
-                await handle_tilt_reading(reading)
+            # Mock link_reading_to_batch to return a batch_id (active batch exists)
+            with patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=1):
+                # Mock calculate_time_since_batch_start
+                with patch('backend.main.calculate_time_since_batch_start', new_callable=AsyncMock, return_value=24.0):
+                    await handle_tilt_reading(reading)
 
         # Verify that a Reading object WAS added to session
         from backend.models import Reading
         reading_adds = [call for call in mock_session.add.call_args_list
                        if call[0] and isinstance(call[0][0], Reading)]
-        assert len(reading_adds) == 1, "Expected exactly one Reading object to be added for paired tilt"
+        assert len(reading_adds) == 1, "Expected exactly one Reading object to be added for paired tilt with active batch"
         assert reading_adds[0][0][0].device_id == "BLUE"

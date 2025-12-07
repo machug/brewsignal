@@ -87,6 +87,19 @@
 	let showFilteredSg = $state(false);
 	let showFilteredTemp = $state(false);
 
+	// Anomaly markers visibility
+	const SHOW_ANOMALY_MARKERS = 'brewsignal_chart_show_anomaly_markers';
+	let showAnomalyMarkers = $state(false);
+
+	// Anomaly marker data
+	interface AnomalyMarker {
+		timestamp: number;
+		sgValue: number | null;
+		anomalyScore: number | null;
+		anomalyReasons: string | null;
+	}
+	let anomalyMarkers = $state<AnomalyMarker[]>([]);
+
 	// Linear regression for trend line calculation
 	interface TrendResult {
 		slope: number;        // SG change per second
@@ -238,6 +251,32 @@
 						const legendEl = u.root.querySelector('.u-legend') as HTMLElement;
 						if (!legendEl) return;
 
+						let extraInfo = '';
+
+						// Check if cursor is near an anomaly marker
+						if (showAnomalyMarkers && anomalyMarkers.length > 0) {
+							const cursorTime = u.data[0][idx];
+							if (cursorTime !== null && cursorTime !== undefined) {
+								// Find anomaly marker within 5 minutes of cursor
+								const tolerance = 5 * 60; // 5 minutes in seconds
+								const nearbyAnomaly = anomalyMarkers.find(
+									m => Math.abs(m.timestamp - cursorTime) < tolerance
+								);
+
+								if (nearbyAnomaly) {
+									const score = nearbyAnomaly.anomalyScore?.toFixed(3) ?? 'N/A';
+									const reasons = nearbyAnomaly.anomalyReasons ?? 'Unknown';
+									extraInfo = `
+										<div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+											<div style="color: #ef4444; font-weight: 600; margin-bottom: 0.25rem;">⚠ ANOMALY</div>
+											<div style="color: var(--text-muted);">Score: ${score}</div>
+											<div style="color: var(--text-muted); margin-top: 0.25rem; max-width: 200px; white-space: normal;">${reasons}</div>
+										</div>
+									`;
+								}
+							}
+						}
+
 						legendEl.style.cssText = `
 							position: absolute;
 							top: 12px;
@@ -252,6 +291,76 @@
 							box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
 							backdrop-filter: blur(8px);
 						`;
+
+						// Add anomaly info if found
+						if (extraInfo) {
+							const seriesEls = legendEl.querySelectorAll('.u-series');
+							if (seriesEls.length > 0) {
+								const lastSeries = seriesEls[seriesEls.length - 1];
+								const existingAnomaly = legendEl.querySelector('.anomaly-info');
+								if (existingAnomaly) {
+									existingAnomaly.remove();
+								}
+								const infoDiv = document.createElement('div');
+								infoDiv.className = 'anomaly-info';
+								infoDiv.innerHTML = extraInfo;
+								legendEl.appendChild(infoDiv);
+							}
+						} else {
+							// Remove anomaly info if no longer hovering
+							const existingAnomaly = legendEl.querySelector('.anomaly-info');
+							if (existingAnomaly) {
+								existingAnomaly.remove();
+							}
+						}
+					}
+				],
+				draw: [
+					(u: uPlot) => {
+						// Draw anomaly markers if enabled
+						if (!showAnomalyMarkers || anomalyMarkers.length === 0) return;
+
+						const ctx = u.ctx;
+						const { left, top, width, height } = u.bbox;
+
+						ctx.save();
+
+						// Draw each anomaly marker
+						for (const marker of anomalyMarkers) {
+							if (marker.sgValue === null) continue;
+
+							// Convert timestamp to x pixel coordinate
+							const xPx = u.valToPos(marker.timestamp, 'x', true);
+							// Convert SG value to y pixel coordinate on SG scale
+							const yPx = u.valToPos(marker.sgValue, 'sg', true);
+
+							// Only draw if within chart bounds
+							if (xPx >= left && xPx <= left + width && yPx >= top && yPx <= top + height) {
+								// Draw red warning triangle
+								ctx.fillStyle = '#ef4444'; // red-500
+								ctx.strokeStyle = '#991b1b'; // red-900
+								ctx.lineWidth = 1.5;
+
+								// Draw triangle pointing up
+								const size = 8;
+								ctx.beginPath();
+								ctx.moveTo(xPx, yPx - size); // top point
+								ctx.lineTo(xPx - size * 0.866, yPx + size * 0.5); // bottom left
+								ctx.lineTo(xPx + size * 0.866, yPx + size * 0.5); // bottom right
+								ctx.closePath();
+								ctx.fill();
+								ctx.stroke();
+
+								// Add exclamation mark
+								ctx.fillStyle = '#ffffff';
+								ctx.font = 'bold 8px sans-serif';
+								ctx.textAlign = 'center';
+								ctx.textBaseline = 'middle';
+								ctx.fillText('!', xPx, yPx);
+							}
+						}
+
+						ctx.restore();
 					}
 				]
 			},
@@ -563,9 +672,24 @@
 		let sgValues: (number | null)[] = [];
 		let tempValues: (number | null)[] = [];
 
+		// Extract anomaly markers
+		const newAnomalyMarkers: AnomalyMarker[] = [];
+
 		for (const r of sorted) {
-			timestamps.push(parseUtcTimestamp(r.timestamp));
-			sgValues.push(r.sg_calibrated ?? r.sg_raw);
+			const ts = parseUtcTimestamp(r.timestamp);
+			timestamps.push(ts);
+			const sgVal = r.sg_calibrated ?? r.sg_raw;
+			sgValues.push(sgVal);
+
+			// Extract anomaly data if present
+			if (r.is_anomaly) {
+				newAnomalyMarkers.push({
+					timestamp: ts,
+					sgValue: sgVal,
+					anomalyScore: r.anomaly_score ?? null,
+					anomalyReasons: r.anomaly_reasons ?? null
+				});
+			}
 
 			// Temperature is already in Celsius from API (since PR #66)
 			// Convert to Fahrenheit only if user preference is F
@@ -576,6 +700,9 @@
 				tempValues.push(null);
 			}
 		}
+
+		// Update anomaly markers state
+		anomalyMarkers = newAnomalyMarkers;
 
 		// Interpolate ambient and chamber readings to match tilt timestamps
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
@@ -739,6 +866,12 @@ onMount(async () => {
 		showFilteredTemp = savedFilteredTemp === 'true';
 	}
 
+	// Load anomaly markers toggle
+	const savedAnomalyMarkers = localStorage.getItem(SHOW_ANOMALY_MARKERS);
+	if (savedAnomalyMarkers !== null) {
+		showAnomalyMarkers = savedAnomalyMarkers === 'true';
+	}
+
 	// Fetch system timezone for chart display
 	try {
 		const response = await fetch('/api/system/timezone');
@@ -880,6 +1013,17 @@ onMount(async () => {
 						}}
 					/>
 					<span>Filtered Temp</span>
+				</label>
+				<label class="toggle-label">
+					<input
+						type="checkbox"
+						bind:checked={showAnomalyMarkers}
+						onchange={() => {
+							localStorage.setItem(SHOW_ANOMALY_MARKERS, String(showAnomalyMarkers));
+							recreateChart();
+						}}
+					/>
+					<span>Anomalies</span>
 				</label>
 			</div>
 		</div>

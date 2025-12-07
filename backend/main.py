@@ -21,6 +21,7 @@ from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
 from .routers import alerts, ambient, batches, config, control, devices, ha, ingest, maintenance, recipes, system  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
+from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
 from .cleanup import CleanupService  # noqa: E402
 from .scanner import TiltReading, TiltScanner  # noqa: E402
@@ -249,6 +250,10 @@ async def lifespan(app: FastAPI):
     start_ambient_poller()
     print("Ambient poller started")
 
+    # Start chamber poller for fermentation chamber environment
+    start_chamber_poller()
+    print("Chamber poller started")
+
     # Start temperature controller for HA-based temperature control
     start_temp_controller()
     print("Temperature controller started")
@@ -258,6 +263,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("Shutting down BrewSignal...")
     stop_temp_controller()
+    stop_chamber_poller()
     stop_ambient_poller()
     if cleanup_service:
         await cleanup_service.stop()

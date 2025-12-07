@@ -101,6 +101,20 @@
 
 	async function handleStatusChange(newStatus: BatchStatus) {
 		if (!batch || statusUpdating) return;
+
+		// Show reminder when entering conditioning from fermenting
+		if (newStatus === 'conditioning' && batch.status === 'fermenting') {
+			const message =
+				'💡 Entering Conditioning Phase\n\n' +
+				'Reminder: Adjust target temperature if cold crashing.\n' +
+				'Temperature control will continue during conditioning.\n\n' +
+				'Continue?';
+
+			if (!confirm(message)) {
+				return;
+			}
+		}
+
 		statusUpdating = true;
 		try {
 			batch = await updateBatch(batch.id, { status: newStatus });

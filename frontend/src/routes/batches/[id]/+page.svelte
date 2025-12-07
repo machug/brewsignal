@@ -407,7 +407,7 @@
 				/>
 
 				<!-- Temperature Control Card -->
-				{#if hasTempControl && batch.status === 'fermenting'}
+				{#if hasTempControl && (batch.status === 'fermenting' || batch.status === 'conditioning')}
 					<div class="info-card temp-control-card"
 						class:heater-on={controlStatus?.heater_state === 'on'}
 						class:cooler-on={controlStatus?.cooler_state === 'on'}>

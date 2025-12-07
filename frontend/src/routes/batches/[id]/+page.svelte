@@ -13,6 +13,7 @@
 	import BatchDeviceCard from '$lib/components/batch/BatchDeviceCard.svelte';
 	import BatchRecipeTargetsCard from '$lib/components/batch/BatchRecipeTargetsCard.svelte';
 	import BatchNotesCard from '$lib/components/batch/BatchNotesCard.svelte';
+	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
 
 	// WebSocket for live heater state updates
 	let controlWs: WebSocket | null = null;
@@ -391,6 +392,9 @@
 					{liveReading}
 					onEdit={() => (isEditing = true)}
 				/>
+
+				<!-- ML Predictions Panel -->
+				<MLPredictions batchId={batch.id} />
 
 				<!-- Temperature Control Card -->
 				{#if hasTempControl && batch.status === 'fermenting'}

@@ -152,11 +152,11 @@ async def handle_tilt_reading(reading: TiltReading):
         if not (0.500 <= sg_calibrated <= 1.200) or not (0.0 <= temp_calibrated_c <= 100.0):
             status = "invalid"
 
-        # Only store readings if device is paired
-        if device.paired:
-            # Link reading to active batch (if any)
-            batch_id = await link_reading_to_batch(session, reading.id)
+        # Link reading to active batch (if any)
+        batch_id = await link_reading_to_batch(session, reading.id)
 
+        # Only store readings if linked to active batch (fermenting or conditioning)
+        if batch_id is not None:
             # Calculate time since batch start for ML pipeline (with wall-clock fallback)
             time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
 
@@ -198,8 +198,7 @@ async def handle_tilt_reading(reading: TiltReading):
                 anomaly_reasons=json.dumps(ml_outputs.get("anomaly_reasons", [])) if ml_outputs.get("anomaly_reasons") else None,
             )
             session.add(db_reading)
-
-        await session.commit()
+            await session.commit()
 
         # Update in-memory latest_readings cache
         latest_readings[reading.id] = {

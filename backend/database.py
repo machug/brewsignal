@@ -4,6 +4,8 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
+from .models import ChamberReading
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -225,9 +227,7 @@ async def init_db():
         await conn.run_sync(_migrate_readings_nullable_tilt_id)
         await conn.run_sync(_migrate_add_ml_columns)
 
-        # Step 2: Create any missing tables (includes new Style, Recipe, Batch tables)
-        # Import ChamberReading model to ensure it's in metadata
-        from .models import ChamberReading
+        # Step 2: Create any missing tables (includes new Style, Recipe, Batch, ChamberReading tables)
         await conn.run_sync(Base.metadata.create_all)
 
         # Step 3: Migrations that depend on new tables existing

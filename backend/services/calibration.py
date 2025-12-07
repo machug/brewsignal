@@ -161,10 +161,10 @@ class CalibrationService:
             db: Database session
             tilt_id: The Tilt identifier
             raw_sg: Raw specific gravity
-            raw_temp: Raw temperature (Fahrenheit)
+            raw_temp: Raw temperature (Celsius)
 
         Returns:
-            Tuple of (calibrated_sg, calibrated_temp)
+            Tuple of (calibrated_sg, calibrated_temp) both in Celsius
         """
         cal_sg = await self.calibrate_sg(db, tilt_id, raw_sg)
         cal_temp = await self.calibrate_temp(db, tilt_id, raw_temp)

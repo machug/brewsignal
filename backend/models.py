@@ -616,6 +616,9 @@ class ConfigUpdate(BaseModel):
     ha_token: Optional[str] = None
     ha_ambient_temp_entity_id: Optional[str] = None
     ha_ambient_humidity_entity_id: Optional[str] = None
+    # Chamber settings
+    ha_chamber_temp_entity_id: Optional[str] = None
+    ha_chamber_humidity_entity_id: Optional[str] = None
     # Temperature control
     temp_control_enabled: Optional[bool] = None
     temp_target: Optional[float] = None
@@ -706,6 +709,9 @@ class ConfigResponse(BaseModel):
     ha_token: str = ""
     ha_ambient_temp_entity_id: str = ""
     ha_ambient_humidity_entity_id: str = ""
+    # Chamber settings
+    ha_chamber_temp_entity_id: str = ""
+    ha_chamber_humidity_entity_id: str = ""
     # Temperature control
     temp_control_enabled: bool = False
     temp_target: float = 68.0

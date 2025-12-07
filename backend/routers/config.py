@@ -30,6 +30,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ha_token": "",
     "ha_ambient_temp_entity_id": "",
     "ha_ambient_humidity_entity_id": "",
+    # Chamber settings (fermentation chamber environment)
+    "ha_chamber_temp_entity_id": "",
+    "ha_chamber_humidity_entity_id": "",
     # Temperature control
     "temp_control_enabled": False,
     "temp_target": 68.0,

@@ -63,6 +63,21 @@ export async function fetchAmbientHistory(hours: number = 24): Promise<AmbientHi
 	return response.json();
 }
 
+export interface ChamberHistoricalReading {
+	id: number;
+	timestamp: string;
+	temperature: number | null;
+	humidity: number | null;
+}
+
+export async function fetchChamberHistory(hours: number = 24): Promise<ChamberHistoricalReading[]> {
+	const response = await fetch(`${BASE_URL}/chamber/history?hours=${hours}`);
+	if (!response.ok) {
+		throw new Error('Failed to fetch chamber history');
+	}
+	return response.json();
+}
+
 // ============================================================================
 // Batch Types & API
 // ============================================================================

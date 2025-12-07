@@ -2,8 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus } from '$lib/api';
-	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride } from '$lib/api';
+	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent } from '$lib/api';
+	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchControlEvents } from '$lib/api';
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import BatchForm from '$lib/components/BatchForm.svelte';
@@ -23,6 +23,7 @@
 	let batch = $state<BatchResponse | null>(null);
 	let progress = $state<BatchProgressResponse | null>(null);
 	let controlStatus = $state<BatchControlStatus | null>(null);
+	let controlEvents = $state<ControlEvent[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let isEditing = $state(false);

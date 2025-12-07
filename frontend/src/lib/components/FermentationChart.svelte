@@ -9,7 +9,8 @@
 		TIME_RANGES,
 		type HistoricalReading,
 		type AmbientHistoricalReading,
-		type ChamberHistoricalReading
+		type ChamberHistoricalReading,
+		type ControlEvent
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import FermentationStats from './FermentationStats.svelte';
@@ -36,9 +37,10 @@
 		batchId: number;
 		deviceColor?: string;
 		originalGravity?: number | null;
+		controlEvents?: ControlEvent[];
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [] }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -91,6 +93,10 @@
 	const SHOW_ANOMALY_MARKERS = 'brewsignal_chart_show_anomaly_markers';
 	let showAnomalyMarkers = $state(false);
 
+	// Control period bands visibility
+	const SHOW_CONTROL_BANDS = 'brewsignal_chart_show_control_bands';
+	let showControlBands = $state(false);
+
 	// Anomaly marker data
 	interface AnomalyMarker {
 		timestamp: number;
@@ -99,6 +105,14 @@
 		anomalyReasons: string | null;
 	}
 	let anomalyMarkers = $state<AnomalyMarker[]>([]);
+
+	// Control period data
+	interface ControlPeriod {
+		type: 'heating' | 'cooling';
+		startTime: number;
+		endTime: number;
+	}
+	let controlPeriods = $state<ControlPeriod[]>([]);
 
 	// Linear regression for trend line calculation
 	interface TrendResult {
@@ -317,11 +331,41 @@
 				],
 				draw: [
 					(u: uPlot) => {
-						// Draw anomaly markers if enabled
-						if (!showAnomalyMarkers || anomalyMarkers.length === 0) return;
-
 						const ctx = u.ctx;
 						const { left, top, width, height } = u.bbox;
+
+						// Draw control period bands if enabled (render FIRST so they're behind everything)
+						if (showControlBands && controlPeriods.length > 0) {
+							ctx.save();
+
+							for (const period of controlPeriods) {
+								// Convert timestamps to pixel coordinates
+								const x1 = u.valToPos(period.startTime, 'x', true);
+								const x2 = u.valToPos(period.endTime, 'x', true);
+
+								// Only draw if within visible range
+								if (x2 >= left && x1 <= left + width) {
+									// Clamp to visible area
+									const visibleX1 = Math.max(x1, left);
+									const visibleX2 = Math.min(x2, left + width);
+
+									// Set color based on period type
+									if (period.type === 'heating') {
+										ctx.fillStyle = 'rgba(239, 68, 68, 0.1)'; // Semi-transparent red
+									} else {
+										ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'; // Semi-transparent blue
+									}
+
+									// Draw rectangle spanning full chart height
+									ctx.fillRect(visibleX1, top, visibleX2 - visibleX1, height);
+								}
+							}
+
+							ctx.restore();
+						}
+
+						// Draw anomaly markers if enabled
+						if (!showAnomalyMarkers || anomalyMarkers.length === 0) return;
 
 						ctx.save();
 
@@ -626,6 +670,58 @@
 		return new Date(timestamp).getTime() / 1000;
 	}
 
+	// Convert control events to heating/cooling periods
+	function processControlEvents(events: ControlEvent[]): ControlPeriod[] {
+		const periods: ControlPeriod[] = [];
+
+		// Track active periods
+		let heatingStart: number | null = null;
+		let coolingStart: number | null = null;
+
+		for (const event of events) {
+			const timestamp = parseUtcTimestamp(event.timestamp);
+
+			if (event.action === 'heat_on') {
+				heatingStart = timestamp;
+			} else if (event.action === 'heat_off' && heatingStart !== null) {
+				periods.push({
+					type: 'heating',
+					startTime: heatingStart,
+					endTime: timestamp
+				});
+				heatingStart = null;
+			} else if (event.action === 'cool_on') {
+				coolingStart = timestamp;
+			} else if (event.action === 'cool_off' && coolingStart !== null) {
+				periods.push({
+					type: 'cooling',
+					startTime: coolingStart,
+					endTime: timestamp
+				});
+				coolingStart = null;
+			}
+		}
+
+		// Handle unpaired events - extend to current time
+		const now = Date.now() / 1000;
+		if (heatingStart !== null) {
+			periods.push({
+				type: 'heating',
+				startTime: heatingStart,
+				endTime: now
+			});
+		}
+		if (coolingStart !== null) {
+			periods.push({
+				type: 'cooling',
+				startTime: coolingStart,
+				endTime: now
+			});
+		}
+
+		return periods;
+	}
+
 	// Interpolate ambient readings to match tilt timestamps
 	function interpolateAmbientToTimestamps(
 		ambientReadings: AmbientHistoricalReading[],
@@ -907,6 +1003,12 @@ onMount(async () => {
 		showAnomalyMarkers = savedAnomalyMarkers === 'true';
 	}
 
+	// Load control bands toggle
+	const savedControlBands = localStorage.getItem(SHOW_CONTROL_BANDS);
+	if (savedControlBands !== null) {
+		showControlBands = savedControlBands === 'true';
+	}
+
 	// Fetch system timezone for chart display
 	try {
 		const response = await fetch('/api/system/timezone');
@@ -932,6 +1034,15 @@ onMount(async () => {
 		}
 	});
 
+	// Process control events into periods when they change
+	$effect(() => {
+		if (controlEvents && controlEvents.length > 0) {
+			controlPeriods = processControlEvents(controlEvents);
+		} else {
+			controlPeriods = [];
+		}
+	});
+
 	// Re-render chart when temp units or smoothing settings change
 	$effect(() => {
 		if (useCelsius !== undefined && readings.length > 0 && chartContainer) {
@@ -945,6 +1056,14 @@ onMount(async () => {
 		const _ = [smoothingEnabled, smoothingSamples];
 		if (readings.length > 0 && chartContainer) {
 			updateChart();
+		}
+	});
+
+	// Re-render chart when control bands toggle or periods change
+	$effect(() => {
+		const _ = [showControlBands, controlPeriods];
+		if (readings.length > 0 && chartContainer && chart) {
+			chart.redraw();
 		}
 	});
 
@@ -1059,6 +1178,18 @@ onMount(async () => {
 						}}
 					/>
 					<span>Anomalies</span>
+				</label>
+				<label class="toggle-label">
+					<input
+						type="checkbox"
+						bind:checked={showControlBands}
+						onchange={() => {
+							localStorage.setItem(SHOW_CONTROL_BANDS, String(showControlBands));
+							// Just redraw, no need to recreate chart
+							if (chart) chart.redraw();
+						}}
+					/>
+					<span>Control Periods</span>
 				</label>
 			</div>
 		</div>

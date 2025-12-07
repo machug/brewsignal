@@ -622,3 +622,32 @@ export async function executeCleanup(batchIds: number[]): Promise<CleanupPreview
 	}
 	return response.json();
 }
+
+// ============================================================================
+// Control Events Types & API
+// ============================================================================
+
+export interface ControlEvent {
+	id: number;
+	timestamp: string;
+	device_id?: string;
+	batch_id?: number;
+	action: string; // 'heat_on', 'heat_off', 'cool_on', 'cool_off'
+	wort_temp?: number | null; // Temperature in Celsius
+	ambient_temp?: number | null; // Temperature in Celsius
+	target_temp?: number | null; // Temperature in Celsius
+}
+
+/**
+ * Fetch control event history for a batch
+ */
+export async function fetchBatchControlEvents(
+	batchId: number,
+	hours: number = 24
+): Promise<ControlEvent[]> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/control-events?hours=${hours}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch control events: ${response.statusText}`);
+	}
+	return response.json();
+}

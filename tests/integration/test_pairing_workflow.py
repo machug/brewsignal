@@ -3,8 +3,9 @@ import asyncio
 from httpx import AsyncClient, ASGITransport
 from backend.main import app
 from backend.database import init_db, async_session_factory
-from backend.models import Device, Reading
+from backend.models import Device, Reading, Batch
 from sqlalchemy import select, func
+from datetime import datetime, timezone
 
 @pytest.mark.asyncio
 async def test_full_pairing_workflow():
@@ -15,15 +16,22 @@ async def test_full_pairing_workflow():
 
     # Clean up any existing GREEN device from previous test runs
     async with async_session_factory() as session:
-        existing_device = await session.get(Device, "GREEN")
-        if existing_device:
-            await session.delete(existing_device)
-        # Also clean up any readings
+        # Clean up readings first (FK constraint)
         result = await session.execute(
             select(Reading).where(Reading.device_id == "GREEN")
         )
         for reading in result.scalars():
             await session.delete(reading)
+        # Clean up batches
+        result = await session.execute(
+            select(Batch).where(Batch.device_id == "GREEN")
+        )
+        for batch in result.scalars():
+            await session.delete(batch)
+        # Clean up device
+        existing_device = await session.get(Device, "GREEN")
+        if existing_device:
+            await session.delete(existing_device)
         await session.commit()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -76,7 +84,17 @@ async def test_full_pairing_workflow():
         data = response.json()
         assert data["paired"] is True
 
-        # Step 5: Simulate another reading - should BE stored
+        # Step 4.5: Create an active batch (required for reading storage)
+        async with async_session_factory() as session:
+            batch = Batch(
+                device_id="GREEN",
+                status="fermenting",  # Active batch that will accept readings
+                start_time=datetime.now(timezone.utc),
+            )
+            session.add(batch)
+            await session.commit()
+
+        # Step 5: Simulate another reading - should BE stored (paired + active batch)
         reading2 = TiltReading(
             color="GREEN",
             mac="AA:BB:CC:DD:EE:FF",

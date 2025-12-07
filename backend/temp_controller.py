@@ -34,7 +34,7 @@ _batch_overrides: dict[int, dict] = {}
 
 
 def cleanup_batch_state(batch_id: int) -> None:
-    """Clean up runtime state for a batch (called when batch leaves fermenting status)."""
+    """Clean up runtime state for a batch (called when batch leaves fermenting/conditioning status)."""
     if batch_id in _batch_heater_states:
         logger.debug(f"Cleaning up heater state for batch {batch_id}")
         del _batch_heater_states[batch_id]
@@ -528,7 +528,7 @@ async def temperature_control_loop() -> None:
                 # Get all active batches with heater OR cooler entities configured
                 result = await db.execute(
                     select(Batch).where(
-                        Batch.status == "fermenting",
+                        Batch.status.in_(["fermenting", "conditioning"]),
                         Batch.device_id.isnot(None),
                         (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
                     )

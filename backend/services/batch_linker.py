@@ -12,7 +12,7 @@ async def get_active_batch_for_device(
     db: AsyncSession,
     device_id: str,
 ) -> Optional[Batch]:
-    """Find the active (fermenting) batch for a device.
+    """Find the active (fermenting or conditioning) batch for a device.
 
     Args:
         db: Database session
@@ -24,7 +24,7 @@ async def get_active_batch_for_device(
     query = (
         select(Batch)
         .where(Batch.device_id == device_id)
-        .where(Batch.status == "fermenting")
+        .where(Batch.status.in_(["fermenting", "conditioning"]))
         .order_by(Batch.start_time.desc())
         .limit(1)
     )

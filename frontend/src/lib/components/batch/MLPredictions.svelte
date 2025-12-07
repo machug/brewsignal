@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatGravity } from '$lib/stores/config.svelte';
+	import { fetchBatchPredictions, type MLPredictions } from '$lib/api';
 
 	interface Props {
 		batchId: number;
@@ -8,24 +9,15 @@
 
 	let { batchId }: Props = $props();
 
-	interface MLPredictions {
-		available: boolean;
-		predicted_fg?: number;
-		estimated_completion?: string;
-		confidence?: number;
-		data_quality?: number;
-		num_readings?: number;
-		error?: string;
-	}
-
 	let predictions = $state<MLPredictions>({ available: false });
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
-			const resp = await fetch(`/api/batches/${batchId}/predictions`);
-			predictions = await resp.json();
+			predictions = await fetchBatchPredictions(batchId);
 		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load predictions';
 			console.error('Failed to load ML predictions:', e);
 		} finally {
 			loading = false;
@@ -50,6 +42,10 @@
 {#if loading}
 	<div class="ml-panel loading">
 		<p>Loading predictions...</p>
+	</div>
+{:else if error}
+	<div class="ml-panel error">
+		<p class="error-text">⚠️ {error}</p>
 	</div>
 {:else if predictions.available}
 	<div class="ml-panel">
@@ -76,26 +72,14 @@
 				</div>
 			{/if}
 
-			{#if predictions.confidence !== undefined}
+			{#if predictions.r_squared !== undefined}
 				<div class="metric">
-					<span class="label">Confidence:</span>
+					<span class="label">Model Fit (R²):</span>
 					<div class="progress-wrapper">
 						<div class="progress-bar">
-							<div class="fill" style="width: {predictions.confidence * 100}%"></div>
+							<div class="fill" style="width: {predictions.r_squared * 100}%"></div>
 						</div>
-						<span class="percentage">{(predictions.confidence * 100).toFixed(0)}%</span>
-					</div>
-				</div>
-			{/if}
-
-			{#if predictions.data_quality !== undefined}
-				<div class="metric">
-					<span class="label">Data Quality:</span>
-					<div class="progress-wrapper">
-						<div class="progress-bar">
-							<div class="fill" style="width: {predictions.data_quality * 100}%"></div>
-						</div>
-						<span class="percentage">{(predictions.data_quality * 100).toFixed(0)}%</span>
+						<span class="percentage">{(predictions.r_squared * 100).toFixed(0)}%</span>
 					</div>
 				</div>
 			{/if}
@@ -116,7 +100,7 @@
 
 <style>
 	.ml-panel {
-		background: var(--surface-2);
+		background: var(--bg-surface);
 		border: 1px solid var(--border-default);
 		border-radius: 0.5rem;
 		padding: 1rem;
@@ -124,7 +108,8 @@
 	}
 
 	.ml-panel.loading,
-	.ml-panel.disabled {
+	.ml-panel.disabled,
+	.ml-panel.error {
 		text-align: center;
 		padding: 2rem;
 	}
@@ -152,13 +137,13 @@
 	.label {
 		font-size: 0.8125rem;
 		color: var(--text-secondary);
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-mono);
 	}
 
 	.value {
 		font-size: 0.8125rem;
 		color: var(--text-primary);
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-mono);
 		font-weight: 500;
 	}
 
@@ -178,7 +163,7 @@
 	.progress-bar {
 		flex: 1;
 		height: 8px;
-		background: var(--surface-3);
+		background: var(--bg-elevated);
 		border-radius: 4px;
 		overflow: hidden;
 	}
@@ -192,13 +177,18 @@
 	.percentage {
 		font-size: 0.75rem;
 		color: var(--text-secondary);
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-mono);
 		min-width: 3ch;
 		text-align: right;
 	}
 
 	.unavailable-text {
 		color: var(--text-muted);
+		font-size: 0.8125rem;
+	}
+
+	.error-text {
+		color: var(--negative);
 		font-size: 0.8125rem;
 	}
 </style>

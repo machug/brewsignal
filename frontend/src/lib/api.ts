@@ -82,6 +82,27 @@ export async function fetchChamberHistory(hours: number = 24): Promise<ChamberHi
 // Batch Types & API
 // ============================================================================
 
+export interface MLPredictions {
+	available: boolean;
+	predicted_fg?: number;
+	predicted_og?: number;
+	estimated_completion?: string;
+	hours_to_completion?: number;
+	model_type?: string;
+	r_squared?: number;
+	num_readings?: number;
+	error?: string;
+	reason?: string;
+}
+
+export async function fetchBatchPredictions(batchId: number): Promise<MLPredictions> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/predictions`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch batch predictions: ${response.statusText}`);
+	}
+	return response.json();
+}
+
 export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
 export interface FermentableResponse {

@@ -438,10 +438,12 @@
 		tempValues: (number | null)[],
 		ambientValues: (number | null)[],
 		chamberValues: (number | null)[],
+		filteredSgValues: (number | null)[],
+		filteredTempValues: (number | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgValues, filteredTempValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -450,6 +452,8 @@
 		const newTemp: (number | null)[] = [];
 		const newAmbient: (number | null)[] = [];
 		const newChamber: (number | null)[] = [];
+		const newFilteredSg: (number | null)[] = [];
+		const newFilteredTemp: (number | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -458,12 +462,16 @@
 			let tempSum = 0, tempCount = 0;
 			let ambientSum = 0, ambientCount = 0;
 			let chamberSum = 0, chamberCount = 0;
+			let filteredSgSum = 0, filteredSgCount = 0;
+			let filteredTempSum = 0, filteredTempCount = 0;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
 				if (tempValues[j] !== null) { tempSum += tempValues[j]!; tempCount++; }
 				if (ambientValues[j] !== null) { ambientSum += ambientValues[j]!; ambientCount++; }
 				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
+				if (filteredSgValues[j] !== null) { filteredSgSum += filteredSgValues[j]!; filteredSgCount++; }
+				if (filteredTempValues[j] !== null) { filteredTempSum += filteredTempValues[j]!; filteredTempCount++; }
 			}
 
 			// Use middle timestamp of bucket
@@ -472,9 +480,11 @@
 			newTemp.push(tempCount > 0 ? tempSum / tempCount : null);
 			newAmbient.push(ambientCount > 0 ? ambientSum / ambientCount : null);
 			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
+			newFilteredSg.push(filteredSgCount > 0 ? filteredSgSum / filteredSgCount : null);
+			newFilteredTemp.push(filteredTempCount > 0 ? filteredTempSum / filteredTempCount : null);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newFilteredSg, newFilteredTemp];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -571,7 +581,7 @@
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
 		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
 
-		// Extract filtered ML data
+		// Extract filtered ML data (store raw SG, will convert in series formatter)
 		const filteredSgMap = new Map(
 			sorted.filter(r => r.sg_filtered !== null && r.sg_filtered !== undefined)
 				.map(r => [parseUtcTimestamp(r.timestamp), r.sg_filtered!])
@@ -581,11 +591,11 @@
 				.map(r => [parseUtcTimestamp(r.timestamp), r.temp_filtered!])
 		);
 
-		const filteredSgData = timestamps.map(ts => {
+		let filteredSgData = timestamps.map(ts => {
 			const sg = filteredSgMap.get(ts);
-			return sg !== undefined ? convertGravity(sg) : null;
+			return sg !== undefined ? sg : null;  // Store raw SG values
 		});
-		const filteredTempData = timestamps.map(ts => {
+		let filteredTempData = timestamps.map(ts => {
 			const temp = filteredTempMap.get(ts);
 			return temp !== undefined && temp !== null ? (celsius ? temp : temp * 9/5 + 32) : null;
 		});
@@ -598,9 +608,10 @@
 			chamberValues = smoothData(chamberValues, smoothingSamples);
 		}
 
-			// Downsample for performance (max 500 points)
+		// Downsample for performance (max 500 points) - includes filtered data
 		const maxPoints = 500;
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, maxPoints);
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData] =
+			downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData, maxPoints);
 
 		// Calculate trend line
 		const trend = calculateLinearRegression(timestamps, sgValues);

@@ -126,8 +126,15 @@
 			return;
 		}
 
-		// Add new point to existing points
+		// Check for duplicate raw values
 		const existingPoints = calibrationData?.points || [];
+		const isDuplicate = existingPoints.some(point => Math.abs(point[0] - raw) < 0.001);
+		if (isDuplicate) {
+			alert('A calibration point with this raw value already exists');
+			return;
+		}
+
+		// Add new point to existing points
 		const newPoints = [...existingPoints, [raw, actual] as [number, number]];
 
 		// Save with updated points
@@ -164,8 +171,15 @@
 		// Convert to Celsius for backend storage
 		const [rawC, actualC] = convertTempPointToCelsius(raw, actual, useCelsius);
 
-		// Add new point to existing points
+		// Check for duplicate raw values (in Celsius)
 		const existingTempPoints = calibrationData?.temp_points || [];
+		const isDuplicate = existingTempPoints.some(point => Math.abs(point[0] - rawC) < 0.1);
+		if (isDuplicate) {
+			alert('A calibration point with this raw value already exists');
+			return;
+		}
+
+		// Add new point to existing points
 		const newTempPoints = [...existingTempPoints, [rawC, actualC] as [number, number]];
 
 		// Save with updated temp points

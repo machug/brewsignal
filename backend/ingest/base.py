@@ -41,7 +41,7 @@ class HydrometerReading:
 
     # Normalized measurements (filled by calibration service, may be None)
     gravity: Optional[float] = None       # Always SG after normalization
-    temperature: Optional[float] = None   # Always Fahrenheit after normalization
+    temperature: Optional[float] = None   # Always Celsius after normalization (converted from raw)
 
     # Raw measurements as received (before calibration/conversion)
     gravity_raw: Optional[float] = None

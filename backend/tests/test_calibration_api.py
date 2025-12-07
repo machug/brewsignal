@@ -467,3 +467,111 @@ class TestCalibrationAPI:
         }
         response = await client.put("/api/devices/test-invalid-type/calibration", json=calibration_data)
         assert response.status_code == 422  # Validation error
+
+    async def test_set_temp_points_calibration(self, client: AsyncClient, test_db: AsyncSession):
+        """Test setting temperature calibration points."""
+        device_data = {"id": "test-temp", "device_type": "tilt", "name": "Test"}
+        await client.post("/api/devices", json=device_data)
+
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {
+                "points": [[1.000, 1.002], [1.050, 1.048]],
+                "temp_points": [[20.0, 19.5], [30.0, 29.8]]  # In Celsius
+            },
+        }
+        response = await client.put("/api/devices/test-temp/calibration", json=calibration_data)
+        assert response.status_code == 200
+        assert len(response.json()["calibration_data"]["temp_points"]) == 2
+        assert response.json()["calibration_data"]["temp_points"][0] == [20.0, 19.5]
+
+    async def test_validate_sg_range(self, client: AsyncClient, test_db: AsyncSession):
+        """Test that SG calibration points are validated for range."""
+        device_data = {"id": "test-sg-range", "device_type": "tilt", "name": "Test"}
+        await client.post("/api/devices", json=device_data)
+
+        # Out of range SG values (below minimum)
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {"points": [[0.900, 1.000], [1.050, 1.048]]},
+        }
+        response = await client.put("/api/devices/test-sg-range/calibration", json=calibration_data)
+        assert response.status_code == 422
+        error_detail = str(response.json()["detail"])
+        assert "0.990 and 1.200" in error_detail
+
+        # Out of range SG values (above maximum)
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {"points": [[1.000, 1.002], [1.250, 1.248]]},
+        }
+        response = await client.put("/api/devices/test-sg-range/calibration", json=calibration_data)
+        assert response.status_code == 422
+        error_detail = str(response.json()["detail"])
+        assert "0.990 and 1.200" in error_detail
+
+    async def test_validate_temp_range(self, client: AsyncClient, test_db: AsyncSession):
+        """Test that temperature calibration points are validated."""
+        device_data = {"id": "test-temp-range", "device_type": "tilt", "name": "Test"}
+        await client.post("/api/devices", json=device_data)
+
+        # Out of range temp values (must be -10 to 50°C)
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {
+                "points": [[1.000, 1.000], [1.050, 1.050]],
+                "temp_points": [[60.0, 60.0], [20.0, 20.0]]  # 60°C out of range
+            },
+        }
+        response = await client.put("/api/devices/test-temp-range/calibration", json=calibration_data)
+        assert response.status_code == 422
+        error_detail = str(response.json()["detail"])
+        assert "-10°C and 50°C" in error_detail
+
+        # Below minimum
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {
+                "points": [[1.000, 1.000], [1.050, 1.050]],
+                "temp_points": [[-20.0, -20.0], [20.0, 20.0]]  # -20°C out of range
+            },
+        }
+        response = await client.put("/api/devices/test-temp-range/calibration", json=calibration_data)
+        assert response.status_code == 422
+        error_detail = str(response.json()["detail"])
+        assert "-10°C and 50°C" in error_detail
+
+    async def test_temp_only_calibration(self, client: AsyncClient, test_db: AsyncSession):
+        """Test that linear calibration can be temp-only without SG points."""
+        device_data = {"id": "test-temp-only-cal", "device_type": "tilt", "name": "Test"}
+        await client.post("/api/devices", json=device_data)
+
+        # Temperature calibration without SG points
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {
+                "temp_points": [[20.0, 19.5], [30.0, 29.8]]  # In Celsius
+            },
+        }
+        response = await client.put("/api/devices/test-temp-only-cal/calibration", json=calibration_data)
+        assert response.status_code == 200
+        assert "temp_points" in response.json()["calibration_data"]
+        assert "points" not in response.json()["calibration_data"]
+        assert len(response.json()["calibration_data"]["temp_points"]) == 2
+
+    async def test_temp_points_require_two_minimum(self, client: AsyncClient, test_db: AsyncSession):
+        """Test that temp_points requires at least 2 points."""
+        device_data = {"id": "test-temp-min", "device_type": "tilt", "name": "Test"}
+        await client.post("/api/devices", json=device_data)
+
+        # Only one temp point
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {
+                "temp_points": [[20.0, 19.5]]  # Only 1 point
+            },
+        }
+        response = await client.put("/api/devices/test-temp-min/calibration", json=calibration_data)
+        assert response.status_code == 422
+        error_detail = str(response.json()["detail"])
+        assert "at least 2 temp_points" in error_detail

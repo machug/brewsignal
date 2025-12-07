@@ -198,29 +198,32 @@ class CalibrationRequest(BaseModel):
                 raise ValueError("temp_offset must be a number")
 
         elif cal_type == "linear":
-            # Linear requires points array
+            # Linear requires either points or temp_points (or both)
             if cal_data is None:
                 raise ValueError("calibration_type 'linear' requires calibration_data")
-            if "points" not in cal_data:
-                raise ValueError("linear calibration requires 'points' array")
-            points = cal_data["points"]
-            if not isinstance(points, list) or len(points) < 2:
-                raise ValueError("linear calibration requires at least 2 points")
-            # Validate point structure: [[raw1, actual1], [raw2, actual2], ...]
-            for point in points:
-                if not isinstance(point, list) or len(point) != 2:
-                    raise ValueError("each point must be [raw_value, actual_value]")
-                if not all(isinstance(v, (int, float)) for v in point):
-                    raise ValueError("point values must be numbers")
-                # Validate SG ranges (0.990-1.200)
-                if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
-                    raise ValueError("SG calibration points must be between 0.990 and 1.200")
+            if "points" not in cal_data and "temp_points" not in cal_data:
+                raise ValueError("linear calibration requires 'points' and/or 'temp_points'")
+
+            # Validate SG points if present
+            if "points" in cal_data:
+                points = cal_data["points"]
+                if not isinstance(points, list) or len(points) < 2:
+                    raise ValueError("linear calibration requires at least 2 points")
+                # Validate point structure: [[raw1, actual1], [raw2, actual2], ...]
+                for point in points:
+                    if not isinstance(point, list) or len(point) != 2:
+                        raise ValueError("each point must be [raw_value, actual_value]")
+                    if not all(isinstance(v, (int, float)) for v in point):
+                        raise ValueError("point values must be numbers")
+                    # Validate SG ranges (0.990-1.200)
+                    if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
+                        raise ValueError("SG calibration points must be between 0.990 and 1.200")
 
             # Validate temp_points if present
             if "temp_points" in cal_data:
                 temp_points = cal_data["temp_points"]
-                if not isinstance(temp_points, list):
-                    raise ValueError("temp_points must be a list")
+                if not isinstance(temp_points, list) or len(temp_points) < 2:
+                    raise ValueError("linear calibration requires at least 2 temp_points")
                 for point in temp_points:
                     if not isinstance(point, list) or len(point) != 2:
                         raise ValueError("each temp point must be [raw_value, actual_value]")

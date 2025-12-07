@@ -431,3 +431,52 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         progress=progress,
         temperature=temperature,
     )
+
+
+@router.get("/{batch_id}/predictions")
+async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Get ML predictions for a batch."""
+    from ..main import get_ml_manager
+
+    # Get batch
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.deleted_at.is_(None))
+    )
+    batch = result.scalar_one_or_none()
+
+    if not batch or not batch.device_id:
+        return {"available": False, "error": "No device linked"}
+
+    # Query ML manager for predictions
+    ml_mgr = get_ml_manager()
+    if not ml_mgr:
+        return {"available": False}
+
+    # Get device state
+    device_state = ml_mgr.get_device_state(batch.device_id)
+    if not device_state or not device_state.get("predictions"):
+        return {"available": False}
+
+    predictions = device_state["predictions"]
+
+    # If predictions not fitted, return unavailable
+    if not predictions.get("fitted"):
+        return {"available": False, "reason": predictions.get("reason", "unknown")}
+
+    # Calculate completion date from hours_to_completion
+    completion_date = None
+    hours_to_completion = predictions.get("hours_to_completion")
+    if hours_to_completion is not None and batch.start_time:
+        from datetime import timedelta
+        completion_date = batch.start_time + timedelta(hours=hours_to_completion)
+
+    return {
+        "available": True,
+        "predicted_fg": predictions.get("predicted_fg"),
+        "predicted_og": predictions.get("predicted_og"),
+        "estimated_completion": completion_date.isoformat() if completion_date else None,
+        "hours_to_completion": hours_to_completion,
+        "model_type": predictions.get("model_type"),
+        "r_squared": predictions.get("r_squared"),
+        "num_readings": device_state.get("history_count", 0)
+    }

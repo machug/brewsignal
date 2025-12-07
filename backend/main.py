@@ -41,6 +41,12 @@ cleanup_service: Optional[CleanupService] = None
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
 
+
+def get_ml_manager() -> MLPipelineManager:
+    """Get the global ML pipeline manager instance."""
+    return ml_pipeline_manager
+
+
 # Cache for first reading timestamps (device_id -> datetime)
 # Prevents N+1 query on every reading when using wall-clock fallback
 _first_reading_cache: dict[str, datetime] = {}

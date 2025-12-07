@@ -184,27 +184,32 @@
 		tempActualValue = '';
 	}
 
-	async function clearCalibration(type: 'sg' | 'temp') {
+	async function clearSGCalibration() {
 		if (!selectedDeviceId) return;
 
-		if (!confirm(`Clear all ${type === 'sg' ? 'gravity' : 'temperature'} calibration points?`)) {
+		if (!confirm('Clear all gravity calibration points?')) {
 			return;
 		}
 
-		saving = true;
-		try {
-			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration/${type}`, {
-				method: 'DELETE'
-			});
+		// Save with empty points array
+		await saveCalibration({
+			...calibrationData,
+			points: []
+		});
+	}
 
-			if (response.ok) {
-				await loadCalibration();
-			}
-		} catch (e) {
-			console.error('Failed to clear calibration:', e);
-		} finally {
-			saving = false;
+	async function clearTempCalibration() {
+		if (!selectedDeviceId) return;
+
+		if (!confirm('Clear all temperature calibration points?')) {
+			return;
 		}
+
+		// Save with empty temp_points array
+		await saveCalibration({
+			...calibrationData,
+			temp_points: []
+		});
 	}
 
 	function formatSG(sg: number): string {
@@ -292,7 +297,7 @@
 						<button
 							type="button"
 							class="btn-danger-small"
-							onclick={() => clearCalibration('sg')}
+							onclick={() => clearSGCalibration()}
 							disabled={saving}
 						>
 							Clear All
@@ -384,7 +389,7 @@
 						<button
 							type="button"
 							class="btn-danger-small"
-							onclick={() => clearCalibration('temp')}
+							onclick={() => clearTempCalibration()}
 							disabled={saving}
 						>
 							Clear All

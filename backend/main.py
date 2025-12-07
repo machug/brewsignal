@@ -257,7 +257,7 @@ async def lifespan(app: FastAPI):
     print("Ambient poller started")
 
     # Start chamber poller for fermentation chamber environment
-    start_chamber_poller()
+    await start_chamber_poller()
     print("Chamber poller started")
 
     # Start temperature controller for HA-based temperature control

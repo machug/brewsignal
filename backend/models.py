@@ -196,6 +196,7 @@ class ControlEvent(Base):
     __tablename__ = "control_events"
     __table_args__ = (
         Index("ix_control_timestamp", "timestamp"),
+        Index("ix_control_batch_timestamp", "batch_id", "timestamp"),  # Composite index for batch queries
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

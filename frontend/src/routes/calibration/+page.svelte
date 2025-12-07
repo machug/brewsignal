@@ -1,11 +1,7 @@
 <script lang="ts">
-	// KNOWN ISSUE: This calibration page is currently broken after universal device migration.
-	// The /api/devices/{id}/calibration endpoints may not exist or need updating.
-	// Consider retiring this page in favor of per-device calibration on the devices page.
-	// See: frontend/src/routes/calibration/+page.svelte
-
 	import { onMount } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
+	import { convertTempPointToCelsius, convertTempPointFromCelsius } from '$lib/utils/temperature';
 
 	interface Device {
 		id: string;
@@ -13,18 +9,26 @@
 		beer_name: string;
 		mac: string | null;
 		last_seen: string | null;
+		device_type: string;
+		paired: boolean;
+		calibration_type: string;
+		calibration_data: CalibrationData | null;
 	}
 
-	interface CalibrationPoint {
-		id: number;
-		type: 'sg' | 'temp';
-		raw_value: number;
-		actual_value: number;
+	interface CalibrationData {
+		points?: [number, number][];      // SG points: [raw, actual]
+		temp_points?: [number, number][]; // Temp points: [raw, actual]
+	}
+
+	interface CalibrationRequest {
+		calibration_type: 'linear' | 'none';
+		calibration_data: CalibrationData | null;
 	}
 
 	let devices = $state<Device[]>([]);
 	let selectedDeviceId = $state<string | null>(null);
-	let calibrationPoints = $state<CalibrationPoint[]>([]);
+	let calibrationData = $state<CalibrationData | null>(null);
+	let calibrationType = $state<string>('none');
 	let loading = $state(true);
 	let loadingPoints = $state(false);
 	let saving = $state(false);
@@ -40,15 +44,15 @@
 	let useCelsius = $derived(configState.config.temp_units === 'C');
 
 	// Filter points by type
-	let sgPoints = $derived(calibrationPoints.filter((p) => p.type === 'sg').sort((a, b) => a.raw_value - b.raw_value));
-	let tempPoints = $derived(calibrationPoints.filter((p) => p.type === 'temp').sort((a, b) => a.raw_value - b.raw_value));
+	let sgPoints = $derived((calibrationData?.points || []).sort((a, b) => a[0] - b[0]));
+	let tempPoints = $derived((calibrationData?.temp_points || []).sort((a, b) => a[0] - b[0]));
 
 	// Selected device object
 	let selectedDevice = $derived(devices.find((d) => d.id === selectedDeviceId));
 
 	async function loadDevices() {
 		try {
-			const response = await fetch('/api/devices?paired_only=true');
+			const response = await fetch('/api/devices?device_type=tilt&paired_only=true');
 			if (response.ok) {
 				devices = await response.json();
 				if (devices.length > 0 && !selectedDeviceId) {
@@ -62,94 +66,174 @@
 		}
 	}
 
-	async function loadCalibrationPoints() {
+	async function loadCalibration() {
 		if (!selectedDeviceId) return;
 		loadingPoints = true;
 		try {
 			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`);
 			if (response.ok) {
-				calibrationPoints = await response.json();
+				const data = await response.json();
+				calibrationType = data.calibration_type;
+				calibrationData = data.calibration_data;
 			}
 		} catch (e) {
-			console.error('Failed to load calibration points:', e);
+			console.error('Failed to load calibration:', e);
 		} finally {
 			loadingPoints = false;
 		}
 	}
 
-	async function addCalibrationPoint(type: 'sg' | 'temp', rawValue: string, actualValue: string) {
+	async function saveCalibration(data: CalibrationData) {
+		if (!selectedDeviceId) return;
+		saving = true;
+		try {
+			const payload: CalibrationRequest = {
+				calibration_type: 'linear',
+				calibration_data: data
+			};
+			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			if (response.ok) {
+				// Use the response from PUT instead of making redundant GET call
+				const updatedDevice = await response.json();
+				calibrationType = updatedDevice.calibration_type;
+				calibrationData = updatedDevice.calibration_data;
+			} else {
+				const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+				alert(`Failed to save calibration: ${errorData.detail || response.statusText}`);
+			}
+		} catch (e) {
+			console.error('Failed to save calibration:', e);
+			alert(`Failed to save calibration: ${e instanceof Error ? e.message : 'Unknown error'}`);
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function addSGPoint(rawValue: string, actualValue: string) {
 		if (!selectedDeviceId) return;
 
 		const raw = parseFloat(rawValue);
 		const actual = parseFloat(actualValue);
 
 		if (isNaN(raw) || isNaN(actual)) {
+			alert('Please enter valid numbers for both raw and actual gravity values');
 			return;
 		}
 
-		saving = true;
-		try {
-			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					type,
-					raw_value: raw,
-					actual_value: actual
-				})
-			});
-
-			if (response.ok) {
-				// Clear form and reload
-				if (type === 'sg') {
-					sgRawValue = '';
-					sgActualValue = '';
-				} else {
-					tempRawValue = '';
-					tempActualValue = '';
-				}
-				await loadCalibrationPoints();
-			}
-		} catch (e) {
-			console.error('Failed to add calibration point:', e);
-		} finally {
-			saving = false;
+		// Validation
+		if (raw < 0.990 || raw > 1.200 || actual < 0.990 || actual > 1.200) {
+			alert('Gravity values must be between 0.990 and 1.200');
+			return;
 		}
+
+		// Check for duplicate raw values
+		const existingPoints = calibrationData?.points || [];
+		const isDuplicate = existingPoints.some(point => Math.abs(point[0] - raw) < 0.001);
+		if (isDuplicate) {
+			alert('A calibration point with this raw value already exists');
+			return;
+		}
+
+		// Add new point to existing points
+		const newPoints = [...existingPoints, [raw, actual] as [number, number]];
+
+		// Save with updated points
+		await saveCalibration({
+			...calibrationData,
+			points: newPoints
+		});
+
+		// Clear form
+		sgRawValue = '';
+		sgActualValue = '';
 	}
 
-	async function clearCalibration(type: 'sg' | 'temp') {
+	async function addTempPoint(rawValue: string, actualValue: string) {
 		if (!selectedDeviceId) return;
 
-		if (!confirm(`Clear all ${type === 'sg' ? 'gravity' : 'temperature'} calibration points?`)) {
+		const raw = parseFloat(rawValue);
+		const actual = parseFloat(actualValue);
+
+		if (isNaN(raw) || isNaN(actual)) {
+			alert('Please enter valid numbers for both raw and actual temperature values');
 			return;
 		}
 
-		saving = true;
-		try {
-			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration/${type}`, {
-				method: 'DELETE'
-			});
+		// Validation (in user's preferred unit)
+		const minTemp = useCelsius ? -10 : 14;
+		const maxTemp = useCelsius ? 50 : 122;
 
-			if (response.ok) {
-				await loadCalibrationPoints();
-			}
-		} catch (e) {
-			console.error('Failed to clear calibration:', e);
-		} finally {
-			saving = false;
+		if (raw < minTemp || raw > maxTemp || actual < minTemp || actual > maxTemp) {
+			const unit = useCelsius ? '°C' : '°F';
+			alert(`Temperature values must be between ${minTemp}${unit} and ${maxTemp}${unit}`);
+			return;
 		}
+
+		// Check for duplicate raw values in user's preferred unit
+		const existingTempPoints = calibrationData?.temp_points || [];
+		const tolerance = useCelsius ? 0.1 : 0.18; // 0.1°C ≈ 0.18°F
+		const isDuplicate = existingTempPoints.some(point => {
+			// Convert stored Celsius point back to user's unit for comparison
+			const [storedRaw, _] = convertTempPointFromCelsius(point[0], point[1], useCelsius);
+			return Math.abs(storedRaw - raw) < tolerance;
+		});
+		if (isDuplicate) {
+			const unit = useCelsius ? '°C' : '°F';
+			alert(`A calibration point with this raw value already exists (within ${tolerance}${unit})`);
+			return;
+		}
+
+		// Convert to Celsius for backend storage
+		const [rawC, actualC] = convertTempPointToCelsius(raw, actual, useCelsius);
+
+		// Add new point to existing points
+		const newTempPoints = [...existingTempPoints, [rawC, actualC] as [number, number]];
+
+		// Save with updated temp points
+		await saveCalibration({
+			...calibrationData,
+			temp_points: newTempPoints
+		});
+
+		// Clear form
+		tempRawValue = '';
+		tempActualValue = '';
+	}
+
+	async function clearSGCalibration() {
+		if (!selectedDeviceId) return;
+
+		if (!confirm('Clear all gravity calibration points?')) {
+			return;
+		}
+
+		// Save with empty points array
+		await saveCalibration({
+			...calibrationData,
+			points: []
+		});
+	}
+
+	async function clearTempCalibration() {
+		if (!selectedDeviceId) return;
+
+		if (!confirm('Clear all temperature calibration points?')) {
+			return;
+		}
+
+		// Save with empty temp_points array
+		await saveCalibration({
+			...calibrationData,
+			temp_points: []
+		});
 	}
 
 	function formatSG(sg: number): string {
 		return sg.toFixed(3);
-	}
-
-	function formatTempDisplay(temp: number): string {
-		// Temp is stored as Fahrenheit in the database
-		if (useCelsius) {
-			return ((temp - 32) * (5 / 9)).toFixed(1);
-		}
-		return temp.toFixed(1);
 	}
 
 	onMount(() => {
@@ -159,7 +243,20 @@
 	// Load calibration when device changes
 	$effect(() => {
 		if (selectedDeviceId) {
-			loadCalibrationPoints();
+			// Clear form state to prevent accidentally adding points from one device to another
+			sgRawValue = '';
+			sgActualValue = '';
+			tempRawValue = '';
+			tempActualValue = '';
+
+			// Load calibration for the new device
+			const deviceId = selectedDeviceId;
+			loadCalibration().catch((error) => {
+				// Only log error if still on same device (avoid stale errors)
+				if (deviceId === selectedDeviceId) {
+					console.error('Failed to load calibration:', error);
+				}
+			});
 		}
 	});
 </script>
@@ -170,8 +267,8 @@
 
 <div class="page-container">
 	<div class="page-header">
-		<h1 class="page-title">Calibration</h1>
-		<p class="page-description">Fine-tune SG and temperature readings with calibration points</p>
+		<h1 class="page-title">Tilt Calibration</h1>
+		<p class="page-description">Calibrate your Tilt hydrometer's gravity and temperature readings</p>
 	</div>
 
 	{#if loading}
@@ -182,11 +279,12 @@
 	{:else if devices.length === 0}
 		<div class="empty-state">
 			<div class="empty-icon">📊</div>
-			<h3 class="empty-title">No Devices Found</h3>
+			<h3 class="empty-title">No Tilt Devices Found</h3>
 			<p class="empty-description">
-				Pair a device to start calibrating.
-				Devices will appear here once paired.
+				Pair a Tilt hydrometer on the Devices page to calibrate it.
+				Only Tilt devices appear here (iSpindel/GravityMon calibrate on-device).
 			</p>
+			<a href="/devices" class="btn-primary mt-4">Go to Devices</a>
 		</div>
 	{:else}
 		<!-- Device Selector -->
@@ -225,8 +323,9 @@
 						<button
 							type="button"
 							class="btn-danger-small"
-							onclick={() => clearCalibration('sg')}
+							onclick={() => clearSGCalibration()}
 							disabled={saving}
+							aria-label="Clear all gravity calibration points"
 						>
 							Clear All
 						</button>
@@ -254,9 +353,9 @@
 								</div>
 								{#each sgPoints as point}
 									<div class="table-row">
-										<span class="font-mono">{formatSG(point.raw_value)}</span>
+										<span class="font-mono">{formatSG(point[0])}</span>
 										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatSG(point.actual_value)}</span>
+										<span class="font-mono text-[var(--accent)]">{formatSG(point[1])}</span>
 									</div>
 								{/each}
 							</div>
@@ -295,7 +394,7 @@
 								<button
 									type="button"
 									class="btn-add"
-									onclick={() => addCalibrationPoint('sg', sgRawValue, sgActualValue)}
+									onclick={() => addSGPoint(sgRawValue, sgActualValue)}
 									disabled={saving || !sgRawValue || !sgActualValue}
 									aria-label="Add SG calibration point"
 								>
@@ -317,8 +416,9 @@
 						<button
 							type="button"
 							class="btn-danger-small"
-							onclick={() => clearCalibration('temp')}
+							onclick={() => clearTempCalibration()}
 							disabled={saving}
+							aria-label="Clear all temperature calibration points"
 						>
 							Clear All
 						</button>
@@ -327,7 +427,7 @@
 				<div class="card-body">
 					<p class="section-description">
 						Calibrate temperature by comparing with a reference thermometer.
-						Values are stored in °F internally.
+						Values are stored in °C internally.
 					</p>
 
 					{#if loadingPoints}
@@ -345,10 +445,11 @@
 									<span>Actual ({tempUnit})</span>
 								</div>
 								{#each tempPoints as point}
+									{@const [rawDisplay, actualDisplay] = convertTempPointFromCelsius(point[0], point[1], useCelsius)}
 									<div class="table-row">
-										<span class="font-mono">{formatTempDisplay(point.raw_value)}°</span>
+										<span class="font-mono">{rawDisplay.toFixed(1)}°</span>
 										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatTempDisplay(point.actual_value)}°</span>
+										<span class="font-mono text-[var(--accent)]">{actualDisplay.toFixed(1)}°</span>
 									</div>
 								{/each}
 							</div>
@@ -387,7 +488,7 @@
 								<button
 									type="button"
 									class="btn-add"
-									onclick={() => addCalibrationPoint('temp', tempRawValue, tempActualValue)}
+									onclick={() => addTempPoint(tempRawValue, tempActualValue)}
 									disabled={saving || !tempRawValue || !tempActualValue}
 									aria-label="Add temperature calibration point"
 								>
@@ -404,19 +505,23 @@
 
 		<!-- Calibration Info -->
 		<div class="info-section mt-6">
-			<h3 class="info-title">How Calibration Works</h3>
+			<h3 class="info-title">How Tilt Calibration Works</h3>
 			<p class="info-text">
-				Add at least two calibration points for best results. The system uses linear interpolation
-				between points to correct readings. For single-point calibration, only an offset is applied.
+				Tilt calibration is applied in software to raw BLE readings. Add at least two calibration
+				points for accurate linear interpolation. Calibration happens app-side, not on the device.
 			</p>
 			<div class="info-tips">
 				<div class="tip">
-					<span class="tip-label">Tip:</span>
-					<span>For SG, use distilled water (1.000) and a known sugar solution for two-point calibration.</span>
+					<span class="tip-label">Gravity:</span>
+					<span>Use distilled water (1.000 SG) and a known sugar solution (1.061 or 1.110 SG) for best results.</span>
 				</div>
 				<div class="tip">
-					<span class="tip-label">Tip:</span>
-					<span>For temperature, ice water (0°C/32°F) and room temp make good reference points.</span>
+					<span class="tip-label">Temperature:</span>
+					<span>Rarely needed for Tilts (accurate 38°F-98°F range). Calibrate only if you notice consistent offsets.</span>
+				</div>
+				<div class="tip">
+					<span class="tip-label">iSpindel/GravityMon:</span>
+					<span>These devices calibrate on-board via polynomial formulas. Configure calibration through the device's web interface.</span>
 				</div>
 			</div>
 		</div>
@@ -770,9 +875,32 @@
 		line-height: 1.6;
 	}
 
+	.btn-primary {
+		display: inline-block;
+		padding: 0.625rem 1.25rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: white;
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		border-radius: 0.5rem;
+		text-decoration: none;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-primary:hover {
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
+	}
+
 	/* Grid utilities */
 	.mb-6 {
 		margin-bottom: 1.5rem;
+	}
+
+	.mt-4 {
+		margin-top: 1rem;
 	}
 
 	.mt-6 {

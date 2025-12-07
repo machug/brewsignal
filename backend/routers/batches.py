@@ -288,13 +288,13 @@ async def update_batch(
     await db.commit()
     await db.refresh(batch)
 
+    # Always reload batch with eager loading to avoid MissingGreenlet errors
     # Load recipe relationship for response with eager loading of nested style
-    if batch.recipe_id:
-        stmt = select(Batch).where(Batch.id == batch_id).options(
-            selectinload(Batch.recipe).selectinload(Recipe.style)
-        )
-        result = await db.execute(stmt)
-        batch = result.scalar_one()
+    stmt = select(Batch).where(Batch.id == batch_id).options(
+        selectinload(Batch.recipe).selectinload(Recipe.style)
+    )
+    result = await db.execute(stmt)
+    batch = result.scalar_one()
 
     return batch
 

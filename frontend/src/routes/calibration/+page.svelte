@@ -1,9 +1,4 @@
 <script lang="ts">
-	// KNOWN ISSUE: This calibration page is currently broken after universal device migration.
-	// The /api/devices/{id}/calibration endpoints may not exist or need updating.
-	// Consider retiring this page in favor of per-device calibration on the devices page.
-	// See: frontend/src/routes/calibration/+page.svelte
-
 	import { onMount } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import { convertTempPointToCelsius, convertTempPointFromCelsius } from '$lib/utils/temperature';

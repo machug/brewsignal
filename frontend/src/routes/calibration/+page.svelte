@@ -6,7 +6,7 @@
 
 	import { onMount } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
-	import { convertTempPointToCelsius } from '$lib/utils/temperature';
+	import { convertTempPointToCelsius, convertTempPointFromCelsius } from '$lib/utils/temperature';
 
 	interface Device {
 		id: string;
@@ -216,14 +216,6 @@
 		return sg.toFixed(3);
 	}
 
-	function formatTempDisplay(temp: number): string {
-		// Temp is stored as Fahrenheit in the database
-		if (useCelsius) {
-			return ((temp - 32) * (5 / 9)).toFixed(1);
-		}
-		return temp.toFixed(1);
-	}
-
 	onMount(() => {
 		loadDevices();
 	});
@@ -399,7 +391,7 @@
 				<div class="card-body">
 					<p class="section-description">
 						Calibrate temperature by comparing with a reference thermometer.
-						Values are stored in °F internally.
+						Values are stored in °C internally.
 					</p>
 
 					{#if loadingPoints}
@@ -417,10 +409,11 @@
 									<span>Actual ({tempUnit})</span>
 								</div>
 								{#each tempPoints as point}
+									{@const [rawDisplay, actualDisplay] = convertTempPointFromCelsius(point[0], point[1], useCelsius)}
 									<div class="table-row">
-										<span class="font-mono">{formatTempDisplay(point[0])}°</span>
+										<span class="font-mono">{rawDisplay.toFixed(1)}°</span>
 										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatTempDisplay(point[1])}°</span>
+										<span class="font-mono text-[var(--accent)]">{actualDisplay.toFixed(1)}°</span>
 									</div>
 								{/each}
 							</div>

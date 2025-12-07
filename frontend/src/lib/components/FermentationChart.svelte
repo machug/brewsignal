@@ -81,6 +81,12 @@
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
 
+	// Filtered series visibility
+	const SHOW_FILTERED_SG = 'brewsignal_chart_show_filtered_sg';
+	const SHOW_FILTERED_TEMP = 'brewsignal_chart_show_filtered_temp';
+	let showFilteredSg = $state(false);
+	let showFilteredTemp = $state(false);
+
 	// Linear regression for trend line calculation
 	interface TrendResult {
 		slope: number;        // SG change per second
@@ -362,6 +368,30 @@
 					paths: uPlot.paths.spline?.() // Smooth spline interpolation
 				},
 				{
+					// Filtered SG series
+					label: 'Filtered SG',
+					show: showFilteredSg,
+					scale: 'sg',
+					stroke: sgColor,
+					width: 1.5,
+					dash: [2, 2],
+					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.()
+				},
+				{
+					// Filtered Temp series
+					label: 'Filtered Temp',
+					show: showFilteredTemp,
+					scale: 'temp',
+					stroke: tempColor,
+					width: 1,
+					dash: [2, 2],
+					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.()
+				},
+				{
 					// SG Trend line series
 					label: 'Trend',
 					scale: 'sg',
@@ -541,6 +571,25 @@
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
 		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
 
+		// Extract filtered ML data
+		const filteredSgMap = new Map(
+			sorted.filter(r => r.sg_filtered !== null && r.sg_filtered !== undefined)
+				.map(r => [parseUtcTimestamp(r.timestamp), r.sg_filtered!])
+		);
+		const filteredTempMap = new Map(
+			sorted.filter(r => r.temp_filtered !== null && r.temp_filtered !== undefined)
+				.map(r => [parseUtcTimestamp(r.timestamp), r.temp_filtered!])
+		);
+
+		const filteredSgData = timestamps.map(ts => {
+			const sg = filteredSgMap.get(ts);
+			return sg !== undefined ? convertGravity(sg) : null;
+		});
+		const filteredTempData = timestamps.map(ts => {
+			const temp = filteredTempMap.get(ts);
+			return temp !== undefined && temp !== null ? (celsius ? temp : temp * 9/5 + 32) : null;
+		});
+
 		// Apply smoothing if enabled in config
 		if (smoothingEnabled && smoothingSamples > 1) {
 			sgValues = smoothData(sgValues, smoothingSamples);
@@ -562,7 +611,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, filteredSgData, filteredTempData, trendValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -669,6 +718,16 @@ onMount(async () => {
 		showTrendLine = storedTrend === 'true';
 	}
 
+	// Load filtered series toggles
+	const savedFilteredSg = localStorage.getItem(SHOW_FILTERED_SG);
+	if (savedFilteredSg !== null) {
+		showFilteredSg = savedFilteredSg === 'true';
+	}
+	const savedFilteredTemp = localStorage.getItem(SHOW_FILTERED_TEMP);
+	if (savedFilteredTemp !== null) {
+		showFilteredTemp = savedFilteredTemp === 'true';
+	}
+
 	// Fetch system timezone for chart display
 	try {
 		const response = await fetch('/api/system/timezone');
@@ -722,9 +781,14 @@ onMount(async () => {
 	function toggleTrendLine() {
 		showTrendLine = !showTrendLine;
 		localStorage.setItem(TREND_STORAGE_KEY, String(showTrendLine));
-		// Update the series visibility in the existing chart
-		if (chart) {
-			chart.setSeries(4, { show: showTrendLine });
+		// Recreate chart to update series visibility
+		updateChart();
+	}
+
+	function recreateChart() {
+		// Recreate entire chart to update filtered series visibility
+		if (readings.length > 0 && chartContainer) {
+			updateChart();
 		}
 	}
 </script>
@@ -784,6 +848,28 @@ onMount(async () => {
 					<span class="legend-line legend-line-dashed" style="background: {TREND_COLOR};"></span>
 					<span>Trend</span>
 				</button>
+				<label class="toggle-label">
+					<input
+						type="checkbox"
+						bind:checked={showFilteredSg}
+						onchange={() => {
+							localStorage.setItem(SHOW_FILTERED_SG, String(showFilteredSg));
+							recreateChart();
+						}}
+					/>
+					<span>Filtered SG</span>
+				</label>
+				<label class="toggle-label">
+					<input
+						type="checkbox"
+						bind:checked={showFilteredTemp}
+						onchange={() => {
+							localStorage.setItem(SHOW_FILTERED_TEMP, String(showFilteredTemp));
+							recreateChart();
+						}}
+					/>
+					<span>Filtered Temp</span>
+				</label>
 			</div>
 		</div>
 	</div>
@@ -956,6 +1042,30 @@ onMount(async () => {
 
 	.legend-disabled .legend-line-dashed {
 		background: linear-gradient(90deg, var(--text-muted) 6px, transparent 6px) !important;
+	}
+
+	.toggle-label {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.6875rem;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--text-secondary);
+		cursor: pointer;
+		padding: 0.25rem 0.375rem;
+		border-radius: 0.25rem;
+		transition: all 0.15s ease;
+	}
+
+	.toggle-label:hover {
+		background: var(--bg-hover);
+	}
+
+	.toggle-label input[type="checkbox"] {
+		width: 0.875rem;
+		height: 0.875rem;
+		cursor: pointer;
+		accent-color: var(--accent);
 	}
 
 	.chart-container {

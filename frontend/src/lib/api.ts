@@ -11,6 +11,15 @@ export interface HistoricalReading {
 	temp_calibrated: number | null;
 	rssi: number | null;
 	status?: string; // 'valid', 'invalid', 'uncalibrated', 'incomplete'
+	// ML fields
+	sg_filtered?: number | null;
+	temp_filtered?: number | null;
+	confidence?: number | null;
+	sg_rate?: number | null;
+	temp_rate?: number | null;
+	is_anomaly?: boolean;
+	anomaly_score?: number | null;
+	anomaly_reasons?: string | null;
 }
 
 export interface TimeRangeOption {

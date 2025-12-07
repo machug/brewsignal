@@ -6,6 +6,7 @@
 
 	import { onMount } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
+	import { convertTempPointToCelsius } from '$lib/utils/temperature';
 
 	interface Device {
 		id: string;
@@ -114,7 +115,7 @@
 		}
 	}
 
-	async function addCalibrationPoint(type: 'sg' | 'temp', rawValue: string, actualValue: string) {
+	async function addSGPoint(rawValue: string, actualValue: string) {
 		if (!selectedDeviceId) return;
 
 		const raw = parseFloat(rawValue);
@@ -124,34 +125,25 @@
 			return;
 		}
 
-		saving = true;
-		try {
-			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					type,
-					raw_value: raw,
-					actual_value: actual
-				})
-			});
-
-			if (response.ok) {
-				// Clear form and reload
-				if (type === 'sg') {
-					sgRawValue = '';
-					sgActualValue = '';
-				} else {
-					tempRawValue = '';
-					tempActualValue = '';
-				}
-				await loadCalibration();
-			}
-		} catch (e) {
-			console.error('Failed to add calibration point:', e);
-		} finally {
-			saving = false;
+		// Validation
+		if (raw < 0.990 || raw > 1.200 || actual < 0.990 || actual > 1.200) {
+			alert('Gravity values must be between 0.990 and 1.200');
+			return;
 		}
+
+		// Add new point to existing points
+		const existingPoints = calibrationData?.points || [];
+		const newPoints = [...existingPoints, [raw, actual] as [number, number]];
+
+		// Save with updated points
+		await saveCalibration({
+			...calibrationData,
+			points: newPoints
+		});
+
+		// Clear form
+		sgRawValue = '';
+		sgActualValue = '';
 	}
 
 	async function clearCalibration(type: 'sg' | 'temp') {
@@ -332,7 +324,7 @@
 								<button
 									type="button"
 									class="btn-add"
-									onclick={() => addCalibrationPoint('sg', sgRawValue, sgActualValue)}
+									onclick={() => addSGPoint(sgRawValue, sgActualValue)}
 									disabled={saving || !sgRawValue || !sgActualValue}
 									aria-label="Add SG calibration point"
 								>

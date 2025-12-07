@@ -16,6 +16,8 @@ from ..models import (
     BatchProgressResponse,
     BatchResponse,
     BatchUpdate,
+    ControlEvent,
+    ControlEventResponse,
     Recipe,
 )
 from ..state import latest_readings
@@ -498,3 +500,45 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
         "r_squared": predictions.get("r_squared"),
         "num_readings": device_state.get("history_count", 0)
     }
+
+
+@router.get("/{batch_id}/control-events", response_model=list[ControlEventResponse])
+async def get_batch_control_events(
+    batch_id: int,
+    hours: int = Query(24, ge=1, le=720, description="Hours of history to retrieve (max 30 days)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get control event history for a batch.
+
+    Returns heating/cooling control events (heat_on, heat_off, cool_on, cool_off)
+    for visualization on the fermentation chart.
+
+    Args:
+        batch_id: The batch ID to retrieve events for
+        hours: Number of hours of history (default 24, max 720 for 30 days)
+
+    Returns:
+        List of control events ordered chronologically (oldest first)
+    """
+    # Verify batch exists
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Calculate time range
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    # Query control events for this batch
+    query = (
+        select(ControlEvent)
+        .where(
+            ControlEvent.batch_id == batch_id,
+            ControlEvent.timestamp >= cutoff_time
+        )
+        .order_by(ControlEvent.timestamp.asc())  # Chronological order (oldest first)
+    )
+
+    result = await db.execute(query)
+    events = result.scalars().all()
+
+    return events

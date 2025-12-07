@@ -146,6 +146,44 @@
 		sgActualValue = '';
 	}
 
+	async function addTempPoint(rawValue: string, actualValue: string) {
+		if (!selectedDeviceId) return;
+
+		const raw = parseFloat(rawValue);
+		const actual = parseFloat(actualValue);
+
+		if (isNaN(raw) || isNaN(actual)) {
+			return;
+		}
+
+		// Validation (in user's preferred unit)
+		const minTemp = useCelsius ? -10 : 14;
+		const maxTemp = useCelsius ? 50 : 122;
+
+		if (raw < minTemp || raw > maxTemp || actual < minTemp || actual > maxTemp) {
+			const unit = useCelsius ? '°C' : '°F';
+			alert(`Temperature values must be between ${minTemp}${unit} and ${maxTemp}${unit}`);
+			return;
+		}
+
+		// Convert to Celsius for backend storage
+		const [rawC, actualC] = convertTempPointToCelsius(raw, actual, useCelsius);
+
+		// Add new point to existing points
+		const existingTempPoints = calibrationData?.temp_points || [];
+		const newTempPoints = [...existingTempPoints, [rawC, actualC] as [number, number]];
+
+		// Save with updated temp points
+		await saveCalibration({
+			...calibrationData,
+			temp_points: newTempPoints
+		});
+
+		// Clear form
+		tempRawValue = '';
+		tempActualValue = '';
+	}
+
 	async function clearCalibration(type: 'sg' | 'temp') {
 		if (!selectedDeviceId) return;
 
@@ -416,7 +454,7 @@
 								<button
 									type="button"
 									class="btn-add"
-									onclick={() => addCalibrationPoint('temp', tempRawValue, tempActualValue)}
+									onclick={() => addTempPoint(tempRawValue, tempActualValue)}
 									disabled={saving || !tempRawValue || !tempActualValue}
 									aria-label="Add temperature calibration point"
 								>

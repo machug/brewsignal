@@ -56,7 +56,7 @@
 
 	async function loadDevices() {
 		try {
-			const response = await fetch('/api/devices?paired_only=true');
+			const response = await fetch('/api/devices?device_type=tilt&paired_only=true');
 			if (response.ok) {
 				devices = await response.json();
 				if (devices.length > 0 && !selectedDeviceId) {

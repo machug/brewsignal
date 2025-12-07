@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatGravity } from '$lib/stores/config.svelte';
-	import { fetchBatchPredictions, type MLPredictions } from '$lib/api';
+	import { fetchBatchPredictions, reloadBatchPredictions, type MLPredictions } from '$lib/api';
 
 	interface Props {
 		batchId: number;
@@ -11,9 +11,12 @@
 
 	let predictions = $state<MLPredictions>({ available: false });
 	let loading = $state(true);
+	let reloading = $state(false);
 	let error = $state<string | null>(null);
 
-	onMount(async () => {
+	async function loadPredictions() {
+		loading = true;
+		error = null;
 		try {
 			predictions = await fetchBatchPredictions(batchId);
 		} catch (e) {
@@ -22,7 +25,25 @@
 		} finally {
 			loading = false;
 		}
-	});
+	}
+
+	async function handleReload() {
+		reloading = true;
+		error = null;
+		try {
+			const result = await reloadBatchPredictions(batchId);
+			console.log('Reloaded predictions:', result.message);
+			// Refresh predictions after reload
+			await loadPredictions();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to reload predictions';
+			console.error('Failed to reload predictions:', e);
+		} finally {
+			reloading = false;
+		}
+	}
+
+	onMount(loadPredictions);
 
 	function formatDate(dateStr: string | undefined): string {
 		if (!dateStr) return 'N/A';
@@ -49,7 +70,18 @@
 	</div>
 {:else if predictions.available}
 	<div class="ml-panel">
-		<h3 class="panel-title">ML Predictions</h3>
+		<div class="panel-header">
+			<h3 class="panel-title">ML Predictions</h3>
+			<button
+				type="button"
+				class="reload-btn"
+				onclick={handleReload}
+				disabled={reloading || loading}
+				title="Recalculate predictions from database history"
+			>
+				{reloading ? 'Reloading...' : '↻ Reload'}
+			</button>
+		</div>
 
 		<div class="metrics">
 			{#if predictions.predicted_fg}
@@ -114,11 +146,41 @@
 		padding: 2rem;
 	}
 
+	.panel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
 	.panel-title {
 		font-size: 0.875rem;
 		font-weight: 600;
-		margin-bottom: 1rem;
+		margin: 0;
 		color: var(--text-primary);
+	}
+
+	.reload-btn {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-default);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.reload-btn:hover:not(:disabled) {
+		color: var(--text-primary);
+		background: var(--bg-surface);
+		border-color: var(--border-hover);
+	}
+
+	.reload-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.metrics {

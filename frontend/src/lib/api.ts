@@ -117,6 +117,20 @@ export async function fetchBatchPredictions(batchId: number): Promise<MLPredicti
 	return response.json();
 }
 
+/**
+ * Reload ML predictions from database history
+ */
+export async function reloadBatchPredictions(batchId: number): Promise<{ success: boolean; readings_loaded: number; message: string }> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/reload-predictions`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to reload predictions');
+	}
+	return response.json();
+}
+
 export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
 export interface FermentableResponse {

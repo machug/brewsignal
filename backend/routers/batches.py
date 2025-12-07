@@ -506,6 +506,58 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
     }
 
 
+@router.post("/{batch_id}/reload-predictions")
+async def reload_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Reload ML predictions from database history.
+
+    Forces the ML pipeline to recalculate predictions based on current
+    database state. Useful after:
+    - Data corrections in the database
+    - Calibration changes
+    - Suspecting stale predictions
+
+    Returns:
+        Dictionary with reload status and metrics
+    """
+    from ..main import get_ml_manager
+
+    # Get batch
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.deleted_at.is_(None))
+    )
+    batch = result.scalar_one_or_none()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if not batch.device_id:
+        raise HTTPException(status_code=400, detail="Batch has no device linked")
+
+    # Get ML manager
+    ml_mgr = get_ml_manager()
+    if not ml_mgr:
+        raise HTTPException(status_code=503, detail="ML manager not available")
+
+    # Reload from database
+    reload_result = await ml_mgr.reload_from_database(
+        device_id=batch.device_id,
+        batch_id=batch_id,
+        db_session=db
+    )
+
+    if not reload_result["success"]:
+        raise HTTPException(
+            status_code=400,
+            detail=reload_result.get("error", "Failed to reload predictions")
+        )
+
+    return {
+        "success": True,
+        "readings_loaded": reload_result["readings_loaded"],
+        "message": f"Successfully reloaded {reload_result['readings_loaded']} readings"
+    }
+
+
 @router.get("/{batch_id}/control-events", response_model=list[ControlEventResponse])
 async def get_batch_control_events(
     batch_id: int,

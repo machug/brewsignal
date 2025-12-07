@@ -169,3 +169,102 @@ class MLPipelineManager:
             "predictions": None,
             "history_count": len(pipeline.sg_history)
         }
+
+    async def reload_from_database(
+        self,
+        device_id: str,
+        batch_id: int,
+        db_session
+    ) -> dict:
+        """Reload ML pipeline history from database readings.
+
+        This forces the ML model to recalculate predictions based on
+        current database state. Useful after data corrections or
+        calibration changes.
+
+        Args:
+            device_id: Device identifier
+            batch_id: Batch to load readings from
+            db_session: Database session
+
+        Returns:
+            Dictionary with reload results:
+            - success: Whether reload succeeded
+            - readings_loaded: Number of readings loaded
+            - error: Error message if failed
+        """
+        from sqlalchemy import select
+        from backend.models import Reading
+
+        try:
+            # Get or create pipeline
+            pipeline = self.get_or_create_pipeline(device_id)
+
+            # Query readings from database
+            # Use filtered values and order by timestamp
+            query = (
+                select(Reading)
+                .where(Reading.batch_id == batch_id)
+                .where(Reading.device_id == device_id)
+                .order_by(Reading.timestamp)
+            )
+
+            result = await db_session.execute(query)
+            readings = result.scalars().all()
+
+            if not readings:
+                return {
+                    "success": False,
+                    "readings_loaded": 0,
+                    "error": "No readings found for batch"
+                }
+
+            # Extract data for pipeline
+            sgs = []
+            temps = []
+            times = []
+
+            batch_start = readings[0].timestamp
+            for reading in readings:
+                # Use filtered values if available, otherwise calibrated
+                sg = reading.sg_filtered if reading.sg_filtered is not None else reading.sg_calibrated
+                temp = reading.temp_filtered if reading.temp_filtered is not None else reading.temp_calibrated
+
+                if sg is None or temp is None:
+                    continue  # Skip readings with missing data
+
+                # Calculate hours since batch start
+                time_delta = reading.timestamp - batch_start
+                hours = time_delta.total_seconds() / 3600
+
+                sgs.append(float(sg))
+                temps.append(float(temp))
+                times.append(float(hours))
+
+            if len(sgs) < self.config.prediction_min_readings:
+                return {
+                    "success": False,
+                    "readings_loaded": len(sgs),
+                    "error": f"Insufficient readings (need {self.config.prediction_min_readings}, got {len(sgs)})"
+                }
+
+            # Load history into pipeline
+            pipeline.load_history(sgs=sgs, temps=temps, times=times)
+
+            logger.info(
+                f"Reloaded {len(sgs)} readings from database for device {device_id}, batch {batch_id}"
+            )
+
+            return {
+                "success": True,
+                "readings_loaded": len(sgs),
+                "error": None
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to reload from database: {e}")
+            return {
+                "success": False,
+                "readings_loaded": 0,
+                "error": str(e)
+            }

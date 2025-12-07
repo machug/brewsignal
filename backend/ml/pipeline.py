@@ -237,3 +237,46 @@ class MLPipeline:
 
         # Note: curve_fitter and mpc_controller don't maintain state,
         # so no reset needed
+
+    def load_history(
+        self,
+        sgs: list[float],
+        temps: list[float],
+        times: list[float],
+        heaters: Optional[list[bool]] = None,
+        coolers: Optional[list[bool]] = None,
+        ambients: Optional[list[float]] = None,
+    ) -> None:
+        """Load historical data into the pipeline for predictions.
+
+        This is useful for initializing the pipeline from database history
+        or for recalculating predictions after data corrections.
+
+        Args:
+            sgs: Specific gravity readings (filtered/calibrated)
+            temps: Temperature readings (filtered/calibrated, °C)
+            times: Time points (hours since fermentation start)
+            heaters: Optional heater states
+            coolers: Optional cooler states
+            ambients: Optional ambient temperatures (°C)
+        """
+        if len(sgs) != len(temps) or len(sgs) != len(times):
+            raise ValueError("sgs, temps, and times must have same length")
+
+        # Store history
+        self.sg_history = list(sgs)
+        self.temp_history = list(temps)
+        self.time_history = list(times)
+
+        # Store optional histories
+        self.heater_history = list(heaters) if heaters else []
+        self.cooler_history = list(coolers) if coolers else []
+        self.ambient_history = list(ambients) if ambients else []
+
+        # Reset Kalman filter to last reading state
+        if self.kalman_filter and len(sgs) > 0:
+            self.kalman_filter.reset(sg=sgs[-1], temp=temps[-1])
+
+        # Reset anomaly detector (will rebuild stats from history)
+        if self.anomaly_detector:
+            self.anomaly_detector.reset()

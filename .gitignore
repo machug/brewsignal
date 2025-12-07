@@ -55,4 +55,10 @@ extracted/
 CLAUDE.md
 docs/plans/
 
+# Test screenshots and temporary images in root
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+
 # Other

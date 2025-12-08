@@ -50,7 +50,8 @@
 		const value = timing.duration.value;
 		const use = timing.use;
 
-		if (use === 'dry_hop') {
+		// Both dry_hop and add_to_fermentation use day-based timing
+		if (use === 'dry_hop' || use === 'add_to_fermentation') {
 			return value === 0 ? 'At packaging' : `Day ${value}`;
 		}
 		return `${value} ${timing.duration.unit || 'min'}`;
@@ -69,7 +70,8 @@
 			'mash': 'Mash',
 			'aroma': 'Aroma'
 		};
-		return useMap[use] || use;
+		// Gracefully handle unknown timing keys by converting snake_case to Title Case
+		return useMap[use] || use.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 	}
 </script>
 

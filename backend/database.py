@@ -225,6 +225,10 @@ async def init_db():
         await conn.run_sync(_migrate_readings_nullable_tilt_id)
         await conn.run_sync(_migrate_add_ml_columns)
 
+        # BeerJSON support migration (must run before create_all)
+        from backend.migrations.add_beerjson_support import migrate_add_beerjson_support
+        await migrate_add_beerjson_support(conn)
+
         # Step 2: Create any missing tables (includes new Style, Recipe, Batch, ChamberReading tables)
         await conn.run_sync(Base.metadata.create_all)
 

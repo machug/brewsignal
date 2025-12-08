@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
-from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, false
+from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -245,20 +245,39 @@ class Style(Base):
 
 
 class Recipe(Base):
-    """Recipes imported from BeerXML or created manually."""
+    """Recipes following BeerJSON 1.0 schema (with BeerXML backward compatibility)."""
     __tablename__ = "recipes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    author: Mapped[Optional[str]] = mapped_column(String(100))
-    style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
     type: Mapped[Optional[str]] = mapped_column(String(50))  # "All Grain", "Extract", etc.
+    author: Mapped[Optional[str]] = mapped_column(String(100))
 
-    # Gravity targets
-    og_target: Mapped[Optional[float]] = mapped_column()
-    fg_target: Mapped[Optional[float]] = mapped_column()
+    # Recipe vitals
+    batch_size_liters: Mapped[Optional[float]] = mapped_column()
+    boil_time_minutes: Mapped[Optional[int]] = mapped_column()
+    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
-    # Yeast info (extracted from BeerXML)
+    # Gravity targets (renamed from *_target)
+    og: Mapped[Optional[float]] = mapped_column()
+    fg: Mapped[Optional[float]] = mapped_column()
+    abv: Mapped[Optional[float]] = mapped_column()
+    ibu: Mapped[Optional[float]] = mapped_column()
+    color_srm: Mapped[Optional[float]] = mapped_column()  # renamed from srm_target
+    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+
+    # Style reference
+    style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
+
+    # BeerJSON version tracking
+    beerjson_version: Mapped[str] = mapped_column(String(10), default="1.0")
+
+    # Format-specific extensions (JSON)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Yeast info (extracted from BeerXML, preserved for backward compatibility)
     yeast_name: Mapped[Optional[str]] = mapped_column(String(100))
     yeast_lab: Mapped[Optional[str]] = mapped_column(String(100))
     yeast_product_id: Mapped[Optional[str]] = mapped_column(String(50))
@@ -266,25 +285,12 @@ class Recipe(Base):
     yeast_temp_max: Mapped[Optional[float]] = mapped_column()  # Celsius
     yeast_attenuation: Mapped[Optional[float]] = mapped_column()  # Percent
 
-    # Other targets
-    ibu_target: Mapped[Optional[float]] = mapped_column()
-    srm_target: Mapped[Optional[float]] = mapped_column()
-    abv_target: Mapped[Optional[float]] = mapped_column()
-    batch_size: Mapped[Optional[float]] = mapped_column()  # Liters
-
-    # Raw BeerXML for future re-parsing
-    beerxml_content: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Expanded BeerXML fields
+    # Expanded BeerXML fields (preserved for backward compatibility)
     brewer: Mapped[Optional[str]] = mapped_column(String(100))
     asst_brewer: Mapped[Optional[str]] = mapped_column(String(100))
 
     # Boil
     boil_size_l: Mapped[Optional[float]] = mapped_column()  # Pre-boil volume (liters)
-    boil_time_min: Mapped[Optional[int]] = mapped_column()  # Total boil time
-
-    # Efficiency
-    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
     # Fermentation stages
     primary_age_days: Mapped[Optional[int]] = mapped_column()
@@ -298,8 +304,7 @@ class Recipe(Base):
     age_days: Mapped[Optional[int]] = mapped_column()
     age_temp_c: Mapped[Optional[float]] = mapped_column()
 
-    # Carbonation
-    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+    # Carbonation details
     forced_carbonation: Mapped[Optional[bool]] = mapped_column()
     priming_sugar_name: Mapped[Optional[str]] = mapped_column(String(50))
     priming_sugar_amount_kg: Mapped[Optional[float]] = mapped_column()
@@ -311,8 +316,11 @@ class Recipe(Base):
     # Dates
     date: Mapped[Optional[str]] = mapped_column(String(50))  # Brew date from BeerXML
 
-    # Metadata
+    # Notes and legacy
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    beerxml_content: Mapped[Optional[str]] = mapped_column(Text)  # Raw BeerXML for future re-parsing
+
+    # Timestamps
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

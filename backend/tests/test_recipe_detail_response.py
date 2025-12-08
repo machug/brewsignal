@@ -1,7 +1,7 @@
 """Integration test for recipe detail response with ingredients."""
 
 import pytest
-from backend.models import Recipe, RecipeFermentable, RecipeHop, RecipeYeast, RecipeMisc
+from backend.models import Recipe, RecipeFermentable, RecipeHop, RecipeCulture, RecipeMisc
 from backend.database import get_db, init_db
 
 
@@ -15,10 +15,10 @@ async def test_recipe_detail_response_with_ingredients():
         recipe = Recipe(
             name="Test IPA with Ingredients",
             author="Test Brewer",
-            og_target=1.065,
-            fg_target=1.012,
-            ibu_target=60.0,
-            batch_size=20.0,
+            og=1.065,
+            fg=1.012,
+            ibu=60.0,
+            batch_size_liters=20.0,
         )
         db.add(recipe)
         await db.commit()
@@ -28,20 +28,20 @@ async def test_recipe_detail_response_with_ingredients():
         fermentable1 = RecipeFermentable(
             recipe_id=recipe.id,
             name="Pale Malt 2-Row",
-            type="Grain",
+            type="grain",
             amount_kg=5.0,
             yield_percent=80.0,
-            color_lovibond=2.0,
+            color_srm=2.0,
             origin="US",
             supplier="Briess"
         )
         fermentable2 = RecipeFermentable(
             recipe_id=recipe.id,
             name="Munich Malt",
-            type="Grain",
+            type="grain",
             amount_kg=0.5,
             yield_percent=78.0,
-            color_lovibond=10.0,
+            color_srm=10.0,
         )
         db.add(fermentable1)
         db.add(fermentable2)
@@ -50,40 +50,38 @@ async def test_recipe_detail_response_with_ingredients():
         hop1 = RecipeHop(
             recipe_id=recipe.id,
             name="Cascade",
-            alpha_percent=5.5,
-            amount_kg=0.028,
-            use="Boil",
-            time_min=60,
-            form="Pellet",
-            type="Bittering"
+            alpha_acid_percent=5.5,
+            amount_grams=28.0,
+            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
+            form="pellet",
+            origin="US"
         )
         hop2 = RecipeHop(
             recipe_id=recipe.id,
             name="Citra",
-            alpha_percent=12.0,
-            amount_kg=0.056,
-            use="Dry Hop",
-            time_min=7,
-            form="Pellet",
-            type="Aroma"
+            alpha_acid_percent=12.0,
+            amount_grams=56.0,
+            timing={"use": "add_to_fermentation", "phase": "primary", "duration": {"value": 7, "unit": "day"}},
+            form="pellet",
+            origin="US"
         )
         db.add(hop1)
         db.add(hop2)
 
-        # Add yeast
-        yeast = RecipeYeast(
+        # Add culture (yeast)
+        culture = RecipeCulture(
             recipe_id=recipe.id,
             name="Safale US-05",
-            lab="Fermentis",
+            producer="Fermentis",
             product_id="US-05",
-            type="Ale",
-            form="Dry",
-            attenuation_percent=81.0,
+            type="ale",
+            form="dry",
+            attenuation_min_percent=81.0,
+            attenuation_max_percent=81.0,
             temp_min_c=15.0,
             temp_max_c=24.0,
-            flocculation="Medium"
         )
-        db.add(yeast)
+        db.add(culture)
 
         # Add misc
         misc = RecipeMisc(
@@ -109,7 +107,7 @@ async def test_recipe_detail_response_with_ingredients():
             .options(
                 selectinload(Recipe.fermentables),
                 selectinload(Recipe.hops),
-                selectinload(Recipe.yeasts),
+                selectinload(Recipe.cultures),
                 selectinload(Recipe.miscs),
             )
         )
@@ -119,7 +117,7 @@ async def test_recipe_detail_response_with_ingredients():
         assert loaded_recipe.name == "Test IPA with Ingredients"
         assert len(loaded_recipe.fermentables) == 2
         assert len(loaded_recipe.hops) == 2
-        assert len(loaded_recipe.yeasts) == 1
+        assert len(loaded_recipe.cultures) == 1
         assert len(loaded_recipe.miscs) == 1
 
         # Verify fermentable data
@@ -129,13 +127,11 @@ async def test_recipe_detail_response_with_ingredients():
 
         # Verify hop data
         assert loaded_recipe.hops[0].name == "Cascade"
-        assert loaded_recipe.hops[0].use == "Boil"
         assert loaded_recipe.hops[1].name == "Citra"
-        assert loaded_recipe.hops[1].use == "Dry Hop"
 
-        # Verify yeast data
-        assert loaded_recipe.yeasts[0].name == "Safale US-05"
-        assert loaded_recipe.yeasts[0].lab == "Fermentis"
+        # Verify culture data
+        assert loaded_recipe.cultures[0].name == "Safale US-05"
+        assert loaded_recipe.cultures[0].producer == "Fermentis"
 
         # Verify misc data
         assert loaded_recipe.miscs[0].name == "Irish Moss"
@@ -148,7 +144,7 @@ async def test_recipe_detail_response_with_ingredients():
         assert response.name == "Test IPA with Ingredients"
         assert len(response.fermentables) == 2
         assert len(response.hops) == 2
-        assert len(response.yeasts) == 1
+        assert len(response.cultures) == 1
         assert len(response.miscs) == 1
 
         # Verify serialization to dict
@@ -157,7 +153,7 @@ async def test_recipe_detail_response_with_ingredients():
         assert len(response_dict["fermentables"]) == 2
         assert response_dict["fermentables"][0]["name"] == "Pale Malt 2-Row"
         assert response_dict["hops"][0]["name"] == "Cascade"
-        assert response_dict["yeasts"][0]["name"] == "Safale US-05"
+        assert response_dict["cultures"][0]["name"] == "Safale US-05"
         assert response_dict["miscs"][0]["name"] == "Irish Moss"
 
         break

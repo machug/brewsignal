@@ -3,7 +3,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from backend.main import app
-from backend.models import Recipe, RecipeFermentable, RecipeHop, RecipeYeast, RecipeMisc
+from backend.models import Recipe, RecipeFermentable, RecipeHop, RecipeCulture, RecipeMisc
 from backend.database import get_db, init_db
 
 
@@ -17,8 +17,8 @@ async def test_get_recipe_endpoint_with_ingredients():
         recipe = Recipe(
             name="API Test IPA",
             author="API Tester",
-            og_target=1.060,
-            ibu_target=50.0,
+            og=1.060,
+            ibu=50.0,
         )
         db.add(recipe)
         await db.commit()
@@ -28,25 +28,25 @@ async def test_get_recipe_endpoint_with_ingredients():
         fermentable = RecipeFermentable(
             recipe_id=recipe.id,
             name="Test Malt",
-            type="Grain",
+            type="grain",
             amount_kg=4.5,
             yield_percent=80.0,
-            color_lovibond=3.0,
+            color_srm=3.0,
         )
         hop = RecipeHop(
             recipe_id=recipe.id,
             name="Test Hop",
-            alpha_percent=7.5,
-            amount_kg=0.025,
-            use="Boil",
-            time_min=60,
+            alpha_acid_percent=7.5,
+            amount_grams=25.0,
+            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
         )
-        yeast = RecipeYeast(
+        culture = RecipeCulture(
             recipe_id=recipe.id,
             name="Test Yeast",
-            lab="Test Lab",
-            type="Ale",
-            attenuation_percent=75.0,
+            producer="Test Lab",
+            type="ale",
+            attenuation_min_percent=75.0,
+            attenuation_max_percent=75.0,
         )
         misc = RecipeMisc(
             recipe_id=recipe.id,
@@ -55,7 +55,7 @@ async def test_get_recipe_endpoint_with_ingredients():
             use="Boil",
             time_min=10,
         )
-        db.add_all([fermentable, hop, yeast, misc])
+        db.add_all([fermentable, hop, culture, misc])
         await db.commit()
 
         recipe_id = recipe.id
@@ -73,29 +73,27 @@ async def test_get_recipe_endpoint_with_ingredients():
     assert data["id"] == recipe_id
     assert data["name"] == "API Test IPA"
     assert data["author"] == "API Tester"
-    assert data["og_target"] == 1.060
-    assert data["ibu_target"] == 50.0
+    assert data["og"] == 1.060
+    assert data["ibu"] == 50.0
 
     # Verify ingredients are included
     assert "fermentables" in data
     assert "hops" in data
-    assert "yeasts" in data
+    assert "cultures" in data
     assert "miscs" in data
 
     # Verify ingredient data
     assert len(data["fermentables"]) == 1
     assert data["fermentables"][0]["name"] == "Test Malt"
     assert data["fermentables"][0]["amount_kg"] == 4.5
-    assert data["fermentables"][0]["type"] == "Grain"
+    assert data["fermentables"][0]["type"] == "grain"
 
     assert len(data["hops"]) == 1
     assert data["hops"][0]["name"] == "Test Hop"
-    assert data["hops"][0]["use"] == "Boil"
-    assert data["hops"][0]["time_min"] == 60
 
-    assert len(data["yeasts"]) == 1
-    assert data["yeasts"][0]["name"] == "Test Yeast"
-    assert data["yeasts"][0]["lab"] == "Test Lab"
+    assert len(data["cultures"]) == 1
+    assert data["cultures"][0]["name"] == "Test Yeast"
+    assert data["cultures"][0]["producer"] == "Test Lab"
 
     assert len(data["miscs"]) == 1
     assert data["miscs"][0]["name"] == "Test Misc"
@@ -111,7 +109,7 @@ async def test_get_recipe_endpoint_empty_ingredients():
         # Create a recipe without ingredients
         recipe = Recipe(
             name="Empty Recipe",
-            og_target=1.050,
+            og=1.050,
         )
         db.add(recipe)
         await db.commit()
@@ -130,5 +128,5 @@ async def test_get_recipe_endpoint_empty_ingredients():
     # Verify empty ingredient arrays
     assert data["fermentables"] == []
     assert data["hops"] == []
-    assert data["yeasts"] == []
+    assert data["cultures"] == []
     assert data["miscs"] == []

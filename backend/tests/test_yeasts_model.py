@@ -1,11 +1,11 @@
 import pytest
-from backend.models import Recipe, RecipeYeast
+from backend.models import Recipe, RecipeCulture
 from backend.database import get_db, init_db
 
 
 @pytest.mark.asyncio
-async def test_create_yeast_with_recipe():
-    """Test creating yeast linked to a recipe."""
+async def test_create_culture_with_recipe():
+    """Test creating culture (yeast) linked to a recipe."""
     await init_db()
 
     async for db in get_db():
@@ -14,22 +14,22 @@ async def test_create_yeast_with_recipe():
         await db.commit()
         await db.refresh(recipe)
 
-        yeast = RecipeYeast(
+        culture = RecipeCulture(
             recipe_id=recipe.id,
             name="Safale US-05",
-            lab="Fermentis",
+            producer="Fermentis",
             product_id="US-05",
-            type="Ale",
-            form="Dry",
-            attenuation_percent=81.0,
+            type="ale",
+            form="dry",
+            attenuation_min_percent=81.0,
+            attenuation_max_percent=81.0,
             temp_min_c=15.0,
             temp_max_c=24.0,
-            flocculation="Medium"
         )
-        db.add(yeast)
+        db.add(culture)
         await db.commit()
-        await db.refresh(yeast)
+        await db.refresh(culture)
 
-        assert yeast.id is not None
-        assert yeast.name == "Safale US-05"
+        assert culture.id is not None
+        assert culture.name == "Safale US-05"
         break

@@ -48,15 +48,14 @@ class BeerJSONValidator:
         """
         try:
             # Try modern approach with referencing library (jsonschema 4.18+)
-            # NOTE: Currently disabled due to missing timing.json schema file in BeerJSON schemas.
-            # The schemas reference "timing.json#/definitions/TimingType" but timing.json doesn't exist.
-            # TODO: File issue with BeerJSON schema repository requesting timing.json schema file
-            # Repository: https://github.com/beerjson/beerjson
-            # Once timing.json is added, remove the raise ImportError below to enable modern referencing
-            raise ImportError("Using RefResolver fallback until timing.json schema is available")
+            # NOTE: Multiple schema files are missing from official BeerJSON repository:
+            # - timing.json (created locally from spec docs)
+            # - mash_step.json, boil_step.json, packaging_vessel.json (not yet created)
+            # Using RefResolver fallback until all missing schemas are available
+            raise ImportError("Using RefResolver fallback - missing mash_step.json, boil_step.json, packaging_vessel.json")
 
-            from referencing import Registry, Resource  # noqa: F401
-            from referencing.jsonschema import DRAFT7  # noqa: F401
+            from referencing import Registry, Resource
+            from referencing.jsonschema import DRAFT7
 
             # Build registry from schema files
             # We need to register both by $id and by filename

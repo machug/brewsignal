@@ -143,7 +143,7 @@ class BeerJSONValidator:
         """
         beerjson_doc = {
             "beerjson": {
-                "version": "1.0",
+                "version": 1.0,  # BeerJSON schema expects number, not string
                 "recipes": [recipe]
             }
         }

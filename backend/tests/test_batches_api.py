@@ -128,8 +128,8 @@ async def test_batch_progress(client):
     # Create recipe with targets
     recipe_response = await client.post("/api/recipes", json={
         "name": "Progress Test",
-        "og_target": 1.050,
-        "fg_target": 1.010,
+        "og": 1.050,
+        "fg": 1.010,
         "yeast_temp_min": 18.0,
         "yeast_temp_max": 22.0,
     })

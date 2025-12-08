@@ -373,14 +373,14 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     targets = {}
     if batch.recipe:
         targets = {
-            "og": batch.recipe.og_target,
-            "fg": batch.recipe.fg_target,
+            "og": batch.recipe.og,
+            "fg": batch.recipe.fg,
             "attenuation": None,
-            "abv": batch.recipe.abv_target,
+            "abv": batch.recipe.abv,
         }
-        if batch.recipe.og_target and batch.recipe.fg_target:
+        if batch.recipe.og and batch.recipe.fg:
             targets["attenuation"] = round(
-                ((batch.recipe.og_target - batch.recipe.fg_target) / (batch.recipe.og_target - 1.0)) * 100, 1
+                ((batch.recipe.og - batch.recipe.fg) / (batch.recipe.og - 1.0)) * 100, 1
             )
 
     # Calculate measured values

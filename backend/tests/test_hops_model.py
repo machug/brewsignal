@@ -9,7 +9,7 @@ async def test_create_hop_with_recipe():
     await init_db()
 
     async for db in get_db():
-        recipe = Recipe(name="Test IPA", og_target=1.065)
+        recipe = Recipe(name="Test IPA", og=1.065)
         db.add(recipe)
         await db.commit()
         await db.refresh(recipe)
@@ -17,12 +17,11 @@ async def test_create_hop_with_recipe():
         hop = RecipeHop(
             recipe_id=recipe.id,
             name="Cascade",
-            alpha_percent=5.5,
-            amount_kg=0.028,  # 28g = 1oz
-            use="Boil",
-            time_min=60,
+            alpha_acid_percent=5.5,
+            amount_grams=28.0,  # 28g = 1oz
             form="Pellet",
-            type="Bittering"
+            timing={"use": "Boil", "time": 60, "duration": {"value": 60, "unit": "min"}},
+            format_extensions={"hop_type": "Bittering"}
         )
         db.add(hop)
         await db.commit()
@@ -30,6 +29,6 @@ async def test_create_hop_with_recipe():
 
         assert hop.id is not None
         assert hop.name == "Cascade"
-        assert hop.use == "Boil"
-        assert hop.time_min == 60
+        assert hop.timing["use"] == "Boil"
+        assert hop.timing["time"] == 60
         break

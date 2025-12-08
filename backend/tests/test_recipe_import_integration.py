@@ -133,7 +133,7 @@ async def test_import_full_recipe():
             .options(
                 selectinload(Recipe.fermentables),
                 selectinload(Recipe.hops),
-                selectinload(Recipe.yeasts)
+                selectinload(Recipe.cultures)
             )
         )
         recipe = result.scalar_one()
@@ -143,8 +143,8 @@ async def test_import_full_recipe():
         assert recipe.fermentables[0].name == "Pale Malt"
         assert len(recipe.hops) == 1
         assert recipe.hops[0].name == "Cascade"
-        assert len(recipe.yeasts) == 1
-        assert recipe.yeasts[0].name == "US-05"
+        assert len(recipe.cultures) == 1
+        assert recipe.cultures[0].name == "US-05"
         break
 
 
@@ -166,7 +166,7 @@ async def test_import_complex_recipe_with_all_fields():
             .options(
                 selectinload(Recipe.fermentables),
                 selectinload(Recipe.hops),
-                selectinload(Recipe.yeasts),
+                selectinload(Recipe.cultures),
                 selectinload(Recipe.miscs)
             )
         )
@@ -175,12 +175,12 @@ async def test_import_complex_recipe_with_all_fields():
         # Verify recipe fields
         assert recipe.name == "Complex IPA"
         assert recipe.author == "Test Brewer"
-        assert recipe.og_target == 1.068
-        assert recipe.fg_target == 1.014
-        assert recipe.ibu_target == 65
-        assert recipe.srm_target == 8.5
-        assert recipe.abv_target == 7.1
-        assert recipe.batch_size == 20.0
+        assert recipe.og == 1.068
+        assert recipe.fg == 1.014
+        assert recipe.ibu == 65
+        assert recipe.color_srm == 8.5
+        assert recipe.abv == 7.1
+        assert recipe.batch_size_liters == 20.0
 
         # Verify fermentables
         assert len(recipe.fermentables) == 2
@@ -214,8 +214,8 @@ async def test_import_complex_recipe_with_all_fields():
         assert citra.time_min == 7
 
         # Verify yeasts
-        assert len(recipe.yeasts) == 1
-        yeast = recipe.yeasts[0]
+        assert len(recipe.cultures) == 1
+        yeast = recipe.cultures[0]
         assert yeast.name == "Safale US-05"
         assert yeast.lab == "Fermentis"
         assert yeast.product_id == "US-05"

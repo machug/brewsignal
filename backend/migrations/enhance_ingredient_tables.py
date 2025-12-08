@@ -38,6 +38,8 @@ async def _check_column_exists(conn: AsyncConnection, table: str, column: str) -
     """
     if table not in ALLOWED_TABLES:
         raise ValueError(f"Invalid table name: {table}")
+    # SAFETY: f-string is safe here because table name is validated against whitelist above.
+    # SQLite PRAGMA commands do not support parameter binding, so f-string is required.
     result = await conn.execute(text(f"PRAGMA table_info({table})"))
     columns = {row[1] for row in result}
     return column in columns

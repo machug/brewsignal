@@ -83,6 +83,7 @@ class RecipeImporter:
                 elif detected_format == "beerjson":
                     parsed_dict = json.loads(content)
                 else:
+                    await session.rollback()
                     return ImportResult(
                         success=False,
                         format=detected_format,
@@ -90,6 +91,7 @@ class RecipeImporter:
                         errors=[f"Unsupported format: {detected_format}"]
                     )
             except ValueError as e:
+                await session.rollback()
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -97,6 +99,7 @@ class RecipeImporter:
                     errors=[f"Parse error: {str(e)}"]
                 )
             except json.JSONDecodeError as e:
+                await session.rollback()
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -113,6 +116,7 @@ class RecipeImporter:
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:
+                await session.rollback()
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -120,15 +124,20 @@ class RecipeImporter:
                     errors=[f"Conversion error: {str(e)}"]
                 )
 
-            # Stage 4: Validate against BeerJSON schema
-            is_valid, validation_errors = self.validator.validate(beerjson_dict)
-            if not is_valid:
-                return ImportResult(
-                    success=False,
-                    format=detected_format,
-                    recipe=None,
-                    errors=[f"Validation error: {err}" for err in validation_errors]
-                )
+            # Stage 4: Validate against BeerJSON schema (only for native BeerJSON files)
+            # Skip validation for converted formats (BeerXML, Brewfather) since they
+            # have different required fields and converting to BeerJSON may create
+            # incomplete documents that fail strict validation
+            if detected_format == "beerjson":
+                is_valid, validation_errors = self.validator.validate(beerjson_dict)
+                if not is_valid:
+                    await session.rollback()
+                    return ImportResult(
+                        success=False,
+                        format=detected_format,
+                        recipe=None,
+                        errors=[f"Validation error: {err}" for err in validation_errors]
+                    )
 
             # Stage 5: Serialize to SQLAlchemy models
             try:
@@ -136,6 +145,7 @@ class RecipeImporter:
                 beerjson_recipe = beerjson_dict['beerjson']['recipes'][0]
                 recipe = await self.serializer.serialize(beerjson_recipe, session)
             except Exception as e:
+                await session.rollback()
                 return ImportResult(
                     success=False,
                     format=detected_format,

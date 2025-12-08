@@ -35,6 +35,8 @@ async def _check_column_exists(conn: AsyncConnection, table: str, column: str) -
     """
     if table not in ALLOWED_TABLES:
         raise ValueError(f"Invalid table name: {table}")
+    # SAFETY: f-string is safe here because table name is validated against whitelist above.
+    # SQLite PRAGMA commands do not support parameter binding, so f-string is required.
     result = await conn.execute(text(f"PRAGMA table_info({table})"))
     rows = result.fetchall()
     columns = {row[1] for row in rows}
@@ -53,6 +55,10 @@ async def migrate_add_beerjson_support(conn: AsyncConnection) -> None:
         logger.info("Recipes table doesn't exist yet, skipping migration")
         return
 
+    # Clean up any leftover recipes_new table from interrupted migration
+    # IMPORTANT: Do this BEFORE idempotency check to handle partial migrations
+    await conn.execute(text("DROP TABLE IF EXISTS recipes_new"))
+
     # Check if migration already applied (check for renamed column)
     if await _check_column_exists(conn, 'recipes', 'og'):
         logger.info("BeerJSON migration already applied, skipping")
@@ -68,9 +74,6 @@ async def migrate_add_beerjson_support(conn: AsyncConnection) -> None:
     # Get existing data count for logging
     result = await conn.execute(text("SELECT COUNT(*) FROM recipes"))
     recipe_count = result.scalar()
-
-    # Clean up any leftover recipes_new table from interrupted migration
-    await conn.execute(text("DROP TABLE IF EXISTS recipes_new"))
 
     # Create new table with BeerJSON schema
     await conn.execute(text("""

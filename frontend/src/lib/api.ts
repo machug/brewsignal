@@ -147,12 +147,19 @@ export interface FermentableResponse {
 export interface HopResponse {
 	id: number;
 	name: string;
-	alpha_percent?: number;
-	amount_kg?: number;
-	use?: string;
-	time_min?: number;
+	origin?: string;
 	form?: string;
-	type?: string;
+	alpha_acid_percent?: number;
+	beta_acid_percent?: number;
+	amount_grams?: number;
+	timing?: {
+		use?: string;
+		duration?: {
+			value?: number;
+			unit?: string;
+		};
+	};
+	format_extensions?: any;
 }
 
 export interface YeastResponse {
@@ -183,20 +190,21 @@ export interface RecipeResponse {
 	author?: string;
 	style_id?: string;
 	type?: string;
-	og_target?: number;
-	fg_target?: number;
+	og?: number;
+	fg?: number;
 	yeast_name?: string;
 	yeast_lab?: string;
 	yeast_product_id?: string;
 	yeast_temp_min?: number;
 	yeast_temp_max?: number;
 	yeast_attenuation?: number;
-	ibu_target?: number;
-	srm_target?: number;
-	abv_target?: number;
-	batch_size?: number;
+	ibu?: number;
+	color_srm?: number;
+	abv?: number;
+	batch_size_liters?: number;
 	notes?: string;
 	created_at: string;
+	style?: { id: string; name: string };
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];
 	hops?: HopResponse[];

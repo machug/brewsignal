@@ -10,7 +10,7 @@ async def test_create_fermentable_with_recipe():
 
     async for db in get_db():
         # Create a recipe
-        recipe = Recipe(name="Test IPA", og_target=1.060)
+        recipe = Recipe(name="Test IPA", og=1.060)
         db.add(recipe)
         await db.commit()
         await db.refresh(recipe)
@@ -22,7 +22,7 @@ async def test_create_fermentable_with_recipe():
             type="Grain",
             amount_kg=5.0,
             yield_percent=80.0,
-            color_lovibond=2.0,
+            color_srm=2.0,
             origin="US",
             supplier="Briess"
         )

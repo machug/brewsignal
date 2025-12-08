@@ -13,7 +13,7 @@ async def test_recipe_with_expanded_fields():
             brewer="Test Brewer",
             asst_brewer="Assistant",
             boil_size_l=27.0,
-            boil_time_min=60,
+            boil_time_minutes=60,
             efficiency_percent=75.0,
             primary_age_days=14,
             primary_temp_c=20.0,
@@ -29,6 +29,6 @@ async def test_recipe_with_expanded_fields():
         await db.commit()
 
         assert recipe.brewer == "Test Brewer"
-        assert recipe.boil_time_min == 60
+        assert recipe.boil_time_minutes == 60
         assert recipe.primary_age_days == 14
         break

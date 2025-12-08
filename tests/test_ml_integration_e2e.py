@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import text
 from backend.main import handle_tilt_reading
 from backend.scanner import TiltReading
-from backend.database import async_session_factory
+from backend.database import async_session_factory, init_db
 from backend.models import Reading, Device
 from backend.ml.pipeline_manager import MLPipelineManager
 
@@ -23,6 +23,9 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
     - Database storage with ML outputs
     - WebSocket broadcast
     """
+    # Initialize database
+    await init_db()
+
     # Initialize ML pipeline manager for test
     import backend.main
     backend.main.ml_pipeline_manager = MLPipelineManager()
@@ -131,6 +134,9 @@ async def test_anomaly_detection_in_production(mock_link, mock_ws):
     - Anomaly detection flags unusual readings
     - System continues operating normally
     """
+    # Initialize database
+    await init_db()
+
     # Initialize ML pipeline manager for test
     import backend.main
     backend.main.ml_pipeline_manager = MLPipelineManager()

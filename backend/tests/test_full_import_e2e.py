@@ -55,7 +55,7 @@ async def test_full_import_with_realistic_beerxml():
                 selectinload(Recipe.style),
                 selectinload(Recipe.fermentables),
                 selectinload(Recipe.hops),
-                selectinload(Recipe.yeasts),
+                selectinload(Recipe.cultures),
                 selectinload(Recipe.miscs),
             )
         )
@@ -67,18 +67,18 @@ async def test_full_import_with_realistic_beerxml():
         assert recipe.type == "All Grain"
 
         # Stats
-        assert recipe.og_target == 1.065
-        assert recipe.fg_target == 1.012
-        assert recipe.ibu_target == 65
-        assert recipe.srm_target == 8.5
-        assert recipe.abv_target == 7.0
-        assert recipe.batch_size == 20.0
+        assert recipe.og == 1.065
+        assert recipe.fg == 1.012
+        assert recipe.ibu == 65
+        assert recipe.color_srm == 8.5
+        assert recipe.abv == 7.0
+        assert recipe.batch_size_liters == 20.0
 
         # Expanded fields
         assert recipe.brewer == "John Brewer"
         assert recipe.asst_brewer == "Jane Assistant"
         assert recipe.boil_size_l == 27.0
-        assert recipe.boil_time_min == 60
+        assert recipe.boil_time_minutes == 60
         assert recipe.efficiency_percent == 75.0
 
         # Fermentation
@@ -215,10 +215,10 @@ async def test_full_import_with_realistic_beerxml():
         assert total_dry_hop_kg == pytest.approx(0.112, rel=0.01)
 
         # ========== YEASTS ==========
-        assert len(recipe.yeasts) == 2, "Should have 2 yeast options"
+        assert len(recipe.cultures) == 2, "Should have 2 yeast options"
 
         # Safale US-05 (Dry)
-        us05 = next(y for y in recipe.yeasts if y.name == "Safale US-05")
+        us05 = next(y for y in recipe.cultures if y.name == "Safale US-05")
         assert us05.lab == "Fermentis"
         assert us05.product_id == "US-05"
         assert us05.type == "Ale"
@@ -235,7 +235,7 @@ async def test_full_import_with_realistic_beerxml():
         assert us05.max_reuse == 5
 
         # WLP001 (Liquid)
-        wlp001 = next(y for y in recipe.yeasts if y.product_id == "WLP001")
+        wlp001 = next(y for y in recipe.cultures if y.product_id == "WLP001")
         assert wlp001.name == "White Labs WLP001 California Ale"
         assert wlp001.lab == "White Labs"
         assert wlp001.form == "Liquid"
@@ -280,10 +280,10 @@ async def test_full_import_with_realistic_beerxml():
 
         print("\n=== E2E Test Summary ===")
         print(f"Recipe: {recipe.name} ({recipe.type})")
-        print(f"Stats: OG {recipe.og_target} → FG {recipe.fg_target}, {recipe.abv_target}% ABV, {recipe.ibu_target} IBU")
+        print(f"Stats: OG {recipe.og} → FG {recipe.fg}, {recipe.abv}% ABV, {recipe.ibu} IBU")
         print(f"Fermentables: {len(recipe.fermentables)} ({total_grain_kg:.2f} kg total)")
         print(f"Hops: {len(boil_hops)} boil additions, {len(dry_hops)} dry hop additions")
-        print(f"Yeasts: {len(recipe.yeasts)} options")
+        print(f"Yeasts: {len(recipe.cultures)} options")
         print(f"Misc: {len(recipe.miscs)} ingredients")
         print("========================\n")
 
@@ -319,7 +319,7 @@ async def test_api_endpoint_returns_full_recipe():
         # Verify all ingredients are included in response
         assert len(recipe_response.fermentables) == 3
         assert len(recipe_response.hops) == 6
-        assert len(recipe_response.yeasts) == 2
+        assert len(recipe_response.cultures) == 2
 
         # Verify fermentable data structure
         assert recipe_response.fermentables[0].name == "Pale Malt 2-Row"
@@ -331,14 +331,14 @@ async def test_api_endpoint_returns_full_recipe():
         assert magnum.use == "Boil"
 
         # Verify yeast data structure
-        us05 = next(y for y in recipe_response.yeasts if y.product_id == "US-05")
+        us05 = next(y for y in recipe_response.cultures if y.product_id == "US-05")
         assert us05.lab == "Fermentis"
         assert us05.attenuation_percent == 81.0
 
         print("\n=== API Response Test ===")
         print(f"Recipe ID: {recipe_response.id}")
         print(f"Ingredients in response: {len(recipe_response.fermentables)} fermentables, "
-              f"{len(recipe_response.hops)} hops, {len(recipe_response.yeasts)} yeasts")
+              f"{len(recipe_response.hops)} hops, {len(recipe_response.cultures)} yeasts")
         print("=========================\n")
 
         break

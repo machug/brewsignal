@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
-from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, false
+from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -245,20 +245,39 @@ class Style(Base):
 
 
 class Recipe(Base):
-    """Recipes imported from BeerXML or created manually."""
+    """Recipes following BeerJSON 1.0 schema (with BeerXML backward compatibility)."""
     __tablename__ = "recipes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    author: Mapped[Optional[str]] = mapped_column(String(100))
-    style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
     type: Mapped[Optional[str]] = mapped_column(String(50))  # "All Grain", "Extract", etc.
+    author: Mapped[Optional[str]] = mapped_column(String(100))
 
-    # Gravity targets
-    og_target: Mapped[Optional[float]] = mapped_column()
-    fg_target: Mapped[Optional[float]] = mapped_column()
+    # Recipe vitals
+    batch_size_liters: Mapped[Optional[float]] = mapped_column()
+    boil_time_minutes: Mapped[Optional[int]] = mapped_column()
+    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
-    # Yeast info (extracted from BeerXML)
+    # Gravity targets (renamed from *_target)
+    og: Mapped[Optional[float]] = mapped_column()
+    fg: Mapped[Optional[float]] = mapped_column()
+    abv: Mapped[Optional[float]] = mapped_column()
+    ibu: Mapped[Optional[float]] = mapped_column()
+    color_srm: Mapped[Optional[float]] = mapped_column()  # renamed from srm_target
+    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+
+    # Style reference
+    style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
+
+    # BeerJSON version tracking
+    beerjson_version: Mapped[str] = mapped_column(String(10), default="1.0")
+
+    # Format-specific extensions (JSON)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Yeast info (extracted from BeerXML, preserved for backward compatibility)
     yeast_name: Mapped[Optional[str]] = mapped_column(String(100))
     yeast_lab: Mapped[Optional[str]] = mapped_column(String(100))
     yeast_product_id: Mapped[Optional[str]] = mapped_column(String(50))
@@ -266,25 +285,12 @@ class Recipe(Base):
     yeast_temp_max: Mapped[Optional[float]] = mapped_column()  # Celsius
     yeast_attenuation: Mapped[Optional[float]] = mapped_column()  # Percent
 
-    # Other targets
-    ibu_target: Mapped[Optional[float]] = mapped_column()
-    srm_target: Mapped[Optional[float]] = mapped_column()
-    abv_target: Mapped[Optional[float]] = mapped_column()
-    batch_size: Mapped[Optional[float]] = mapped_column()  # Liters
-
-    # Raw BeerXML for future re-parsing
-    beerxml_content: Mapped[Optional[str]] = mapped_column(Text)
-
-    # Expanded BeerXML fields
+    # Expanded BeerXML fields (preserved for backward compatibility)
     brewer: Mapped[Optional[str]] = mapped_column(String(100))
     asst_brewer: Mapped[Optional[str]] = mapped_column(String(100))
 
     # Boil
     boil_size_l: Mapped[Optional[float]] = mapped_column()  # Pre-boil volume (liters)
-    boil_time_min: Mapped[Optional[int]] = mapped_column()  # Total boil time
-
-    # Efficiency
-    efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
     # Fermentation stages
     primary_age_days: Mapped[Optional[int]] = mapped_column()
@@ -298,8 +304,7 @@ class Recipe(Base):
     age_days: Mapped[Optional[int]] = mapped_column()
     age_temp_c: Mapped[Optional[float]] = mapped_column()
 
-    # Carbonation
-    carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+    # Carbonation details
     forced_carbonation: Mapped[Optional[bool]] = mapped_column()
     priming_sugar_name: Mapped[Optional[str]] = mapped_column(String(50))
     priming_sugar_amount_kg: Mapped[Optional[float]] = mapped_column()
@@ -311,8 +316,11 @@ class Recipe(Base):
     # Dates
     date: Mapped[Optional[str]] = mapped_column(String(50))  # Brew date from BeerXML
 
-    # Metadata
+    # Notes and legacy
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    beerxml_content: Mapped[Optional[str]] = mapped_column(Text)  # Raw BeerXML for future re-parsing
+
+    # Timestamps
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -321,8 +329,12 @@ class Recipe(Base):
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
     fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    yeasts: Mapped[list["RecipeYeast"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 
 class Batch(Base):
@@ -386,17 +398,25 @@ class RecipeFermentable(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50))  # Grain, Sugar, Extract, Dry Extract, Adjunct
+    type: Mapped[Optional[str]] = mapped_column(String(50))  # base, adjunct, sugar, grain, non-malt adjunct
+    grain_group: Mapped[Optional[str]] = mapped_column(String(50))  # base, caramel, roasted, etc.
     amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
+    percentage: Mapped[Optional[float]] = mapped_column()  # % of grain bill (0-100)
     yield_percent: Mapped[Optional[float]] = mapped_column()  # % yield (0-100)
-    color_lovibond: Mapped[Optional[float]] = mapped_column()  # SRM/Lovibond
+    color_srm: Mapped[Optional[float]] = mapped_column()  # SRM color (renamed from color_lovibond)
 
     # Additional metadata
     origin: Mapped[Optional[str]] = mapped_column(String(50))
     supplier: Mapped[Optional[str]] = mapped_column(String(100))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Advanced BeerXML fields (optional)
     add_after_boil: Mapped[Optional[bool]] = mapped_column(default=False)
@@ -410,6 +430,11 @@ class RecipeFermentable(Base):
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="fermentables")
 
+    @property
+    def color_lovibond(self) -> Optional[float]:
+        """Alias for color_srm for backward compatibility."""
+        return self.color_srm
+
 
 class RecipeHop(Base):
     """Hop additions in a recipe."""
@@ -418,66 +443,258 @@ class RecipeHop(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    alpha_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
-    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
-    use: Mapped[str] = mapped_column(String(20))  # Boil, Dry Hop, Mash, First Wort, Aroma
-    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (0 for dry hop timing, or days)
-
-    # Hop characteristics
-    form: Mapped[Optional[str]] = mapped_column(String(20))  # Pellet, Plug, Leaf
-    type: Mapped[Optional[str]] = mapped_column(String(20))  # Bittering, Aroma, Both
     origin: Mapped[Optional[str]] = mapped_column(String(50))
-    substitutes: Mapped[Optional[str]] = mapped_column(String(200))
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # pellet, leaf, plug, powder, extract
+    alpha_acid_percent: Mapped[float] = mapped_column(nullable=False)  # AA% (0-100), renamed from alpha_percent
+    beta_acid_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %, renamed from beta_percent
+    amount_grams: Mapped[float] = mapped_column(nullable=False)  # Amount in grams (renamed from amount_kg)
 
-    # Advanced BeerXML fields
-    beta_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %
-    hsi: Mapped[Optional[float]] = mapped_column()  # Hop Storage Index
-    humulene: Mapped[Optional[float]] = mapped_column()  # %
-    caryophyllene: Mapped[Optional[float]] = mapped_column()  # %
-    cohumulone: Mapped[Optional[float]] = mapped_column()  # %
-    myrcene: Mapped[Optional[float]] = mapped_column()  # %
+    # BeerJSON timing (replaces use/time_min)
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
 
-    notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="hops")
 
+    @property
+    def alpha_percent(self) -> float:
+        """Alias for alpha_acid_percent for backward compatibility."""
+        return self.alpha_acid_percent
 
-class RecipeYeast(Base):
-    """Yeast strains in a recipe."""
-    __tablename__ = "recipe_yeasts"
+    @property
+    def amount_kg(self) -> float:
+        """Alias for amount_grams (converted to kg) for backward compatibility."""
+        return self.amount_grams / 1000.0
+
+    @property
+    def use(self) -> Optional[str]:
+        """Extract use field from timing JSON for backward compatibility.
+
+        Maps BeerJSON timing.use to BeerXML use values:
+        - add_to_boil -> Boil
+        - add_to_mash -> Mash
+        - add_to_fermentation -> Dry Hop
+        - add_to_package -> Bottling
+        """
+        if not self.timing:
+            return None
+
+        timing_use = self.timing.get('use')
+        if not timing_use:
+            return None
+
+        # Map BeerJSON timing use to BeerXML use
+        use_mapping = {
+            'add_to_boil': 'Boil',
+            'add_to_mash': 'Mash',
+            'add_to_fermentation': 'Dry Hop',
+            'add_to_package': 'Bottling'
+        }
+
+        return use_mapping.get(timing_use, 'Boil')
+
+    @property
+    def time_min(self) -> Optional[float]:
+        """Extract time from timing JSON for backward compatibility.
+
+        Returns duration value from timing.duration object.
+
+        Note: BeerXML quirk - Dry Hop times are in DAYS, not minutes.
+        This property returns the raw value without conversion to preserve
+        backward compatibility with BeerXML semantics.
+        """
+        if not self.timing:
+            return None
+
+        duration = self.timing.get('duration')
+        if not duration:
+            return None
+
+        value = duration.get('value')
+        if value is None:
+            return None
+
+        # Return raw value - BeerXML stores Dry Hop in days, boil hops in minutes
+        return float(value)
+
+    @property
+    def type(self) -> Optional[str]:
+        """Extract type from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('type')
+
+    @property
+    def beta_percent(self) -> Optional[float]:
+        """Alias for beta_acid_percent for backward compatibility."""
+        return self.beta_acid_percent
+
+    @property
+    def hsi(self) -> Optional[float]:
+        """Extract HSI from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('hsi')
+
+    @property
+    def humulene(self) -> Optional[float]:
+        """Extract humulene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('humulene')
+
+    @property
+    def caryophyllene(self) -> Optional[float]:
+        """Extract caryophyllene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('caryophyllene')
+
+    @property
+    def cohumulone(self) -> Optional[float]:
+        """Extract cohumulone from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('cohumulone')
+
+    @property
+    def myrcene(self) -> Optional[float]:
+        """Extract myrcene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('myrcene')
+
+    @property
+    def substitutes(self) -> Optional[str]:
+        """Extract substitutes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('substitutes')
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Extract notes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('notes')
+
+
+class RecipeCulture(Base):
+    """Culture/yeast strains in a recipe (BeerJSON terminology)."""
+    __tablename__ = "recipe_cultures"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    lab: Mapped[Optional[str]] = mapped_column(String(100))
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # ale, lager, wine, champagne, other
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # liquid, dry, slant, culture
+    producer: Mapped[Optional[str]] = mapped_column(String(100))  # renamed from lab
     product_id: Mapped[Optional[str]] = mapped_column(String(50))
-    type: Mapped[Optional[str]] = mapped_column(String(20))  # Ale, Lager, Wheat, Wine, Champagne
-    form: Mapped[Optional[str]] = mapped_column(String(20))  # Liquid, Dry, Slant, Culture
 
-    # Fermentation characteristics
-    attenuation_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
-    temp_min_c: Mapped[Optional[float]] = mapped_column()  # Celsius
-    temp_max_c: Mapped[Optional[float]] = mapped_column()  # Celsius
-    flocculation: Mapped[Optional[str]] = mapped_column(String(20))  # Low, Medium, High, Very High
+    # Temperature range (Celsius)
+    temp_min_c: Mapped[Optional[float]] = mapped_column()
+    temp_max_c: Mapped[Optional[float]] = mapped_column()
 
-    # Pitching
-    amount_l: Mapped[Optional[float]] = mapped_column()  # Liters (if liquid)
-    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg (if dry)
-    add_to_secondary: Mapped[Optional[bool]] = mapped_column(default=False)
+    # Attenuation range
+    attenuation_min_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
+    attenuation_max_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
 
-    # Advanced fields
-    best_for: Mapped[Optional[str]] = mapped_column(Text)
-    times_cultured: Mapped[Optional[int]] = mapped_column()
-    max_reuse: Mapped[Optional[int]] = mapped_column()
-    notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Amount with unit
+    amount: Mapped[Optional[float]] = mapped_column()
+    amount_unit: Mapped[Optional[str]] = mapped_column(String(10))  # pkg, ml, g, etc.
+
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Relationship
-    recipe: Mapped["Recipe"] = relationship(back_populates="yeasts")
+    recipe: Mapped["Recipe"] = relationship(back_populates="cultures")
+
+    @property
+    def lab(self) -> Optional[str]:
+        """Alias for producer for backward compatibility."""
+        return self.producer
+
+    @property
+    def attenuation_percent(self) -> Optional[float]:
+        """Alias for attenuation_min_percent for backward compatibility."""
+        return self.attenuation_min_percent
+
+    @property
+    def flocculation(self) -> Optional[str]:
+        """Extract flocculation from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('flocculation')
+
+    @property
+    def amount_kg(self) -> Optional[float]:
+        """Convert amount to kg for backward compatibility.
+
+        Amount is stored as grams (for dry yeast), convert back to kg.
+        """
+        if not self.amount or not self.amount_unit:
+            return None
+        if self.amount_unit == 'g':
+            return self.amount / 1000.0
+        return None  # Only for dry yeast
+
+    @property
+    def amount_l(self) -> Optional[float]:
+        """Return amount in liters for backward compatibility.
+
+        Note: The importer stores amount_l directly as-is with unit='ml',
+        without converting liters to milliliters. This property returns
+        the value as stored (which is actually in liters, not ml).
+        """
+        if not self.amount or not self.amount_unit:
+            return None
+        if self.amount_unit == 'ml':
+            return self.amount  # Already in liters (importer bug/quirk)
+        return None  # Only for liquid yeast
+
+    @property
+    def add_to_secondary(self) -> Optional[bool]:
+        """Extract add_to_secondary from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('add_to_secondary')
+
+    @property
+    def best_for(self) -> Optional[str]:
+        """Extract best_for from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('best_for')
+
+    @property
+    def times_cultured(self) -> Optional[int]:
+        """Extract times_cultured from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('times_cultured')
+
+    @property
+    def max_reuse(self) -> Optional[int]:
+        """Extract max_reuse from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('max_reuse')
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Extract notes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('notes')
 
 
 class RecipeMisc(Base):
@@ -487,16 +704,139 @@ class RecipeMisc(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)  # Spice, Fining, Water Agent, Herb, Flavor, Other
-    use: Mapped[str] = mapped_column(String(20), nullable=False)  # Boil, Mash, Primary, Secondary, Bottling
-    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes
-    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg or L (check amount_is_weight)
-    amount_is_weight: Mapped[Optional[bool]] = mapped_column(default=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # spice, fining, water agent, herb, flavor, other
+    use: Mapped[str] = mapped_column(String(20), nullable=False)  # boil, mash, primary, secondary, bottling
+    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (legacy BeerXML)
+    amount_kg: Mapped[Optional[float]] = mapped_column()  # Amount (check amount_unit)
+    amount_is_weight: Mapped[Optional[bool]] = mapped_column(default=True)  # Legacy BeerXML
+    amount_unit: Mapped[Optional[str]] = mapped_column(String(10))  # g, kg, ml, l, tsp, tbsp, etc.
     use_for: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
     recipe: Mapped["Recipe"] = relationship(back_populates="miscs")
+
+
+class RecipeWaterProfile(Base):
+    """Water chemistry profiles for a recipe (source, target, or sparge water)."""
+    __tablename__ = "recipe_water_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Profile metadata
+    profile_type: Mapped[str] = mapped_column(String(20), nullable=False)  # source, target, sparge
+    name: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Ion concentrations (ppm)
+    calcium_ppm: Mapped[Optional[float]] = mapped_column()
+    magnesium_ppm: Mapped[Optional[float]] = mapped_column()
+    sodium_ppm: Mapped[Optional[float]] = mapped_column()
+    chloride_ppm: Mapped[Optional[float]] = mapped_column()
+    sulfate_ppm: Mapped[Optional[float]] = mapped_column()
+    bicarbonate_ppm: Mapped[Optional[float]] = mapped_column()
+
+    # Water characteristics
+    ph: Mapped[Optional[float]] = mapped_column()
+    alkalinity: Mapped[Optional[float]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="water_profiles")
+
+
+class RecipeWaterAdjustment(Base):
+    """Water treatment additions (salts and acids) for a recipe."""
+    __tablename__ = "recipe_water_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Stage metadata
+    stage: Mapped[str] = mapped_column(String(20), nullable=False)  # mash, sparge, total
+    volume_liters: Mapped[Optional[float]] = mapped_column()
+
+    # Salt additions (grams)
+    calcium_sulfate_g: Mapped[Optional[float]] = mapped_column()  # Gypsum (CaSO4)
+    calcium_chloride_g: Mapped[Optional[float]] = mapped_column()  # CaCl2
+    magnesium_sulfate_g: Mapped[Optional[float]] = mapped_column()  # Epsom salt (MgSO4)
+    sodium_bicarbonate_g: Mapped[Optional[float]] = mapped_column()  # Baking soda (NaHCO3)
+    calcium_carbonate_g: Mapped[Optional[float]] = mapped_column()  # Chalk (CaCO3)
+    calcium_hydroxide_g: Mapped[Optional[float]] = mapped_column()  # Slaked lime (Ca(OH)2)
+    magnesium_chloride_g: Mapped[Optional[float]] = mapped_column()  # MgCl2
+    sodium_chloride_g: Mapped[Optional[float]] = mapped_column()  # Table salt (NaCl)
+
+    # Acid additions
+    acid_type: Mapped[Optional[str]] = mapped_column(String(20))  # lactic, phosphoric, citric, etc.
+    acid_ml: Mapped[Optional[float]] = mapped_column()
+    acid_concentration_percent: Mapped[Optional[float]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="water_adjustments")
+
+
+class RecipeMashStep(Base):
+    """Mash schedule steps for a recipe."""
+    __tablename__ = "recipe_mash_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Step metadata
+    step_number: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # infusion, temperature, decoction
+
+    # Step parameters (temperatures in Celsius)
+    temp_c: Mapped[float] = mapped_column(nullable=False)
+    time_minutes: Mapped[int] = mapped_column(nullable=False)
+
+    # Infusion step parameters
+    infusion_amount_liters: Mapped[Optional[float]] = mapped_column()
+    infusion_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Ramp parameters
+    ramp_time_minutes: Mapped[Optional[int]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="mash_steps")
+
+
+class RecipeFermentationStep(Base):
+    """Fermentation schedule steps for a recipe."""
+    __tablename__ = "recipe_fermentation_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Step metadata
+    step_number: Mapped[int] = mapped_column(nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # primary, secondary, conditioning
+
+    # Step parameters (temperature in Celsius)
+    temp_c: Mapped[float] = mapped_column(nullable=False)
+    time_days: Mapped[int] = mapped_column(nullable=False)
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="fermentation_steps")
 
 
 # Pydantic Schemas
@@ -754,15 +1094,15 @@ class RecipeCreate(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
     yeast_name: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    ibu: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
 
 
@@ -774,18 +1114,18 @@ class RecipeResponse(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
     yeast_name: Optional[str] = None
     yeast_lab: Optional[str] = None
     yeast_product_id: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu_target: Optional[float] = None
-    srm_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
@@ -804,7 +1144,7 @@ class FermentableResponse(BaseModel):
     type: Optional[str] = None
     amount_kg: Optional[float] = None
     yield_percent: Optional[float] = None
-    color_lovibond: Optional[float] = None
+    color_srm: Optional[float] = None  # Renamed from color_lovibond
     origin: Optional[str] = None
     supplier: Optional[str] = None
 
@@ -815,27 +1155,37 @@ class HopResponse(BaseModel):
 
     id: int
     name: str
-    alpha_percent: Optional[float] = None
-    amount_kg: Optional[float] = None
-    use: Optional[str] = None
-    time_min: Optional[float] = None
+    origin: Optional[str] = None
     form: Optional[str] = None
-    type: Optional[str] = None
+    alpha_acid_percent: Optional[float] = None
+    beta_acid_percent: Optional[float] = None
+    amount_grams: Optional[float] = None
+    timing: Optional[dict] = None  # BeerJSON timing object
+    format_extensions: Optional[dict] = None  # BeerXML metadata (type, substitutes, oils, notes)
 
 
-class YeastResponse(BaseModel):
-    """Pydantic response model for yeast strains."""
+class CultureResponse(BaseModel):
+    """Pydantic response model for culture (yeast/bacteria) strains."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-    lab: Optional[str] = None
+    producer: Optional[str] = None  # Renamed from lab
     product_id: Optional[str] = None
     type: Optional[str] = None
-    attenuation_percent: Optional[float] = None
+    form: Optional[str] = None
+    attenuation_min_percent: Optional[float] = None  # BeerJSON uses min/max range
+    attenuation_max_percent: Optional[float] = None
     temp_min_c: Optional[float] = None
     temp_max_c: Optional[float] = None
-    flocculation: Optional[str] = None
+    amount: Optional[float] = None
+    amount_unit: Optional[str] = None
+    timing: Optional[dict] = None  # BeerJSON timing object
+    format_extensions: Optional[dict] = None  # BeerXML metadata (flocculation, best_for, etc.)
+
+
+# Backward compatibility alias
+YeastResponse = CultureResponse
 
 
 class MiscResponse(BaseModel):
@@ -860,12 +1210,12 @@ class RecipeDetailResponse(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
-    ibu_target: Optional[float] = None
-    srm_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
@@ -873,7 +1223,7 @@ class RecipeDetailResponse(BaseModel):
     # Ingredient lists
     fermentables: list[FermentableResponse] = []
     hops: list[HopResponse] = []
-    yeasts: list[YeastResponse] = []
+    cultures: list[CultureResponse] = []
     miscs: list[MiscResponse] = []
 
     @field_serializer('created_at')

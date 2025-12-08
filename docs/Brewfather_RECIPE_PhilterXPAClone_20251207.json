@@ -1,0 +1,1089 @@
+{
+  "styleRbr": true,
+  "_versionNumber": 1,
+  "public": true,
+  "yeastToleranceExceededBy": null,
+  "nutrition": {
+    "calories": {
+      "alcohol": 23.316099094299766,
+      "carbs": 13.50975398912247,
+      "total": 36.82585308342223,
+      "kJ": 154.0793693010386
+    },
+    "carbs": {
+      "total": 3.4204438998383
+    }
+  },
+  "miscs": [
+    {
+      "unit": "g",
+      "time": null,
+      "waterAdjustment": true,
+      "type": "Water Agent",
+      "_id": "default-3b1827",
+      "timeIsDays": false,
+      "amount": 1.24,
+      "name": "Calcium Chloride (CaCl2)",
+      "use": "Mash"
+    },
+    {
+      "time": null,
+      "use": "Mash",
+      "waterAdjustment": true,
+      "type": "Water Agent",
+      "amount": 2.38,
+      "name": "Epsom Salt (MgSO4)",
+      "unit": "g",
+      "_id": "default-4e9d62",
+      "timeIsDays": false
+    },
+    {
+      "type": "Water Agent",
+      "timeIsDays": false,
+      "waterAdjustment": true,
+      "_id": "default-1f88df",
+      "unit": "g",
+      "use": "Mash",
+      "amount": 4.47,
+      "name": "Gypsum (CaSO4)",
+      "time": null
+    },
+    {
+      "waterAdjustment": true,
+      "_id": "default-3b1827",
+      "name": "Calcium Chloride (CaCl2)",
+      "time": null,
+      "amount": 1.36,
+      "timeIsDays": false,
+      "type": "Water Agent",
+      "unit": "g",
+      "use": "Sparge"
+    },
+    {
+      "type": "Water Agent",
+      "unit": "g",
+      "use": "Sparge",
+      "timeIsDays": false,
+      "time": null,
+      "waterAdjustment": true,
+      "name": "Epsom Salt (MgSO4)",
+      "amount": 2.62,
+      "_id": "default-4e9d62"
+    },
+    {
+      "name": "Gypsum (CaSO4)",
+      "amount": 4.93,
+      "unit": "g",
+      "use": "Sparge",
+      "waterAdjustment": true,
+      "time": null,
+      "timeIsDays": false,
+      "type": "Water Agent",
+      "_id": "default-1f88df"
+    },
+    {
+      "_id": "default-pc-brewbite",
+      "_created": {
+        "seconds": 1557054788,
+        "nanoseconds": 233000000
+      },
+      "_version": "1.7.6",
+      "time": 15,
+      "type": "Fining",
+      "_timestamp": {
+        "seconds": 1557055060,
+        "nanoseconds": 911000000
+      },
+      "_timestamp_ms": 1557055060911,
+      "name": "Polyclar Brewbrite",
+      "amount": 1,
+      "timeIsDays": false,
+      "inventory": 0,
+      "use": "Boil",
+      "unit": "tsp"
+    },
+    {
+      "_timestamp_ms": 1556882981683,
+      "inventory": 0,
+      "_timestamp": {
+        "seconds": 1556882981,
+        "nanoseconds": 683000000
+      },
+      "_created": {
+        "seconds": 1556882981,
+        "nanoseconds": 683000000
+      },
+      "time": 10,
+      "use": "Boil",
+      "unit": "tsp",
+      "name": "Yeast Nutrients",
+      "amount": 0.5,
+      "timeIsDays": false,
+      "_version": "1.7.6",
+      "_id": "default-yn1j28sf",
+      "type": "Other"
+    }
+  ],
+  "name": "Philter XPA - Clone",
+  "abv": 4.2,
+  "_id": "TNBrB5rplQVxrstoRVjqb4BCINiiRe",
+  "searchTags": [
+    "Added",
+    "#XPA",
+    "#clone",
+    "#mosaic",
+    "#simcoe",
+    "#galaxy",
+    "#citra",
+    "#philter",
+    "#brewed"
+  ],
+  "postBoilGravity": 1.040069094,
+  "extraGravity": 0,
+  "_created": {
+    "seconds": 1558014858,
+    "nanoseconds": 779000000
+  },
+  "tags": null,
+  "fermentablesTotalAmount": 3.654,
+  "avgWeightedHopstandTemp": 80,
+  "styleOg": true,
+  "styleCarb": false,
+  "og": 1.040069094,
+  "_timestamp_ms": 1765150197403,
+  "efficiency": 73,
+  "type": "All Grain",
+  "author": "Pig Den Brewing",
+  "notes": "My take on a very popular Australian XPA. A great starting point for anyone who wants to brew something simular",
+  "primaryTemp": 20,
+  "hidden": false,
+  "yeasts": [
+    {
+      "_id": "default-016efc",
+      "flocculation": "Medium",
+      "form": "Dry",
+      "maxTemp": 28,
+      "type": "Ale",
+      "fermentsAll": false,
+      "starter": null,
+      "minTemp": 16,
+      "attenuation": 81,
+      "productId": "US-05",
+      "laboratory": "Fermentis",
+      "unit": "pkg",
+      "name": "Safale American",
+      "amount": 1,
+      "description": "American ale yeast producing well balanced beers with low diacetyl and a very clean, crisp end palate. Forms a firm foam head and presents a very good ability to stay in suspension during fermentation.",
+      "starterSize": null
+    }
+  ],
+  "styleBuGu": true,
+  "color": 3.8,
+  "hopsTotalAmount": 213,
+  "_app_metadata": {
+    "webhook": {
+      "run": false
+    }
+  },
+  "teaser": "",
+  "ogPlato": 10,
+  "_init": true,
+  "water": {
+    "settings": {
+      "calciumChloride": {
+        "sparge": true,
+        "mash": true,
+        "form": "dihydrate",
+        "auto": true
+      },
+      "calciumSulfate": {
+        "auto": true,
+        "mash": true,
+        "sparge": true
+      },
+      "calciumHydroxide": {
+        "sparge": false,
+        "mash": true,
+        "auto": false
+      },
+      "magnesiumSulfate": {
+        "sparge": true,
+        "auto": true,
+        "mash": true
+      },
+      "sodiumBicarbonate": {
+        "sparge": false,
+        "auto": false,
+        "mash": true
+      },
+      "adjustSparge": true
+    },
+    "diluted": null,
+    "style": "default",
+    "mashWaterAmount": null,
+    "spargeAcidPhAdjustment": 0,
+    "dilutionAmount": 0,
+    "mashTargetDiff": {
+      "calcium": 3.094,
+      "magnesium": 0.412,
+      "sodium": -12.974,
+      "chloride": 1.261,
+      "sulfate": -4.611,
+      "bicarbonate": 11.424,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "cations": -0.376,
+      "anions": 0.127,
+      "ionBalance": 101,
+      "ionBalanceOff": true,
+      "soClRatio": -3.66,
+      "hardness": 9,
+      "alkalinity": 9.3615,
+      "residualAlkalinity": 6.90924,
+      "residualAlkalinityMeqLCalc": 0.12603
+    },
+    "dilutionPercentage": null,
+    "acidPhAdjustment": 0,
+    "spargeTargetDiff": {
+      "calcium": 2.979,
+      "magnesium": 0.387,
+      "sodium": -12.974,
+      "chloride": 1.112,
+      "sulfate": -4.783,
+      "bicarbonate": 11.424,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "cations": -0.384,
+      "anions": 0.119,
+      "ionBalance": 95,
+      "ionBalanceOff": true,
+      "soClRatio": -4.3,
+      "hardness": 9,
+      "alkalinity": 9.3615,
+      "residualAlkalinity": 7.00608,
+      "residualAlkalinityMeqLCalc": 0.12845
+    },
+    "enableSpargeAdjustments": true,
+    "sparge": {
+      "name": "Shearwater",
+      "_timestamp_ms": 1556445936356,
+      "magnesium": 18.387,
+      "_id": "default",
+      "sodium": 3.026,
+      "_created": {
+        "seconds": 1556089620,
+        "nanoseconds": 465000000
+      },
+      "residualAlkalinity": -82.14912,
+      "ph": "6.3",
+      "hardness": 357,
+      "ionBalanceOff": false,
+      "sulfate": 270.217,
+      "residualAlkalinityMeqLCalc": -2.09651,
+      "cations": 7.283,
+      "calcium": 112.979,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "_timestamp": {
+        "seconds": 1556445936,
+        "nanoseconds": 356000000
+      },
+      "ionBalance": 0,
+      "alkalinity": 9.3615,
+      "_version": "1.7.5",
+      "bicarbonate": 11.424,
+      "anions": 7.255,
+      "type": "source",
+      "soClRatio": 5.29,
+      "chloride": 51.112
+    },
+    "mash": {
+      "name": "Shearwater",
+      "_timestamp_ms": 1556445936356,
+      "magnesium": 18.412,
+      "_id": "default",
+      "sodium": 3.026,
+      "_created": {
+        "seconds": 1556089620,
+        "nanoseconds": 465000000
+      },
+      "residualAlkalinity": -82.24596,
+      "ph": "6.3",
+      "hardness": 358,
+      "ionBalanceOff": false,
+      "sulfate": 270.389,
+      "residualAlkalinityMeqLCalc": -2.09893,
+      "cations": 7.29,
+      "calcium": 113.094,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "_timestamp": {
+        "seconds": 1556445936,
+        "nanoseconds": 356000000
+      },
+      "ionBalance": 0,
+      "alkalinity": 9.3615,
+      "_version": "1.7.5",
+      "bicarbonate": 11.424,
+      "anions": 7.263,
+      "type": "source",
+      "soClRatio": 5.27,
+      "chloride": 51.261
+    },
+    "total": {
+      "name": "Shearwater",
+      "_timestamp_ms": 1556445936356,
+      "magnesium": 18.399,
+      "_id": "default",
+      "sodium": 3.026,
+      "_created": {
+        "seconds": 1556089620,
+        "nanoseconds": 465000000
+      },
+      "residualAlkalinity": -82.19403,
+      "ph": "6.3",
+      "hardness": 358,
+      "ionBalanceOff": false,
+      "sulfate": 270.297,
+      "residualAlkalinityMeqLCalc": -2.09763,
+      "cations": 7.286,
+      "calcium": 113.032,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "_timestamp": {
+        "seconds": 1556445936,
+        "nanoseconds": 356000000
+      },
+      "ionBalance": 0,
+      "alkalinity": 9.3615,
+      "_version": "1.7.5",
+      "bicarbonate": 11.424,
+      "anions": 7.258,
+      "type": "source",
+      "soClRatio": 5.28,
+      "chloride": 51.181
+    },
+    "target": {
+      "bicarbonateMeqL": 0,
+      "residualAlkalinity": -89.1552,
+      "chloride": "50",
+      "type": "target",
+      "calcium": "110",
+      "anions": 7.136,
+      "_created": {
+        "seconds": 1557140381,
+        "nanoseconds": 292000000
+      },
+      "cations": 7.666,
+      "_timestamp": {
+        "seconds": 1557660710,
+        "nanoseconds": 312000000
+      },
+      "_version": "1.7.7",
+      "alkalinity": 0,
+      "_id": "7mOVLnipo4DZSILwVUdLbbTZppYzyL",
+      "ionBalance": 2,
+      "name": "Hoppy (The Electric Brewery)",
+      "soClRatio": 5.5,
+      "ionBalanceOff": true,
+      "sulfate": "275",
+      "hardness": 348,
+      "magnesium": "18",
+      "_timestamp_ms": 1557660710312,
+      "sodium": "16",
+      "residualAlkalinityMeqLCalc": -2.22496
+    },
+    "meta": {
+      "equalSourceTotal": false
+    },
+    "mashPhDistilled": 5.7,
+    "spargeAdjustments": {
+      "volume": 15.47,
+      "calciumCarbonate": 0,
+      "sodiumBicarbonate": 0,
+      "calciumHydroxide": 0,
+      "calciumSulfate": 5.17,
+      "magnesiumSulfate": 2.75,
+      "calciumChloride": 1.43,
+      "magnesiumChloride": 0,
+      "sodiumChloride": 0,
+      "sodiumMetabisulfite": 0,
+      "ltDWB": 0,
+      "ltAMS": 0,
+      "acids": [
+        {
+          "amount": 0,
+          "type": "lactic",
+          "concentration": 80
+        }
+      ],
+      "sodiumMetabisulfitePPM": 0,
+      "calcium": 102.999,
+      "magnesium": 17.527,
+      "sodium": 0,
+      "chloride": 44.582,
+      "sulfate": 255.637,
+      "bicarbonate": 0
+    },
+    "totalTargetDiff": {
+      "calcium": 3.032,
+      "magnesium": 0.399,
+      "sodium": -12.974,
+      "chloride": 1.181,
+      "sulfate": -4.703,
+      "bicarbonate": 11.424,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "cations": -0.38,
+      "anions": 0.123,
+      "ionBalance": 98,
+      "ionBalanceOff": true,
+      "soClRatio": -3.98,
+      "hardness": 9,
+      "alkalinity": 9.3615,
+      "residualAlkalinity": 6.96117,
+      "residualAlkalinityMeqLCalc": 0.12733
+    },
+    "totalAdjustments": {
+      "volume": 28.84,
+      "calciumCarbonate": 0,
+      "sodiumBicarbonate": 0,
+      "calciumHydroxide": 0,
+      "calciumSulfate": 9.64,
+      "magnesiumSulfate": 5.13,
+      "calciumChloride": 2.67,
+      "magnesiumChloride": 0,
+      "sodiumChloride": 0,
+      "sodiumMetabisulfite": 0,
+      "ltDWB": 0,
+      "ltAMS": 0,
+      "sodiumMetabisulfitePPM": 0,
+      "calcium": 103.052,
+      "magnesium": 17.539,
+      "sodium": 0,
+      "chloride": 44.651,
+      "sulfate": 255.717,
+      "bicarbonate": 0
+    },
+    "sourceTargetDiff": {
+      "calcium": -100.02,
+      "magnesium": -17.14,
+      "sodium": -12.974,
+      "chloride": -43.47,
+      "sulfate": -260.42,
+      "bicarbonate": 11.424,
+      "bicarbonateMeqL": 0.18722957912678642,
+      "cations": -6.966,
+      "anions": -6.461,
+      "ionBalance": 2,
+      "ionBalanceOff": true,
+      "soClRatio": 5.99,
+      "hardness": -320,
+      "alkalinity": 9.3615,
+      "residualAlkalinity": 90.88239,
+      "residualAlkalinityMeqLCalc": 2.22168
+    },
+    "spargeWaterAmount": null,
+    "mashPh": 5.52,
+    "source": {
+      "name": "Shearwater",
+      "_timestamp_ms": 1556445936356,
+      "magnesium": ".860",
+      "_id": "default",
+      "sodium": "3.026",
+      "_created": {
+        "seconds": 1556089620,
+        "nanoseconds": 465000000
+      },
+      "residualAlkalinity": 1.72749,
+      "ph": "6.3",
+      "hardness": 28,
+      "ionBalanceOff": false,
+      "sulfate": "14.58",
+      "residualAlkalinityMeqLCalc": -0.00327,
+      "cations": 0.7,
+      "calcium": "9.98",
+      "bicarbonateMeqL": 0.18723449586993576,
+      "_timestamp": {
+        "seconds": 1556445936,
+        "nanoseconds": 356000000
+      },
+      "ionBalance": 1,
+      "alkalinity": 9.3618,
+      "_version": "1.7.5",
+      "bicarbonate": "11.4243",
+      "anions": 0.675,
+      "type": "source",
+      "soClRatio": 2.23,
+      "chloride": "6.53"
+    },
+    "enableAcidAdjustments": false,
+    "mashAdjustments": {
+      "ltAMS": 0,
+      "calciumChloride": 1.24,
+      "magnesiumSulfate": 2.38,
+      "sodiumMetabisulfitePPM": 0,
+      "chloride": 44.731,
+      "magnesium": 17.552,
+      "sodium": 0,
+      "volume": 13.37,
+      "ltDWB": 0,
+      "calciumHydroxide": 0,
+      "calciumSulfate": 4.47,
+      "sodiumChloride": 0,
+      "sodiumMetabisulfite": 0,
+      "calciumCarbonate": 0,
+      "calcium": 103.114,
+      "acids": [
+        {
+          "type": "lactic",
+          "alkalinityMeqL": 0,
+          "amount": 0,
+          "concentration": 80
+        }
+      ],
+      "sodiumBicarbonate": 0,
+      "sulfate": 255.809,
+      "magnesiumChloride": 0,
+      "bicarbonate": 0
+    }
+  },
+  "_share": "1xVnz8LJ0xmRNz",
+  "mash": {
+    "_id": "default",
+    "name": "Philter XPA mash profile",
+    "steps": [
+      {
+        "type": "Temperature",
+        "stepTemp": 55,
+        "displayStepTemp": "55",
+        "name": "Mash in",
+        "rampTime": null,
+        "stepTime": 10
+      },
+      {
+        "type": "Temperature",
+        "displayStepTemp": "67",
+        "name": "Step 2",
+        "stepTime": 45,
+        "rampTime": null,
+        "stepTemp": 67
+      },
+      {
+        "type": "Temperature",
+        "rampTime": null,
+        "name": "Mash Out ",
+        "stepTime": 10,
+        "displayStepTemp": "78",
+        "stepTemp": 78
+      }
+    ]
+  },
+  "equipment": {
+    "spargeWaterOverflow": "Top-Up",
+    "mashWaterVolumeLimitEnabled": true,
+    "waterCalculation": "Default",
+    "boilSize": 25.92,
+    "bottlingVolume": 19,
+    "_id": "9RlkyunEVWZyuTMk4TYbTnvSzr8tIS",
+    "mashTunDeadSpace": 3.5,
+    "_created": {
+      "seconds": 1556087904,
+      "nanoseconds": 873000000
+    },
+    "spargeWaterFormula": "BoilVolumeL - MashWaterL + (GrainAmountKg * GrainAbsorptionRate) + MashTunLossL",
+    "efficiency": 73,
+    "boilOffPerHr": 3,
+    "calcMashEfficiency": true,
+    "mashWaterMax": 30,
+    "fermenterLoss": 2,
+    "calcBoilVolume": true,
+    "fermenterVolume": 21,
+    "hopstandTemperature": 75,
+    "trubChillerLoss": 1,
+    "_timestamp": {
+      "seconds": 1573984684,
+      "nanoseconds": 924000000
+    },
+    "postBoilKettleVol": 22.916666666666668,
+    "hopUtilization": 1,
+    "batchSize": 21,
+    "efficiencyType": "Fermenter",
+    "grainAbsorptionRate": 0.8,
+    "_timestamp_ms": 1573984684924,
+    "calcAromaHopUtilization": true,
+    "mashTunLoss": 0,
+    "mashWaterFormula": "(GrainAmountKg * WaterGrainRatio) + MashTunDeadSpaceL",
+    "boilTime": 60,
+    "_version": "1.10.1",
+    "evaporationRate": 0.11574074074074073,
+    "waterGrainRatio": 2.7,
+    "aromaHopUtilization": 0.15,
+    "mashEfficiency": 76.5,
+    "fermenterLossEstimate": 0,
+    "name": "Grainfather  "
+  },
+  "boilSize": 25.92,
+  "carbonation": 2.4,
+  "path": "/",
+  "_type": "recipe",
+  "styleAbv": true,
+  "styleConformity": true,
+  "origin": null,
+  "firstWortGravity": null,
+  "_public": false,
+  "fermentation": {
+    "steps": [
+      {
+        "stepTime": 14,
+        "type": "Primary",
+        "stepTemp": 20
+      }
+    ],
+    "name": "Ale",
+    "_id": "default"
+  },
+  "ibuFormula": "tinseth",
+  "totalGravity": 1.040069094,
+  "buGuRatio": 0.72,
+  "preBoilGravity": 1.035,
+  "fg": 1.008,
+  "_uid": null,
+  "hopStandMinutes": 30,
+  "mashEfficiency": 76.5,
+  "styleIbu": true,
+  "attenuation": 0.794,
+  "_versionId": "jT6XP1hu9fBQqFm0fQFdyyOo1M3Zx7",
+  "fermentableIbu": 0,
+  "data": {
+    "mashFermentablesAmount": 3.654,
+    "allDiastaticPower": false,
+    "totalDiastaticPower": 0,
+    "mashFermentables": [
+      {
+        "attenuation": 0.81,
+        "name": "Ale Malt",
+        "notFermentable": null,
+        "supplier": "Gladfield",
+        "potential": 1.037444,
+        "notes": "",
+        "potentialPercentage": 81.4,
+        "type": "Grain",
+        "color": 3.0456853,
+        "_id": "default-8ea92ed",
+        "ibuPerAmount": null,
+        "amount": 2.733,
+        "percentage": 74.79,
+        "grainCategory": "Base",
+        "origin": "New Zealand"
+      },
+      {
+        "notes": "BEST Caramel Pils optimizes the foam properties and sweet full-bodied character of the beer. The malt character resembles that of BEST Pilsner malt. After the germination is finished, the green malt is gently roasted and optimized over many years by our BESTMALZ malt masters. This process is responsible for our unique BESTMALZ Caramel aromas. As all our BEST caramel malts, this malt impresses with excellent processing characteristics and with a superior flavor.",
+        "amount": 0.307,
+        "potential": 1.03703,
+        "_version": "1.7.7",
+        "color": 2.5380711,
+        "origin": "Germany",
+        "supplier": "BestMalz",
+        "_created": {
+          "seconds": 1556090240,
+          "nanoseconds": 704000000
+        },
+        "_id": "default-1a4fffc",
+        "attenuation": 0.55,
+        "inventory": 1.499,
+        "name": "Caramel Pils",
+        "grainCategory": "Crystal/Caramel",
+        "notFermentable": null,
+        "ibuPerAmount": null,
+        "_timestamp_ms": 1557437787142,
+        "percentage": 8.4,
+        "type": "Grain",
+        "potentialPercentage": 80.5,
+        "_timestamp": {
+          "seconds": 1557437787,
+          "nanoseconds": 142000000
+        }
+      },
+      {
+        "potentialPercentage": 85,
+        "grainCategory": "Base",
+        "name": "Oats, Flaked",
+        "ibuPerAmount": null,
+        "notFermentable": null,
+        "potential": 1.0391,
+        "percentage": 8.4,
+        "type": "Grain",
+        "color": 1.4,
+        "notes": "",
+        "_id": "default-d2c0778",
+        "attenuation": null,
+        "amount": 0.307,
+        "origin": "US",
+        "supplier": "Briess"
+      },
+      {
+        "color": 2.1319797,
+        "attenuation": 0.74,
+        "supplier": "Gladfield",
+        "notes": "",
+        "amount": 0.307,
+        "_created": {
+          "seconds": 1556088746,
+          "nanoseconds": 605000000
+        },
+        "_id": "default-39d8cf8",
+        "origin": "New Zealand",
+        "inventory": 0,
+        "_timestamp_ms": 1557458791885,
+        "type": "Grain",
+        "grainCategory": "Base (Wheat)",
+        "ibuPerAmount": null,
+        "percentage": 8.4,
+        "potential": 1.0387734,
+        "potentialPercentage": 84.29,
+        "_timestamp": {
+          "seconds": 1557458791,
+          "nanoseconds": 885000000
+        },
+        "notFermentable": null,
+        "name": "Wheat Malt",
+        "_version": "1.7.7"
+      }
+    ],
+    "otherFermentablesAmount": 0,
+    "otherFermentables": [],
+    "mashWaterAmount": 13.37,
+    "spargeWaterAmount": 15.47,
+    "mashVolumeSurplus": 0,
+    "topUpWater": 0,
+    "batchSpargeWaterAmount1": null,
+    "batchSpargeWaterAmount2": null,
+    "batchSpargeWaterAmount3": null,
+    "batchSpargeWaterAmount4": null,
+    "hltWaterAmount": 15.47,
+    "totalWaterAmount": 28.84,
+    "hopsAmount": 213,
+    "strikeTemp": null,
+    "mashVolume": 15.818179999999998
+  },
+  "hops": [
+    {
+      "type": "Pellet",
+      "time": 30,
+      "origin": "US",
+      "amount": 46,
+      "use": "Aroma",
+      "_timestamp": {
+        "seconds": 1557458799,
+        "nanoseconds": 282000000
+      },
+      "inventory": 79.9,
+      "actualTime": null,
+      "_version": "1.7.7",
+      "name": "Citra",
+      "_id": "default-8e9450d5",
+      "usage": "Both",
+      "_created": {
+        "seconds": 1556090594,
+        "nanoseconds": 951000000
+      },
+      "ibu": 14.4,
+      "temp": 80,
+      "timeUnit": null,
+      "_timestamp_ms": 1557458799282,
+      "alpha": 14.1
+    },
+    {
+      "use": "Aroma",
+      "_created": {
+        "seconds": 1556088630,
+        "nanoseconds": 234000000
+      },
+      "usage": "Bittering",
+      "amount": 41,
+      "_id": "default-c78f2911",
+      "temp": 80,
+      "_timestamp": {
+        "seconds": 1557458803,
+        "nanoseconds": 982000000
+      },
+      "_version": "1.7.7",
+      "ibu": 14.3,
+      "timeUnit": null,
+      "actualTime": null,
+      "alpha": 15.75,
+      "inventory": 96.6,
+      "name": "Galaxy",
+      "_timestamp_ms": 1557458803982,
+      "time": 30,
+      "origin": "Australia",
+      "type": "Pellet"
+    },
+    {
+      "day": 10,
+      "type": "Pellet",
+      "usage": "Both",
+      "_timestamp": {
+        "seconds": 1557458799,
+        "nanoseconds": 282000000
+      },
+      "_created": {
+        "seconds": 1556090594,
+        "nanoseconds": 951000000
+      },
+      "origin": "US",
+      "use": "Dry Hop",
+      "actualTime": 1765976400000,
+      "_version": "1.7.7",
+      "_id": "default-8e9450d5",
+      "temp": null,
+      "_timestamp_ms": 1557458799282,
+      "amount": 31.5,
+      "ibu": 0,
+      "timeUnit": "days",
+      "inventory": 79.9,
+      "time": 4,
+      "alpha": 14.1,
+      "name": "Citra"
+    },
+    {
+      "_created": {
+        "seconds": 1556088630,
+        "nanoseconds": 234000000
+      },
+      "amount": 31.5,
+      "_version": "1.7.7",
+      "ibu": 0,
+      "alpha": 15.75,
+      "temp": null,
+      "_timestamp": {
+        "seconds": 1557458803,
+        "nanoseconds": 982000000
+      },
+      "inventory": 96.6,
+      "time": 4,
+      "use": "Dry Hop",
+      "type": "Pellet",
+      "_timestamp_ms": 1557458803982,
+      "origin": "Australia",
+      "actualTime": 1765976400000,
+      "timeUnit": "days",
+      "name": "Galaxy",
+      "usage": "Bittering",
+      "day": 10,
+      "_id": "default-c78f2911",
+      "_editFlag": true
+    },
+    {
+      "actualTime": 1765976400000,
+      "ibu": 0,
+      "inventory": 0,
+      "type": "Pellet",
+      "_created": {
+        "seconds": 1556088810,
+        "nanoseconds": 32000000
+      },
+      "timeUnit": "days",
+      "origin": "US",
+      "name": "Mosaic",
+      "time": 4,
+      "_timestamp_ms": 1557458805396,
+      "_id": "default-0c4aeb7c",
+      "amount": 31.5,
+      "use": "Dry Hop",
+      "day": 10,
+      "_timestamp": {
+        "seconds": 1557458805,
+        "nanoseconds": 396000000
+      },
+      "alpha": 14.2,
+      "temp": null,
+      "_version": "1.7.7",
+      "usage": "Both"
+    },
+    {
+      "temp": null,
+      "_version": "1.7.7",
+      "alpha": 12.9,
+      "name": "Simcoe",
+      "use": "Dry Hop",
+      "time": 4,
+      "usage": "Bittering",
+      "_id": "default-36ce1e32",
+      "amount": 31.5,
+      "_timestamp": {
+        "seconds": 1557437768,
+        "nanoseconds": 230000000
+      },
+      "inventory": 225,
+      "type": "Pellet",
+      "timeUnit": "days",
+      "origin": "US",
+      "day": 10,
+      "ibu": 0,
+      "actualTime": 1765976400000,
+      "_created": {
+        "seconds": 1556089201,
+        "nanoseconds": 944000000
+      },
+      "_timestamp_ms": 1557437768230
+    }
+  ],
+  "sumDryHopPerLiter": 6,
+  "fermentables": [
+    {
+      "attenuation": 0.81,
+      "name": "Ale Malt",
+      "notFermentable": null,
+      "supplier": "Gladfield",
+      "potential": 1.037444,
+      "notes": "",
+      "potentialPercentage": 81.4,
+      "type": "Grain",
+      "color": 3.0456853,
+      "_id": "default-8ea92ed",
+      "ibuPerAmount": null,
+      "amount": 2.733,
+      "percentage": 74.79,
+      "grainCategory": "Base",
+      "origin": "New Zealand"
+    },
+    {
+      "notes": "BEST Caramel Pils optimizes the foam properties and sweet full-bodied character of the beer. The malt character resembles that of BEST Pilsner malt. After the germination is finished, the green malt is gently roasted and optimized over many years by our BESTMALZ malt masters. This process is responsible for our unique BESTMALZ Caramel aromas. As all our BEST caramel malts, this malt impresses with excellent processing characteristics and with a superior flavor.",
+      "amount": 0.307,
+      "potential": 1.03703,
+      "_version": "1.7.7",
+      "color": 2.5380711,
+      "origin": "Germany",
+      "supplier": "BestMalz",
+      "_created": {
+        "seconds": 1556090240,
+        "nanoseconds": 704000000
+      },
+      "_id": "default-1a4fffc",
+      "attenuation": 0.55,
+      "inventory": 1.499,
+      "name": "Caramel Pils",
+      "grainCategory": "Crystal/Caramel",
+      "notFermentable": null,
+      "ibuPerAmount": null,
+      "_timestamp_ms": 1557437787142,
+      "percentage": 8.4,
+      "type": "Grain",
+      "potentialPercentage": 80.5,
+      "_timestamp": {
+        "seconds": 1557437787,
+        "nanoseconds": 142000000
+      }
+    },
+    {
+      "potentialPercentage": 85,
+      "grainCategory": "Base",
+      "name": "Oats, Flaked",
+      "ibuPerAmount": null,
+      "notFermentable": null,
+      "potential": 1.0391,
+      "percentage": 8.4,
+      "type": "Grain",
+      "color": 1.4,
+      "notes": "",
+      "_id": "default-d2c0778",
+      "attenuation": null,
+      "amount": 0.307,
+      "origin": "US",
+      "supplier": "Briess"
+    },
+    {
+      "color": 2.1319797,
+      "attenuation": 0.74,
+      "supplier": "Gladfield",
+      "notes": "",
+      "amount": 0.307,
+      "_created": {
+        "seconds": 1556088746,
+        "nanoseconds": 605000000
+      },
+      "_id": "default-39d8cf8",
+      "origin": "New Zealand",
+      "inventory": 0,
+      "_timestamp_ms": 1557458791885,
+      "type": "Grain",
+      "grainCategory": "Base (Wheat)",
+      "ibuPerAmount": null,
+      "percentage": 8.4,
+      "potential": 1.0387734,
+      "potentialPercentage": 84.29,
+      "_timestamp": {
+        "seconds": 1557458791,
+        "nanoseconds": 885000000
+      },
+      "notFermentable": null,
+      "name": "Wheat Malt",
+      "_version": "1.7.7"
+    }
+  ],
+  "fgEstimated": 1.008,
+  "_origin": "PYjzCN4HdUJ0bqvQp442T3ZPTYeBwN",
+  "_version": "2.20.3",
+  "_ev": 2,
+  "style": {
+    "categoryNumber": "",
+    "ogMax": 1.052,
+    "colorMin": 3,
+    "carbMin": null,
+    "buGuMax": 0.87,
+    "colorMax": 9,
+    "ogMin": 1.04,
+    "type": null,
+    "rbrMin": 0.35,
+    "ibuMax": 40,
+    "lovibondMin": 3,
+    "carbMax": null,
+    "styleGuide": "Brewers Association 2019",
+    "abvMin": 4,
+    "category": "Other Origin Ale",
+    "fgMin": 1.006,
+    "rbrMax": 0.92,
+    "buGuMin": 0.33,
+    "_id": "default-ba-australian-style-pale-ale",
+    "name": "Australian-Style Pale Ale",
+    "lovibondMax": 9,
+    "abvMax": 6,
+    "ibuMin": 15,
+    "fgMax": 1.01,
+    "styleLetter": "",
+    "carbonationStyle": "12B"
+  },
+  "img": "users/Dyca7txzADSSetWErzNvsgZdNjj2/images/recipes/PYjzCN4HdUJ0bqvQp442T3ZPTYeBwN/PYjzCN4HdUJ0bqvQp442T3ZPTYeBwN.jpeg",
+  "carbonationStyle": {
+    "carbMin": 2.5,
+    "_id": "12B",
+    "carbMax": 3.3,
+    "name": "Australian Sparkling Ale"
+  },
+  "_timestamp": "2025-12-07T23:29:57.403Z",
+  "batchSize": 21,
+  "thumb": "data:image/jpeg;base64,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",
+  "defaults": {
+    "preferred": "metric",
+    "abv": "simple",
+    "attenuation": "normal",
+    "color": "ebc",
+    "grainColor": "default",
+    "gravity": "sg",
+    "ibu": "tinseth",
+    "temp": "c",
+    "volume": "l",
+    "weight": "kg",
+    "hop": "g",
+    "pressure": "bar",
+    "carbonation": "vol",
+    "altitude": "m"
+  },
+  "diastaticPower": 0,
+  "styleFg": true,
+  "fgFormula": "normal",
+  "styleColor": true,
+  "sumAromaHopPerLiter": 4.142857142857143,
+  "boilTime": 60,
+  "rbRatio": 0.74,
+  "ibu": 28.7,
+  "folderRefs": [
+    "recipe_root_folder"
+  ]
+}

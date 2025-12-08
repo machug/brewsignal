@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.services.beerxml_parser import parse_beerxml
 from backend.models import (
     Recipe, RecipeFermentable, RecipeHop,
-    RecipeYeast, RecipeMisc, Style
+    RecipeCulture, RecipeMisc, Style
 )
 
 
@@ -77,19 +77,19 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
         author=parsed.author,
         style_id=style_id,
         type=parsed.type,
-        og_target=parsed.og,
-        fg_target=parsed.fg,
-        ibu_target=parsed.ibu,
-        srm_target=parsed.srm,
-        abv_target=parsed.abv,
-        batch_size=parsed.batch_size,
+        og=parsed.og,
+        fg=parsed.fg,
+        ibu=parsed.ibu,
+        color_srm=parsed.srm,
+        abv=parsed.abv,
+        batch_size_liters=parsed.batch_size,
         beerxml_content=parsed.raw_xml,
 
         # Expanded BeerXML fields
         brewer=parsed.brewer,
         asst_brewer=parsed.asst_brewer,
         boil_size_l=parsed.boil_size_l,
-        boil_time_min=parsed.boil_time_min,
+        boil_time_minutes=int(parsed.boil_time_min) if parsed.boil_time_min else None,
         efficiency_percent=parsed.efficiency_percent,
         primary_age_days=parsed.primary_age_days,
         primary_temp_c=parsed.primary_temp_c,
@@ -128,7 +128,7 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
             type=f.type,
             amount_kg=f.amount_kg,
             yield_percent=f.yield_percent,
-            color_lovibond=f.color_lovibond,
+            color_srm=f.color_lovibond,  # BeerXML uses Lovibond, BeerJSON uses SRM (similar scale)
             origin=f.origin,
             supplier=f.supplier,
             notes=f.notes,
@@ -144,49 +144,107 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
 
     # Add hops
     for h in parsed.hops:
+        # Convert BeerXML use/time to BeerJSON timing (same logic as migration)
+        timing = None
+        if h.use and h.use != '':
+            use_mapping = {
+                "Boil": "add_to_boil",
+                "Dry Hop": "add_to_fermentation",
+                "Mash": "add_to_mash",
+                "First Wort": "add_to_boil",
+                "Aroma": "add_to_boil"
+            }
+
+            if h.use in use_mapping:
+                timing = {
+                    "use": use_mapping[h.use],
+                    "continuous": False
+                }
+
+                # Add duration if time is valid
+                if h.time_min is not None and h.time_min > 0:
+                    if h.use in ["Boil", "Aroma"]:
+                        timing["duration"] = {"value": h.time_min, "unit": "min"}
+                    elif h.use == "Dry Hop":
+                        # BeerXML stores Dry Hop time in days (not minutes like boil hops)
+                        timing["duration"] = {"value": int(h.time_min), "unit": "day"}
+                        timing["phase"] = "primary"
+
+        # Store BeerXML metadata in format_extensions
+        format_extensions = {}
+        if h.type:
+            format_extensions['type'] = h.type
+        if h.substitutes:
+            format_extensions['substitutes'] = h.substitutes
+        if h.hsi is not None:
+            format_extensions['hsi'] = h.hsi
+        if h.humulene is not None:
+            format_extensions['humulene'] = h.humulene
+        if h.caryophyllene is not None:
+            format_extensions['caryophyllene'] = h.caryophyllene
+        if h.cohumulone is not None:
+            format_extensions['cohumulone'] = h.cohumulone
+        if h.myrcene is not None:
+            format_extensions['myrcene'] = h.myrcene
+        if h.notes:
+            format_extensions['notes'] = h.notes
+
         hop = RecipeHop(
             recipe_id=recipe.id,
             name=h.name,
-            alpha_percent=h.alpha_percent,
-            amount_kg=h.amount_kg,
-            use=h.use,
-            time_min=h.time_min,
+            alpha_acid_percent=h.alpha_percent or 0.0,  # Default to 0 if missing
+            amount_grams=(h.amount_kg * 1000) if h.amount_kg else 0.0,  # Default to 0, not None (NOT NULL constraint)
             form=h.form,
-            type=h.type,
             origin=h.origin,
-            substitutes=h.substitutes,
-            beta_percent=h.beta_percent,
-            hsi=h.hsi,
-            humulene=h.humulene,
-            caryophyllene=h.caryophyllene,
-            cohumulone=h.cohumulone,
-            myrcene=h.myrcene,
-            notes=h.notes,
+            beta_acid_percent=h.beta_percent,
+            timing=timing,
+            format_extensions=format_extensions if format_extensions else None,
         )
         db.add(hop)
 
-    # Add yeasts
+    # Add cultures (yeasts)
     for y in parsed.yeasts:
-        yeast = RecipeYeast(
+        # Determine amount and unit
+        amount = None
+        amount_unit = None
+        if y.amount_l:
+            amount = y.amount_l
+            amount_unit = "ml"
+        elif y.amount_kg:
+            amount = y.amount_kg * 1000  # Convert to grams
+            amount_unit = "g"
+
+        # Store BeerXML metadata in format_extensions
+        format_extensions = {}
+        if y.flocculation:
+            format_extensions['flocculation'] = y.flocculation
+        if y.add_to_secondary is not None:
+            format_extensions['add_to_secondary'] = y.add_to_secondary
+        if y.best_for:
+            format_extensions['best_for'] = y.best_for
+        if y.times_cultured is not None:
+            format_extensions['times_cultured'] = y.times_cultured
+        if y.max_reuse is not None:
+            format_extensions['max_reuse'] = y.max_reuse
+        if y.notes:
+            format_extensions['notes'] = y.notes
+
+        culture = RecipeCulture(
             recipe_id=recipe.id,
             name=y.name,
-            lab=y.lab,
+            producer=y.lab,  # BeerXML "lab" → BeerJSON "producer"
             product_id=y.product_id,
             type=y.type,
             form=y.form,
-            attenuation_percent=y.attenuation_percent,
+            attenuation_min_percent=y.attenuation_percent,  # BeerXML has single value, map to min
+            attenuation_max_percent=y.attenuation_percent,  # Same for max
             temp_min_c=y.temp_min_c,
             temp_max_c=y.temp_max_c,
-            flocculation=y.flocculation,
-            amount_l=y.amount_l,
-            amount_kg=y.amount_kg,
-            add_to_secondary=y.add_to_secondary,
-            best_for=y.best_for,
-            times_cultured=y.times_cultured,
-            max_reuse=y.max_reuse,
-            notes=y.notes,
+            amount=amount,
+            amount_unit=amount_unit,
+            format_extensions=format_extensions if format_extensions else None,
         )
-        db.add(yeast)
+        db.add(culture)
 
     # Add miscs
     for m in parsed.miscs:

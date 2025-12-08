@@ -200,7 +200,8 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
 
             for hop in hops:
                 hop_id, recipe_id, name, alpha_percent, amount_kg, use, time_min = hop[0:7]
-                form, hop_type, origin = hop[7:10]
+                form, hop_type, origin, substitutes, beta_percent = hop[7:12]
+                hsi, humulene, caryophyllene, cohumulone, myrcene, notes = hop[12:18]
 
                 # Only build timing if we have valid use field
                 timing_dict = None
@@ -220,13 +221,34 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
                 # (unlike ORM which auto-serializes JSON columns)
                 timing_json = json.dumps(timing_dict) if timing_dict else None
 
+                # Build format_extensions with hop metadata
+                format_extensions = {}
+                if hop_type:
+                    format_extensions['type'] = hop_type
+                if substitutes:
+                    format_extensions['substitutes'] = substitutes
+                if hsi is not None:
+                    format_extensions['hsi'] = hsi
+                if humulene is not None:
+                    format_extensions['humulene'] = humulene
+                if caryophyllene is not None:
+                    format_extensions['caryophyllene'] = caryophyllene
+                if cohumulone is not None:
+                    format_extensions['cohumulone'] = cohumulone
+                if myrcene is not None:
+                    format_extensions['myrcene'] = myrcene
+                if notes:
+                    format_extensions['notes'] = notes
+
+                format_extensions_json = json.dumps(format_extensions) if format_extensions else None
+
                 await conn.execute(text("""
                     INSERT INTO recipe_hops_new (
                         id, recipe_id, name, origin, form,
-                        alpha_acid_percent, amount_grams, timing
+                        alpha_acid_percent, beta_acid_percent, amount_grams, timing, format_extensions
                     )
                     VALUES (:id, :recipe_id, :name, :origin, :form,
-                            :alpha, :amount, :timing)
+                            :alpha, :beta, :amount, :timing, :format_ext)
                 """), {
                     "id": hop_id,
                     "recipe_id": recipe_id,
@@ -234,8 +256,10 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
                     "origin": origin,
                     "form": form or 'pellet',
                     "alpha": alpha_percent or 0,
+                    "beta": beta_percent,
                     "amount": amount_grams,
-                    "timing": timing_json  # JSON string or None
+                    "timing": timing_json,  # JSON string or None
+                    "format_ext": format_extensions_json  # JSON string or None
                 })
 
             await conn.execute(text("DROP TABLE recipe_hops"))

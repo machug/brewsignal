@@ -889,15 +889,15 @@ class RecipeCreate(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
     yeast_name: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    ibu: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
 
 
@@ -909,18 +909,18 @@ class RecipeResponse(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
     yeast_name: Optional[str] = None
     yeast_lab: Optional[str] = None
     yeast_product_id: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu_target: Optional[float] = None
-    srm_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
@@ -950,16 +950,16 @@ class HopResponse(BaseModel):
 
     id: int
     name: str
-    alpha_percent: Optional[float] = None
-    amount_kg: Optional[float] = None
+    alpha_acid_percent: Optional[float] = None
+    amount_grams: Optional[float] = None
     use: Optional[str] = None
     time_min: Optional[float] = None
     form: Optional[str] = None
     type: Optional[str] = None
 
 
-class YeastResponse(BaseModel):
-    """Pydantic response model for yeast strains."""
+class CultureResponse(BaseModel):
+    """Pydantic response model for culture (yeast/bacteria) strains."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -971,6 +971,10 @@ class YeastResponse(BaseModel):
     temp_min_c: Optional[float] = None
     temp_max_c: Optional[float] = None
     flocculation: Optional[str] = None
+
+
+# Backward compatibility alias
+YeastResponse = CultureResponse
 
 
 class MiscResponse(BaseModel):
@@ -995,12 +999,12 @@ class RecipeDetailResponse(BaseModel):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og_target: Optional[float] = None
-    fg_target: Optional[float] = None
-    ibu_target: Optional[float] = None
-    srm_target: Optional[float] = None
-    abv_target: Optional[float] = None
-    batch_size: Optional[float] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    abv: Optional[float] = None
+    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
@@ -1008,7 +1012,7 @@ class RecipeDetailResponse(BaseModel):
     # Ingredient lists
     fermentables: list[FermentableResponse] = []
     hops: list[HopResponse] = []
-    yeasts: list[YeastResponse] = []
+    cultures: list[CultureResponse] = []
     miscs: list[MiscResponse] = []
 
     @field_serializer('created_at')

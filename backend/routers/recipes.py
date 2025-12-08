@@ -43,7 +43,7 @@ async def get_recipe(recipe_id: int, db: AsyncSession = Depends(get_db)):
             selectinload(Recipe.style),
             selectinload(Recipe.fermentables),
             selectinload(Recipe.hops),
-            selectinload(Recipe.yeasts),
+            selectinload(Recipe.cultures),
             selectinload(Recipe.miscs),
         )
         .where(Recipe.id == recipe_id)
@@ -67,15 +67,15 @@ async def create_recipe(
         author=recipe.author,
         style_id=recipe.style_id,
         type=recipe.type,
-        og_target=recipe.og_target,
-        fg_target=recipe.fg_target,
+        og=recipe.og,
+        fg=recipe.fg,
         yeast_name=recipe.yeast_name,
         yeast_temp_min=recipe.yeast_temp_min,
         yeast_temp_max=recipe.yeast_temp_max,
         yeast_attenuation=recipe.yeast_attenuation,
-        ibu_target=recipe.ibu_target,
-        abv_target=recipe.abv_target,
-        batch_size=recipe.batch_size,
+        ibu=recipe.ibu,
+        abv=recipe.abv,
+        batch_size_liters=recipe.batch_size_liters,
         notes=recipe.notes,
     )
     db.add(db_recipe)

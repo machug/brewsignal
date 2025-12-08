@@ -37,9 +37,18 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
     # Create async engine for testing
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Run migrations to set up schema (same as production)
+    # We need to temporarily swap the engine so migrations run on test DB
+    import backend.database as db_module
+    original_engine = db_module.engine
+    db_module.engine = engine
+
+    try:
+        # This runs all migrations in the correct order
+        await db_module.init_db()
+    finally:
+        # Restore original engine
+        db_module.engine = original_engine
 
     # Create session factory
     async_session = async_sessionmaker(engine, expire_on_commit=False)

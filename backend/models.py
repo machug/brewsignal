@@ -939,7 +939,7 @@ class FermentableResponse(BaseModel):
     type: Optional[str] = None
     amount_kg: Optional[float] = None
     yield_percent: Optional[float] = None
-    color_lovibond: Optional[float] = None
+    color_srm: Optional[float] = None  # Renamed from color_lovibond
     origin: Optional[str] = None
     supplier: Optional[str] = None
 
@@ -950,12 +950,13 @@ class HopResponse(BaseModel):
 
     id: int
     name: str
-    alpha_acid_percent: Optional[float] = None
-    amount_grams: Optional[float] = None
-    use: Optional[str] = None
-    time_min: Optional[float] = None
+    origin: Optional[str] = None
     form: Optional[str] = None
-    type: Optional[str] = None
+    alpha_acid_percent: Optional[float] = None
+    beta_acid_percent: Optional[float] = None
+    amount_grams: Optional[float] = None
+    timing: Optional[dict] = None  # BeerJSON timing object
+    format_extensions: Optional[dict] = None  # BeerXML metadata (type, substitutes, oils, notes)
 
 
 class CultureResponse(BaseModel):
@@ -964,13 +965,18 @@ class CultureResponse(BaseModel):
 
     id: int
     name: str
-    lab: Optional[str] = None
+    producer: Optional[str] = None  # Renamed from lab
     product_id: Optional[str] = None
     type: Optional[str] = None
-    attenuation_percent: Optional[float] = None
+    form: Optional[str] = None
+    attenuation_min_percent: Optional[float] = None  # BeerJSON uses min/max range
+    attenuation_max_percent: Optional[float] = None
     temp_min_c: Optional[float] = None
     temp_max_c: Optional[float] = None
-    flocculation: Optional[str] = None
+    amount: Optional[float] = None
+    amount_unit: Optional[str] = None
+    timing: Optional[dict] = None  # BeerJSON timing object
+    format_extensions: Optional[dict] = None  # BeerXML metadata (flocculation, best_for, etc.)
 
 
 # Backward compatibility alias

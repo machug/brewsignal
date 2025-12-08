@@ -144,13 +144,31 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
 
     # Add hops
     for h in parsed.hops:
-        # Convert BeerXML use/time to BeerJSON timing
+        # Convert BeerXML use/time to BeerJSON timing (same logic as migration)
         timing = None
-        if h.use:
-            timing = {
-                "use": h.use.lower(),  # BeerJSON uses lowercase
-                "duration": {"value": h.time_min or 0, "unit": "min"}
+        if h.use and h.use != '':
+            use_mapping = {
+                "Boil": "add_to_boil",
+                "Dry Hop": "add_to_fermentation",
+                "Mash": "add_to_mash",
+                "First Wort": "add_to_boil",
+                "Aroma": "add_to_boil"
             }
+
+            if h.use in use_mapping:
+                timing = {
+                    "use": use_mapping[h.use],
+                    "continuous": False
+                }
+
+                # Add duration if time is valid
+                if h.time_min is not None and h.time_min > 0:
+                    if h.use in ["Boil", "Aroma"]:
+                        timing["duration"] = {"value": h.time_min, "unit": "min"}
+                    elif h.use == "Dry Hop":
+                        # Convert minutes to days (BeerXML quirk)
+                        timing["duration"] = {"value": int(h.time_min / 1440), "unit": "day"}
+                        timing["phase"] = "primary"
 
         # Store BeerXML metadata in format_extensions
         format_extensions = {}
@@ -174,8 +192,8 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
         hop = RecipeHop(
             recipe_id=recipe.id,
             name=h.name,
-            alpha_acid_percent=h.alpha_percent,
-            amount_grams=h.amount_kg * 1000 if h.amount_kg else None,
+            alpha_acid_percent=h.alpha_percent or 0.0,  # Default to 0 if missing
+            amount_grams=(h.amount_kg * 1000) if h.amount_kg else 0.0,  # Default to 0, not None (NOT NULL constraint)
             form=h.form,
             origin=h.origin,
             beta_acid_percent=h.beta_percent,

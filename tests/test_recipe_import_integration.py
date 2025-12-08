@@ -60,9 +60,19 @@ async def test_import_beerxml_with_new_schema():
         for hop in hops:
             assert hop.alpha_acid_percent is not None  # New field name
             assert hop.amount_grams is not None  # New field name (converted from kg)
+            assert hop.amount_grams >= 0  # Should never be None (NOT NULL constraint)
+
             # beta_acid_percent should be preserved if present in original
             if hop.beta_acid_percent:
                 assert hop.beta_acid_percent > 0
+
+            # Verify BeerJSON-compatible timing (not raw BeerXML use/time)
+            if hop.timing:
+                assert 'use' in hop.timing
+                assert hop.timing['use'] in ['add_to_boil', 'add_to_fermentation', 'add_to_mash']
+                # Should NOT have raw "Dry Hop" or lowercase "dry hop"
+                assert hop.timing['use'] != 'dry hop'
+                assert hop.timing['use'] != 'Dry Hop'
 
         # Verify cultures (yeasts) were created
         result = await session.execute(

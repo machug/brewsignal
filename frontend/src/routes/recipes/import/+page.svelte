@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { importBeerXML } from '$lib/api';
+	import { importRecipe } from '$lib/api';
 
 	const MAX_FILE_SIZE = 1_000_000; // 1MB in bytes
 
@@ -11,9 +11,10 @@
 	async function handleFileUpload(file: File) {
 		error = null;
 
-		// Validate file
-		if (!file.name.toLowerCase().endsWith('.xml')) {
-			error = 'Please upload a .xml BeerXML file';
+		// Validate file extension
+		const filename = file.name.toLowerCase();
+		if (!filename.endsWith('.xml') && !filename.endsWith('.json')) {
+			error = 'Please upload a .xml or .json recipe file';
 			return;
 		}
 
@@ -25,7 +26,7 @@
 		uploading = true;
 
 		try {
-			const recipes = await importBeerXML(file);
+			const recipes = await importRecipe(file);
 			// Redirect to first imported recipe or back to list
 			if (recipes.length === 1) {
 				goto(`/recipes/${recipes[0].id}`);
@@ -94,7 +95,7 @@
 	<div class="import-container">
 		<h1 class="page-title">Import Recipe</h1>
 		<p class="page-description">
-			Upload BeerXML files from Brewfather, BeerSmith, Brewer's Friend, or any brewing software
+			Upload recipe files from Brewfather, BeerSmith, Brewer's Friend, or any brewing software
 		</p>
 
 		<div
@@ -107,18 +108,18 @@
 			onkeydown={handleKeyDown}
 			role="button"
 			tabindex="0"
-			aria-label="Upload BeerXML file by dropping or clicking"
+			aria-label="Upload recipe file by dropping or clicking"
 		>
 			{#if uploading}
 				<div class="spinner"></div>
 				<p class="drop-text">Importing recipe...</p>
 			{:else}
 				<div class="upload-icon">📄</div>
-				<p class="drop-text">Drop BeerXML file here</p>
+				<p class="drop-text">Drop recipe file here</p>
 				<p class="drop-subtext">or click to browse</p>
 				<input
 					type="file"
-					accept=".xml"
+					accept=".xml,.json"
 					onchange={handleFileInput}
 					class="file-input"
 					disabled={uploading}
@@ -127,7 +128,7 @@
 		</div>
 
 		<div class="file-info">
-			<p class="info-text">Supported: .xml files (max 1MB)</p>
+			<p class="info-text">Supported: BeerXML (.xml), BeerJSON (.json), Brewfather JSON (.json) - max 1MB</p>
 		</div>
 
 		{#if error}

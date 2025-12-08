@@ -555,7 +555,15 @@ export async function fetchRecipe(id: number): Promise<RecipeResponse> {
 	return response.json();
 }
 
-export async function importBeerXML(file: File): Promise<RecipeResponse[]> {
+/**
+ * Import recipe from BeerXML, BeerJSON, or Brewfather JSON.
+ * Backend auto-detects format from file extension and content.
+ *
+ * @param file - Recipe file (.xml or .json)
+ * @returns Array of imported recipes (typically single recipe)
+ * @throws Error with backend validation message if import fails
+ */
+export async function importRecipe(file: File): Promise<RecipeResponse[]> {
 	const formData = new FormData();
 	formData.append('file', file);
 

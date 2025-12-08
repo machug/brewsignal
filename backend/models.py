@@ -497,6 +497,36 @@ class RecipeHop(Base):
 
         return use_mapping.get(timing_use, 'Boil')
 
+    @property
+    def time_min(self) -> Optional[float]:
+        """Extract time in minutes from timing JSON for backward compatibility.
+
+        Returns duration value from timing.duration object.
+        Converts days to minutes if needed.
+        """
+        if not self.timing:
+            return None
+
+        duration = self.timing.get('duration')
+        if not duration:
+            return None
+
+        value = duration.get('value')
+        unit = duration.get('unit', 'min')
+
+        if value is None:
+            return None
+
+        # Convert to minutes based on unit
+        if unit == 'min':
+            return float(value)
+        elif unit == 'day':
+            return float(value) * 1440  # days to minutes
+        elif unit == 'hour':
+            return float(value) * 60
+        else:
+            return float(value)  # Assume minutes if unknown
+
 
 class RecipeCulture(Base):
     """Culture/yeast strains in a recipe (BeerJSON terminology)."""
@@ -532,6 +562,11 @@ class RecipeCulture(Base):
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="cultures")
+
+    @property
+    def lab(self) -> Optional[str]:
+        """Alias for producer for backward compatibility."""
+        return self.producer
 
 
 class RecipeMisc(Base):

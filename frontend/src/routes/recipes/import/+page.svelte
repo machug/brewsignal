@@ -95,7 +95,7 @@
 	<div class="import-container">
 		<h1 class="page-title">Import Recipe</h1>
 		<p class="page-description">
-			Upload BeerXML files from Brewfather, BeerSmith, Brewer's Friend, or any brewing software
+			Upload recipe files from Brewfather, BeerSmith, Brewer's Friend, or any brewing software
 		</p>
 
 		<div
@@ -115,11 +115,11 @@
 				<p class="drop-text">Importing recipe...</p>
 			{:else}
 				<div class="upload-icon">📄</div>
-				<p class="drop-text">Drop BeerXML file here</p>
+				<p class="drop-text">Drop recipe file here</p>
 				<p class="drop-subtext">or click to browse</p>
 				<input
 					type="file"
-					accept=".xml"
+					accept=".xml,.json"
 					onchange={handleFileInput}
 					class="file-input"
 					disabled={uploading}
@@ -128,7 +128,7 @@
 		</div>
 
 		<div class="file-info">
-			<p class="info-text">Supported: .xml files (max 1MB)</p>
+			<p class="info-text">Supported: BeerXML (.xml), BeerJSON (.json), Brewfather JSON (.json) - max 1MB</p>
 		</div>
 
 		{#if error}

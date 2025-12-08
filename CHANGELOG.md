@@ -15,6 +15,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recipe import page now shows all supported formats in help text
 - File picker accepts both .xml and .json files
 
+## [2.7.0] - 2025-12-08
+
+### Added
+- **Tilt Calibration Page Migration** (#81) - Migrated from deprecated CalibrationPoint table to modern JSON-based Device.calibration_data API
+  - Temperature calibration with independent SG and temperature calibration curves
+  - Celsius storage with automatic C/F display conversion based on user preferences
+  - Duplicate point detection with unit-aware tolerance (0.001 for SG, 0.1°C for temp)
+  - Backend validation for SG range (0.990-1.200) and temperature range (-10°C to 50°C)
+  - Comprehensive test coverage with 5 new backend tests (all passing)
+  - ARIA labels for accessibility on all interactive elements
+  - Optimized API calls (eliminated redundant GET on save)
+
+### Fixed
+- **Race Condition on Device Switching** - Fixed calibration data loading race when switching between devices
+  - Form no longer displays stale data from previous device
+  - Loading indicator prevents premature user interaction
+- **Form State Leakage** - Clear form points completely when device changes
+  - Prevents cross-device point contamination
+  - Reset form to pristine state on device selection
+- **Linear Calibration Validation** - Fixed incorrectly requiring SG points for temp-only calibration
+  - Independent validation for SG and temperature curves
+  - Allow pure temperature calibration without SG points
+- **Outdated Comment** - Updated `backend/ingest/base.py:44` comment to reflect current Celsius-first architecture
+  - Removed misleading "Always Fahrenheit after normalization" comment
+  - Added accurate comment about Celsius storage standard
+
+### Technical
+- Calibration UI uses reactive Svelte 5 `$state` for form management
+- Form points sync bidirectionally with Device.calibration_data JSON structure
+- Validation uses Pydantic models with custom validators for range checking
+- Test suite includes edge cases: empty calibration, single-point, duplicate detection, invalid ranges
+- Linear interpolation algorithm matches deprecated table-based system for backward compatibility
+
 ## [2.6.0] - 2025-12-05
 
 ### Added

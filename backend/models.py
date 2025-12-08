@@ -430,6 +430,11 @@ class RecipeFermentable(Base):
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="fermentables")
 
+    @property
+    def color_lovibond(self) -> Optional[float]:
+        """Alias for color_srm for backward compatibility."""
+        return self.color_srm
+
 
 class RecipeHop(Base):
     """Hop additions in a recipe."""
@@ -454,6 +459,11 @@ class RecipeHop(Base):
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="hops")
+
+    @property
+    def alpha_percent(self) -> float:
+        """Alias for alpha_acid_percent for backward compatibility."""
+        return self.alpha_acid_percent
 
 
 class RecipeCulture(Base):

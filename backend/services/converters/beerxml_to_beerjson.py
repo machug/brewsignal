@@ -13,13 +13,26 @@ class BeerXMLToBeerJSONConverter:
 
         Returns:
             BeerJSON 1.0 compatible dict
+
+        Raises:
+            ValueError: Invalid BeerXML structure (missing RECIPES or NAME)
         """
-        recipes_root = beerxml_dict.get('RECIPES', {})
+        # Validate minimum BeerXML structure
+        if 'RECIPES' not in beerxml_dict:
+            raise ValueError("Invalid BeerXML: missing RECIPES root element")
+
+        recipes_root = beerxml_dict['RECIPES']
         recipe_data = recipes_root.get('RECIPE', {})
 
         # Handle single recipe or list
         if isinstance(recipe_data, list):
-            recipe_data = recipe_data[0]
+            recipe_data = recipe_data[0] if recipe_data else {}
+
+        # Validate minimum recipe data
+        if not recipe_data:
+            raise ValueError("Invalid BeerXML: no RECIPE element found")
+        if not recipe_data.get('NAME'):
+            raise ValueError("Invalid BeerXML: recipe NAME is required")
 
         beerjson_recipe = self._convert_recipe(recipe_data)
 

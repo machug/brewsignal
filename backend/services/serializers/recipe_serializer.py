@@ -133,9 +133,35 @@ class RecipeSerializer:
 
         # Cultures (yeast)
         if 'culture_additions' in ingredients:
-            for culture_dict in ingredients['culture_additions']:
+            for idx, culture_dict in enumerate(ingredients['culture_additions']):
                 culture = self._create_culture(culture_dict)
                 recipe.cultures.append(culture)
+
+                # Extract first culture to populate Recipe's top-level yeast fields
+                # (for backward compatibility with BeerXML imports)
+                if idx == 0:
+                    recipe.yeast_name = culture_dict.get('name')
+                    recipe.yeast_lab = culture_dict.get('producer')
+                    recipe.yeast_product_id = culture_dict.get('product_id')
+
+                    # Extract temperature range
+                    if 'temperature_range' in culture_dict:
+                        temp_range = culture_dict['temperature_range']
+                        if 'minimum' in temp_range:
+                            recipe.yeast_temp_min = self._extract_temperature(temp_range['minimum'])
+                        if 'maximum' in temp_range:
+                            recipe.yeast_temp_max = self._extract_temperature(temp_range['maximum'])
+
+                    # Extract attenuation (use minimum if range, or single value)
+                    atten = culture_dict.get('attenuation') or culture_dict.get('attenuation_range')
+                    if atten:
+                        if 'minimum' in atten:
+                            atten_val = self._extract_percent(atten['minimum'])
+                            recipe.yeast_attenuation = atten_val * 100 if atten_val and atten_val < 1 else atten_val
+                        elif 'maximum' in atten:
+                            # Fallback to maximum if no minimum
+                            atten_val = self._extract_percent(atten['maximum'])
+                            recipe.yeast_attenuation = atten_val * 100 if atten_val and atten_val < 1 else atten_val
 
         # Miscellaneous
         if 'miscellaneous_additions' in ingredients:

@@ -2,12 +2,18 @@
 	interface Hop {
 		id: number;
 		name: string;
-		alpha_percent?: number;
-		amount_kg?: number;
-		use?: string;
-		time_min?: number;
+		origin?: string;
 		form?: string;
-		type?: string;
+		alpha_acid_percent?: number;
+		beta_acid_percent?: number;
+		amount_grams?: number;
+		timing?: {
+			use?: string;
+			duration?: {
+				value?: number;
+				unit?: string;
+			};
+		};
 	}
 
 	let { hops }: { hops: Hop[] } = $props();
@@ -16,22 +22,21 @@
 	let groupedHops = $derived.by(() => {
 		const groups: Record<string, Hop[]> = {};
 		for (const hop of hops) {
-			const use = hop.use || 'Other';
+			const use = hop.timing?.use || 'Other';
 			if (!groups[use]) groups[use] = [];
 			groups[use].push(hop);
 		}
 		// Sort boil hops by time (longest first)
 		for (const [use, hopList] of Object.entries(groups)) {
-			if (use === 'Boil') {
-				hopList.sort((a, b) => (b.time_min || 0) - (a.time_min || 0));
+			if (use === 'add_to_boil' || use === 'Boil') {
+				hopList.sort((a, b) => (b.timing?.duration?.value || 0) - (a.timing?.duration?.value || 0));
 			}
 		}
 		return groups;
 	});
 
-	function formatAmount(kg?: number): string {
-		if (kg === undefined || kg === null) return '--';
-		const grams = kg * 1000;
+	function formatAmount(grams?: number): string {
+		if (grams === undefined || grams === null) return '--';
 		return grams.toFixed(0) + 'g';
 	}
 
@@ -40,12 +45,33 @@
 		return percent.toFixed(1) + '%';
 	}
 
-	function formatTime(use?: string, time?: number): string {
-		if (time === undefined || time === null) return '--';
-		if (use === 'Dry Hop') {
-			return time === 0 ? 'At packaging' : `Day ${time}`;
+	function formatTime(timing?: { use?: string; duration?: { value?: number; unit?: string } }): string {
+		if (!timing?.duration?.value) return '--';
+		const value = timing.duration.value;
+		const use = timing.use;
+
+		// Both dry_hop and add_to_fermentation use day-based timing
+		if (use === 'dry_hop' || use === 'add_to_fermentation') {
+			return value === 0 ? 'At packaging' : `Day ${value}`;
 		}
-		return `${time} min`;
+		return `${value} ${timing.duration.unit || 'min'}`;
+	}
+
+	function formatUse(use?: string): string {
+		if (!use) return 'Other';
+		// Convert BeerJSON format to readable names
+		// Note: add_to_fermentation typically means dry hopping, but could include other fermentation additions
+		const useMap: Record<string, string> = {
+			'add_to_boil': 'Boil',
+			'dry_hop': 'Dry Hop',
+			'add_to_fermentation': 'Fermentation',
+			'whirlpool': 'Whirlpool',
+			'first_wort': 'First Wort',
+			'mash': 'Mash',
+			'aroma': 'Aroma'
+		};
+		// Gracefully handle unknown timing keys by converting snake_case to Title Case
+		return useMap[use] || use.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 	}
 </script>
 
@@ -55,7 +81,7 @@
 
 		{#each Object.entries(groupedHops) as [use, hopList]}
 			<div class="hop-group">
-				<h4>{use}</h4>
+				<h4>{formatUse(use)}</h4>
 				<table>
 					<thead>
 						<tr>
@@ -71,13 +97,13 @@
 							<tr>
 								<td class="hop-name">
 									{hop.name}
-									{#if hop.type}
-										<div class="hop-type">{hop.type}</div>
+									{#if hop.origin}
+										<div class="hop-type">{hop.origin}</div>
 									{/if}
 								</td>
-								<td>{formatAmount(hop.amount_kg)}</td>
-								<td>{formatAlpha(hop.alpha_percent)}</td>
-								<td>{formatTime(hop.use, hop.time_min)}</td>
+								<td>{formatAmount(hop.amount_grams)}</td>
+								<td>{formatAlpha(hop.alpha_acid_percent)}</td>
+								<td>{formatTime(hop.timing)}</td>
 								<td>{hop.form || '--'}</td>
 							</tr>
 						{/each}

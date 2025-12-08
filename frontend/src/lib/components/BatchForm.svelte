@@ -163,8 +163,8 @@
 			// Auto-fill form from recipe
 			name = recipe.name;
 			recipeId = recipe.id;
-			if (recipe.og_target) {
-				measuredOg = recipe.og_target.toString();
+			if (recipe.og) {
+				measuredOg = recipe.og.toString();
 			}
 		} else {
 			recipeId = null;

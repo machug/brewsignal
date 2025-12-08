@@ -15,6 +15,7 @@ dependencies = [
     "beacontools>=2.1",
     "httpx>=0.25",
     "defusedxml>=0.7",
+    "jsonschema>=4.20",
     "python-multipart>=0.0.6",
     # ML dependencies
     "numpy>=1.24",

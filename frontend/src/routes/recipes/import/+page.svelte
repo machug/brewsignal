@@ -108,7 +108,7 @@
 			onkeydown={handleKeyDown}
 			role="button"
 			tabindex="0"
-			aria-label="Upload BeerXML file by dropping or clicking"
+			aria-label="Upload recipe file by dropping or clicking"
 		>
 			{#if uploading}
 				<div class="spinner"></div>

@@ -159,7 +159,7 @@ export interface HopResponse {
 			unit?: string;
 		};
 	};
-	format_extensions?: any;
+	format_extensions?: Record<string, unknown>;
 }
 
 export interface YeastResponse {
@@ -228,7 +228,7 @@ export interface RecipeResponse {
 	notes?: string;
 	created_at: string;
 	style?: { id: string; name: string };
-	format_extensions?: Record<string, any>;
+	format_extensions?: Record<string, unknown>;
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];
 	hops?: HopResponse[];
@@ -644,7 +644,9 @@ export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse
 
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
-		throw new Error(error.detail || 'Failed to create recipe');
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to create recipe');
 	}
 
 	return response.json();
@@ -684,7 +686,9 @@ export async function importRecipe(file: File): Promise<RecipeResponse[]> {
 
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
-		throw new Error(error.detail || 'Failed to import recipe');
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to import recipe');
 	}
 
 	return response.json();

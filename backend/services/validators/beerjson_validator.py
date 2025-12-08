@@ -50,7 +50,9 @@ class BeerJSONValidator:
             # Try modern approach with referencing library (jsonschema 4.18+)
             # NOTE: Currently disabled due to missing timing.json schema file in BeerJSON schemas.
             # The schemas reference "timing.json#/definitions/TimingType" but timing.json doesn't exist.
-            # Re-enable this block once timing.json is added to the schema set.
+            # TODO: File issue with BeerJSON schema repository requesting timing.json schema file
+            # Repository: https://github.com/beerjson/beerjson
+            # Once timing.json is added, remove the raise ImportError below to enable modern referencing
             raise ImportError("Using RefResolver fallback until timing.json schema is available")
 
             from referencing import Registry, Resource  # noqa: F401

@@ -179,9 +179,21 @@ async def update_recipe(
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     # Update fields that are provided
+    # Use explicit field assignment to prevent updating unintended fields
     update_data = recipe_update.model_dump(exclude_unset=True)
+
+    # Whitelist of allowed update fields (matches RecipeUpdate model)
+    allowed_fields = {
+        'name', 'author', 'style_id', 'type', 'og', 'fg', 'abv', 'ibu',
+        'color_srm', 'batch_size_liters', 'boil_time_minutes',
+        'efficiency_percent', 'carbonation_vols', 'yeast_name', 'yeast_lab',
+        'yeast_product_id', 'yeast_temp_min', 'yeast_temp_max',
+        'yeast_attenuation', 'notes', 'format_extensions'
+    }
+
     for field, value in update_data.items():
-        setattr(recipe, field, value)
+        if field in allowed_fields:
+            setattr(recipe, field, value)
 
     await db.commit()
     await db.refresh(recipe)

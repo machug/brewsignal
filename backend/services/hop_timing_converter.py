@@ -59,13 +59,23 @@ def convert_hop_timing_safe(use: Optional[str], time: Optional[float]) -> Option
     }
 
     # Add duration if time is valid
+    # Note: Only Boil, Aroma, and Dry Hop get duration values
+    # - First Wort: Added at start of boil, duration is implied by boil time
+    # - Mash: Added during mash, duration is implied by mash schedule
     if time is not None and time > 0:
         if use in ["Boil", "Aroma"]:
             timing["duration"] = {"value": time, "unit": "min"}
         elif use == "Dry Hop":
             # Convert minutes to days (BeerXML quirk)
             # Use round() instead of int() to handle fractional days properly
-            timing["duration"] = {"value": round(time / 1440), "unit": "day"}
+            days = round(time / 1440)
+
+            # Sanity check: Cap at 365 days (BeerXML files sometimes have nonsensical values)
+            if days > 365:
+                logger.warning(f"Dry hop duration {days} days exceeds maximum (365), capping value")
+                days = 365
+
+            timing["duration"] = {"value": days, "unit": "day"}
             timing["phase"] = "primary"
 
     return timing  # Return dict, not json.dumps()

@@ -323,3 +323,52 @@ async def test_hop_timing_data_migration():
         assert hop6[1] == 'Null Use'
         assert hop6[3] == 14.0  # amount_grams
         assert hop6[4] is None  # timing should be NULL
+
+
+@pytest.mark.asyncio
+async def test_water_and_procedure_tables_exist():
+    """Test that water chemistry and procedure tables exist."""
+    await init_db()
+
+    async with engine.connect() as conn:
+        # Use PRAGMA table_info (SQLite-specific but reliable)
+        # Verify water profile table exists
+        result = await conn.execute(text("PRAGMA table_info(recipe_water_profiles)"))
+        rows = result.fetchall()
+        water_cols = {row[1] for row in rows}  # row[1] is column name
+
+        assert len(rows) > 0, "recipe_water_profiles table should exist"
+        assert 'profile_type' in water_cols
+        assert 'calcium_ppm' in water_cols
+        assert 'sulfate_ppm' in water_cols
+
+        # Verify water adjustments table exists
+        result = await conn.execute(text("PRAGMA table_info(recipe_water_adjustments)"))
+        rows = result.fetchall()
+        adjustment_cols = {row[1] for row in rows}
+
+        assert len(rows) > 0, "recipe_water_adjustments table should exist"
+        assert 'stage' in adjustment_cols
+        assert 'calcium_sulfate_g' in adjustment_cols
+        assert 'acid_type' in adjustment_cols
+
+        # Verify mash step table exists
+        result = await conn.execute(text("PRAGMA table_info(recipe_mash_steps)"))
+        rows = result.fetchall()
+        mash_cols = {row[1] for row in rows}
+
+        assert len(rows) > 0, "recipe_mash_steps table should exist"
+        assert 'step_number' in mash_cols
+        assert 'temp_c' in mash_cols
+        assert 'time_minutes' in mash_cols
+
+        # Verify fermentation step table exists
+        result = await conn.execute(text("PRAGMA table_info(recipe_fermentation_steps)"))
+        rows = result.fetchall()
+        ferm_cols = {row[1] for row in rows}
+
+        assert len(rows) > 0, "recipe_fermentation_steps table should exist"
+        assert 'step_number' in ferm_cols
+        assert 'type' in ferm_cols
+        assert 'temp_c' in ferm_cols
+        assert 'time_days' in ferm_cols

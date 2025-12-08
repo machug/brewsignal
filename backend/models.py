@@ -331,6 +331,10 @@ class Recipe(Base):
     hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 
 class Batch(Base):
@@ -513,6 +517,121 @@ class RecipeMisc(Base):
     format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     recipe: Mapped["Recipe"] = relationship(back_populates="miscs")
+
+
+class RecipeWaterProfile(Base):
+    """Water chemistry profiles for a recipe (source, target, or sparge water)."""
+    __tablename__ = "recipe_water_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Profile metadata
+    profile_type: Mapped[str] = mapped_column(String(20), nullable=False)  # source, target, sparge
+    name: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Ion concentrations (ppm)
+    calcium_ppm: Mapped[Optional[float]] = mapped_column()
+    magnesium_ppm: Mapped[Optional[float]] = mapped_column()
+    sodium_ppm: Mapped[Optional[float]] = mapped_column()
+    chloride_ppm: Mapped[Optional[float]] = mapped_column()
+    sulfate_ppm: Mapped[Optional[float]] = mapped_column()
+    bicarbonate_ppm: Mapped[Optional[float]] = mapped_column()
+
+    # Water characteristics
+    ph: Mapped[Optional[float]] = mapped_column()
+    alkalinity: Mapped[Optional[float]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="water_profiles")
+
+
+class RecipeWaterAdjustment(Base):
+    """Water treatment additions (salts and acids) for a recipe."""
+    __tablename__ = "recipe_water_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Stage metadata
+    stage: Mapped[str] = mapped_column(String(20), nullable=False)  # mash, sparge, total
+    volume_liters: Mapped[Optional[float]] = mapped_column()
+
+    # Salt additions (grams)
+    calcium_sulfate_g: Mapped[Optional[float]] = mapped_column()  # Gypsum (CaSO4)
+    calcium_chloride_g: Mapped[Optional[float]] = mapped_column()  # CaCl2
+    magnesium_sulfate_g: Mapped[Optional[float]] = mapped_column()  # Epsom salt (MgSO4)
+    sodium_bicarbonate_g: Mapped[Optional[float]] = mapped_column()  # Baking soda (NaHCO3)
+    calcium_carbonate_g: Mapped[Optional[float]] = mapped_column()  # Chalk (CaCO3)
+    calcium_hydroxide_g: Mapped[Optional[float]] = mapped_column()  # Slaked lime (Ca(OH)2)
+    magnesium_chloride_g: Mapped[Optional[float]] = mapped_column()  # MgCl2
+    sodium_chloride_g: Mapped[Optional[float]] = mapped_column()  # Table salt (NaCl)
+
+    # Acid additions
+    acid_type: Mapped[Optional[str]] = mapped_column(String(20))  # lactic, phosphoric, citric, etc.
+    acid_ml: Mapped[Optional[float]] = mapped_column()
+    acid_concentration_percent: Mapped[Optional[float]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="water_adjustments")
+
+
+class RecipeMashStep(Base):
+    """Mash schedule steps for a recipe."""
+    __tablename__ = "recipe_mash_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Step metadata
+    step_number: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # infusion, temperature, decoction
+
+    # Step parameters (temperatures in Celsius)
+    temp_c: Mapped[float] = mapped_column(nullable=False)
+    time_minutes: Mapped[int] = mapped_column(nullable=False)
+
+    # Infusion step parameters
+    infusion_amount_liters: Mapped[Optional[float]] = mapped_column()
+    infusion_temp_c: Mapped[Optional[float]] = mapped_column()
+
+    # Ramp parameters
+    ramp_time_minutes: Mapped[Optional[int]] = mapped_column()
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="mash_steps")
+
+
+class RecipeFermentationStep(Base):
+    """Fermentation schedule steps for a recipe."""
+    __tablename__ = "recipe_fermentation_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+
+    # Step metadata
+    step_number: Mapped[int] = mapped_column(nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # primary, secondary, conditioning
+
+    # Step parameters (temperature in Celsius)
+    temp_c: Mapped[float] = mapped_column(nullable=False)
+    time_days: Mapped[int] = mapped_column(nullable=False)
+
+    # Format-specific extensions
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Relationship
+    recipe: Mapped["Recipe"] = relationship(back_populates="fermentation_steps")
 
 
 # Pydantic Schemas

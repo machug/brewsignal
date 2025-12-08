@@ -243,6 +243,10 @@ async def init_db():
         from backend.migrations.enhance_ingredient_tables import migrate_enhance_ingredient_tables
         await migrate_enhance_ingredient_tables(conn)
 
+        # Create water chemistry and procedure tables
+        from backend.migrations.create_water_and_procedure_tables import migrate_create_water_and_procedure_tables
+        await migrate_create_water_and_procedure_tables(conn)
+
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
         await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events

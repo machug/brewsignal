@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { importBeerXML } from '$lib/api';
+	import { importRecipe } from '$lib/api';
 
 	const MAX_FILE_SIZE = 1_000_000; // 1MB in bytes
 
@@ -26,7 +26,7 @@
 		uploading = true;
 
 		try {
-			const recipes = await importBeerXML(file);
+			const recipes = await importRecipe(file);
 			// Redirect to first imported recipe or back to list
 			if (recipes.length === 1) {
 				goto(`/recipes/${recipes[0].id}`);

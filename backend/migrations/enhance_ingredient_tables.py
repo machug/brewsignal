@@ -14,9 +14,30 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 logger = logging.getLogger(__name__)
 
+# Whitelist of allowed table names for PRAGMA queries
+ALLOWED_TABLES = {
+    'recipes', 'recipe_fermentables', 'recipe_hops', 'recipe_cultures',
+    'recipe_miscs', 'recipe_mash_steps', 'recipe_fermentation_steps',
+    'recipe_water_profiles', 'recipe_water_adjustments'
+}
+
 
 async def _check_column_exists(conn: AsyncConnection, table: str, column: str) -> bool:
-    """Check if a column exists in a table."""
+    """Check if a column exists in a table.
+
+    Args:
+        conn: Database connection
+        table: Table name (validated against whitelist)
+        column: Column name to check
+
+    Returns:
+        True if column exists, False otherwise
+
+    Raises:
+        ValueError: If table name is not in whitelist
+    """
+    if table not in ALLOWED_TABLES:
+        raise ValueError(f"Invalid table name: {table}")
     result = await conn.execute(text(f"PRAGMA table_info({table})"))
     columns = {row[1] for row in result}
     return column in columns

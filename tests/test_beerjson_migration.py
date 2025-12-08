@@ -140,3 +140,50 @@ async def test_migration_preserves_recipe_data():
         # Verify new BeerJSON columns exist
         assert 'beerjson_version' in columns
         assert 'format_extensions' in columns
+
+
+@pytest.mark.asyncio
+async def test_ingredient_tables_have_timing_columns():
+    """Test that ingredient tables have timing and format_extensions columns."""
+    await init_db()
+
+    async with engine.connect() as conn:
+        # RecipeFermentable
+        result = await conn.execute(text("PRAGMA table_info(recipe_fermentables)"))
+        rows = result.fetchall()
+        ferm_cols = {row[1] for row in rows}  # row[1] is column name
+
+        assert 'grain_group' in ferm_cols
+        assert 'percentage' in ferm_cols
+        assert 'timing' in ferm_cols
+        assert 'format_extensions' in ferm_cols
+        assert 'amount_kg' in ferm_cols
+        assert 'color_srm' in ferm_cols
+
+        # RecipeHop
+        result = await conn.execute(text("PRAGMA table_info(recipe_hops)"))
+        rows = result.fetchall()
+        hop_cols = {row[1] for row in rows}
+
+        assert 'timing' in hop_cols
+        assert 'format_extensions' in hop_cols
+        assert 'beta_acid_percent' in hop_cols
+        assert 'alpha_acid_percent' in hop_cols
+        assert 'amount_grams' in hop_cols
+
+        # RecipeCulture (renamed from RecipeYeast)
+        result = await conn.execute(text("PRAGMA table_info(recipe_cultures)"))
+        rows = result.fetchall()
+        culture_cols = {row[1] for row in rows}
+
+        assert 'timing' in culture_cols
+        assert 'format_extensions' in culture_cols
+
+        # RecipeMisc
+        result = await conn.execute(text("PRAGMA table_info(recipe_miscs)"))
+        rows = result.fetchall()
+        misc_cols = {row[1] for row in rows}
+
+        assert 'amount_unit' in misc_cols
+        assert 'timing' in misc_cols
+        assert 'format_extensions' in misc_cols

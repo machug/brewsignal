@@ -329,7 +329,7 @@ class Recipe(Base):
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
     fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    yeasts: Mapped[list["RecipeYeast"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
     miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
 
 
@@ -394,17 +394,25 @@ class RecipeFermentable(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50))  # Grain, Sugar, Extract, Dry Extract, Adjunct
+    type: Mapped[Optional[str]] = mapped_column(String(50))  # base, adjunct, sugar, grain, non-malt adjunct
+    grain_group: Mapped[Optional[str]] = mapped_column(String(50))  # base, caramel, roasted, etc.
     amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
+    percentage: Mapped[Optional[float]] = mapped_column()  # % of grain bill (0-100)
     yield_percent: Mapped[Optional[float]] = mapped_column()  # % yield (0-100)
-    color_lovibond: Mapped[Optional[float]] = mapped_column()  # SRM/Lovibond
+    color_srm: Mapped[Optional[float]] = mapped_column()  # SRM color (renamed from color_lovibond)
 
     # Additional metadata
     origin: Mapped[Optional[str]] = mapped_column(String(50))
     supplier: Mapped[Optional[str]] = mapped_column(String(100))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Advanced BeerXML fields (optional)
     add_after_boil: Mapped[Optional[bool]] = mapped_column(default=False)
@@ -426,66 +434,58 @@ class RecipeHop(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    alpha_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
-    amount_kg: Mapped[float] = mapped_column(nullable=False)  # Amount in kilograms
-    use: Mapped[str] = mapped_column(String(20))  # Boil, Dry Hop, Mash, First Wort, Aroma
-    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (0 for dry hop timing, or days)
-
-    # Hop characteristics
-    form: Mapped[Optional[str]] = mapped_column(String(20))  # Pellet, Plug, Leaf
-    type: Mapped[Optional[str]] = mapped_column(String(20))  # Bittering, Aroma, Both
     origin: Mapped[Optional[str]] = mapped_column(String(50))
-    substitutes: Mapped[Optional[str]] = mapped_column(String(200))
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # pellet, leaf, plug, powder, extract
+    alpha_acid_percent: Mapped[float] = mapped_column(nullable=False)  # AA% (0-100), renamed from alpha_percent
+    beta_acid_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %, renamed from beta_percent
+    amount_grams: Mapped[float] = mapped_column(nullable=False)  # Amount in grams (renamed from amount_kg)
 
-    # Advanced BeerXML fields
-    beta_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %
-    hsi: Mapped[Optional[float]] = mapped_column()  # Hop Storage Index
-    humulene: Mapped[Optional[float]] = mapped_column()  # %
-    caryophyllene: Mapped[Optional[float]] = mapped_column()  # %
-    cohumulone: Mapped[Optional[float]] = mapped_column()  # %
-    myrcene: Mapped[Optional[float]] = mapped_column()  # %
+    # BeerJSON timing (replaces use/time_min)
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
 
-    notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="hops")
 
 
-class RecipeYeast(Base):
-    """Yeast strains in a recipe."""
-    __tablename__ = "recipe_yeasts"
+class RecipeCulture(Base):
+    """Culture/yeast strains in a recipe (BeerJSON terminology)."""
+    __tablename__ = "recipe_cultures"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
-    # BeerXML fields
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    lab: Mapped[Optional[str]] = mapped_column(String(100))
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # ale, lager, wine, champagne, other
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # liquid, dry, slant, culture
+    producer: Mapped[Optional[str]] = mapped_column(String(100))  # renamed from lab
     product_id: Mapped[Optional[str]] = mapped_column(String(50))
-    type: Mapped[Optional[str]] = mapped_column(String(20))  # Ale, Lager, Wheat, Wine, Champagne
-    form: Mapped[Optional[str]] = mapped_column(String(20))  # Liquid, Dry, Slant, Culture
 
-    # Fermentation characteristics
-    attenuation_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
-    temp_min_c: Mapped[Optional[float]] = mapped_column()  # Celsius
-    temp_max_c: Mapped[Optional[float]] = mapped_column()  # Celsius
-    flocculation: Mapped[Optional[str]] = mapped_column(String(20))  # Low, Medium, High, Very High
+    # Temperature range (Celsius)
+    temp_min_c: Mapped[Optional[float]] = mapped_column()
+    temp_max_c: Mapped[Optional[float]] = mapped_column()
 
-    # Pitching
-    amount_l: Mapped[Optional[float]] = mapped_column()  # Liters (if liquid)
-    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg (if dry)
-    add_to_secondary: Mapped[Optional[bool]] = mapped_column(default=False)
+    # Attenuation range
+    attenuation_min_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
+    attenuation_max_percent: Mapped[Optional[float]] = mapped_column()  # % (0-100)
 
-    # Advanced fields
-    best_for: Mapped[Optional[str]] = mapped_column(Text)
-    times_cultured: Mapped[Optional[int]] = mapped_column()
-    max_reuse: Mapped[Optional[int]] = mapped_column()
-    notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Amount with unit
+    amount: Mapped[Optional[float]] = mapped_column()
+    amount_unit: Mapped[Optional[str]] = mapped_column(String(10))  # pkg, ml, g, etc.
+
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Relationship
-    recipe: Mapped["Recipe"] = relationship(back_populates="yeasts")
+    recipe: Mapped["Recipe"] = relationship(back_populates="cultures")
 
 
 class RecipeMisc(Base):
@@ -495,14 +495,22 @@ class RecipeMisc(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
 
+    # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)  # Spice, Fining, Water Agent, Herb, Flavor, Other
-    use: Mapped[str] = mapped_column(String(20), nullable=False)  # Boil, Mash, Primary, Secondary, Bottling
-    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes
-    amount_kg: Mapped[Optional[float]] = mapped_column()  # Kg or L (check amount_is_weight)
-    amount_is_weight: Mapped[Optional[bool]] = mapped_column(default=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # spice, fining, water agent, herb, flavor, other
+    use: Mapped[str] = mapped_column(String(20), nullable=False)  # boil, mash, primary, secondary, bottling
+    time_min: Mapped[Optional[float]] = mapped_column()  # Minutes (legacy BeerXML)
+    amount_kg: Mapped[Optional[float]] = mapped_column()  # Amount (check amount_unit)
+    amount_is_weight: Mapped[Optional[bool]] = mapped_column(default=True)  # Legacy BeerXML
+    amount_unit: Mapped[Optional[str]] = mapped_column(String(10))  # g, kg, ml, l, tsp, tbsp, etc.
     use_for: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # BeerJSON timing
+    timing: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Format-specific extensions (preserves BeerXML/Brewfather data)
+    format_extensions: Mapped[Optional[dict]] = mapped_column(JSON)
 
     recipe: Mapped["Recipe"] = relationship(back_populates="miscs")
 

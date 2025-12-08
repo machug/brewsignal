@@ -238,6 +238,11 @@ async def init_db():
         await conn.run_sync(_migrate_create_recipe_yeasts_table)  # Create recipe_yeasts table
         await conn.run_sync(_migrate_create_recipe_miscs_table)  # Create recipe_miscs table
         await conn.run_sync(_migrate_add_recipe_expanded_fields)  # Add expanded BeerXML fields to recipes
+
+        # Enhance ingredient tables with BeerJSON timing support
+        from backend.migrations.enhance_ingredient_tables import migrate_enhance_ingredient_tables
+        await migrate_enhance_ingredient_tables(conn)
+
         await conn.run_sync(_migrate_add_batch_id_to_readings)  # Add this line (after batches table exists)
         await conn.run_sync(_migrate_add_batch_heater_columns)  # Add heater control columns to batches
         await conn.run_sync(_migrate_add_batch_id_to_control_events)  # Add batch_id to control_events

@@ -135,6 +135,7 @@ async def import_recipe(
     # Handle import failure
     if not result.success:
         await db.rollback()
+        # Note: detail is a list of error strings (List[str]) from ImportResult.errors
         raise HTTPException(
             status_code=400,
             detail=result.errors

@@ -64,25 +64,8 @@ def convert_hop_timing_safe(use: Optional[str], time: Optional[float]) -> Option
             timing["duration"] = {"value": time, "unit": "min"}
         elif use == "Dry Hop":
             # Convert minutes to days (BeerXML quirk)
-            timing["duration"] = {"value": int(time / 1440), "unit": "day"}
+            # Use round() instead of int() to handle fractional days properly
+            timing["duration"] = {"value": round(time / 1440), "unit": "day"}
             timing["phase"] = "primary"
 
     return timing  # Return dict, not json.dumps()
-
-
-def convert_hop_timing_batch(hops: list[tuple]) -> list[Optional[Dict[str, Any]]]:
-    """Convert timing for a batch of hops.
-
-    Args:
-        hops: List of hop tuples, each containing (use, time_minutes, ...)
-
-    Returns:
-        List of timing dicts (or None for invalid hops)
-    """
-    timings = []
-    for hop in hops:
-        use = hop[0] if len(hop) > 0 else None
-        time = hop[1] if len(hop) > 1 else None
-        timing = convert_hop_timing_safe(use, time)
-        timings.append(timing)
-    return timings

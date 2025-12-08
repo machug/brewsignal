@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
 from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
@@ -1110,7 +1110,7 @@ class RecipeCreate(BaseModel):
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
     notes: Optional[str] = None
-    format_extensions: Optional[dict] = None
+    format_extensions: Optional[Dict[str, Any]] = None
 
 
 class RecipeUpdate(BaseModel):
@@ -1134,7 +1134,7 @@ class RecipeUpdate(BaseModel):
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
     notes: Optional[str] = None
-    format_extensions: Optional[dict] = None
+    format_extensions: Optional[Dict[str, Any]] = None
 
 
 class RecipeResponse(BaseModel):

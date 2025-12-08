@@ -1,6 +1,6 @@
 """Test hop timing conversion utility."""
 import pytest
-from backend.services.hop_timing_converter import convert_hop_timing_safe, convert_hop_timing_batch
+from backend.services.hop_timing_converter import convert_hop_timing_safe
 
 
 class TestConvertHopTimingSafe:
@@ -26,11 +26,15 @@ class TestConvertHopTimingSafe:
         assert result["phase"] == "primary"
 
     def test_dry_hop_fractional_days(self):
-        """Dry hop with fractional days should be converted to int."""
+        """Dry hop with fractional days should be rounded to nearest int."""
         result = convert_hop_timing_safe("Dry Hop", 2880)  # 2 days
 
         assert result["duration"]["value"] == 2
         assert result["duration"]["unit"] == "day"
+
+        # Test rounding behavior: 1.5 days (2160 min) rounds to 2
+        result = convert_hop_timing_safe("Dry Hop", 2160)
+        assert result["duration"]["value"] == 2
 
     def test_mash_hop(self):
         """Mash hops should get add_to_mash use."""
@@ -109,60 +113,6 @@ class TestConvertHopTimingSafe:
         # Note: Current implementation only checks for empty string, not whitespace
         # This would need to be enhanced if whitespace handling is required
         assert result is None
-
-
-class TestConvertHopTimingBatch:
-    """Test batch conversion of hop timing."""
-
-    def test_batch_conversion_multiple_hops(self):
-        """Should convert multiple hops in batch."""
-        hops = [
-            ("Boil", 60),
-            ("Dry Hop", 1440),
-            ("Mash", 0)
-        ]
-
-        results = convert_hop_timing_batch(hops)
-
-        assert len(results) == 3
-        assert results[0]["use"] == "add_to_boil"
-        assert results[1]["use"] == "add_to_fermentation"
-        assert results[2]["use"] == "add_to_mash"
-
-    def test_batch_conversion_with_invalid_hops(self):
-        """Should handle invalid hops in batch."""
-        hops = [
-            ("Boil", 60),
-            ("Unknown", 60),
-            (None, 60),
-            ("", 60)
-        ]
-
-        results = convert_hop_timing_batch(hops)
-
-        assert len(results) == 4
-        assert results[0] is not None
-        assert results[1] is None
-        assert results[2] is None
-        assert results[3] is None
-
-    def test_batch_conversion_empty_list(self):
-        """Should handle empty hop list."""
-        results = convert_hop_timing_batch([])
-        assert results == []
-
-    def test_batch_conversion_with_tuples_missing_time(self):
-        """Should handle tuples with missing time field."""
-        hops = [
-            ("Boil",),  # No time
-        ]
-
-        results = convert_hop_timing_batch(hops)
-
-        assert len(results) == 1
-        assert results[0] is not None
-        assert results[0]["use"] == "add_to_boil"
-        assert "duration" not in results[0]
 
 
 class TestEdgeCases:

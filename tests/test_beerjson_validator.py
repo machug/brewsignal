@@ -7,11 +7,10 @@ from backend.services.validators.beerjson_validator import BeerJSONValidator
 def test_validate_brewfather_beerjson_output():
     """Test validating converted Brewfather BeerJSON against BeerJSON 1.0 schema.
 
-    NOTE: The BeerJSON schema expects version as a number (1.0), but the
-    Brewfather converter outputs it as a string ("1.0"). This test validates
-    that the validator correctly identifies this schema violation.
+    After fixes in Task 7, the Brewfather converter now produces spec-compliant
+    BeerJSON output that passes validation.
     """
-    # Load the converted BeerJSON from Task 6
+    # Load the converted BeerJSON from Task 6 (fixed in Task 7)
     with open("docs/Brewfather_to_BeerJSON_output.json", "r") as f:
         beerjson_data = json.load(f)
 
@@ -20,19 +19,11 @@ def test_validate_brewfather_beerjson_output():
     # Validate against BeerJSON 1.0 schema
     is_valid, errors = validator.validate(beerjson_data)
 
-    # The Brewfather output has version as string, which violates the schema
-    # The schema expects version to be a number (1.0 not "1.0")
-    assert is_valid is False
-    assert any("version" in str(error).lower() for error in errors)
-
-    # Fix the version to be a number and re-validate
-    beerjson_data["beerjson"]["version"] = 1.0
-    is_valid, errors = validator.validate(beerjson_data)
-
-    # After fixing version, should still fail due to missing required fields
-    # BeerJSON schema requires: name, type, author, efficiency, batch_size, ingredients
-    # with specific structure for ingredients (fermentable_additions, not fermentables)
-    assert is_valid is False
+    # After fixes in Task 7, output should be fully spec-compliant
+    if not is_valid:
+        print(f"Validation errors: {errors}")
+    assert is_valid is True
+    assert errors == []
 
 
 def test_validate_invalid_beerjson_missing_version():

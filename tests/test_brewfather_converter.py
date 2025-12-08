@@ -17,14 +17,14 @@ def test_convert_brewfather_json_to_beerjson():
     # Verify BeerJSON structure
     assert 'beerjson' in beerjson
     assert 'version' in beerjson['beerjson']
-    assert beerjson['beerjson']['version'] == '1.0'
+    assert beerjson['beerjson']['version'] == 1.0
     assert 'recipes' in beerjson['beerjson']
 
     recipe = beerjson['beerjson']['recipes'][0]
 
     # Verify basic fields
     assert recipe['name'] == "Philter XPA - Clone"
-    assert recipe['type'] == "All Grain"
+    assert recipe['type'] == "all grain"
     assert recipe['author'] == "Pig Den Brewing"
 
     # Verify batch size (liters)
@@ -45,8 +45,8 @@ def test_convert_brewfather_json_to_beerjson():
     assert recipe['color_estimate']['value'] == pytest.approx(3.8)
     assert recipe['color_estimate']['unit'] == "SRM"
 
-    # Verify carbonation
-    assert recipe['carbonation']['value'] == pytest.approx(2.4)
+    # Verify carbonation (BeerJSON expects number, not object)
+    assert recipe['carbonation'] == pytest.approx(2.4)
 
     # Verify efficiency
     assert 'efficiency' in recipe
@@ -59,14 +59,14 @@ def test_convert_brewfather_json_to_beerjson():
 
     # Verify ingredients
     assert 'ingredients' in recipe
-    assert len(recipe['ingredients']['fermentables']) == 4
-    assert len(recipe['ingredients']['hops']) == 6
-    assert len(recipe['ingredients']['cultures']) == 1
-    assert len(recipe['ingredients']['miscellaneous_ingredients']) == 8
+    assert len(recipe['ingredients']['fermentable_additions']) == 4
+    assert len(recipe['ingredients']['hop_additions']) == 6
+    assert len(recipe['ingredients']['culture_additions']) == 1
+    assert len(recipe['ingredients']['miscellaneous_additions']) == 8
 
     # Verify fermentable conversion
     ale_malt = next(
-        f for f in recipe['ingredients']['fermentables']
+        f for f in recipe['ingredients']['fermentable_additions']
         if f['name'] == 'Ale Malt'
     )
     assert ale_malt['amount']['value'] == pytest.approx(2.733)
@@ -77,13 +77,12 @@ def test_convert_brewfather_json_to_beerjson():
     assert ale_malt['color']['value'] == pytest.approx(3.0456853)
     assert ale_malt['color']['unit'] == 'SRM'
 
-    # Verify hop timing with temperature (hopstand)
+    # Verify hop timing (hopstand/whirlpool)
+    # Find first hop with duration 30 (the hopstand)
     citra_hopstand = next(
-        h for h in recipe['ingredients']['hops']
-        if h['name'] == 'Citra' and h['timing'].get('temperature')
+        h for h in recipe['ingredients']['hop_additions']
+        if h['name'] == 'Citra' and h['timing'].get('duration', {}).get('value') == 30
     )
-    assert citra_hopstand['timing']['temperature']['value'] == 80
-    assert citra_hopstand['timing']['temperature']['unit'] == "C"
     assert citra_hopstand['timing']['use'] == 'add_to_boil'
     assert citra_hopstand['timing']['duration']['value'] == 30
     assert citra_hopstand['amount']['value'] == 46
@@ -92,8 +91,8 @@ def test_convert_brewfather_json_to_beerjson():
 
     # Verify dry hop
     citra_dryhop = next(
-        h for h in recipe['ingredients']['hops']
-        if h['name'] == 'Citra' and h['timing'].get('phase') == 'primary'
+        h for h in recipe['ingredients']['hop_additions']
+        if h['name'] == 'Citra' and h['timing']['use'] == 'add_to_fermentation'
     )
     assert citra_dryhop['timing']['use'] == 'add_to_fermentation'
     assert citra_dryhop['timing']['duration']['value'] == 4
@@ -101,13 +100,14 @@ def test_convert_brewfather_json_to_beerjson():
     assert citra_dryhop['amount']['value'] == 31.5
 
     # Verify yeast/culture
-    yeast = recipe['ingredients']['cultures'][0]
+    yeast = recipe['ingredients']['culture_additions'][0]
     assert yeast['name'] == "Safale American"
     assert yeast['producer'] == "Fermentis"
     assert yeast['product_id'] == "US-05"
     assert yeast['type'] == 'ale'
     assert yeast['form'] == 'dry'
-    assert yeast['attenuation']['maximum']['value'] == pytest.approx(0.81)
+    assert yeast['attenuation_range']['minimum']['value'] == pytest.approx(0.81)
+    assert yeast['attenuation_range']['maximum']['value'] == pytest.approx(0.81)
     assert yeast['temperature_range']['minimum']['value'] == 16
     assert yeast['temperature_range']['maximum']['value'] == 28
     assert yeast['amount']['value'] == 1
@@ -120,32 +120,21 @@ def test_convert_brewfather_json_to_beerjson():
     assert recipe['mash']['mash_steps'][0]['step_temperature']['value'] == 55
     assert recipe['mash']['mash_steps'][0]['step_time']['value'] == 10
 
-    # Verify water chemistry (Brewfather extension)
-    assert 'water' in recipe
-    assert 'source' in recipe['water']
-    assert recipe['water']['source']['name'] == "Shearwater"
-    assert recipe['water']['source']['calcium']['value'] == pytest.approx(9.98)
-    assert recipe['water']['source']['calcium']['unit'] == 'ppm'
-
-    # Verify water adjustments
-    assert 'mash_water_additions' in recipe['water']
-    assert len(recipe['water']['mash_water_additions']) > 0
+    # NOTE: Water chemistry and _extensions are removed for BeerJSON 1.0 spec compliance
+    # BeerJSON schema has additionalProperties: false on RecipeType
 
     # Verify style
     assert 'style' in recipe
     assert recipe['style']['name'] == "Australian-Style Pale Ale"
     assert recipe['style']['category'] == "Other Origin Ale"
     assert recipe['style']['style_guide'] == "Brewers Association 2019"
+    assert recipe['style']['type'] == 'beer'
 
     # Verify fermentation steps
     assert 'fermentation' in recipe
     assert len(recipe['fermentation']['fermentation_steps']) == 1
-    assert recipe['fermentation']['fermentation_steps'][0]['type'] == 'primary'
-    assert recipe['fermentation']['fermentation_steps'][0]['step_temperature']['value'] == 20
+    assert recipe['fermentation']['fermentation_steps'][0]['name'] == 'Primary'
+    assert recipe['fermentation']['fermentation_steps'][0]['start_temperature']['value'] == 20
+    assert recipe['fermentation']['fermentation_steps'][0]['end_temperature']['value'] == 20
     assert recipe['fermentation']['fermentation_steps'][0]['step_time']['value'] == 14
     assert recipe['fermentation']['fermentation_steps'][0]['step_time']['unit'] == 'day'
-
-    # Verify Brewfather extensions preserved
-    assert '_extensions' in recipe
-    assert 'brewfather' in recipe['_extensions']
-    assert recipe['_extensions']['brewfather']['_id'] == "TNBrB5rplQVxrstoRVjqb4BCINiiRe"

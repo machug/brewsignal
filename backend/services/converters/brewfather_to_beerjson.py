@@ -18,7 +18,7 @@ class BrewfatherToBeerJSONConverter:
 
         return {
             'beerjson': {
-                'version': '1.0',
+                'version': 1.0,
                 'recipes': [beerjson_recipe]
             }
         }
@@ -27,15 +27,14 @@ class BrewfatherToBeerJSONConverter:
         """Convert single Brewfather recipe to BeerJSON recipe."""
         recipe = {
             'name': bf_recipe.get('name', ''),
-            'type': bf_recipe.get('type', ''),
-            'author': bf_recipe.get('author', ''),
+            'type': self._map_recipe_type(bf_recipe.get('type', '')),
+            'author': bf_recipe.get('author', 'Unknown'),
             'batch_size': self._make_volume(bf_recipe.get('batchSize')),
             'original_gravity': self._make_gravity(bf_recipe.get('og')),
             'final_gravity': self._make_gravity(bf_recipe.get('fg')),
             'alcohol_by_volume': self._make_percent(bf_recipe.get('abv')),
             'ibu_estimate': self._make_dimensionless(bf_recipe.get('ibu')),
             'color_estimate': self._make_color(bf_recipe.get('color')),
-            'carbonation': self._make_dimensionless(bf_recipe.get('carbonation')),
             'notes': bf_recipe.get('notes', ''),
         }
 
@@ -45,11 +44,20 @@ class BrewfatherToBeerJSONConverter:
                 'boil_time': self._make_time_minutes(bf_recipe['boilTime'])
             }
 
-        # Efficiency
+        # Efficiency (required field - ensure it's always present)
         if bf_recipe.get('efficiency'):
             recipe['efficiency'] = {
                 'brewhouse': self._make_percent(bf_recipe['efficiency'])
             }
+        else:
+            # Default to 75% if not specified
+            recipe['efficiency'] = {
+                'brewhouse': {'value': 0.75, 'unit': '%'}
+            }
+
+        # Carbonation (BeerJSON expects a number, not an object)
+        if bf_recipe.get('carbonation'):
+            recipe['carbonation'] = float(bf_recipe['carbonation'])
 
         # Ingredients
         recipe['ingredients'] = self._convert_ingredients(bf_recipe)
@@ -66,23 +74,9 @@ class BrewfatherToBeerJSONConverter:
         if 'fermentation' in bf_recipe and bf_recipe['fermentation'].get('steps'):
             recipe['fermentation'] = self._convert_fermentation(bf_recipe['fermentation'])
 
-        # Water chemistry (Brewfather extension)
-        if 'water' in bf_recipe:
-            recipe['water'] = self._convert_water(bf_recipe['water'])
-
-        # Brewfather extensions
-        extensions = {}
-        if bf_recipe.get('_id'):
-            extensions['_id'] = bf_recipe['_id']
-        if bf_recipe.get('_version'):
-            extensions['_version'] = bf_recipe['_version']
-        if bf_recipe.get('_timestamp'):
-            extensions['_timestamp'] = bf_recipe['_timestamp']
-        if bf_recipe.get('equipment'):
-            extensions['equipment'] = bf_recipe['equipment']
-
-        if extensions:
-            recipe['_extensions'] = {'brewfather': extensions}
+        # NOTE: BeerJSON 1.0 schema has additionalProperties: false
+        # Extensions like _extensions and water are not allowed at recipe level
+        # They are omitted for spec compliance
 
         return recipe
 
@@ -90,27 +84,27 @@ class BrewfatherToBeerJSONConverter:
         """Convert ingredients section."""
         ingredients = {}
 
-        # Fermentables
+        # Fermentables (BeerJSON uses fermentable_additions)
         if 'fermentables' in bf_recipe:
-            ingredients['fermentables'] = [
+            ingredients['fermentable_additions'] = [
                 self._convert_fermentable(f) for f in bf_recipe['fermentables']
             ]
 
-        # Hops
+        # Hops (BeerJSON uses hop_additions)
         if 'hops' in bf_recipe:
-            ingredients['hops'] = [
+            ingredients['hop_additions'] = [
                 self._convert_hop(h) for h in bf_recipe['hops']
             ]
 
-        # Yeasts/Cultures
+        # Yeasts/Cultures (BeerJSON uses culture_additions)
         if 'yeasts' in bf_recipe:
-            ingredients['cultures'] = [
+            ingredients['culture_additions'] = [
                 self._convert_culture(y) for y in bf_recipe['yeasts']
             ]
 
         # Miscs
         if 'miscs' in bf_recipe:
-            ingredients['miscellaneous_ingredients'] = [
+            ingredients['miscellaneous_additions'] = [
                 self._convert_misc(m) for m in bf_recipe['miscs']
             ]
 
@@ -133,21 +127,12 @@ class BrewfatherToBeerJSONConverter:
                 'fine_grind': self._make_percent(bf_ferm['potentialPercentage'])
             }
 
-        # Grain category
+        # Grain category (map to lowercase enum values)
         if bf_ferm.get('grainCategory'):
-            ferm['grain_group'] = bf_ferm['grainCategory']
+            ferm['grain_group'] = self._map_grain_group(bf_ferm['grainCategory'])
 
-        # Percentage
-        if bf_ferm.get('percentage'):
-            ferm['percentage'] = bf_ferm['percentage']
-
-        # Brewfather extensions
-        if bf_ferm.get('_id'):
-            ferm['_extensions'] = {
-                'brewfather': {
-                    'id': bf_ferm['_id']
-                }
-            }
+        # NOTE: BeerJSON 1.0 schema doesn't allow percentage or _extensions
+        # These fields are omitted for spec compliance
 
         return ferm
 
@@ -166,18 +151,17 @@ class BrewfatherToBeerJSONConverter:
         if bf_hop.get('beta'):
             hop['beta_acid'] = self._make_percent(bf_hop['beta'])
 
-        # Brewfather extensions
-        extensions = {}
-        if bf_hop.get('_id'):
-            extensions['id'] = bf_hop['_id']
-
-        if extensions:
-            hop['_extensions'] = {'brewfather': extensions}
+        # NOTE: BeerJSON 1.0 schema doesn't allow _extensions
+        # Brewfather IDs are omitted for spec compliance
 
         return hop
 
     def _convert_hop_timing(self, bf_hop: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert Brewfather hop use/time/temp to BeerJSON timing object."""
+        """Convert Brewfather hop use/time/temp to BeerJSON timing object.
+
+        NOTE: BeerJSON 1.0 TimingType schema doesn't allow 'temperature' or 'phase' fields.
+        These are omitted for spec compliance.
+        """
         use = bf_hop.get('use', 'Boil')
         time = bf_hop.get('time', 0)
 
@@ -192,8 +176,7 @@ class BrewfatherToBeerJSONConverter:
         }
 
         timing = {
-            'use': use_mapping.get(use, 'add_to_boil'),
-            'continuous': False
+            'use': use_mapping.get(use, 'add_to_boil')
         }
 
         # Duration
@@ -202,23 +185,12 @@ class BrewfatherToBeerJSONConverter:
                 'value': float(time),
                 'unit': 'min'
             }
-
-        # Hopstand/whirlpool temperature (Brewfather extension)
-        if bf_hop.get('temp'):
-            timing['temperature'] = {
-                'value': float(bf_hop['temp']),
-                'unit': 'C'
+        elif use == 'Dry Hop' and time and time > 0:
+            # Brewfather stores dry hop time in days
+            timing['duration'] = {
+                'value': int(time),
+                'unit': 'day'
             }
-
-        # Dry hop
-        if use == 'Dry Hop':
-            timing['phase'] = 'primary'
-            if time and time > 0:
-                # Brewfather stores dry hop time in days
-                timing['duration'] = {
-                    'value': int(time),
-                    'unit': 'day'
-                }
 
         return timing
 
@@ -247,10 +219,12 @@ class BrewfatherToBeerJSONConverter:
                 }
             culture['temperature_range'] = temp_range
 
-        # Attenuation
+        # Attenuation (BeerJSON uses attenuation_range with minimum and maximum)
         if bf_yeast.get('attenuation'):
-            culture['attenuation'] = {
-                'maximum': self._make_percent(bf_yeast['attenuation'])
+            att_value = self._make_percent(bf_yeast['attenuation'])
+            culture['attenuation_range'] = {
+                'minimum': att_value,
+                'maximum': att_value
             }
 
         # Amount
@@ -263,13 +237,8 @@ class BrewfatherToBeerJSONConverter:
                 'unit': unit
             }
 
-        # Flocculation
-        if bf_yeast.get('flocculation'):
-            if '_extensions' not in culture:
-                culture['_extensions'] = {}
-            if 'brewfather' not in culture['_extensions']:
-                culture['_extensions']['brewfather'] = {}
-            culture['_extensions']['brewfather']['flocculation'] = bf_yeast['flocculation']
+        # NOTE: BeerJSON 1.0 schema doesn't allow flocculation or _extensions
+        # These fields are omitted for spec compliance
 
         return culture
 
@@ -296,13 +265,8 @@ class BrewfatherToBeerJSONConverter:
         timing = self._convert_misc_timing(use, time)
         misc['timing'] = timing
 
-        # Water adjustment flag
-        if bf_misc.get('waterAdjustment'):
-            if '_extensions' not in misc:
-                misc['_extensions'] = {}
-            if 'brewfather' not in misc['_extensions']:
-                misc['_extensions']['brewfather'] = {}
-            misc['_extensions']['brewfather']['waterAdjustment'] = True
+        # NOTE: BeerJSON 1.0 schema doesn't allow _extensions
+        # Water adjustment flag is omitted for spec compliance
 
         return misc
 
@@ -318,8 +282,7 @@ class BrewfatherToBeerJSONConverter:
         }
 
         timing = {
-            'use': use_mapping.get(use, 'add_to_boil'),
-            'continuous': False
+            'use': use_mapping.get(use, 'add_to_boil')
         }
 
         if time and time > 0:
@@ -333,9 +296,15 @@ class BrewfatherToBeerJSONConverter:
     def _convert_mash(self, bf_mash: Dict[str, Any]) -> Dict[str, Any]:
         """Convert Brewfather mash to BeerJSON."""
         mash = {
-            'name': bf_mash.get('name', ''),
+            'name': bf_mash.get('name', 'Mash'),
             'mash_steps': []
         }
+
+        # Grain temperature (required field - default to room temp if not specified)
+        if 'grainTemp' in bf_mash:
+            mash['grain_temperature'] = self._make_temperature(bf_mash['grainTemp'])
+        else:
+            mash['grain_temperature'] = {'value': 20.0, 'unit': 'C'}
 
         # Mash steps
         if 'steps' in bf_mash:
@@ -366,13 +335,13 @@ class BrewfatherToBeerJSONConverter:
             'name': bf_style.get('name', ''),
             'category': bf_style.get('category', ''),
             'style_guide': bf_style.get('styleGuide', ''),
-            'type': bf_style.get('type', '')
+            'type': self._map_style_type(bf_style.get('type', ''))
         }
 
     def _convert_fermentation(self, bf_ferm: Dict[str, Any]) -> Dict[str, Any]:
         """Convert Brewfather fermentation to BeerJSON."""
         fermentation = {
-            'name': bf_ferm.get('name', ''),
+            'name': bf_ferm.get('name', 'Fermentation'),
             'fermentation_steps': []
         }
 
@@ -385,15 +354,28 @@ class BrewfatherToBeerJSONConverter:
         return fermentation
 
     def _convert_fermentation_step(self, bf_step: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert Brewfather fermentation step to BeerJSON."""
+        """Convert Brewfather fermentation step to BeerJSON.
+
+        BeerJSON uses name, start_temperature, end_temperature, step_time
+        Brewfather uses type, stepTemp, stepTime
+        """
+        step_type = bf_step.get('type', 'primary')
         step = {
-            'type': bf_step.get('type', 'primary').lower(),
-            'step_temperature': self._make_temperature(bf_step.get('stepTemp')),
-            'step_time': {
-                'value': float(bf_step.get('stepTime', 0)),
+            'name': step_type.capitalize()
+        }
+
+        # Temperature (use same for start and end if only one value)
+        if bf_step.get('stepTemp'):
+            temp = self._make_temperature(bf_step['stepTemp'])
+            step['start_temperature'] = temp
+            step['end_temperature'] = temp
+
+        # Duration
+        if bf_step.get('stepTime'):
+            step['step_time'] = {
+                'value': float(bf_step['stepTime']),
                 'unit': 'day'
             }
-        }
 
         return step
 
@@ -544,6 +526,55 @@ class BrewfatherToBeerJSONConverter:
         return {'value': float(value), 'unit': 'SRM'}
 
     # Type mappers
+    def _map_recipe_type(self, bf_type: str) -> str:
+        """Map Brewfather recipe type to BeerJSON."""
+        mapping = {
+            'All Grain': 'all grain',
+            'Partial Mash': 'partial mash',
+            'Extract': 'extract',
+            'BIAB': 'all grain',
+        }
+        return mapping.get(bf_type, 'all grain')
+
+    def _map_style_type(self, bf_type: str) -> str:
+        """Map Brewfather style type to BeerJSON."""
+        if not bf_type:
+            return 'beer'
+        mapping = {
+            'Ale': 'beer',
+            'Lager': 'beer',
+            'Wheat': 'beer',
+            'Beer': 'beer',
+            'Cider': 'cider',
+            'Mead': 'mead',
+            'Wine': 'wine',
+            'Kombucha': 'kombucha',
+            'Soda': 'soda',
+            'Other': 'other'
+        }
+        return mapping.get(bf_type, 'beer')
+
+    def _map_grain_group(self, bf_grain_group: str) -> str:
+        """Map Brewfather grain category to BeerJSON grain_group enum."""
+        mapping = {
+            'Base': 'base',
+            'base': 'base',
+            'Caramel': 'caramel',
+            'caramel': 'caramel',
+            'Crystal/Caramel': 'caramel',
+            'Flaked': 'flaked',
+            'flaked': 'flaked',
+            'Roasted': 'roasted',
+            'roasted': 'roasted',
+            'Specialty': 'specialty',
+            'specialty': 'specialty',
+            'Smoked': 'smoked',
+            'smoked': 'smoked',
+            'Adjunct': 'adjunct',
+            'adjunct': 'adjunct'
+        }
+        return mapping.get(bf_grain_group, 'base')
+
     def _map_fermentable_type(self, bf_type: str) -> str:
         """Map Brewfather fermentable type to BeerJSON."""
         mapping = {

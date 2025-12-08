@@ -1,10 +1,10 @@
 {
   "beerjson": {
-    "version": "1.0",
+    "version": 1.0,
     "recipes": [
       {
         "name": "Philter XPA - Clone",
-        "type": "All Grain",
+        "type": "all grain",
         "author": "Pig Den Brewing",
         "batch_size": {
           "value": 21.0,
@@ -30,10 +30,6 @@
           "value": 3.8,
           "unit": "SRM"
         },
-        "carbonation": {
-          "value": 2.4,
-          "unit": "1"
-        },
         "notes": "My take on a very popular Australian XPA. A great starting point for anyone who wants to brew something simular",
         "boil": {
           "boil_time": {
@@ -47,8 +43,9 @@
             "unit": "%"
           }
         },
+        "carbonation": 2.4,
         "ingredients": {
-          "fermentables": [
+          "fermentable_additions": [
             {
               "name": "Ale Malt",
               "type": "grain",
@@ -68,13 +65,7 @@
                   "unit": "%"
                 }
               },
-              "grain_group": "Base",
-              "percentage": 74.79,
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-8ea92ed"
-                }
-              }
+              "grain_group": "base"
             },
             {
               "name": "Caramel Pils",
@@ -95,13 +86,7 @@
                   "unit": "%"
                 }
               },
-              "grain_group": "Crystal/Caramel",
-              "percentage": 8.4,
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-1a4fffc"
-                }
-              }
+              "grain_group": "caramel"
             },
             {
               "name": "Oats, Flaked",
@@ -122,13 +107,7 @@
                   "unit": "%"
                 }
               },
-              "grain_group": "Base",
-              "percentage": 8.4,
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-d2c0778"
-                }
-              }
+              "grain_group": "base"
             },
             {
               "name": "Wheat Malt",
@@ -149,16 +128,10 @@
                   "unit": "%"
                 }
               },
-              "grain_group": "Base (Wheat)",
-              "percentage": 8.4,
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-39d8cf8"
-                }
-              }
+              "grain_group": "base"
             }
           ],
-          "hops": [
+          "hop_additions": [
             {
               "name": "Citra",
               "origin": "US",
@@ -173,19 +146,9 @@
               },
               "timing": {
                 "use": "add_to_boil",
-                "continuous": false,
                 "duration": {
                   "value": 30.0,
                   "unit": "min"
-                },
-                "temperature": {
-                  "value": 80.0,
-                  "unit": "C"
-                }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-8e9450d5"
                 }
               }
             },
@@ -203,19 +166,9 @@
               },
               "timing": {
                 "use": "add_to_boil",
-                "continuous": false,
                 "duration": {
                   "value": 30.0,
                   "unit": "min"
-                },
-                "temperature": {
-                  "value": 80.0,
-                  "unit": "C"
-                }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-c78f2911"
                 }
               }
             },
@@ -233,16 +186,9 @@
               },
               "timing": {
                 "use": "add_to_fermentation",
-                "continuous": false,
-                "phase": "primary",
                 "duration": {
                   "value": 4,
                   "unit": "day"
-                }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-8e9450d5"
                 }
               }
             },
@@ -260,16 +206,9 @@
               },
               "timing": {
                 "use": "add_to_fermentation",
-                "continuous": false,
-                "phase": "primary",
                 "duration": {
                   "value": 4,
                   "unit": "day"
-                }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-c78f2911"
                 }
               }
             },
@@ -287,16 +226,9 @@
               },
               "timing": {
                 "use": "add_to_fermentation",
-                "continuous": false,
-                "phase": "primary",
                 "duration": {
                   "value": 4,
                   "unit": "day"
-                }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-0c4aeb7c"
                 }
               }
             },
@@ -314,21 +246,14 @@
               },
               "timing": {
                 "use": "add_to_fermentation",
-                "continuous": false,
-                "phase": "primary",
                 "duration": {
                   "value": 4,
                   "unit": "day"
                 }
-              },
-              "_extensions": {
-                "brewfather": {
-                  "id": "default-36ce1e32"
-                }
               }
             }
           ],
-          "cultures": [
+          "culture_additions": [
             {
               "name": "Safale American",
               "type": "ale",
@@ -345,7 +270,11 @@
                   "unit": "C"
                 }
               },
-              "attenuation": {
+              "attenuation_range": {
+                "minimum": {
+                  "value": 0.81,
+                  "unit": "%"
+                },
                 "maximum": {
                   "value": 0.81,
                   "unit": "%"
@@ -354,15 +283,10 @@
               "amount": {
                 "value": 1.0,
                 "unit": "pkg"
-              },
-              "_extensions": {
-                "brewfather": {
-                  "flocculation": "Medium"
-                }
               }
             }
           ],
-          "miscellaneous_ingredients": [
+          "miscellaneous_additions": [
             {
               "name": "Calcium Chloride (CaCl2)",
               "type": "water agent",
@@ -371,13 +295,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -388,13 +306,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -405,13 +317,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -422,13 +328,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -439,13 +339,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -456,13 +350,7 @@
                 "unit": "g"
               },
               "timing": {
-                "use": "add_to_mash",
-                "continuous": false
-              },
-              "_extensions": {
-                "brewfather": {
-                  "waterAdjustment": true
-                }
+                "use": "add_to_mash"
               }
             },
             {
@@ -474,7 +362,6 @@
               },
               "timing": {
                 "use": "add_to_boil",
-                "continuous": false,
                 "duration": {
                   "value": 15.0,
                   "unit": "min"
@@ -490,7 +377,6 @@
               },
               "timing": {
                 "use": "add_to_boil",
-                "continuous": false,
                 "duration": {
                   "value": 10.0,
                   "unit": "min"
@@ -538,20 +424,28 @@
                 "unit": "min"
               }
             }
-          ]
+          ],
+          "grain_temperature": {
+            "value": 20.0,
+            "unit": "C"
+          }
         },
         "style": {
           "name": "Australian-Style Pale Ale",
           "category": "Other Origin Ale",
           "style_guide": "Brewers Association 2019",
-          "type": null
+          "type": "beer"
         },
         "fermentation": {
           "name": "Ale",
           "fermentation_steps": [
             {
-              "type": "primary",
-              "step_temperature": {
+              "name": "Primary",
+              "start_temperature": {
+                "value": 20.0,
+                "unit": "C"
+              },
+              "end_temperature": {
                 "value": 20.0,
                 "unit": "C"
               },
@@ -561,160 +455,6 @@
               }
             }
           ]
-        },
-        "water": {
-          "source": {
-            "name": "Shearwater",
-            "calcium": {
-              "value": 9.98,
-              "unit": "ppm"
-            },
-            "magnesium": {
-              "value": 0.86,
-              "unit": "ppm"
-            },
-            "sodium": {
-              "value": 3.026,
-              "unit": "ppm"
-            },
-            "chloride": {
-              "value": 6.53,
-              "unit": "ppm"
-            },
-            "sulfate": {
-              "value": 14.58,
-              "unit": "ppm"
-            },
-            "bicarbonate": {
-              "value": 11.4243,
-              "unit": "ppm"
-            },
-            "ph": 6.3
-          },
-          "target": {
-            "name": "Hoppy (The Electric Brewery)",
-            "calcium": {
-              "value": 110.0,
-              "unit": "ppm"
-            },
-            "magnesium": {
-              "value": 18.0,
-              "unit": "ppm"
-            },
-            "sodium": {
-              "value": 16.0,
-              "unit": "ppm"
-            },
-            "chloride": {
-              "value": 50.0,
-              "unit": "ppm"
-            },
-            "sulfate": {
-              "value": 275.0,
-              "unit": "ppm"
-            },
-            "bicarbonate": {
-              "value": 0.0,
-              "unit": "ppm"
-            }
-          },
-          "mash_water_additions": [
-            {
-              "name": "Calcium Chloride (CaCl2)",
-              "amount": {
-                "value": 1.24,
-                "unit": "g"
-              }
-            },
-            {
-              "name": "Gypsum (CaSO4)",
-              "amount": {
-                "value": 4.47,
-                "unit": "g"
-              }
-            },
-            {
-              "name": "Epsom Salt (MgSO4)",
-              "amount": {
-                "value": 2.38,
-                "unit": "g"
-              }
-            }
-          ],
-          "sparge_water_additions": [
-            {
-              "name": "Calcium Chloride (CaCl2)",
-              "amount": {
-                "value": 1.43,
-                "unit": "g"
-              }
-            },
-            {
-              "name": "Gypsum (CaSO4)",
-              "amount": {
-                "value": 5.17,
-                "unit": "g"
-              }
-            },
-            {
-              "name": "Epsom Salt (MgSO4)",
-              "amount": {
-                "value": 2.75,
-                "unit": "g"
-              }
-            }
-          ]
-        },
-        "_extensions": {
-          "brewfather": {
-            "_id": "TNBrB5rplQVxrstoRVjqb4BCINiiRe",
-            "_version": "2.20.3",
-            "_timestamp": "2025-12-07T23:29:57.403Z",
-            "equipment": {
-              "spargeWaterOverflow": "Top-Up",
-              "mashWaterVolumeLimitEnabled": true,
-              "waterCalculation": "Default",
-              "boilSize": 25.92,
-              "bottlingVolume": 19,
-              "_id": "9RlkyunEVWZyuTMk4TYbTnvSzr8tIS",
-              "mashTunDeadSpace": 3.5,
-              "_created": {
-                "seconds": 1556087904,
-                "nanoseconds": 873000000
-              },
-              "spargeWaterFormula": "BoilVolumeL - MashWaterL + (GrainAmountKg * GrainAbsorptionRate) + MashTunLossL",
-              "efficiency": 73,
-              "boilOffPerHr": 3,
-              "calcMashEfficiency": true,
-              "mashWaterMax": 30,
-              "fermenterLoss": 2,
-              "calcBoilVolume": true,
-              "fermenterVolume": 21,
-              "hopstandTemperature": 75,
-              "trubChillerLoss": 1,
-              "_timestamp": {
-                "seconds": 1573984684,
-                "nanoseconds": 924000000
-              },
-              "postBoilKettleVol": 22.916666666666668,
-              "hopUtilization": 1,
-              "batchSize": 21,
-              "efficiencyType": "Fermenter",
-              "grainAbsorptionRate": 0.8,
-              "_timestamp_ms": 1573984684924,
-              "calcAromaHopUtilization": true,
-              "mashTunLoss": 0,
-              "mashWaterFormula": "(GrainAmountKg * WaterGrainRatio) + MashTunDeadSpaceL",
-              "boilTime": 60,
-              "_version": "1.10.1",
-              "evaporationRate": 0.11574074074074073,
-              "waterGrainRatio": 2.7,
-              "aromaHopUtilization": 0.15,
-              "mashEfficiency": 76.5,
-              "fermenterLossEstimate": 0,
-              "name": "Grainfather  "
-            }
-          }
         }
       }
     ]

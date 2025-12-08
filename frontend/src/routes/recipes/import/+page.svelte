@@ -11,9 +11,10 @@
 	async function handleFileUpload(file: File) {
 		error = null;
 
-		// Validate file
-		if (!file.name.toLowerCase().endsWith('.xml')) {
-			error = 'Please upload a .xml BeerXML file';
+		// Validate file extension
+		const filename = file.name.toLowerCase();
+		if (!filename.endsWith('.xml') && !filename.endsWith('.json')) {
+			error = 'Please upload a .xml or .json recipe file';
 			return;
 		}
 

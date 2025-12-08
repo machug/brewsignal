@@ -8,7 +8,6 @@ from sqlalchemy.orm import selectinload
 
 from ..database import get_db
 from ..models import Recipe, RecipeCreate, RecipeResponse, RecipeDetailResponse
-from ..services.recipe_importer import import_beerxml_to_db
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
@@ -99,6 +98,15 @@ async def import_recipe(
     Format is auto-detected from file content.
     """
     from backend.services.importers.recipe_importer import RecipeImporter
+
+    # Validate file extension
+    if file.filename:
+        ext = file.filename.lower().split('.')[-1]
+        if ext not in ('xml', 'json'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file type. Only .xml and .json files are supported"
+            )
 
     # Read file content with size validation
     content = await file.read()

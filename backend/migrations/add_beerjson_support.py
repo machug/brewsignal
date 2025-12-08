@@ -48,6 +48,9 @@ async def migrate_add_beerjson_support(conn: AsyncConnection) -> None:
     result = await conn.execute(text("SELECT COUNT(*) FROM recipes"))
     recipe_count = result.scalar()
 
+    # Clean up any leftover recipes_new table from interrupted migration
+    await conn.execute(text("DROP TABLE IF EXISTS recipes_new"))
+
     # Create new table with BeerJSON schema
     await conn.execute(text("""
         CREATE TABLE recipes_new (
@@ -127,49 +130,110 @@ async def migrate_add_beerjson_support(conn: AsyncConnection) -> None:
         )
     """))
 
-    # Copy data with column renames and defaults
-    await conn.execute(text("""
-        INSERT INTO recipes_new (
-            id, name, type, author,
-            batch_size_liters, boil_time_minutes, efficiency_percent,
-            og, fg, abv, ibu, color_srm, carbonation_vols,
-            style_id,
-            beerjson_version,
-            format_extensions,
-            yeast_name, yeast_lab, yeast_product_id,
-            yeast_temp_min, yeast_temp_max, yeast_attenuation,
-            brewer, asst_brewer, boil_size_l,
-            primary_age_days, primary_temp_c,
-            secondary_age_days, secondary_temp_c,
-            tertiary_age_days, tertiary_temp_c,
-            age_days, age_temp_c,
-            forced_carbonation, priming_sugar_name, priming_sugar_amount_kg,
-            taste_notes, taste_rating,
-            date,
-            notes, beerxml_content,
-            created_at, updated_at
-        )
-        SELECT
-            id, name, type, author,
-            batch_size, boil_time_min, efficiency_percent,
-            og_target, fg_target, abv_target, ibu_target, srm_target, carbonation_vols,
-            style_id,
-            '1.0',
-            NULL,
-            yeast_name, yeast_lab, yeast_product_id,
-            yeast_temp_min, yeast_temp_max, yeast_attenuation,
-            brewer, asst_brewer, boil_size_l,
-            primary_age_days, primary_temp_c,
-            secondary_age_days, secondary_temp_c,
-            tertiary_age_days, tertiary_temp_c,
-            age_days, age_temp_c,
-            forced_carbonation, priming_sugar_name, priming_sugar_amount_kg,
-            taste_notes, taste_rating,
-            date,
-            notes, beerxml_content,
-            created_at, updated_at
+    # Detect which columns exist in old schema
+    result = await conn.execute(text("PRAGMA table_info(recipes)"))
+    rows = result.fetchall()
+    existing_columns = {row[1] for row in rows}  # row[1] is column name
+
+    # Define column mapping: new_column -> (old_column, default_value)
+    column_mapping = {
+        # Core fields (always required)
+        'id': ('id', None),
+        'name': ('name', None),
+
+        # Optional fields with potential renames
+        'type': ('type', "''"),
+        'author': ('author', "''"),
+        'batch_size_liters': ('batch_size', 'NULL'),
+        'boil_time_minutes': ('boil_time_min', 'NULL'),
+        'efficiency_percent': ('efficiency_percent', 'NULL'),
+
+        # Renamed gravity fields
+        'og': ('og_target', 'NULL'),
+        'fg': ('fg_target', 'NULL'),
+        'abv': ('abv_target', 'NULL'),
+        'ibu': ('ibu_target', 'NULL'),
+        'color_srm': ('srm_target', 'NULL'),
+        'carbonation_vols': ('carbonation_vols', 'NULL'),
+
+        'style_id': ('style_id', 'NULL'),
+
+        # New BeerJSON fields
+        'beerjson_version': (None, "'1.0'"),  # Always default
+        'format_extensions': (None, 'NULL'),
+
+        # Yeast info
+        'yeast_name': ('yeast_name', 'NULL'),
+        'yeast_lab': ('yeast_lab', 'NULL'),
+        'yeast_product_id': ('yeast_product_id', 'NULL'),
+        'yeast_temp_min': ('yeast_temp_min', 'NULL'),
+        'yeast_temp_max': ('yeast_temp_max', 'NULL'),
+        'yeast_attenuation': ('yeast_attenuation', 'NULL'),
+
+        # BeerXML fields
+        'brewer': ('brewer', 'NULL'),
+        'asst_brewer': ('asst_brewer', 'NULL'),
+        'boil_size_l': ('boil_size_l', 'NULL'),
+
+        # Fermentation stages
+        'primary_age_days': ('primary_age_days', 'NULL'),
+        'primary_temp_c': ('primary_temp_c', 'NULL'),
+        'secondary_age_days': ('secondary_age_days', 'NULL'),
+        'secondary_temp_c': ('secondary_temp_c', 'NULL'),
+        'tertiary_age_days': ('tertiary_age_days', 'NULL'),
+        'tertiary_temp_c': ('tertiary_temp_c', 'NULL'),
+
+        # Aging
+        'age_days': ('age_days', 'NULL'),
+        'age_temp_c': ('age_temp_c', 'NULL'),
+
+        # Carbonation
+        'forced_carbonation': ('forced_carbonation', 'NULL'),
+        'priming_sugar_name': ('priming_sugar_name', 'NULL'),
+        'priming_sugar_amount_kg': ('priming_sugar_amount_kg', 'NULL'),
+
+        # Tasting
+        'taste_notes': ('taste_notes', 'NULL'),
+        'taste_rating': ('taste_rating', 'NULL'),
+
+        # Dates
+        'date': ('date', 'NULL'),
+
+        # Notes
+        'notes': ('notes', 'NULL'),
+        'beerxml_content': ('beerxml_content', 'NULL'),
+
+        # Timestamps
+        'created_at': ('created_at', 'NULL'),
+        'updated_at': ('updated_at', 'NULL'),
+    }
+
+    # Build SELECT clause based on existing columns
+    select_parts = []
+    insert_columns = []
+
+    for new_col, (old_col, default_val) in column_mapping.items():
+        insert_columns.append(new_col)
+
+        if old_col is None:
+            # New column, use default
+            select_parts.append(default_val)
+        elif old_col in existing_columns:
+            # Column exists, copy it
+            select_parts.append(old_col)
+        else:
+            # Column doesn't exist, use default
+            select_parts.append(default_val)
+
+    # Build and execute dynamic INSERT statement
+    insert_sql = f"""
+        INSERT INTO recipes_new ({', '.join(insert_columns)})
+        SELECT {', '.join(select_parts)}
         FROM recipes
-    """))
+    """
+
+    logger.info(f"Copying data with column mapping for {len(existing_columns)} existing columns")
+    await conn.execute(text(insert_sql))
 
     # Drop old table and rename new one
     await conn.execute(text("DROP TABLE recipes"))

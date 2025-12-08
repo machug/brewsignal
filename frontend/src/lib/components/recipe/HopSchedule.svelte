@@ -62,6 +62,7 @@
 		const useMap: Record<string, string> = {
 			'add_to_boil': 'Boil',
 			'dry_hop': 'Dry Hop',
+			'add_to_fermentation': 'Dry Hop',
 			'whirlpool': 'Whirlpool',
 			'first_wort': 'First Wort',
 			'mash': 'Mash',

@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/beerjson/beerjson/master/json/mash_step.json",
+  "type": "object",
+  "definitions": {
+    "MashStepType": {
+      "type": "object",
+      "description": "MashStepType - a per step representation occurring during the mash process",
+      "required": ["name", "type", "step_temperature", "step_time"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "infusion",
+            "temperature",
+            "decoction",
+            "souring mash",
+            "souring wort",
+            "drain mash tun",
+            "sparge"
+          ]
+        },
+        "amount": {
+          "$ref": "measureable_units.json#/definitions/VolumeType"
+        },
+        "step_temperature": {
+          "$ref": "measureable_units.json#/definitions/TemperatureType"
+        },
+        "step_time": {
+          "$ref": "measureable_units.json#/definitions/TimeType"
+        },
+        "ramp_time": {
+          "description": "The amount of time that passes before this step begins. eg moving from a temperature of 45 C to 68 C may take 20 minutes",
+          "$ref": "measureable_units.json#/definitions/TimeType"
+        },
+        "end_temperature": {
+          "$ref": "measureable_units.json#/definitions/TemperatureType"
+        },
+        "description": {
+          "type": "string"
+        },
+        "water_grain_ratio": {
+          "$ref": "measureable_units.json#/definitions/SpecificVolumeType"
+        },
+        "infuse_temperature": {
+          "description": "Temperature of the water for an infusion step",
+          "$ref": "measureable_units.json#/definitions/TemperatureType"
+        },
+        "start_ph": {
+          "$ref": "measureable_units.json#/definitions/AcidityType"
+        },
+        "end_ph": {
+          "$ref": "measureable_units.json#/definitions/AcidityType"
+        }
+      }
+    }
+  }
+}

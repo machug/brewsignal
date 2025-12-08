@@ -47,13 +47,9 @@ class BeerJSONValidator:
             Validator configured for BeerJSON schema
         """
         try:
-            # Try modern approach with referencing library (jsonschema 4.18+)
-            # NOTE: Multiple schema files are missing from official BeerJSON repository:
-            # - timing.json (created locally from spec docs)
-            # - mash_step.json, boil_step.json, packaging_vessel.json (not yet created)
-            # Using RefResolver fallback until all missing schemas are available
-            raise ImportError("Using RefResolver fallback - missing mash_step.json, boil_step.json, packaging_vessel.json")
-
+            # Modern approach with referencing library (jsonschema 4.18+)
+            # All missing BeerJSON schemas created locally from spec documentation:
+            # - timing.json, mash_step.json, boil_step.json, packaging_vessel.json
             from referencing import Registry, Resource
             from referencing.jsonschema import DRAFT7
 

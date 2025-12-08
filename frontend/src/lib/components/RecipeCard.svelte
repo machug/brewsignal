@@ -18,7 +18,7 @@
 		return '#1a0f0a';
 	}
 
-	let srmColor = $derived(getSrmColor(recipe.srm_target));
+	let srmColor = $derived(getSrmColor(recipe.color_srm));
 </script>
 
 <button type="button" class="recipe-card" {onclick} aria-label="View {recipe.name} details">
@@ -28,21 +28,21 @@
 			{#if recipe.type}
 				<span class="recipe-type">{recipe.type}</span>
 			{/if}
-			{#if recipe.abv_target}
-				<span class="recipe-abv">{recipe.abv_target.toFixed(1)}% ABV</span>
+			{#if recipe.abv}
+				<span class="recipe-abv">{(recipe.abv * 100).toFixed(1)}% ABV</span>
 			{/if}
 		</div>
 	</div>
 
-	{#if recipe.srm_target}
+	{#if recipe.color_srm}
 		<div class="srm-bar" style="background: {srmColor}"></div>
 	{/if}
 
 	<div class="recipe-stats">
-		{#if recipe.og_target && recipe.fg_target}
+		{#if recipe.og && recipe.fg}
 			<div class="stat">
 				<span class="stat-label">Gravity</span>
-				<span class="stat-value">{recipe.og_target.toFixed(3)} → {recipe.fg_target.toFixed(3)}</span>
+				<span class="stat-value">{recipe.og.toFixed(3)} → {recipe.fg.toFixed(3)}</span>
 			</div>
 		{/if}
 

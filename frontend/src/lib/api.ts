@@ -147,12 +147,19 @@ export interface FermentableResponse {
 export interface HopResponse {
 	id: number;
 	name: string;
-	alpha_percent?: number;
-	amount_kg?: number;
-	use?: string;
-	time_min?: number;
+	origin?: string;
 	form?: string;
-	type?: string;
+	alpha_acid_percent?: number;
+	beta_acid_percent?: number;
+	amount_grams?: number;
+	timing?: {
+		use?: string;
+		duration?: {
+			value?: number;
+			unit?: string;
+		};
+	};
+	format_extensions?: any;
 }
 
 export interface YeastResponse {
@@ -220,20 +227,13 @@ export interface RecipeResponse {
 	yeast_attenuation?: number;
 	notes?: string;
 	created_at: string;
+	style?: { id: string; name: string };
 	format_extensions?: Record<string, any>;
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];
 	hops?: HopResponse[];
 	cultures?: CultureResponse[];  // BeerJSON uses 'cultures' not 'yeasts'
 	miscs?: MiscResponse[];
-	// Legacy aliases for backward compatibility
-	og_target?: number;
-	fg_target?: number;
-	abv_target?: number;
-	ibu_target?: number;
-	srm_target?: number;
-	batch_size?: number;
-	yeasts?: YeastResponse[];
 }
 
 export interface BatchResponse {

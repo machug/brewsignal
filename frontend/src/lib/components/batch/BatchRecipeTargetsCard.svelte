@@ -15,11 +15,11 @@
 		return formatGravity(value);
 	}
 
-	// Calculate ABV from recipe targets if not provided in BeerXML
+	// Calculate ABV from recipe targets if not provided
 	let calculatedABV = $derived.by(() => {
-		if (recipe.abv_target != null) return recipe.abv_target;
-		if (recipe.og_target && recipe.fg_target) {
-			return (recipe.og_target - recipe.fg_target) * ABV_MULTIPLIER;
+		if (recipe.abv != null) return recipe.abv * 100; // Convert to percentage
+		if (recipe.og && recipe.fg) {
+			return (recipe.og - recipe.fg) * ABV_MULTIPLIER;
 		}
 		return null;
 	});
@@ -29,11 +29,11 @@
 	<div class="targets-grid">
 		<div class="target">
 			<span class="target-label">OG</span>
-			<span class="target-value">{formatSG(recipe.og_target)}</span>
+			<span class="target-value">{formatSG(recipe.og)}</span>
 		</div>
 		<div class="target">
 			<span class="target-label">FG</span>
-			<span class="target-value">{formatSG(recipe.fg_target)}</span>
+			<span class="target-value">{formatSG(recipe.fg)}</span>
 		</div>
 		<div class="target">
 			<span class="target-label">ABV</span>

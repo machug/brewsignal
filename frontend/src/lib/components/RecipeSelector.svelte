@@ -75,9 +75,9 @@
 			<div class="selected-recipe">
 				<div class="recipe-info">
 					<p class="recipe-name">{selectedRecipe.name}</p>
-					{#if selectedRecipe.og_target && selectedRecipe.fg_target}
+					{#if selectedRecipe.og && selectedRecipe.fg}
 						<p class="recipe-gravity">
-							{selectedRecipe.og_target.toFixed(3)} → {selectedRecipe.fg_target.toFixed(3)}
+							{selectedRecipe.og.toFixed(3)} → {selectedRecipe.fg.toFixed(3)}
 						</p>
 					{/if}
 					{#if selectedRecipe.yeast_name}
@@ -98,8 +98,8 @@
 				{#each filteredRecipes as recipe (recipe.id)}
 					<button type="button" class="recipe-item" onclick={() => handleSelect(recipe)}>
 						<span class="recipe-item-name">{recipe.name}</span>
-						{#if recipe.og_target}
-							<span class="recipe-item-og">{recipe.og_target.toFixed(3)}</span>
+						{#if recipe.og}
+							<span class="recipe-item-og">{recipe.og.toFixed(3)}</span>
 						{/if}
 					</button>
 				{/each}

@@ -68,11 +68,11 @@
 				<div class="point-label">Original Gravity</div>
 				<div class="point-value">{formatSG(batch.measured_og)}</div>
 			</div>
-			{#if batch.recipe?.fg_target}
+			{#if batch.recipe?.fg}
 				<div class="gravity-point target">
 					<div class="point-marker"></div>
 					<div class="point-label">Target FG</div>
-					<div class="point-value">{formatSG(batch.recipe.fg_target)}</div>
+					<div class="point-value">{formatSG(batch.recipe.fg)}</div>
 				</div>
 			{/if}
 			<div class="gravity-point current">

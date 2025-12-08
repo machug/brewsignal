@@ -1,0 +1,722 @@
+{
+  "beerjson": {
+    "version": "1.0",
+    "recipes": [
+      {
+        "name": "Philter XPA - Clone",
+        "type": "All Grain",
+        "author": "Pig Den Brewing",
+        "batch_size": {
+          "value": 21.0,
+          "unit": "l"
+        },
+        "original_gravity": {
+          "value": 1.040069094,
+          "unit": "sg"
+        },
+        "final_gravity": {
+          "value": 1.008,
+          "unit": "sg"
+        },
+        "alcohol_by_volume": {
+          "value": 0.042,
+          "unit": "%"
+        },
+        "ibu_estimate": {
+          "value": 28.7,
+          "unit": "1"
+        },
+        "color_estimate": {
+          "value": 3.8,
+          "unit": "SRM"
+        },
+        "carbonation": {
+          "value": 2.4,
+          "unit": "1"
+        },
+        "notes": "My take on a very popular Australian XPA. A great starting point for anyone who wants to brew something simular",
+        "boil": {
+          "boil_time": {
+            "value": 60.0,
+            "unit": "min"
+          }
+        },
+        "efficiency": {
+          "brewhouse": {
+            "value": 0.73,
+            "unit": "%"
+          }
+        },
+        "ingredients": {
+          "fermentables": [
+            {
+              "name": "Ale Malt",
+              "type": "grain",
+              "amount": {
+                "value": 2.733,
+                "unit": "kg"
+              },
+              "origin": "New Zealand",
+              "producer": "Gladfield",
+              "color": {
+                "value": 3.0456853,
+                "unit": "SRM"
+              },
+              "yield": {
+                "fine_grind": {
+                  "value": 0.8140000000000001,
+                  "unit": "%"
+                }
+              },
+              "grain_group": "Base",
+              "percentage": 74.79,
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-8ea92ed"
+                }
+              }
+            },
+            {
+              "name": "Caramel Pils",
+              "type": "grain",
+              "amount": {
+                "value": 0.307,
+                "unit": "kg"
+              },
+              "origin": "Germany",
+              "producer": "BestMalz",
+              "color": {
+                "value": 2.5380711,
+                "unit": "SRM"
+              },
+              "yield": {
+                "fine_grind": {
+                  "value": 0.805,
+                  "unit": "%"
+                }
+              },
+              "grain_group": "Crystal/Caramel",
+              "percentage": 8.4,
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-1a4fffc"
+                }
+              }
+            },
+            {
+              "name": "Oats, Flaked",
+              "type": "grain",
+              "amount": {
+                "value": 0.307,
+                "unit": "kg"
+              },
+              "origin": "US",
+              "producer": "Briess",
+              "color": {
+                "value": 1.4,
+                "unit": "SRM"
+              },
+              "yield": {
+                "fine_grind": {
+                  "value": 0.85,
+                  "unit": "%"
+                }
+              },
+              "grain_group": "Base",
+              "percentage": 8.4,
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-d2c0778"
+                }
+              }
+            },
+            {
+              "name": "Wheat Malt",
+              "type": "grain",
+              "amount": {
+                "value": 0.307,
+                "unit": "kg"
+              },
+              "origin": "New Zealand",
+              "producer": "Gladfield",
+              "color": {
+                "value": 2.1319797,
+                "unit": "SRM"
+              },
+              "yield": {
+                "fine_grind": {
+                  "value": 0.8429000000000001,
+                  "unit": "%"
+                }
+              },
+              "grain_group": "Base (Wheat)",
+              "percentage": 8.4,
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-39d8cf8"
+                }
+              }
+            }
+          ],
+          "hops": [
+            {
+              "name": "Citra",
+              "origin": "US",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.141,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 46.0,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_boil",
+                "continuous": false,
+                "duration": {
+                  "value": 30.0,
+                  "unit": "min"
+                },
+                "temperature": {
+                  "value": 80.0,
+                  "unit": "C"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-8e9450d5"
+                }
+              }
+            },
+            {
+              "name": "Galaxy",
+              "origin": "Australia",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.1575,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 41.0,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_boil",
+                "continuous": false,
+                "duration": {
+                  "value": 30.0,
+                  "unit": "min"
+                },
+                "temperature": {
+                  "value": 80.0,
+                  "unit": "C"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-c78f2911"
+                }
+              }
+            },
+            {
+              "name": "Citra",
+              "origin": "US",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.141,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 31.5,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_fermentation",
+                "continuous": false,
+                "phase": "primary",
+                "duration": {
+                  "value": 4,
+                  "unit": "day"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-8e9450d5"
+                }
+              }
+            },
+            {
+              "name": "Galaxy",
+              "origin": "Australia",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.1575,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 31.5,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_fermentation",
+                "continuous": false,
+                "phase": "primary",
+                "duration": {
+                  "value": 4,
+                  "unit": "day"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-c78f2911"
+                }
+              }
+            },
+            {
+              "name": "Mosaic",
+              "origin": "US",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.142,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 31.5,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_fermentation",
+                "continuous": false,
+                "phase": "primary",
+                "duration": {
+                  "value": 4,
+                  "unit": "day"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-0c4aeb7c"
+                }
+              }
+            },
+            {
+              "name": "Simcoe",
+              "origin": "US",
+              "form": "pellet",
+              "alpha_acid": {
+                "value": 0.129,
+                "unit": "%"
+              },
+              "amount": {
+                "value": 31.5,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_fermentation",
+                "continuous": false,
+                "phase": "primary",
+                "duration": {
+                  "value": 4,
+                  "unit": "day"
+                }
+              },
+              "_extensions": {
+                "brewfather": {
+                  "id": "default-36ce1e32"
+                }
+              }
+            }
+          ],
+          "cultures": [
+            {
+              "name": "Safale American",
+              "type": "ale",
+              "form": "dry",
+              "producer": "Fermentis",
+              "product_id": "US-05",
+              "temperature_range": {
+                "minimum": {
+                  "value": 16.0,
+                  "unit": "C"
+                },
+                "maximum": {
+                  "value": 28.0,
+                  "unit": "C"
+                }
+              },
+              "attenuation": {
+                "maximum": {
+                  "value": 0.81,
+                  "unit": "%"
+                }
+              },
+              "amount": {
+                "value": 1.0,
+                "unit": "pkg"
+              },
+              "_extensions": {
+                "brewfather": {
+                  "flocculation": "Medium"
+                }
+              }
+            }
+          ],
+          "miscellaneous_ingredients": [
+            {
+              "name": "Calcium Chloride (CaCl2)",
+              "type": "water agent",
+              "amount": {
+                "value": 1.24,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Epsom Salt (MgSO4)",
+              "type": "water agent",
+              "amount": {
+                "value": 2.38,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Gypsum (CaSO4)",
+              "type": "water agent",
+              "amount": {
+                "value": 4.47,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Calcium Chloride (CaCl2)",
+              "type": "water agent",
+              "amount": {
+                "value": 1.36,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Epsom Salt (MgSO4)",
+              "type": "water agent",
+              "amount": {
+                "value": 2.62,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Gypsum (CaSO4)",
+              "type": "water agent",
+              "amount": {
+                "value": 4.93,
+                "unit": "g"
+              },
+              "timing": {
+                "use": "add_to_mash",
+                "continuous": false
+              },
+              "_extensions": {
+                "brewfather": {
+                  "waterAdjustment": true
+                }
+              }
+            },
+            {
+              "name": "Polyclar Brewbrite",
+              "type": "fining",
+              "amount": {
+                "value": 1.0,
+                "unit": "tsp"
+              },
+              "timing": {
+                "use": "add_to_boil",
+                "continuous": false,
+                "duration": {
+                  "value": 15.0,
+                  "unit": "min"
+                }
+              }
+            },
+            {
+              "name": "Yeast Nutrients",
+              "type": "other",
+              "amount": {
+                "value": 0.5,
+                "unit": "tsp"
+              },
+              "timing": {
+                "use": "add_to_boil",
+                "continuous": false,
+                "duration": {
+                  "value": 10.0,
+                  "unit": "min"
+                }
+              }
+            }
+          ]
+        },
+        "mash": {
+          "name": "Philter XPA mash profile",
+          "mash_steps": [
+            {
+              "name": "Mash in",
+              "type": "temperature",
+              "step_temperature": {
+                "value": 55.0,
+                "unit": "C"
+              },
+              "step_time": {
+                "value": 10.0,
+                "unit": "min"
+              }
+            },
+            {
+              "name": "Step 2",
+              "type": "temperature",
+              "step_temperature": {
+                "value": 67.0,
+                "unit": "C"
+              },
+              "step_time": {
+                "value": 45.0,
+                "unit": "min"
+              }
+            },
+            {
+              "name": "Mash Out ",
+              "type": "temperature",
+              "step_temperature": {
+                "value": 78.0,
+                "unit": "C"
+              },
+              "step_time": {
+                "value": 10.0,
+                "unit": "min"
+              }
+            }
+          ]
+        },
+        "style": {
+          "name": "Australian-Style Pale Ale",
+          "category": "Other Origin Ale",
+          "style_guide": "Brewers Association 2019",
+          "type": null
+        },
+        "fermentation": {
+          "name": "Ale",
+          "fermentation_steps": [
+            {
+              "type": "primary",
+              "step_temperature": {
+                "value": 20.0,
+                "unit": "C"
+              },
+              "step_time": {
+                "value": 14.0,
+                "unit": "day"
+              }
+            }
+          ]
+        },
+        "water": {
+          "source": {
+            "name": "Shearwater",
+            "calcium": {
+              "value": 9.98,
+              "unit": "ppm"
+            },
+            "magnesium": {
+              "value": 0.86,
+              "unit": "ppm"
+            },
+            "sodium": {
+              "value": 3.026,
+              "unit": "ppm"
+            },
+            "chloride": {
+              "value": 6.53,
+              "unit": "ppm"
+            },
+            "sulfate": {
+              "value": 14.58,
+              "unit": "ppm"
+            },
+            "bicarbonate": {
+              "value": 11.4243,
+              "unit": "ppm"
+            },
+            "ph": 6.3
+          },
+          "target": {
+            "name": "Hoppy (The Electric Brewery)",
+            "calcium": {
+              "value": 110.0,
+              "unit": "ppm"
+            },
+            "magnesium": {
+              "value": 18.0,
+              "unit": "ppm"
+            },
+            "sodium": {
+              "value": 16.0,
+              "unit": "ppm"
+            },
+            "chloride": {
+              "value": 50.0,
+              "unit": "ppm"
+            },
+            "sulfate": {
+              "value": 275.0,
+              "unit": "ppm"
+            },
+            "bicarbonate": {
+              "value": 0.0,
+              "unit": "ppm"
+            }
+          },
+          "mash_water_additions": [
+            {
+              "name": "Calcium Chloride (CaCl2)",
+              "amount": {
+                "value": 1.24,
+                "unit": "g"
+              }
+            },
+            {
+              "name": "Gypsum (CaSO4)",
+              "amount": {
+                "value": 4.47,
+                "unit": "g"
+              }
+            },
+            {
+              "name": "Epsom Salt (MgSO4)",
+              "amount": {
+                "value": 2.38,
+                "unit": "g"
+              }
+            }
+          ],
+          "sparge_water_additions": [
+            {
+              "name": "Calcium Chloride (CaCl2)",
+              "amount": {
+                "value": 1.43,
+                "unit": "g"
+              }
+            },
+            {
+              "name": "Gypsum (CaSO4)",
+              "amount": {
+                "value": 5.17,
+                "unit": "g"
+              }
+            },
+            {
+              "name": "Epsom Salt (MgSO4)",
+              "amount": {
+                "value": 2.75,
+                "unit": "g"
+              }
+            }
+          ]
+        },
+        "_extensions": {
+          "brewfather": {
+            "_id": "TNBrB5rplQVxrstoRVjqb4BCINiiRe",
+            "_version": "2.20.3",
+            "_timestamp": "2025-12-07T23:29:57.403Z",
+            "equipment": {
+              "spargeWaterOverflow": "Top-Up",
+              "mashWaterVolumeLimitEnabled": true,
+              "waterCalculation": "Default",
+              "boilSize": 25.92,
+              "bottlingVolume": 19,
+              "_id": "9RlkyunEVWZyuTMk4TYbTnvSzr8tIS",
+              "mashTunDeadSpace": 3.5,
+              "_created": {
+                "seconds": 1556087904,
+                "nanoseconds": 873000000
+              },
+              "spargeWaterFormula": "BoilVolumeL - MashWaterL + (GrainAmountKg * GrainAbsorptionRate) + MashTunLossL",
+              "efficiency": 73,
+              "boilOffPerHr": 3,
+              "calcMashEfficiency": true,
+              "mashWaterMax": 30,
+              "fermenterLoss": 2,
+              "calcBoilVolume": true,
+              "fermenterVolume": 21,
+              "hopstandTemperature": 75,
+              "trubChillerLoss": 1,
+              "_timestamp": {
+                "seconds": 1573984684,
+                "nanoseconds": 924000000
+              },
+              "postBoilKettleVol": 22.916666666666668,
+              "hopUtilization": 1,
+              "batchSize": 21,
+              "efficiencyType": "Fermenter",
+              "grainAbsorptionRate": 0.8,
+              "_timestamp_ms": 1573984684924,
+              "calcAromaHopUtilization": true,
+              "mashTunLoss": 0,
+              "mashWaterFormula": "(GrainAmountKg * WaterGrainRatio) + MashTunDeadSpaceL",
+              "boilTime": 60,
+              "_version": "1.10.1",
+              "evaporationRate": 0.11574074074074073,
+              "waterGrainRatio": 2.7,
+              "aromaHopUtilization": 0.15,
+              "mashEfficiency": 76.5,
+              "fermenterLossEstimate": 0,
+              "name": "Grainfather  "
+            }
+          }
+        }
+      }
+    ]
+  }
+}

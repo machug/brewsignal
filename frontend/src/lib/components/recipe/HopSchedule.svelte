@@ -59,10 +59,11 @@
 	function formatUse(use?: string): string {
 		if (!use) return 'Other';
 		// Convert BeerJSON format to readable names
+		// Note: add_to_fermentation typically means dry hopping, but could include other fermentation additions
 		const useMap: Record<string, string> = {
 			'add_to_boil': 'Boil',
 			'dry_hop': 'Dry Hop',
-			'add_to_fermentation': 'Dry Hop',
+			'add_to_fermentation': 'Fermentation',
 			'whirlpool': 'Whirlpool',
 			'first_wort': 'First Wort',
 			'mash': 'Mash',

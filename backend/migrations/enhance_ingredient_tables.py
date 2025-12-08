@@ -7,6 +7,7 @@ This migration:
 4. Migrates existing hop use/time to BeerJSON timing objects (with NULL preservation)
 5. Renames columns to match BeerJSON (amount → amount_kg/amount_grams, alpha → alpha_acid_percent)
 """
+import json
 import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -215,6 +216,10 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
                 # Convert kg to grams
                 amount_grams = amount_kg * 1000 if amount_kg else 0
 
+                # CRITICAL: text() queries require manual JSON encoding
+                # (unlike ORM which auto-serializes JSON columns)
+                timing_json = json.dumps(timing_dict) if timing_dict else None
+
                 await conn.execute(text("""
                     INSERT INTO recipe_hops_new (
                         id, recipe_id, name, origin, form,
@@ -230,7 +235,7 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
                     "form": form or 'pellet',
                     "alpha": alpha_percent or 0,
                     "amount": amount_grams,
-                    "timing": timing_dict  # Dict or None (SQLAlchemy handles JSON encoding)
+                    "timing": timing_json  # JSON string or None
                 })
 
             await conn.execute(text("DROP TABLE recipe_hops"))

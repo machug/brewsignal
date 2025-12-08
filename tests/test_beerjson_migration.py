@@ -1,4 +1,5 @@
 """Test BeerJSON migration adds required columns to Recipe table."""
+import json
 import pytest
 import os
 from sqlalchemy import text
@@ -187,3 +188,138 @@ async def test_ingredient_tables_have_timing_columns():
         assert 'amount_unit' in misc_cols
         assert 'timing' in misc_cols
         assert 'format_extensions' in misc_cols
+
+
+@pytest.mark.asyncio
+async def test_hop_timing_data_migration():
+    """Test that hop timing is correctly migrated from BeerXML use/time to BeerJSON timing JSON."""
+    # Create old schema with BeerXML hop columns
+    async with engine.begin() as conn:
+        # Create minimal recipes table
+        await conn.execute(text("""
+            CREATE TABLE recipes (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(200) NOT NULL
+            )
+        """))
+
+        await conn.execute(text("""
+            INSERT INTO recipes (id, name)
+            VALUES (1, 'Test Recipe')
+        """))
+
+        # Create old hop schema with BeerXML fields
+        await conn.execute(text("""
+            CREATE TABLE recipe_hops (
+                id INTEGER PRIMARY KEY,
+                recipe_id INTEGER NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                alpha_percent REAL NOT NULL,
+                amount_kg REAL NOT NULL,
+                use VARCHAR(20),
+                time_min REAL,
+                form VARCHAR(20),
+                type VARCHAR(50),
+                origin VARCHAR(50),
+                substitutes TEXT,
+                beta_percent REAL,
+                hsi REAL,
+                humulene REAL,
+                caryophyllene REAL,
+                cohumulone REAL,
+                myrcene REAL,
+                notes TEXT,
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+            )
+        """))
+
+        # Insert test hops with various use/time combinations
+        await conn.execute(text("""
+            INSERT INTO recipe_hops (
+                id, recipe_id, name, alpha_percent, amount_kg, use, time_min, form, origin
+            )
+            VALUES
+                (1, 1, 'Cascade', 5.5, 0.028, 'Boil', 60.0, 'Pellet', 'US'),
+                (2, 1, 'Citra', 12.0, 0.014, 'Dry Hop', 10080.0, 'Pellet', 'US'),
+                (3, 1, 'Magnum', 14.0, 0.014, 'First Wort', 0.0, 'Pellet', 'Germany'),
+                (4, 1, 'Saaz', 3.5, 0.028, 'Aroma', 5.0, 'Whole', 'Czech'),
+                (5, 1, 'Unknown Use', 6.0, 0.014, '', NULL, 'Pellet', 'US'),
+                (6, 1, 'Null Use', 6.0, 0.014, NULL, NULL, 'Pellet', 'US')
+        """))
+
+    # Run migration
+    await init_db()
+
+    # Verify hop timing conversion
+    async with engine.connect() as conn:
+        result = await conn.execute(text("""
+            SELECT id, name, alpha_acid_percent, amount_grams, timing, origin, form
+            FROM recipe_hops
+            ORDER BY id
+        """))
+        hops = result.fetchall()
+
+        assert len(hops) == 6
+
+        # Hop 1: Boil 60 min → add_to_boil with duration
+        hop1 = hops[0]
+        assert hop1[0] == 1
+        assert hop1[1] == 'Cascade'
+        assert hop1[2] == 5.5  # alpha_acid_percent
+        assert hop1[3] == 28.0  # amount_grams (0.028 kg * 1000)
+        timing1 = json.loads(hop1[4]) if hop1[4] else None
+        assert timing1 is not None
+        assert timing1['use'] == 'add_to_boil'
+        assert timing1['continuous'] is False
+        assert timing1['duration']['value'] == 60.0
+        assert timing1['duration']['unit'] == 'min'
+
+        # Hop 2: Dry Hop 10080 min (7 days) → add_to_fermentation with duration in days
+        hop2 = hops[1]
+        assert hop2[0] == 2
+        assert hop2[1] == 'Citra'
+        assert hop2[3] == 14.0  # amount_grams
+        timing2 = json.loads(hop2[4]) if hop2[4] else None
+        assert timing2 is not None
+        assert timing2['use'] == 'add_to_fermentation'
+        assert timing2['continuous'] is False
+        assert timing2['duration']['value'] == 7  # 10080 min / 1440 = 7 days
+        assert timing2['duration']['unit'] == 'day'
+        assert timing2['phase'] == 'primary'
+
+        # Hop 3: First Wort 0 min → add_to_boil without duration (FWH has no time component)
+        hop3 = hops[2]
+        assert hop3[0] == 3
+        assert hop3[1] == 'Magnum'
+        assert hop3[3] == 14.0  # amount_grams
+        timing3 = json.loads(hop3[4]) if hop3[4] else None
+        assert timing3 is not None
+        assert timing3['use'] == 'add_to_boil'
+        assert timing3['continuous'] is False
+        # No duration key for 0 time
+        assert 'duration' not in timing3
+
+        # Hop 4: Aroma 5 min → add_to_boil with duration
+        hop4 = hops[3]
+        assert hop4[0] == 4
+        assert hop4[1] == 'Saaz'
+        assert hop4[3] == 28.0  # amount_grams
+        timing4 = json.loads(hop4[4]) if hop4[4] else None
+        assert timing4 is not None
+        assert timing4['use'] == 'add_to_boil'
+        assert timing4['duration']['value'] == 5.0
+        assert timing4['duration']['unit'] == 'min'
+
+        # Hop 5: Empty use string → NULL timing preserved
+        hop5 = hops[4]
+        assert hop5[0] == 5
+        assert hop5[1] == 'Unknown Use'
+        assert hop5[3] == 14.0  # amount_grams
+        assert hop5[4] is None  # timing should be NULL
+
+        # Hop 6: NULL use → NULL timing preserved
+        hop6 = hops[5]
+        assert hop6[0] == 6
+        assert hop6[1] == 'Null Use'
+        assert hop6[3] == 14.0  # amount_grams
+        assert hop6[4] is None  # timing should be NULL

@@ -465,6 +465,38 @@ class RecipeHop(Base):
         """Alias for alpha_acid_percent for backward compatibility."""
         return self.alpha_acid_percent
 
+    @property
+    def amount_kg(self) -> float:
+        """Alias for amount_grams (converted to kg) for backward compatibility."""
+        return self.amount_grams / 1000.0
+
+    @property
+    def use(self) -> Optional[str]:
+        """Extract use field from timing JSON for backward compatibility.
+
+        Maps BeerJSON timing.use to BeerXML use values:
+        - add_to_boil -> Boil
+        - add_to_mash -> Mash
+        - add_to_fermentation -> Dry Hop
+        - add_to_package -> Bottling
+        """
+        if not self.timing:
+            return None
+
+        timing_use = self.timing.get('use')
+        if not timing_use:
+            return None
+
+        # Map BeerJSON timing use to BeerXML use
+        use_mapping = {
+            'add_to_boil': 'Boil',
+            'add_to_mash': 'Mash',
+            'add_to_fermentation': 'Dry Hop',
+            'add_to_package': 'Bottling'
+        }
+
+        return use_mapping.get(timing_use, 'Boil')
+
 
 class RecipeCulture(Base):
     """Culture/yeast strains in a recipe (BeerJSON terminology)."""

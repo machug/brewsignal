@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/beerjson/beerjson/master/json/timing.json",
+  "type": "object",
+  "definitions": {
+    "TimingType": {
+      "type": "object",
+      "description": "The timing object fully describes the timing of an addition with options for a basis on time, gravity, or pH at any process step.",
+      "properties": {
+        "time": {
+          "description": "What time during a process step is added, eg a value of 2 days for a dry hop addition would be added 2 days into the fermentation step",
+          "$ref": "measureable_units.json#/definitions/TimeType"
+        },
+        "duration": {
+          "description": "How long an ingredient addition remains, this was referred to as time in the BeerXML standard. E.G. A 40 minute hop boil additions means to boil for 40 minutes",
+          "$ref": "measureable_units.json#/definitions/TimeType"
+        },
+        "continuous": {
+          "description": "A continuous addition is spread out evenly and added during the entire process step",
+          "type": "boolean"
+        },
+        "specific_gravity": {
+          "description": "Used to indicate when an addition is added based on a desired specific gravity. E.G. Add dry hop at when SG is 1.018",
+          "$ref": "measureable_units.json#/definitions/GravityType"
+        },
+        "pH": {
+          "description": "Used to indicate when an addition is added based on a desired specific pH. eg Add brett when pH is 3.4",
+          "$ref": "measureable_units.json#/definitions/AcidityType"
+        },
+        "step": {
+          "description": "References which process step this timing applies to (e.g., second fermentation step)",
+          "type": "integer"
+        },
+        "use": {
+          "description": "Specifies the process stage for the addition",
+          "type": "string",
+          "enum": [
+            "add_to_mash",
+            "add_to_boil",
+            "add_to_fermentation",
+            "add_to_package"
+          ]
+        },
+        "phase": {
+          "description": "Fermentation phase for additions (e.g., primary, secondary, tertiary)",
+          "type": "string",
+          "enum": [
+            "primary",
+            "secondary",
+            "tertiary"
+          ]
+        }
+      }
+    }
+  }
+}

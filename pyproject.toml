@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.25",
     "defusedxml>=0.7",
     "jsonschema>=4.20",
+    "referencing>=0.30",
     "python-multipart>=0.0.6",
     # ML dependencies
     "numpy>=1.24",

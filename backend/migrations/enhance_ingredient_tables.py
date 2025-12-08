@@ -11,6 +11,7 @@ import json
 import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
+from backend.services.hop_timing_converter import convert_hop_timing_safe
 
 logger = logging.getLogger(__name__)
 
@@ -52,47 +53,6 @@ async def _check_table_exists(conn: AsyncConnection, table: str) -> bool:
         {"table": table}
     )
     return result.fetchone() is not None
-
-
-def _convert_hop_timing_safe(use: str, time: float) -> dict:
-    """Convert old hop use/time to BeerJSON timing object.
-
-    Only creates timing if use is valid. Returns None for invalid data.
-
-    Returns:
-        Dict (not JSON string) for SQLAlchemy JSON column, or None
-    """
-    if not use or use == '':
-        return None
-
-    use_mapping = {
-        "Boil": "add_to_boil",
-        "Dry Hop": "add_to_fermentation",
-        "Mash": "add_to_mash",
-        "First Wort": "add_to_boil",
-        "Aroma": "add_to_boil"
-    }
-
-    # Unknown use value - preserve NULL
-    if use not in use_mapping:
-        logger.warning(f"Unknown hop use '{use}', preserving NULL timing")
-        return None
-
-    timing = {
-        "use": use_mapping[use],
-        "continuous": False
-    }
-
-    # Add duration if time is valid
-    if time is not None and time > 0:
-        if use in ["Boil", "Aroma"]:
-            timing["duration"] = {"value": time, "unit": "min"}
-        elif use == "Dry Hop":
-            # Convert minutes to days (BeerXML quirk)
-            timing["duration"] = {"value": int(time / 1440), "unit": "day"}
-            timing["phase"] = "primary"
-
-    return timing  # Return dict, not json.dumps()
 
 
 async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
@@ -229,7 +189,7 @@ async def migrate_enhance_ingredient_tables(conn: AsyncConnection) -> None:
                 # Only build timing if we have valid use field
                 timing_dict = None
                 if use is not None and use != '':
-                    timing_dict = _convert_hop_timing_safe(use, time_min)
+                    timing_dict = convert_hop_timing_safe(use, time_min)
                     if timing_dict:
                         hops_with_timing += 1
                     else:

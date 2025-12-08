@@ -91,6 +91,85 @@ async def test_import_beerxml(client):
 
 
 @pytest.mark.asyncio
+async def test_update_recipe(client):
+    """PUT /api/recipes/{id} should update recipe fields."""
+    # Create recipe first
+    recipe_data = {
+        "name": "Original Name",
+        "og": 1.050,
+        "fg": 1.010,
+        "ibu": 40,
+        "color_srm": 10,
+    }
+    create_response = await client.post("/api/recipes", json=recipe_data)
+    recipe_id = create_response.json()["id"]
+
+    # Update it
+    update_data = {
+        "name": "Updated Name",
+        "og": 1.055,
+        "ibu": 45,
+        "batch_size_liters": 19.0,
+        "yeast_name": "US-05",
+    }
+    response = await client.put(f"/api/recipes/{recipe_id}", json=update_data)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Name"
+    assert data["og"] == 1.055
+    assert data["fg"] == 1.010  # Unchanged
+    assert data["ibu"] == 45
+    assert data["color_srm"] == 10  # Unchanged
+    assert data["batch_size_liters"] == 19.0
+    assert data["yeast_name"] == "US-05"
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_not_found(client):
+    """PUT /api/recipes/{id} should return 404 for non-existent recipe."""
+    response = await client.put("/api/recipes/99999", json={"name": "New Name"})
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_partial(client):
+    """PUT /api/recipes/{id} should allow partial updates."""
+    # Create recipe
+    create_response = await client.post("/api/recipes", json={"name": "Test", "og": 1.050})
+    recipe_id = create_response.json()["id"]
+
+    # Update only name
+    response = await client.put(f"/api/recipes/{recipe_id}", json={"name": "Updated"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated"
+    assert data["og"] == 1.050  # Should be unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_protected_fields(client):
+    """PUT /api/recipes/{id} should only update whitelisted fields."""
+    # Create recipe
+    create_response = await client.post("/api/recipes", json={"name": "Test Recipe", "og": 1.050})
+    recipe_id = create_response.json()["id"]
+    original_created_at = create_response.json()["created_at"]
+
+    # Attempt to update with a protected field (created_at is not in allowed_fields)
+    # The endpoint should ignore the protected field
+    response = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"name": "Updated Name", "created_at": "2099-01-01T00:00:00Z"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Name"  # Allowed field should update
+    assert data["created_at"] == original_created_at  # Protected field should NOT change
+
+
+@pytest.mark.asyncio
 async def test_delete_recipe(client):
     """DELETE /api/recipes/{id} should remove recipe."""
     # Create recipe first

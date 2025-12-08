@@ -1,10 +1,12 @@
 """BeerJSON 1.0 validator using jsonschema."""
 import json
 import os
+import warnings
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 import jsonschema
-from jsonschema.validators import Draft7Validator
+from jsonschema import validators
+from jsonschema.protocols import Validator
 
 
 class BeerJSONValidator:
@@ -34,39 +36,68 @@ class BeerJSONValidator:
         with open(schema_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _create_validator(self) -> Draft7Validator:
+    def _create_validator(self) -> Validator:
         """Create JSON schema validator with proper reference resolution.
 
         The BeerJSON schema uses $ref to reference other schema files.
-        This creates a validator that can resolve those references.
+        This creates a validator that can resolve those references using
+        the modern referencing library (jsonschema 4.18+).
 
         Returns:
-            Draft7Validator configured for BeerJSON schema
+            Validator configured for BeerJSON schema
         """
-        # Load all schema files into a store for reference resolution
-        store = {}
-        for schema_file in self.schema_dir.glob("*.json"):
-            with open(schema_file, "r", encoding="utf-8") as f:
-                schema_data = json.load(f)
-                # Store with both filename and $id URL
-                store[schema_file.name] = schema_data
-                if "$id" in schema_data:
-                    store[schema_data["$id"]] = schema_data
+        try:
+            # Modern approach with referencing library (jsonschema 4.18+)
+            # All missing BeerJSON schemas created locally from spec documentation:
+            # - timing.json, mash_step.json, boil_step.json, packaging_vessel.json
+            from referencing import Registry, Resource
+            from referencing.jsonschema import DRAFT7
 
-        # Create custom resolver
-        from jsonschema import RefResolver
-        base_uri = self.schema.get("$id", f"file://{self.schema_dir}/")
-        resolver = RefResolver(
-            base_uri=base_uri,
-            referrer=self.schema,
-            store=store
-        )
+            # Build registry from schema files
+            # We need to register both by $id and by filename
+            registry_contents = []
+            for schema_file in self.schema_dir.glob("*.json"):
+                with open(schema_file, "r", encoding="utf-8") as f:
+                    schema_data = json.load(f)
+                    resource = Resource.from_contents(schema_data, default_specification=DRAFT7)
 
-        # Create validator with resolver
-        validator_cls = Draft7Validator
-        validator = validator_cls(self.schema, resolver=resolver)
+                    # Register by $id if present
+                    if "$id" in schema_data:
+                        registry_contents.append((schema_data["$id"], resource))
 
-        return validator
+                    # Also register by filename for references like "timing.json#/definitions/..."
+                    registry_contents.append((schema_file.name, resource))
+
+            registry = Registry().with_resources(registry_contents)
+            validator = validators.Draft7Validator(self.schema, registry=registry)
+
+            return validator
+
+        except ImportError:
+            # Fallback to deprecated RefResolver for older jsonschema versions
+            # or when timing.json schema is missing from BeerJSON schema set
+            # Suppress deprecation warning since we're aware and will upgrade once schemas are complete
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                from jsonschema import RefResolver
+
+                store = {}
+                for schema_file in self.schema_dir.glob("*.json"):
+                    with open(schema_file, "r", encoding="utf-8") as f:
+                        schema_data = json.load(f)
+                        store[schema_file.name] = schema_data
+                        if "$id" in schema_data:
+                            store[schema_data["$id"]] = schema_data
+
+                base_uri = self.schema.get("$id", f"file://{self.schema_dir}/")
+                resolver = RefResolver(
+                    base_uri=base_uri,
+                    referrer=self.schema,
+                    store=store
+                )
+                validator = validators.Draft7Validator(self.schema, resolver=resolver)
+
+            return validator
 
     def validate(self, beerjson_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
         """Validate a BeerJSON document against the schema.

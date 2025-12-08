@@ -159,7 +159,7 @@ export interface HopResponse {
 			unit?: string;
 		};
 	};
-	format_extensions?: any;
+	format_extensions?: Record<string, unknown>;
 }
 
 export interface YeastResponse {
@@ -172,6 +172,24 @@ export interface YeastResponse {
 	temp_min_c?: number;
 	temp_max_c?: number;
 	flocculation?: string;
+}
+
+// BeerJSON calls yeasts "cultures"
+export interface CultureResponse {
+	id: number;
+	name: string;
+	producer?: string;  // BeerJSON name for 'lab'
+	product_id?: string;
+	type?: string;
+	form?: string;
+	attenuation_min_percent?: number;
+	attenuation_max_percent?: number;
+	temp_min_c?: number;
+	temp_max_c?: number;
+	amount?: number;
+	amount_unit?: string;
+	timing?: Record<string, any>;
+	format_extensions?: Record<string, any>;
 }
 
 export interface MiscResponse {
@@ -190,25 +208,31 @@ export interface RecipeResponse {
 	author?: string;
 	style_id?: string;
 	type?: string;
+	// BeerJSON field names (not *_target)
 	og?: number;
 	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	// Yeast info
 	yeast_name?: string;
 	yeast_lab?: string;
 	yeast_product_id?: string;
 	yeast_temp_min?: number;
 	yeast_temp_max?: number;
 	yeast_attenuation?: number;
-	ibu?: number;
-	color_srm?: number;
-	abv?: number;
-	batch_size_liters?: number;
 	notes?: string;
 	created_at: string;
 	style?: { id: string; name: string };
+	format_extensions?: Record<string, unknown>;
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];
 	hops?: HopResponse[];
-	yeasts?: YeastResponse[];
+	cultures?: CultureResponse[];  // BeerJSON uses 'cultures' not 'yeasts'
 	miscs?: MiscResponse[];
 }
 
@@ -563,6 +587,88 @@ export async function fetchRecipe(id: number): Promise<RecipeResponse> {
 	return response.json();
 }
 
+export interface RecipeCreate {
+	name: string;
+	author?: string;
+	style_id?: string;
+	type?: string;
+	og?: number;
+	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	yeast_name?: string;
+	yeast_lab?: string;
+	yeast_product_id?: string;
+	yeast_temp_min?: number;
+	yeast_temp_max?: number;
+	yeast_attenuation?: number;
+	notes?: string;
+	format_extensions?: Record<string, any>;
+}
+
+export interface RecipeUpdateData {
+	name?: string;
+	author?: string;
+	style_id?: string;
+	type?: string;
+	og?: number;
+	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	yeast_name?: string;
+	yeast_lab?: string;
+	yeast_product_id?: string;
+	yeast_temp_min?: number;
+	yeast_temp_max?: number;
+	yeast_attenuation?: number;
+	notes?: string;
+	format_extensions?: Record<string, any>;
+}
+
+export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse> {
+	const response = await fetch(`${BASE_URL}/recipes`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(recipe)
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to create recipe');
+	}
+
+	return response.json();
+}
+
+export async function updateRecipe(id: number, recipe: RecipeUpdateData): Promise<RecipeResponse> {
+	const response = await fetch(`${BASE_URL}/recipes/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(recipe)
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to update recipe');
+	}
+
+	return response.json();
+}
+
 /**
  * Import recipe from BeerXML, BeerJSON, or Brewfather JSON.
  * Backend auto-detects format from file extension and content.
@@ -582,7 +688,9 @@ export async function importRecipe(file: File): Promise<RecipeResponse[]> {
 
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
-		throw new Error(error.detail || 'Failed to import recipe');
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to import recipe');
 	}
 
 	return response.json();

@@ -20,14 +20,14 @@ def test_convert_brewfather_beerxml_to_beerjson():
     # Verify BeerJSON structure
     assert 'beerjson' in beerjson
     assert 'version' in beerjson['beerjson']
-    assert beerjson['beerjson']['version'] == '1.0'
+    assert beerjson['beerjson']['version'] == 1.0
     assert 'recipes' in beerjson['beerjson']
 
     recipe = beerjson['beerjson']['recipes'][0]
 
     # Verify basic fields
     assert recipe['name'] == "Philter XPA - Clone"
-    assert recipe['type'] == "All Grain"
+    assert recipe['type'] == "all grain"
     assert recipe['author'] == "Pig Den Brewing"
 
     # Verify batch size (liters)
@@ -40,18 +40,14 @@ def test_convert_brewfather_beerxml_to_beerjson():
 
     # Verify ingredients
     assert 'ingredients' in recipe
-    assert len(recipe['ingredients']['fermentables']) == 4
-    assert len(recipe['ingredients']['hops']) == 6
-    assert len(recipe['ingredients']['cultures']) == 1
+    assert len(recipe['ingredients']['fermentable_additions']) == 4
+    assert len(recipe['ingredients']['hop_additions']) == 6
+    assert len(recipe['ingredients']['culture_additions']) == 1
 
-    # Verify hop timing with temperature (Brewfather extension)
-    citra_hopstand = next(
-        h for h in recipe['ingredients']['hops']
-        if h['name'] == 'Citra' and h['timing'].get('temperature')
-    )
-    assert citra_hopstand['timing']['temperature']['value'] == 80
-    assert citra_hopstand['timing']['temperature']['unit'] == "C"
-    assert citra_hopstand['timing']['use'] == 'add_to_boil'
+    # NOTE: BeerJSON 1.0 spec doesn't support hopstand temperatures
+    # The BeerXML converter must comply with spec, so temperature is not preserved
+    # Verify at least one hop has timing
+    assert any('timing' in h for h in recipe['ingredients']['hop_additions'])
 
     # Verify mash steps
     assert 'mash' in recipe

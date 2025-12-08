@@ -84,24 +84,21 @@ async def create_recipe(
     return db_recipe
 
 
-@router.post("/import", response_model=list[RecipeResponse])
-async def import_beerxml(
+@router.post("/import", response_model=RecipeResponse, status_code=201)
+async def import_recipe(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Import recipes from a BeerXML file."""
-    # Validate filename extension (before reading)
-    if not file.filename or not file.filename.lower().endswith('.xml'):
-        raise HTTPException(
-            status_code=400,
-            detail="File must have .xml extension"
-        )
+    """Import recipe from BeerXML, Brewfather JSON, or BeerJSON file.
 
-    # Validate content type (before reading)
-    if file.content_type and file.content_type not in ["text/xml", "application/xml"]:
-        # Allow if no content type (some clients don't send it)
-        if file.content_type != "application/octet-stream":
-            raise HTTPException(status_code=400, detail="File must be XML")
+    Supports:
+    - BeerXML 1.0 (.xml)
+    - Brewfather JSON (.json)
+    - BeerJSON 1.0 (.json)
+
+    Format is auto-detected from file content.
+    """
+    from backend.services.importers.recipe_importer import RecipeImporter
 
     # Read file content with size validation
     content = await file.read()
@@ -110,26 +107,47 @@ async def import_beerxml(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 1MB)")
 
-    # Parse and import BeerXML
+    # Decode content
     try:
-        xml_content = content.decode("utf-8")
-        recipe_id = await import_beerxml_to_db(db, xml_content)
+        content_str = content.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid BeerXML: {str(e)}")
 
-    # Fetch the created recipe with eager loading
-    result = await db.execute(
+    # Import using new orchestrator (auto-detects format)
+    importer = RecipeImporter()
+    result = await importer.import_recipe(content_str, None, db)
+
+    # Handle import failure
+    if not result.success:
+        await db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=result.errors
+        )
+
+    # Import succeeded - commit to database
+    await db.commit()
+
+    # Reload recipe with all relationships for response
+    stmt = (
         select(Recipe)
-        .options(selectinload(Recipe.style))
-        .where(Recipe.id == recipe_id)
+        .where(Recipe.id == result.recipe.id)
+        .options(
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.fermentation_steps),
+            selectinload(Recipe.water_profiles),
+            selectinload(Recipe.water_adjustments),
+            selectinload(Recipe.style)
+        )
     )
-    recipe = result.scalar_one()
+    result_obj = await db.execute(stmt)
+    recipe = result_obj.scalar_one()
 
-    return [recipe]
+    return recipe
 
 
 @router.delete("/{recipe_id}")

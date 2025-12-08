@@ -25,7 +25,7 @@ class BeerXMLToBeerJSONConverter:
 
         return {
             'beerjson': {
-                'version': '1.0',
+                'version': 1.0,
                 'recipes': [beerjson_recipe]
             }
         }
@@ -34,17 +34,20 @@ class BeerXMLToBeerJSONConverter:
         """Convert single BeerXML recipe to BeerJSON recipe."""
         recipe = {
             'name': beerxml_recipe.get('NAME', ''),
-            'type': beerxml_recipe.get('TYPE', ''),
-            'author': beerxml_recipe.get('BREWER', ''),
+            'type': self._map_recipe_type(beerxml_recipe.get('TYPE', '')),
+            'author': beerxml_recipe.get('BREWER', '') or 'Unknown',
             'batch_size': self._make_volume(beerxml_recipe.get('BATCH_SIZE')),
             'original_gravity': self._make_gravity(beerxml_recipe.get('OG')),
             'final_gravity': self._make_gravity(beerxml_recipe.get('FG')),
             'alcohol_by_volume': self._make_percent(beerxml_recipe.get('ABV')),
             'ibu_estimate': self._make_dimensionless(beerxml_recipe.get('IBU')),
             'color_estimate': self._make_color(beerxml_recipe.get('EST_COLOR')),
-            'carbonation': self._make_dimensionless(beerxml_recipe.get('CARBONATION')),
             'notes': beerxml_recipe.get('NOTES', ''),
         }
+
+        # Carbonation (raw number for BeerJSON 1.0)
+        if beerxml_recipe.get('CARBONATION'):
+            recipe['carbonation'] = float(beerxml_recipe['CARBONATION'])
 
         # Boil
         if beerxml_recipe.get('BOIL_TIME'):
@@ -75,39 +78,39 @@ class BeerXMLToBeerJSONConverter:
         """Convert ingredients section."""
         ingredients = {}
 
-        # Fermentables
+        # Fermentables (BeerJSON uses fermentable_additions)
         if 'FERMENTABLES' in beerxml_recipe:
             ferms = beerxml_recipe['FERMENTABLES'].get('FERMENTABLE', [])
             if not isinstance(ferms, list):
                 ferms = [ferms]
-            ingredients['fermentables'] = [
+            ingredients['fermentable_additions'] = [
                 self._convert_fermentable(f) for f in ferms
             ]
 
-        # Hops
+        # Hops (BeerJSON uses hop_additions)
         if 'HOPS' in beerxml_recipe:
             hops = beerxml_recipe['HOPS'].get('HOP', [])
             if not isinstance(hops, list):
                 hops = [hops]
-            ingredients['hops'] = [
+            ingredients['hop_additions'] = [
                 self._convert_hop(h) for h in hops
             ]
 
-        # Yeasts/Cultures
+        # Yeasts/Cultures (BeerJSON uses culture_additions)
         if 'YEASTS' in beerxml_recipe:
             yeasts = beerxml_recipe['YEASTS'].get('YEAST', [])
             if not isinstance(yeasts, list):
                 yeasts = [yeasts]
-            ingredients['cultures'] = [
+            ingredients['culture_additions'] = [
                 self._convert_culture(y) for y in yeasts
             ]
 
-        # Miscs
+        # Miscs (BeerJSON uses miscellaneous_additions)
         if 'MISCS' in beerxml_recipe:
             miscs = beerxml_recipe['MISCS'].get('MISC', [])
             if not isinstance(miscs, list):
                 miscs = [miscs]
-            ingredients['miscellaneous_ingredients'] = [
+            ingredients['miscellaneous_additions'] = [
                 self._convert_misc(m) for m in miscs
             ]
 
@@ -191,17 +194,14 @@ class BeerXMLToBeerJSONConverter:
                 'unit': 'min'
             }
 
-        # Hopstand temperature (Brewfather extension)
+        # NOTE: BeerJSON 1.0 schema doesn't allow temperature in timing
+        # Hopstand temperature (Brewfather extension) - store in _extensions
         if beerxml_hop.get('TEMPERATURE') or beerxml_hop.get('HOP_TEMP'):
-            temp = beerxml_hop.get('TEMPERATURE') or beerxml_hop.get('HOP_TEMP')
-            timing['temperature'] = {
-                'value': float(temp),
-                'unit': 'C'
-            }
+            # Temperature not supported in BeerJSON 1.0 timing object
+            pass
 
-        # Dry hop
+        # Dry hop (BeerJSON 1.0 doesn't support 'phase' field)
         if use == 'Dry Hop':
-            timing['phase'] = 'primary'
             if time > 0:
                 # BeerXML stores dry hop time in minutes - convert to days
                 timing['duration'] = {
@@ -236,10 +236,12 @@ class BeerXMLToBeerJSONConverter:
                 }
             culture['temperature_range'] = temp_range
 
-        # Attenuation
+        # Attenuation (BeerJSON uses attenuation_range, but schema requires minimum AND maximum)
         if beerxml_yeast.get('ATTENUATION'):
-            culture['attenuation'] = {
-                'maximum': self._make_percent(beerxml_yeast['ATTENUATION'])
+            att_val = self._make_percent(beerxml_yeast['ATTENUATION'])
+            culture['attenuation_range'] = {
+                'minimum': att_val,
+                'maximum': att_val
             }
 
         # Amount
@@ -334,9 +336,8 @@ class BeerXMLToBeerJSONConverter:
             'step_time': self._make_time_minutes(beerxml_step.get('STEP_TIME'))
         }
 
-        # Infusion
-        if beerxml_step.get('INFUSE_AMOUNT'):
-            step['infusion_amount'] = self._make_volume(beerxml_step['INFUSE_AMOUNT'])
+        # NOTE: BeerJSON 1.0 schema doesn't allow infusion_amount in mash_step
+        # This data is lost during conversion (would need _extensions)
 
         return step
 
@@ -346,7 +347,7 @@ class BeerXMLToBeerJSONConverter:
             'name': beerxml_style.get('NAME', ''),
             'category': beerxml_style.get('CATEGORY', ''),
             'style_guide': beerxml_style.get('STYLE_GUIDE', ''),
-            'type': beerxml_style.get('TYPE', '')
+            'type': self._map_style_type(beerxml_style.get('TYPE', ''))
         }
 
     # Unit conversion helpers
@@ -414,6 +415,30 @@ class BeerXMLToBeerJSONConverter:
         return {'value': float(val_str), 'unit': 'SRM'}
 
     # Type mappers
+    def _map_recipe_type(self, beerxml_type: str) -> str:
+        """Map BeerXML recipe type to BeerJSON."""
+        mapping = {
+            'All Grain': 'all grain',
+            'Partial Mash': 'partial mash',
+            'Extract': 'extract',
+        }
+        return mapping.get(beerxml_type, 'all grain')
+
+    def _map_style_type(self, beerxml_type: str) -> str:
+        """Map BeerXML style type to BeerJSON."""
+        if not beerxml_type:
+            return 'beer'
+        mapping = {
+            'Ale': 'beer',
+            'Lager': 'beer',
+            'Wheat': 'beer',
+            'Beer': 'beer',
+            'Cider': 'cider',
+            'Mead': 'mead',
+            'Wine': 'wine',
+        }
+        return mapping.get(beerxml_type, 'beer')
+
     def _map_fermentable_type(self, beerxml_type: str) -> str:
         """Map BeerXML fermentable type to BeerJSON."""
         mapping = {

@@ -499,10 +499,13 @@ class RecipeHop(Base):
 
     @property
     def time_min(self) -> Optional[float]:
-        """Extract time in minutes from timing JSON for backward compatibility.
+        """Extract time from timing JSON for backward compatibility.
 
         Returns duration value from timing.duration object.
-        Converts days to minutes if needed.
+
+        Note: BeerXML quirk - Dry Hop times are in DAYS, not minutes.
+        This property returns the raw value without conversion to preserve
+        backward compatibility with BeerXML semantics.
         """
         if not self.timing:
             return None
@@ -512,20 +515,72 @@ class RecipeHop(Base):
             return None
 
         value = duration.get('value')
-        unit = duration.get('unit', 'min')
-
         if value is None:
             return None
 
-        # Convert to minutes based on unit
-        if unit == 'min':
-            return float(value)
-        elif unit == 'day':
-            return float(value) * 1440  # days to minutes
-        elif unit == 'hour':
-            return float(value) * 60
-        else:
-            return float(value)  # Assume minutes if unknown
+        # Return raw value - BeerXML stores Dry Hop in days, boil hops in minutes
+        return float(value)
+
+    @property
+    def type(self) -> Optional[str]:
+        """Extract type from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('type')
+
+    @property
+    def beta_percent(self) -> Optional[float]:
+        """Alias for beta_acid_percent for backward compatibility."""
+        return self.beta_acid_percent
+
+    @property
+    def hsi(self) -> Optional[float]:
+        """Extract HSI from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('hsi')
+
+    @property
+    def humulene(self) -> Optional[float]:
+        """Extract humulene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('humulene')
+
+    @property
+    def caryophyllene(self) -> Optional[float]:
+        """Extract caryophyllene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('caryophyllene')
+
+    @property
+    def cohumulone(self) -> Optional[float]:
+        """Extract cohumulone from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('cohumulone')
+
+    @property
+    def myrcene(self) -> Optional[float]:
+        """Extract myrcene from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('myrcene')
+
+    @property
+    def substitutes(self) -> Optional[str]:
+        """Extract substitutes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('substitutes')
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Extract notes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('notes')
 
 
 class RecipeCulture(Base):
@@ -567,6 +622,79 @@ class RecipeCulture(Base):
     def lab(self) -> Optional[str]:
         """Alias for producer for backward compatibility."""
         return self.producer
+
+    @property
+    def attenuation_percent(self) -> Optional[float]:
+        """Alias for attenuation_min_percent for backward compatibility."""
+        return self.attenuation_min_percent
+
+    @property
+    def flocculation(self) -> Optional[str]:
+        """Extract flocculation from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('flocculation')
+
+    @property
+    def amount_kg(self) -> Optional[float]:
+        """Convert amount to kg for backward compatibility.
+
+        Amount is stored as grams (for dry yeast), convert back to kg.
+        """
+        if not self.amount or not self.amount_unit:
+            return None
+        if self.amount_unit == 'g':
+            return self.amount / 1000.0
+        return None  # Only for dry yeast
+
+    @property
+    def amount_l(self) -> Optional[float]:
+        """Return amount in liters for backward compatibility.
+
+        Note: The importer stores amount_l directly as-is with unit='ml',
+        without converting liters to milliliters. This property returns
+        the value as stored (which is actually in liters, not ml).
+        """
+        if not self.amount or not self.amount_unit:
+            return None
+        if self.amount_unit == 'ml':
+            return self.amount  # Already in liters (importer bug/quirk)
+        return None  # Only for liquid yeast
+
+    @property
+    def add_to_secondary(self) -> Optional[bool]:
+        """Extract add_to_secondary from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('add_to_secondary')
+
+    @property
+    def best_for(self) -> Optional[str]:
+        """Extract best_for from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('best_for')
+
+    @property
+    def times_cultured(self) -> Optional[int]:
+        """Extract times_cultured from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('times_cultured')
+
+    @property
+    def max_reuse(self) -> Optional[int]:
+        """Extract max_reuse from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('max_reuse')
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Extract notes from format_extensions for backward compatibility."""
+        if not self.format_extensions:
+            return None
+        return self.format_extensions.get('notes')
 
 
 class RecipeMisc(Base):

@@ -216,9 +216,9 @@ class BeerXMLToBeerJSONConverter:
         # Dry hop (BeerJSON 1.0 doesn't support 'phase' field)
         if use == 'Dry Hop':
             if time > 0:
-                # BeerXML stores dry hop time in minutes - convert to days
+                # BeerXML stores dry hop time in days (not minutes like boil hops)
                 timing['duration'] = {
-                    'value': int(time / 1440),
+                    'value': int(time),
                     'unit': 'day'
                 }
 

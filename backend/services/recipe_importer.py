@@ -166,8 +166,8 @@ async def import_beerxml_to_db(db: AsyncSession, xml_content: str) -> int:
                     if h.use in ["Boil", "Aroma"]:
                         timing["duration"] = {"value": h.time_min, "unit": "min"}
                     elif h.use == "Dry Hop":
-                        # Convert minutes to days (BeerXML quirk)
-                        timing["duration"] = {"value": int(h.time_min / 1440), "unit": "day"}
+                        # BeerXML stores Dry Hop time in days (not minutes like boil hops)
+                        timing["duration"] = {"value": int(h.time_min), "unit": "day"}
                         timing["phase"] = "primary"
 
         # Store BeerXML metadata in format_extensions

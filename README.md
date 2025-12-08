@@ -317,9 +317,15 @@ Control logic:
 | `/api/batches/{id}/progress` | GET | Detailed fermentation progress |
 | `/api/batches/{id}/delete` | POST | Soft or hard delete batch |
 | `/api/batches/{id}/restore` | POST | Restore soft-deleted batch |
-| `/api/recipes` | GET/POST | List or create recipes |
-| `/api/recipes/{id}` | GET/PUT/DELETE | Recipe with full ingredients |
-| `/api/recipes/import` | POST | Import BeerXML file |
+| `/api/recipes` | GET/POST | List or create recipes (BeerJSON schema) |
+| `/api/recipes/{id}` | GET/PUT/DELETE | Recipe with full ingredients (BeerJSON) |
+| `/api/recipes/import` | POST | Import BeerXML, BeerJSON, or Brewfather JSON |
+
+**Recipe Fields (BeerJSON 1.0):**
+- Core: `og`, `fg`, `ibu`, `abv`, `color_srm`, `batch_size_liters`
+- Timing: `boil_time_minutes`, `efficiency_percent`, `carbonation_vols`
+- Extensions: `format_extensions` (preserves BeerXML/Brewfather metadata)
+- Relationships: fermentables, hops, cultures (yeasts), miscs, water profiles, mash steps, fermentation steps
 
 ### Temperature Control
 

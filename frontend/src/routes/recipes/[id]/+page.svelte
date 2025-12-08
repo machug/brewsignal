@@ -104,22 +104,22 @@
 			<div class="section">
 				<h2 class="section-title">Fermentation Parameters</h2>
 				<div class="param-grid">
-					{#if recipe.og_target}
+					{#if recipe.og ?? recipe.og_target}
 						<div class="param">
 							<span class="param-label">Original Gravity</span>
-							<span class="param-value">{recipe.og_target.toFixed(3)}</span>
+							<span class="param-value">{(recipe.og ?? recipe.og_target)?.toFixed(3)}</span>
 						</div>
 					{/if}
-					{#if recipe.fg_target}
+					{#if recipe.fg ?? recipe.fg_target}
 						<div class="param">
 							<span class="param-label">Final Gravity</span>
-							<span class="param-value">{recipe.fg_target.toFixed(3)}</span>
+							<span class="param-value">{(recipe.fg ?? recipe.fg_target)?.toFixed(3)}</span>
 						</div>
 					{/if}
-					{#if recipe.abv_target}
+					{#if recipe.abv ?? recipe.abv_target}
 						<div class="param">
 							<span class="param-label">ABV</span>
-							<span class="param-value">{recipe.abv_target.toFixed(1)}%</span>
+							<span class="param-value">{(recipe.abv ?? recipe.abv_target)?.toFixed(1)}%</span>
 						</div>
 					{/if}
 					{#if recipe.yeast_attenuation}
@@ -165,22 +165,22 @@
 			<div class="section">
 				<h2 class="section-title">Batch Details</h2>
 				<div class="details-grid">
-					{#if recipe.batch_size}
+					{#if recipe.batch_size_liters ?? recipe.batch_size}
 						<div class="detail">
 							<span class="detail-label">Batch Size</span>
-							<span class="detail-value">{recipe.batch_size.toFixed(1)} L</span>
+							<span class="detail-value">{(recipe.batch_size_liters ?? recipe.batch_size)?.toFixed(1)} L</span>
 						</div>
 					{/if}
-					{#if recipe.ibu_target}
+					{#if recipe.ibu ?? recipe.ibu_target}
 						<div class="detail">
 							<span class="detail-label">IBU</span>
-							<span class="detail-value">{recipe.ibu_target.toFixed(0)}</span>
+							<span class="detail-value">{(recipe.ibu ?? recipe.ibu_target)?.toFixed(0)}</span>
 						</div>
 					{/if}
-					{#if recipe.srm_target}
+					{#if recipe.color_srm ?? recipe.srm_target}
 						<div class="detail">
 							<span class="detail-label">SRM</span>
-							<span class="detail-value">{recipe.srm_target.toFixed(1)}</span>
+							<span class="detail-value">{(recipe.color_srm ?? recipe.srm_target)?.toFixed(1)}</span>
 						</div>
 					{/if}
 				</div>

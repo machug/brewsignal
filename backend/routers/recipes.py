@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..database import get_db
-from ..models import Recipe, RecipeCreate, RecipeResponse, RecipeDetailResponse
+from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
@@ -68,14 +68,21 @@ async def create_recipe(
         type=recipe.type,
         og=recipe.og,
         fg=recipe.fg,
+        abv=recipe.abv,
+        ibu=recipe.ibu,
+        color_srm=recipe.color_srm,
+        batch_size_liters=recipe.batch_size_liters,
+        boil_time_minutes=recipe.boil_time_minutes,
+        efficiency_percent=recipe.efficiency_percent,
+        carbonation_vols=recipe.carbonation_vols,
         yeast_name=recipe.yeast_name,
+        yeast_lab=recipe.yeast_lab,
+        yeast_product_id=recipe.yeast_product_id,
         yeast_temp_min=recipe.yeast_temp_min,
         yeast_temp_max=recipe.yeast_temp_max,
         yeast_attenuation=recipe.yeast_attenuation,
-        ibu=recipe.ibu,
-        abv=recipe.abv,
-        batch_size_liters=recipe.batch_size_liters,
         notes=recipe.notes,
+        format_extensions=recipe.format_extensions,
     )
     db.add(db_recipe)
     await db.commit()
@@ -155,6 +162,28 @@ async def import_recipe(
     result_obj = await db.execute(stmt)
     recipe = result_obj.scalar_one()
 
+    return recipe
+
+
+@router.put("/{recipe_id}", response_model=RecipeResponse)
+async def update_recipe(
+    recipe_id: int,
+    recipe_update: RecipeUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an existing recipe."""
+    # Fetch existing recipe
+    recipe = await db.get(Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Update fields that are provided
+    update_data = recipe_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(recipe, field, value)
+
+    await db.commit()
+    await db.refresh(recipe)
     return recipe
 
 

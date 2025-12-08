@@ -167,6 +167,24 @@ export interface YeastResponse {
 	flocculation?: string;
 }
 
+// BeerJSON calls yeasts "cultures"
+export interface CultureResponse {
+	id: number;
+	name: string;
+	producer?: string;  // BeerJSON name for 'lab'
+	product_id?: string;
+	type?: string;
+	form?: string;
+	attenuation_min_percent?: number;
+	attenuation_max_percent?: number;
+	temp_min_c?: number;
+	temp_max_c?: number;
+	amount?: number;
+	amount_unit?: string;
+	timing?: Record<string, any>;
+	format_extensions?: Record<string, any>;
+}
+
 export interface MiscResponse {
 	id: number;
 	name: string;
@@ -183,25 +201,39 @@ export interface RecipeResponse {
 	author?: string;
 	style_id?: string;
 	type?: string;
-	og_target?: number;
-	fg_target?: number;
+	// BeerJSON field names (not *_target)
+	og?: number;
+	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	// Yeast info
 	yeast_name?: string;
 	yeast_lab?: string;
 	yeast_product_id?: string;
 	yeast_temp_min?: number;
 	yeast_temp_max?: number;
 	yeast_attenuation?: number;
-	ibu_target?: number;
-	srm_target?: number;
-	abv_target?: number;
-	batch_size?: number;
 	notes?: string;
 	created_at: string;
+	format_extensions?: Record<string, any>;
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];
 	hops?: HopResponse[];
-	yeasts?: YeastResponse[];
+	cultures?: CultureResponse[];  // BeerJSON uses 'cultures' not 'yeasts'
 	miscs?: MiscResponse[];
+	// Legacy aliases for backward compatibility
+	og_target?: number;
+	fg_target?: number;
+	abv_target?: number;
+	ibu_target?: number;
+	srm_target?: number;
+	batch_size?: number;
+	yeasts?: YeastResponse[];
 }
 
 export interface BatchResponse {
@@ -552,6 +584,84 @@ export async function fetchRecipe(id: number): Promise<RecipeResponse> {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
 		throw new Error(error.detail || 'Failed to fetch recipe');
 	}
+	return response.json();
+}
+
+export interface RecipeCreate {
+	name: string;
+	author?: string;
+	style_id?: string;
+	type?: string;
+	og?: number;
+	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	yeast_name?: string;
+	yeast_lab?: string;
+	yeast_product_id?: string;
+	yeast_temp_min?: number;
+	yeast_temp_max?: number;
+	yeast_attenuation?: number;
+	notes?: string;
+	format_extensions?: Record<string, any>;
+}
+
+export interface RecipeUpdateData {
+	name?: string;
+	author?: string;
+	style_id?: string;
+	type?: string;
+	og?: number;
+	fg?: number;
+	abv?: number;
+	ibu?: number;
+	color_srm?: number;
+	batch_size_liters?: number;
+	boil_time_minutes?: number;
+	efficiency_percent?: number;
+	carbonation_vols?: number;
+	yeast_name?: string;
+	yeast_lab?: string;
+	yeast_product_id?: string;
+	yeast_temp_min?: number;
+	yeast_temp_max?: number;
+	yeast_attenuation?: number;
+	notes?: string;
+	format_extensions?: Record<string, any>;
+}
+
+export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse> {
+	const response = await fetch(`${BASE_URL}/recipes`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(recipe)
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to create recipe');
+	}
+
+	return response.json();
+}
+
+export async function updateRecipe(id: number, recipe: RecipeUpdateData): Promise<RecipeResponse> {
+	const response = await fetch(`${BASE_URL}/recipes/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(recipe)
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to update recipe');
+	}
+
 	return response.json();
 }
 

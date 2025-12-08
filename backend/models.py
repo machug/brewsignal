@@ -1096,14 +1096,45 @@ class RecipeCreate(BaseModel):
     type: Optional[str] = None
     og: Optional[float] = None
     fg: Optional[float] = None
+    abv: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    batch_size_liters: Optional[float] = None
+    boil_time_minutes: Optional[int] = None
+    efficiency_percent: Optional[float] = None
+    carbonation_vols: Optional[float] = None
     yeast_name: Optional[str] = None
+    yeast_lab: Optional[str] = None
+    yeast_product_id: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu: Optional[float] = None
-    abv: Optional[float] = None
-    batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
+    format_extensions: Optional[dict] = None
+
+
+class RecipeUpdate(BaseModel):
+    name: Optional[str] = None
+    author: Optional[str] = None
+    style_id: Optional[str] = None
+    type: Optional[str] = None
+    og: Optional[float] = None
+    fg: Optional[float] = None
+    abv: Optional[float] = None
+    ibu: Optional[float] = None
+    color_srm: Optional[float] = None
+    batch_size_liters: Optional[float] = None
+    boil_time_minutes: Optional[int] = None
+    efficiency_percent: Optional[float] = None
+    carbonation_vols: Optional[float] = None
+    yeast_name: Optional[str] = None
+    yeast_lab: Optional[str] = None
+    yeast_product_id: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    notes: Optional[str] = None
+    format_extensions: Optional[dict] = None
 
 
 class RecipeResponse(BaseModel):

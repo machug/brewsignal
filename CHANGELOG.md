@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-format recipe import: Support BeerXML (.xml), BeerJSON (.json), and Brewfather JSON (.json) files
+- Backend auto-detects recipe format from file extension and content structure
+
+### Changed
+- Recipe import page now shows all supported formats in help text
+- File picker accepts both .xml and .json files
+
 ## [2.6.0] - 2025-12-05
 
 ### Added

@@ -37,7 +37,7 @@ def convert_hop_timing_safe(use: Optional[str], time: Optional[float]) -> Option
         >>> convert_hop_timing_safe("", 60)
         None
     """
-    if not use or use == '':
+    if not use or not use.strip():
         return None
 
     use_mapping = {

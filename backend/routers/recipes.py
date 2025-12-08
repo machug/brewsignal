@@ -196,7 +196,9 @@ async def update_recipe(
             setattr(recipe, field, value)
 
     await db.commit()
-    await db.refresh(recipe)
+
+    # Eagerly load relationships for consistent API response format
+    await db.refresh(recipe, ["style"])
     return recipe
 
 

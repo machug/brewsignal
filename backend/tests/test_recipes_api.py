@@ -149,6 +149,27 @@ async def test_update_recipe_partial(client):
 
 
 @pytest.mark.asyncio
+async def test_update_recipe_protected_fields(client):
+    """PUT /api/recipes/{id} should only update whitelisted fields."""
+    # Create recipe
+    create_response = await client.post("/api/recipes", json={"name": "Test Recipe", "og": 1.050})
+    recipe_id = create_response.json()["id"]
+    original_created_at = create_response.json()["created_at"]
+
+    # Attempt to update with a protected field (created_at is not in allowed_fields)
+    # The endpoint should ignore the protected field
+    response = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"name": "Updated Name", "created_at": "2099-01-01T00:00:00Z"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Name"  # Allowed field should update
+    assert data["created_at"] == original_created_at  # Protected field should NOT change
+
+
+@pytest.mark.asyncio
 async def test_delete_recipe(client):
     """DELETE /api/recipes/{id} should remove recipe."""
     # Create recipe first

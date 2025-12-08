@@ -40,6 +40,15 @@
             "add_to_fermentation",
             "add_to_package"
           ]
+        },
+        "phase": {
+          "description": "Fermentation phase for additions (e.g., primary, secondary, tertiary)",
+          "type": "string",
+          "enum": [
+            "primary",
+            "secondary",
+            "tertiary"
+          ]
         }
       }
     }

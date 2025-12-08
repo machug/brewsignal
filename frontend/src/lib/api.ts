@@ -661,7 +661,9 @@ export async function updateRecipe(id: number, recipe: RecipeUpdateData): Promis
 
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
-		throw new Error(error.detail || 'Failed to update recipe');
+		// Handle both string and array error formats from backend
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to update recipe');
 	}
 
 	return response.json();

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ..database import get_db
 from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse
+from ..services.recipe_validation import validate_recipe_constraints
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
@@ -62,23 +63,12 @@ async def create_recipe(
 ):
     """Create a new recipe manually."""
     # Validate business logic
-    if recipe.og and recipe.fg and recipe.og <= recipe.fg:
-        raise HTTPException(
-            status_code=400,
-            detail="Original gravity must be greater than final gravity"
-        )
-
-    if recipe.batch_size_liters and recipe.batch_size_liters <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Batch size must be greater than zero"
-        )
-
-    if recipe.abv and (recipe.abv < 0 or recipe.abv > 20):
-        raise HTTPException(
-            status_code=400,
-            detail="ABV must be between 0% and 20%"
-        )
+    validate_recipe_constraints(
+        og=recipe.og,
+        fg=recipe.fg,
+        batch_size_liters=recipe.batch_size_liters,
+        abv=recipe.abv,
+    )
 
     db_recipe = Recipe(
         name=recipe.name,
@@ -192,52 +182,43 @@ async def update_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing recipe."""
-    # Validate business logic
-    if recipe_update.og and recipe_update.fg and recipe_update.og <= recipe_update.fg:
-        raise HTTPException(
-            status_code=400,
-            detail="Original gravity must be greater than final gravity"
-        )
+    # Fetch existing recipe first
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.style))
+        .where(Recipe.id == recipe_id)
+    )
+    existing_recipe = result.scalar_one_or_none()
 
-    if recipe_update.batch_size_liters and recipe_update.batch_size_liters <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Batch size must be greater than zero"
-        )
-
-    if recipe_update.abv and (recipe_update.abv < 0 or recipe_update.abv > 20):
-        raise HTTPException(
-            status_code=400,
-            detail="ABV must be between 0% and 20%"
-        )
-
-    # Fetch existing recipe
-    recipe = await db.get(Recipe, recipe_id)
-    if not recipe:
+    if not existing_recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    # Update fields that are provided
-    # Use explicit field assignment to prevent updating unintended fields
-    update_data = recipe_update.model_dump(exclude_unset=True)
+    # Merge update values with existing values for validation
+    og_to_validate = recipe_update.og if recipe_update.og is not None else existing_recipe.og
+    fg_to_validate = recipe_update.fg if recipe_update.fg is not None else existing_recipe.fg
+    batch_size_to_validate = (
+        recipe_update.batch_size_liters
+        if recipe_update.batch_size_liters is not None
+        else existing_recipe.batch_size_liters
+    )
+    abv_to_validate = recipe_update.abv if recipe_update.abv is not None else existing_recipe.abv
 
-    # Whitelist of allowed update fields (matches RecipeUpdate model)
-    allowed_fields = {
-        'name', 'author', 'style_id', 'type', 'og', 'fg', 'abv', 'ibu',
-        'color_srm', 'batch_size_liters', 'boil_time_minutes',
-        'efficiency_percent', 'carbonation_vols', 'yeast_name', 'yeast_lab',
-        'yeast_product_id', 'yeast_temp_min', 'yeast_temp_max',
-        'yeast_attenuation', 'notes', 'format_extensions'
-    }
+    # Validate with merged values
+    validate_recipe_constraints(
+        og=og_to_validate,
+        fg=fg_to_validate,
+        batch_size_liters=batch_size_to_validate,
+        abv=abv_to_validate,
+    )
 
-    for field, value in update_data.items():
-        if field in allowed_fields:
-            setattr(recipe, field, value)
+    # Apply updates
+    for field, value in recipe_update.model_dump(exclude_unset=True).items():
+        setattr(existing_recipe, field, value)
 
     await db.commit()
+    await db.refresh(existing_recipe)
 
-    # Eagerly load relationships for consistent API response format
-    await db.refresh(recipe, ["style"])
-    return recipe
+    return existing_recipe
 
 
 @router.delete("/{recipe_id}")

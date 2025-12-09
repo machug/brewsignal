@@ -22,6 +22,22 @@
 	let color_srm = $state(recipe?.color_srm || 10);
 	let notes = $state(recipe?.notes || '');
 
+	// Sync form state when recipe prop changes
+	$effect(() => {
+		if (recipe) {
+			name = recipe.name || '';
+			author = recipe.author || '';
+			type = recipe.type || '';
+			batch_size_liters = recipe.batch_size_liters ?? 19;
+			og = recipe.og ?? 1.050;
+			fg = recipe.fg ?? 1.010;
+			abv = recipe.abv ?? 5.0;
+			ibu = recipe.ibu ?? 30;
+			color_srm = recipe.color_srm ?? 10;
+			notes = recipe.notes || '';
+		}
+	});
+
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
 

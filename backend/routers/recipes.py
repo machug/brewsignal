@@ -61,6 +61,25 @@ async def create_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new recipe manually."""
+    # Validate business logic
+    if recipe.og and recipe.fg and recipe.og <= recipe.fg:
+        raise HTTPException(
+            status_code=400,
+            detail="Original gravity must be greater than final gravity"
+        )
+
+    if recipe.batch_size_liters and recipe.batch_size_liters <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Batch size must be greater than zero"
+        )
+
+    if recipe.abv and (recipe.abv < 0 or recipe.abv > 20):
+        raise HTTPException(
+            status_code=400,
+            detail="ABV must be between 0% and 20%"
+        )
+
     db_recipe = Recipe(
         name=recipe.name,
         author=recipe.author,
@@ -173,6 +192,25 @@ async def update_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing recipe."""
+    # Validate business logic
+    if recipe_update.og and recipe_update.fg and recipe_update.og <= recipe_update.fg:
+        raise HTTPException(
+            status_code=400,
+            detail="Original gravity must be greater than final gravity"
+        )
+
+    if recipe_update.batch_size_liters and recipe_update.batch_size_liters <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Batch size must be greater than zero"
+        )
+
+    if recipe_update.abv and (recipe_update.abv < 0 or recipe_update.abv > 20):
+        raise HTTPException(
+            status_code=400,
+            detail="ABV must be between 0% and 20%"
+        )
+
     # Fetch existing recipe
     recipe = await db.get(Recipe, recipe_id)
     if not recipe:

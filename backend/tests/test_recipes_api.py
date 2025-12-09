@@ -1,6 +1,25 @@
 """Tests for recipes API endpoints."""
 
 import pytest
+import pytest_asyncio
+
+from backend.models import Recipe
+
+
+@pytest_asyncio.fixture
+async def test_recipe(test_db):
+    """Create a test recipe for update tests."""
+    recipe = Recipe(
+        name="Test Recipe",
+        og=1.050,
+        fg=1.010,
+        abv=5.0,
+        batch_size_liters=20
+    )
+    test_db.add(recipe)
+    await test_db.commit()
+    await test_db.refresh(recipe)
+    return recipe
 
 
 @pytest.mark.asyncio
@@ -267,3 +286,120 @@ async def test_import_beerxml_empty_file(client):
     )
 
     assert response.status_code == 400
+
+
+# ========================================
+# Validation Tests
+# ========================================
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_og_less_than_fg(client):
+    """Creating recipe with OG <= FG should fail."""
+    response = await client.post("/api/recipes", json={
+        "name": "Invalid Gravity Test",
+        "og": 1.010,
+        "fg": 1.050,
+        "abv": 5.0,
+        "batch_size_liters": 20
+    })
+    assert response.status_code == 400
+    assert "greater than final gravity" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_zero_batch_size(client):
+    """Creating recipe with batch_size <= 0 should fail."""
+    response = await client.post("/api/recipes", json={
+        "name": "Zero Batch Size Test",
+        "og": 1.050,
+        "fg": 1.010,
+        "abv": 5.0,
+        "batch_size_liters": 0
+    })
+    assert response.status_code == 400
+    assert "greater than zero" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_negative_batch_size(client):
+    """Creating recipe with negative batch_size should fail."""
+    response = await client.post("/api/recipes", json={
+        "name": "Negative Batch Size Test",
+        "og": 1.050,
+        "fg": 1.010,
+        "abv": 5.0,
+        "batch_size_liters": -10
+    })
+    assert response.status_code == 400
+    assert "greater than zero" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_abv_too_high(client):
+    """Creating recipe with ABV > 20 should fail."""
+    response = await client.post("/api/recipes", json={
+        "name": "High ABV Test",
+        "og": 1.050,
+        "fg": 1.010,
+        "abv": 25.0,
+        "batch_size_liters": 20
+    })
+    assert response.status_code == 400
+    assert "between 0% and 20%" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_negative_abv(client):
+    """Creating recipe with negative ABV should fail."""
+    response = await client.post("/api/recipes", json={
+        "name": "Negative ABV Test",
+        "og": 1.050,
+        "fg": 1.010,
+        "abv": -5.0,
+        "batch_size_liters": 20
+    })
+    assert response.status_code == 400
+    assert "between 0% and 20%" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_partial_og_creates_invalid_state(
+    client,
+    test_recipe: Recipe
+):
+    """Updating only OG to value < existing FG should fail."""
+    # test_recipe has og=1.050, fg=1.010
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
+        "og": 1.005  # Less than existing fg=1.010
+    })
+    assert response.status_code == 400
+    assert "greater than final gravity" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_partial_fg_creates_invalid_state(
+    client,
+    test_recipe: Recipe
+):
+    """Updating only FG to value > existing OG should fail."""
+    # test_recipe has og=1.050, fg=1.010
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
+        "fg": 1.060  # Greater than existing og=1.050
+    })
+    assert response.status_code == 400
+    assert "greater than final gravity" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_valid_partial_update(
+    client,
+    test_recipe: Recipe
+):
+    """Updating OG to valid value should succeed."""
+    # test_recipe has og=1.050, fg=1.010
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
+        "og": 1.055  # Valid: still > fg
+    })
+    assert response.status_code == 200
+    assert response.json()["og"] == 1.055

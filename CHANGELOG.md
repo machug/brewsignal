@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Recipe CRUD frontend UI (tilt_ui-pzu)
+  - Manual recipe creation form with BeerJSON fields
+  - Recipe edit functionality
+  - Updated recipe detail page with BeerJSON field names (og, fg, abv, color_srm)
+  - "New Recipe" and "Edit" buttons in navigation flow
 - Multi-format recipe import: Support BeerXML (.xml), BeerJSON (.json), and Brewfather JSON (.json) files
 - Backend auto-detects recipe format from file extension and content structure
 

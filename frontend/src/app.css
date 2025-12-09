@@ -62,6 +62,7 @@
   --positive: #22c55e;
   --warning: #eab308;
   --negative: #ef4444;
+  --error-bg: rgba(239, 68, 68, 0.1);
 
   /* Tilt colors - slightly muted for dark background */
   --tilt-red: #f87171;

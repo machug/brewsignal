@@ -189,7 +189,7 @@
 		align-items: center;
 		gap: var(--space-3);
 		padding: var(--space-4);
-		background: rgba(239, 68, 68, 0.1);
+		background: var(--error-bg);
 		border: 1px solid var(--negative);
 		border-radius: 6px;
 		color: var(--negative);

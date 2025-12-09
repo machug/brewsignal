@@ -59,15 +59,16 @@
 	// Get live readings from WebSocket if device is linked
 	// device_id can be "tilt-{color}" (e.g., "tilt-red") or just "{COLOR}" (e.g., "RED")
 	// tiltsState uses tilt.id as key, so we need to find by color match
+	// Note: Only works for Tilt devices - GravityMon/iSpindel use different mechanism
 	let liveReading = $derived.by(() => {
 		if (!batch?.device_id) return null;
 		// Extract color from device_id - handle both "tilt-red" and "RED" formats
 		const colorMatch = batch.device_id.match(/^(?:tilt-)?(\w+)$/i);
 		if (!colorMatch?.[1]) return null;
 		const targetColor = colorMatch[1].toUpperCase();
-		// Find tilt with matching color
+		// Find tilt with matching color (only for Tilt devices with color field)
 		for (const tilt of tiltsState.tilts.values()) {
-			if (tilt.color.toUpperCase() === targetColor) {
+			if (tilt.color && tilt.color.toUpperCase() === targetColor) {
 				return tilt;
 			}
 		}

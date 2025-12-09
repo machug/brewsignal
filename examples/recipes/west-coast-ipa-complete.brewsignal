@@ -1,0 +1,148 @@
+{
+  "brewsignal_version": "1.0",
+  "recipe": {
+    "name": "West Coast IPA",
+    "author": "John Brewer",
+    "type": "All Grain",
+    "style_id": "bjcp-2021-21a",
+
+    "og": 1.065,
+    "fg": 1.012,
+    "abv": 6.9,
+    "ibu": 65.0,
+    "color_srm": 7.0,
+
+    "batch_size_liters": 19.0,
+    "boil_time_minutes": 60,
+    "efficiency_percent": 75.0,
+    "carbonation_vols": 2.5,
+
+    "fermentables": [
+      {
+        "name": "2-Row Pale Malt",
+        "type": "grain",
+        "grain_group": "base",
+        "amount_kg": 5.4,
+        "percentage": 90.0,
+        "yield_percent": 80.0,
+        "color_srm": 2.0,
+        "origin": "United States",
+        "supplier": "Rahr"
+      },
+      {
+        "name": "Carapils",
+        "type": "grain",
+        "grain_group": "caramel",
+        "amount_kg": 0.6,
+        "percentage": 10.0,
+        "yield_percent": 75.0,
+        "color_srm": 2.0
+      }
+    ],
+
+    "hops": [
+      {
+        "name": "Warrior",
+        "origin": "United States",
+        "form": "pellet",
+        "amount_grams": 15.0,
+        "alpha_acid_percent": 15.0,
+        "timing": {
+          "use": "add_to_boil",
+          "duration": { "value": 60, "unit": "min" }
+        }
+      },
+      {
+        "name": "Cascade",
+        "origin": "United States",
+        "form": "pellet",
+        "amount_grams": 30.0,
+        "alpha_acid_percent": 5.5,
+        "timing": {
+          "use": "add_to_boil",
+          "duration": { "value": 10, "unit": "min" }
+        }
+      },
+      {
+        "name": "Cascade",
+        "form": "pellet",
+        "amount_grams": 60.0,
+        "alpha_acid_percent": 5.5,
+        "timing": {
+          "use": "add_to_fermentation",
+          "duration": { "value": 7, "unit": "day" }
+        }
+      }
+    ],
+
+    "yeast": {
+      "name": "US-05",
+      "producer": "Fermentis",
+      "product_id": "US-05",
+      "type": "ale",
+      "form": "dry",
+      "attenuation_percent": 81.0,
+      "temp_min_c": 15.0,
+      "temp_max_c": 24.0,
+      "amount_grams": 11.5
+    },
+
+    "fermentation_steps": [
+      {
+        "step_number": 1,
+        "type": "primary",
+        "temp_c": 18.0,
+        "time_days": 10
+      },
+      {
+        "step_number": 2,
+        "type": "diacetyl_rest",
+        "temp_c": 20.0,
+        "time_days": 2
+      },
+      {
+        "step_number": 3,
+        "type": "cold_crash",
+        "temp_c": 2.0,
+        "time_days": 3
+      }
+    ],
+
+    "brewsignal_extensions": {
+      "version": "1.0",
+      "fermentation_tracking": {
+        "og_validation": {
+          "enabled": true,
+          "tolerance_sg": 0.003
+        },
+        "fg_prediction": {
+          "enabled": true,
+          "ml_model": "kalman_exponential"
+        },
+        "anomaly_detection": {
+          "stuck_fermentation": true,
+          "temperature_alerts": true,
+          "min_sg_change_24h": 0.001
+        }
+      },
+      "batch_defaults": {
+        "auto_link_device": true,
+        "temperature_control": {
+          "enabled": true,
+          "target_c": 18.0,
+          "hysteresis_c": 1.0,
+          "min_cycle_time_minutes": 5
+        }
+      },
+      "yeast_management": {
+        "pitch_rate_million_cells_ml_plato": 0.75,
+        "starter_required": false,
+        "rehydration_temp_c": 35.0,
+        "rehydration_time_minutes": 15
+      }
+    },
+
+    "notes": "Dry hop on day 7. Keg at 30 PSI for 48 hours to carbonate.",
+    "created_at": "2025-12-09T08:00:00Z"
+  }
+}

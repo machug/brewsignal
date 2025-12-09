@@ -1,0 +1,28 @@
+{
+  "brewsignal_version": "1.0",
+  "recipe": {
+    "name": "Simple Pale Ale",
+    "og": 1.050,
+    "fg": 1.012,
+    "fermentables": [
+      {
+        "name": "Pale Malt",
+        "amount_kg": 4.5
+      }
+    ],
+    "hops": [
+      {
+        "name": "Cascade",
+        "amount_grams": 30,
+        "alpha_acid_percent": 5.5,
+        "timing": {
+          "use": "add_to_boil",
+          "duration": { "value": 60, "unit": "min" }
+        }
+      }
+    ],
+    "yeast": {
+      "name": "US-05"
+    }
+  }
+}

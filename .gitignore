@@ -61,4 +61,7 @@ docs/plans/
 /*.jpeg
 /*.gif
 
+# Recipe imports (development only)
+hpa_recipes/
+
 # Other

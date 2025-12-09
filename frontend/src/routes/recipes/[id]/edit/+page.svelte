@@ -18,7 +18,6 @@
 
 	onMount(async () => {
 		if (!recipeId) {
-			error = 'Invalid recipe ID';
 			loading = false;
 			goto('/recipes');
 			return;

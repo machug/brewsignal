@@ -22,24 +22,18 @@
 	let color_srm = $state(recipe?.color_srm ?? 10);
 	let notes = $state(recipe?.notes ?? '');
 
-	// Sync form state when recipe prop changes
-	$effect(() => {
-		if (recipe) {
-			name = recipe.name ?? '';
-			author = recipe.author ?? '';
-			type = recipe.type ?? '';
-			batch_size_liters = recipe.batch_size_liters ?? 19;
-			og = recipe.og ?? 1.050;
-			fg = recipe.fg ?? 1.010;
-			abv = recipe.abv ?? 5.0;
-			ibu = recipe.ibu ?? 30;
-			color_srm = recipe.color_srm ?? 10;
-			notes = recipe.notes ?? '';
-		}
-	});
+	// Form error state
+	let formError = $state<string | null>(null);
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
+		formError = null;
+
+		// Validate OG > FG
+		if (og <= fg) {
+			formError = 'Original gravity must be greater than final gravity';
+			return;
+		}
 
 		const data: RecipeCreate | RecipeUpdateData = {
 			name,
@@ -49,8 +43,8 @@
 			og,
 			fg,
 			abv,
-			ibu: ibu || undefined,
-			color_srm: color_srm || undefined,
+			ibu: ibu ?? undefined,
+			color_srm: color_srm ?? undefined,
 			notes: notes || undefined
 		};
 
@@ -59,6 +53,15 @@
 </script>
 
 <form onsubmit={handleSubmit} class="recipe-form">
+	{#if formError}
+		<div class="error-banner">
+			<svg class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+			<span>{formError}</span>
+		</div>
+	{/if}
+
 	<div class="form-section">
 		<h2 class="section-title">Basic Information</h2>
 
@@ -320,5 +323,23 @@
 	.btn-primary:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.error-banner {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-4);
+		background: var(--error-bg);
+		border: 1px solid var(--negative);
+		border-radius: 6px;
+		color: var(--negative);
+		font-size: 14px;
+	}
+
+	.error-icon {
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
 	}
 </style>

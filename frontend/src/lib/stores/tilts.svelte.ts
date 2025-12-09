@@ -12,6 +12,15 @@ export interface TiltReading {
 	rssi: number;
 	last_seen: string;
 	paired: boolean;
+	// ML outputs
+	sg_filtered?: number | null;
+	temp_filtered?: number | null;
+	confidence?: number | null;
+	sg_rate?: number | null;
+	temp_rate?: number | null;
+	is_anomaly?: boolean;
+	anomaly_score?: number | null;
+	anomaly_reasons?: string[];
 }
 
 export interface AmbientReading {

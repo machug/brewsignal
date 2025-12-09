@@ -31,6 +31,11 @@
 	let lastSeen = $derived(deviceReading?.last_seen ?? new Date().toISOString());
 	let sgRaw = $derived(deviceReading?.sg_raw ?? currentSg);
 	let tempRaw = $derived(deviceReading?.temp_raw ?? currentTemp);
+	// ML metrics
+	let confidence = $derived(deviceReading?.confidence ?? null);
+	let isAnomaly = $derived(deviceReading?.is_anomaly ?? false);
+	let anomalyReasons = $derived(deviceReading?.anomaly_reasons ?? []);
+	let confidenceBadge = $derived(getConfidenceBadge(confidence));
 
 	// Track if chart has ever been shown (to avoid mounting until first expand)
 	let chartMounted = $state(false);
@@ -134,6 +139,13 @@
 		return { bars: 1, color: 'var(--negative)', label: 'Weak' };
 	}
 
+	function getConfidenceBadge(conf: number | null): { emoji: string; label: string; color: string } | null {
+		if (conf === null || conf === undefined) return null;
+		if (conf >= 0.8) return { emoji: '🟢', label: 'High', color: 'var(--positive)' };
+		if (conf >= 0.5) return { emoji: '🟡', label: 'Medium', color: 'var(--warning)' };
+		return { emoji: '🔴', label: 'Low', color: 'var(--negative)' };
+	}
+
 	function timeSince(isoString: string): string {
 		const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
 		if (seconds < 10) return 'just now';
@@ -226,6 +238,14 @@
 					<span class="text-[10px] text-[var(--text-muted)] font-mono">{rssi ?? 'N/A'} dBm</span>
 				</div>
 
+				<!-- ML Confidence Badge -->
+				{#if confidenceBadge}
+					<div class="confidence-badge" title="ML confidence: {confidenceBadge.label} ({(confidence! * 100).toFixed(0)}%)">
+						<span class="text-xs">{confidenceBadge.emoji}</span>
+						<span class="text-[10px]" style="color: {confidenceBadge.color};">{confidenceBadge.label}</span>
+					</div>
+				{/if}
+
 				<!-- Pairing status indicator -->
 				{#if !isPaired}
 					<div class="pairing-badge" title="Device not paired - readings not being logged">
@@ -237,6 +257,25 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Anomaly Alert Banner -->
+		{#if isAnomaly && anomalyReasons.length > 0}
+			<div class="anomaly-alert">
+				<div class="flex items-start gap-2">
+					<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+					<div class="flex-1">
+						<p class="font-semibold text-sm mb-1">Anomaly Detected</p>
+						<ul class="text-xs space-y-0.5">
+							{#each anomalyReasons as reason}
+								<li>• {reason}</li>
+							{/each}
+						</ul>
+					</div>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Main readings grid -->
 		<div class="grid grid-cols-2 gap-3 mb-4">
@@ -494,5 +533,35 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.025em;
+	}
+
+	.confidence-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--bg-secondary);
+		border: 1px solid var(--border);
+		border-radius: 0.25rem;
+		font-weight: 600;
+	}
+
+	.anomaly-alert {
+		margin: 0 0 1rem 0;
+		padding: 0.75rem;
+		background: var(--warning-muted);
+		border: 1px solid var(--warning);
+		border-radius: 0.5rem;
+		color: var(--warning);
+	}
+
+	.anomaly-alert svg {
+		color: var(--warning);
+	}
+
+	.anomaly-alert ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
 	}
 </style>

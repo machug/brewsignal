@@ -127,13 +127,13 @@
 					{#if recipe.abv}
 						<div class="param">
 							<span class="param-label">ABV</span>
-							<span class="param-value">{(recipe.abv * 100).toFixed(1)}%</span>
+							<span class="param-value">{recipe.abv.toFixed(1)}%</span>
 						</div>
 					{/if}
 					{#if recipe.yeast_attenuation}
 						<div class="param">
 							<span class="param-label">Attenuation</span>
-							<span class="param-value">{(recipe.yeast_attenuation * 100).toFixed(0)}%</span>
+							<span class="param-value">{recipe.yeast_attenuation.toFixed(0)}%</span>
 						</div>
 					{/if}
 				</div>

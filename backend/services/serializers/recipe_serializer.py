@@ -156,12 +156,10 @@ class RecipeSerializer:
                     atten = culture_dict.get('attenuation') or culture_dict.get('attenuation_range')
                     if atten:
                         if 'minimum' in atten:
-                            atten_val = self._extract_percent(atten['minimum'])
-                            recipe.yeast_attenuation = atten_val * 100 if atten_val and atten_val < 1 else atten_val
+                            recipe.yeast_attenuation = self._extract_percent(atten['minimum'])
                         elif 'maximum' in atten:
                             # Fallback to maximum if no minimum
-                            atten_val = self._extract_percent(atten['maximum'])
-                            recipe.yeast_attenuation = atten_val * 100 if atten_val and atten_val < 1 else atten_val
+                            recipe.yeast_attenuation = self._extract_percent(atten['maximum'])
 
         # Miscellaneous
         if 'miscellaneous_additions' in ingredients:

@@ -228,6 +228,15 @@ async def handle_tilt_reading(reading: TiltReading):
                 "last_seen": serialize_datetime_to_utc(timestamp),
                 "paired": device.paired,
                 "mac": reading.mac,
+                # ML outputs
+                "sg_filtered": ml_outputs.get("sg_filtered"),
+                "temp_filtered": ml_outputs.get("temp_filtered"),
+                "confidence": ml_outputs.get("confidence"),
+                "sg_rate": ml_outputs.get("sg_rate"),
+                "temp_rate": ml_outputs.get("temp_rate"),
+                "is_anomaly": ml_outputs.get("is_anomaly", False),
+                "anomaly_score": ml_outputs.get("anomaly_score"),
+                "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
             }
 
             # Broadcast to WebSocket clients

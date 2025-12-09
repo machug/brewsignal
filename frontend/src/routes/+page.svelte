@@ -86,20 +86,23 @@
 					progress: {},
 					targets: {}
 				};
+				// Use ML-filtered values if available, fallback to calibrated
+				const displaySg = tiltReading.sg_filtered ?? tiltReading.sg;
+				const displayTemp = tiltReading.temp_filtered ?? tiltReading.temp;
 				// Update with live data
 				enhanced.set(batchId, {
 					...existing,
 					measured: {
 						...existing.measured,
-						current_sg: tiltReading.sg
+						current_sg: displaySg
 					},
 					temperature: {
 						...existing.temperature,
-						current: tiltReading.temp,
+						current: displayTemp,
 						// Determine temperature status based on yeast thresholds (if available)
 						status: existing.temperature.yeast_min !== undefined && existing.temperature.yeast_max !== undefined
-							? (tiltReading.temp < existing.temperature.yeast_min ? 'too_cold' :
-							   tiltReading.temp > existing.temperature.yeast_max ? 'too_hot' : 'in_range')
+							? (displayTemp < existing.temperature.yeast_min ? 'too_cold' :
+							   displayTemp > existing.temperature.yeast_max ? 'too_hot' : 'in_range')
 							: existing.temperature.status
 					}
 				});

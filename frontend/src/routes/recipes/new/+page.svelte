@@ -15,14 +15,7 @@
 			const recipe = await createRecipe(data as RecipeCreate);
 			goto(`/recipes/${recipe.id}`);
 		} catch (e) {
-			if (e instanceof Error) {
-				error = e.message;
-			} else if (Array.isArray(e)) {
-				// Handle array error format from backend
-				error = e.join(', ');
-			} else {
-				error = 'Failed to create recipe';
-			}
+			error = e instanceof Error ? e.message : 'Failed to create recipe';
 			submitting = false;
 		}
 	}

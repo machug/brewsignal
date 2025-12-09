@@ -11,30 +11,30 @@
 	let { recipe, onSubmit, onCancel, submitting = false }: Props = $props();
 
 	// Form state
-	let name = $state(recipe?.name || '');
-	let author = $state(recipe?.author || '');
-	let type = $state(recipe?.type || '');
-	let batch_size_liters = $state(recipe?.batch_size_liters || 19);
-	let og = $state(recipe?.og || 1.050);
-	let fg = $state(recipe?.fg || 1.010);
-	let abv = $state(recipe?.abv || 5.0);
-	let ibu = $state(recipe?.ibu || 30);
-	let color_srm = $state(recipe?.color_srm || 10);
-	let notes = $state(recipe?.notes || '');
+	let name = $state(recipe?.name ?? '');
+	let author = $state(recipe?.author ?? '');
+	let type = $state(recipe?.type ?? '');
+	let batch_size_liters = $state(recipe?.batch_size_liters ?? 19);
+	let og = $state(recipe?.og ?? 1.050);
+	let fg = $state(recipe?.fg ?? 1.010);
+	let abv = $state(recipe?.abv ?? 5.0);
+	let ibu = $state(recipe?.ibu ?? 30);
+	let color_srm = $state(recipe?.color_srm ?? 10);
+	let notes = $state(recipe?.notes ?? '');
 
 	// Sync form state when recipe prop changes
 	$effect(() => {
 		if (recipe) {
-			name = recipe.name || '';
-			author = recipe.author || '';
-			type = recipe.type || '';
+			name = recipe.name ?? '';
+			author = recipe.author ?? '';
+			type = recipe.type ?? '';
 			batch_size_liters = recipe.batch_size_liters ?? 19;
 			og = recipe.og ?? 1.050;
 			fg = recipe.fg ?? 1.010;
 			abv = recipe.abv ?? 5.0;
 			ibu = recipe.ibu ?? 30;
 			color_srm = recipe.color_srm ?? 10;
-			notes = recipe.notes || '';
+			notes = recipe.notes ?? '';
 		}
 	});
 

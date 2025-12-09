@@ -409,14 +409,18 @@ async def control_batch_temperature(
         if heater_override or cooler_override:
             return
 
-    # Calculate thresholds (symmetric hysteresis)
+    # Calculate thresholds (asymmetric hysteresis to prevent overshoot)
+    # Turn ON at target ± hysteresis, turn OFF at target (not target ± hysteresis)
     heat_on_threshold = round(target_temp - hysteresis, 1)
+    heat_off_threshold = round(target_temp, 1)  # Turn OFF at target to prevent overshoot
     cool_on_threshold = round(target_temp + hysteresis, 1)
+    cool_off_threshold = round(target_temp, 1)  # Turn OFF at target to prevent undershoot
 
     logger.debug(
         f"Batch {batch_id}: Control check: wort={wort_temp:.2f}F, target={target_temp:.2f}F, "
-        f"hysteresis={hysteresis:.2f}F, heat_on<={heat_on_threshold:.2f}F, "
-        f"cool_on>={cool_on_threshold:.2f}F, heater={current_heater_state}, cooler={current_cooler_state}"
+        f"hysteresis={hysteresis:.2f}F, heat_on<={heat_on_threshold:.2f}F, heat_off>={heat_off_threshold:.2f}F, "
+        f"cool_on>={cool_on_threshold:.2f}F, cool_off<={cool_off_threshold:.2f}F, "
+        f"heater={current_heater_state}, cooler={current_cooler_state}"
     )
 
     # Automatic control logic with mutual exclusion
@@ -465,11 +469,27 @@ async def control_batch_temperature(
             current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
 
     else:
-        # Within deadband - maintain current states
-        logger.debug(
-            f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}F-{cool_on_threshold:.1f}F), "
-            f"maintaining states: heater={current_heater_state}, cooler={current_cooler_state}"
-        )
+        # Within deadband - check if we should turn OFF at target temp
+        if wort_temp >= heat_off_threshold and heater_entity and current_heater_state == "on":
+            # Reached target temp while heating - turn heater OFF to prevent overshoot
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F reached target {heat_off_threshold:.1f}F, turning heater OFF")
+            await set_heater_state_for_batch(
+                ha_client, heater_entity, "off", db, batch_id,
+                wort_temp, ambient_temp, target_temp, device_id
+            )
+        elif wort_temp <= cool_off_threshold and cooler_entity and current_cooler_state == "on":
+            # Reached target temp while cooling - turn cooler OFF to prevent undershoot
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F reached target {cool_off_threshold:.1f}F, turning cooler OFF")
+            await set_cooler_state_for_batch(
+                ha_client, cooler_entity, "off", db, batch_id,
+                wort_temp, ambient_temp, target_temp, device_id
+            )
+        else:
+            # Maintain current states
+            logger.debug(
+                f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}F-{cool_on_threshold:.1f}F), "
+                f"maintaining states: heater={current_heater_state}, cooler={current_cooler_state}"
+            )
 
 
 async def temperature_control_loop() -> None:

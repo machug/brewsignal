@@ -340,14 +340,22 @@
 					<option value={null}>No device assigned</option>
 					{#each availableDevices as device}
 						<option value={device.id}>
-							{device.color} Tilt
+							{#if device.device_type === 'tilt'}
+								{device.color} Tilt
+							{:else if device.device_type === 'ispindel'}
+								iSpindel {device.display_name || device.name}
+							{:else if device.device_type === 'gravitymon'}
+								GravityMon {device.display_name || device.name}
+							{:else}
+								{device.display_name || device.name}
+							{/if}
 							{#if device.beer_name && device.beer_name !== 'Untitled'}
 								- {device.beer_name}
 							{/if}
 						</option>
 					{/each}
 				</select>
-				<span class="form-hint">Link a Tilt to track live gravity and temperature</span>
+				<span class="form-hint">Link a device to track live gravity and temperature</span>
 			{/if}
 		</div>
 

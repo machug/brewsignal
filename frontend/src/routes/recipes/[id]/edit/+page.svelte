@@ -20,6 +20,7 @@
 		if (!recipeId) {
 			error = 'Invalid recipe ID';
 			loading = false;
+			goto('/recipes');
 			return;
 		}
 
@@ -42,13 +43,7 @@
 			await updateRecipe(recipeId, data);
 			goto(`/recipes/${recipeId}`);
 		} catch (e) {
-			if (e instanceof Error) {
-				error = e.message;
-			} else if (Array.isArray(e)) {
-				error = e.join(', ');
-			} else {
-				error = 'Failed to update recipe';
-			}
+			error = e instanceof Error ? e.message : 'Failed to update recipe';
 			submitting = false;
 		}
 	}

@@ -498,10 +498,20 @@ class RecipeSerializer:
         return unit_obj.get('value')
 
     def _extract_gravity(self, unit_obj: Optional[Dict[str, Any]]) -> Optional[float]:
-        """Extract gravity value (SG) from BeerJSON unit object."""
+        """Extract gravity value (SG) from BeerJSON unit object.
+
+        Round to 3 decimal places for consistency with brewing conventions
+        and frontend input constraints (step="0.001").
+        """
         if unit_obj is None or not isinstance(unit_obj, dict):
             return None
-        return unit_obj.get('value')
+
+        value = unit_obj.get('value')
+        if value is None:
+            return None
+
+        # Round to 3 decimal places (e.g., 1.050)
+        return round(value, 3)
 
     def _extract_percent(self, unit_obj: Optional[Dict[str, Any]]) -> Optional[float]:
         """Extract percent value from BeerJSON unit object.

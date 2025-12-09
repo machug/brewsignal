@@ -29,6 +29,24 @@
 		e.preventDefault();
 		formError = null;
 
+		// Validate batch size
+		if (batch_size_liters <= 0) {
+			formError = 'Batch size must be greater than zero';
+			return;
+		}
+
+		// Validate ABV range
+		if (abv < 0 || abv > 20) {
+			formError = 'ABV must be between 0% and 20%';
+			return;
+		}
+
+		// Validate color (if provided)
+		if (color_srm !== null && color_srm < 0) {
+			formError = 'Color (SRM) cannot be negative';
+			return;
+		}
+
 		// Validate OG > FG
 		if (og <= fg) {
 			formError = 'Original gravity must be greater than final gravity';
@@ -122,7 +140,7 @@
 				<input
 					type="number"
 					bind:value={color_srm}
-					step="0.1"
+					step="1"
 					min="0"
 					class="form-input"
 				/>

@@ -50,8 +50,8 @@ async def test_serialize_brewfather_beerjson_to_models():
         assert recipe.og == pytest.approx(1.040069094, abs=0.0001)
         assert recipe.fg == pytest.approx(1.008, abs=0.0001)
 
-        # Verify ABV (stored as decimal, not percentage)
-        assert recipe.abv == pytest.approx(0.042, abs=0.001)
+        # Verify ABV (stored as percentage after fix for double conversion)
+        assert recipe.abv == pytest.approx(4.2, abs=0.1)
 
         # Verify color and IBU
         assert recipe.color_srm == pytest.approx(3.8, abs=0.1)
@@ -206,7 +206,7 @@ async def test_serialize_extracts_unit_values():
         assert recipe.batch_size_liters == 20.0
         assert recipe.og == pytest.approx(1.050)
         assert recipe.fg == pytest.approx(1.010)
-        assert recipe.abv == pytest.approx(0.052)
+        assert recipe.abv == pytest.approx(5.2, abs=0.1)  # Stored as percentage after fix
         assert recipe.ibu == pytest.approx(35.0)
         assert recipe.color_srm == pytest.approx(5.5)
         assert recipe.boil_time_minutes == 60

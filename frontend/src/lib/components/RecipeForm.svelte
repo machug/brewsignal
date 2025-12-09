@@ -140,7 +140,7 @@
 				<input
 					type="number"
 					bind:value={color_srm}
-					step="1"
+					step="0.1"
 					min="0"
 					class="form-input"
 				/>
@@ -151,7 +151,7 @@
 				<input
 					type="number"
 					bind:value={ibu}
-					step="1"
+					step="0.1"
 					min="0"
 					class="form-input"
 				/>

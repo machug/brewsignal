@@ -504,10 +504,27 @@ class RecipeSerializer:
         return unit_obj.get('value')
 
     def _extract_percent(self, unit_obj: Optional[Dict[str, Any]]) -> Optional[float]:
-        """Extract percent value (0-1 or 0-100) from BeerJSON unit object."""
+        """Extract percent value from BeerJSON unit object.
+
+        BeerJSON stores percentages as decimal fractions (0-1 range).
+        Convert to percentage format (0-100 range) for our database.
+
+        Example: BeerJSON {"value": 0.042, "unit": "%"} -> 4.2
+        """
         if unit_obj is None or not isinstance(unit_obj, dict):
             return None
-        return unit_obj.get('value')
+
+        value = unit_obj.get('value')
+        if value is None:
+            return None
+
+        # BeerJSON percentages are stored as decimals (0-1 range)
+        # Convert to percentage (0-100 range)
+        if value < 1.0:
+            return value * 100
+
+        # Already in percentage format
+        return value
 
     def _extract_dimensionless(self, unit_obj: Optional[Dict[str, Any]]) -> Optional[float]:
         """Extract dimensionless value from BeerJSON unit object."""

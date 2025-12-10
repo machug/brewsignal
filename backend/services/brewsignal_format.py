@@ -11,8 +11,11 @@ Simplifications (based on review feedback):
 - Reject non-Celsius temperatures (don't auto-convert)
 - Multi-yeast: take first culture only
 """
+import logging
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -95,9 +98,9 @@ class BrewSignalRecipe(BaseModel):
     """
     # Core fields
     name: str = Field(min_length=1, max_length=200)
-    author: Optional[str] = Field(None, max_length=100)
-    type: Optional[str] = None  # All Grain, Extract, Partial Mash
-    style_id: Optional[str] = None
+    author: Optional[str] = Field(None, max_length=200)
+    type: Optional[str] = Field(None, max_length=100)  # All Grain, Extract, Partial Mash
+    style_id: Optional[str] = Field(None, max_length=50)
 
     # Gravity & alcohol
     og: float = Field(ge=1.0, le=1.2)
@@ -126,16 +129,29 @@ class BrewSignalRecipe(BaseModel):
     brewsignal_extensions: Optional[Dict[str, Any]] = None
 
     # Metadata
-    notes: Optional[str] = None
-    created_at: Optional[str] = None  # ISO 8601
+    notes: Optional[str] = Field(None, max_length=10_000)  # 10KB limit prevents DoS
+    created_at: Optional[str] = Field(None, max_length=30)  # ISO 8601 format
 
-    @field_validator('fg')
+    @field_validator('og', 'fg', 'abv', 'ibu', 'color_srm', 'batch_size_liters',
+                     'efficiency_percent', 'carbonation_vols', mode='before')
     @classmethod
-    def fg_less_than_og(cls, v, info):
-        """Ensure FG < OG"""
-        if 'og' in info.data and v >= info.data['og']:
-            raise ValueError('FG must be less than OG')
+    def reject_string_coercion(cls, v):
+        """Prevent type coercion security bypass - reject non-numeric types.
+
+        Pydantic automatically coerces strings to floats, which can bypass
+        type safety. This validator ensures only numeric types are accepted.
+        """
+        if v is not None and not isinstance(v, (int, float)):
+            raise ValueError(f'Must be numeric type, got {type(v).__name__}')
         return v
+
+    @model_validator(mode='after')
+    def fg_less_than_og(self):
+        """Ensure FG < OG (field-order independent validation)."""
+        if self.og is not None and self.fg is not None:
+            if self.fg >= self.og:
+                raise ValueError('FG must be less than OG')
+        return self
 
     model_config = {
         "extra": "forbid",  # Don't allow unknown fields
@@ -333,14 +349,34 @@ class BeerJSONToBrewSignalConverter:
     def _unwrap_percent(self, unit_obj: Optional[dict]) -> Optional[float]:
         """Extract percentage value from unit object.
 
-        BeerJSON stores percentages as 0-1 (e.g., 0.069 for 6.9%).
+        BeerJSON stores percentages as 0-1 scale (e.g., 0.069 for 6.9%).
         BrewSignal uses 0-100 scale.
+
+        We assume BeerJSON ALWAYS uses 0-1 scale per spec.
+        Values > 1.5 trigger warning about unexpected format.
+
+        Raises:
+            ValueError: If value is negative
         """
         if not unit_obj:
             return None
         value = unit_obj["value"]
-        # Convert from 0-1 to 0-100 scale
-        return value * 100 if value <= 1 else value
+
+        # Validate range BEFORE conversion
+        if value < 0:
+            raise ValueError(f"Negative percentage not allowed: {value}")
+
+        # BeerJSON spec requires 0-1 scale
+        # Allow slight tolerance (1.5) for rounding errors
+        if value > 1.5:
+            logger.warning(
+                f"Unexpected percentage value > 1.5: {value}. "
+                f"BeerJSON spec requires 0-1 scale. "
+                f"Converting anyway, but this may indicate malformed input."
+            )
+
+        # ALWAYS convert from 0-1 to 0-100 scale
+        return value * 100
 
     def _unwrap_number(self, unit_obj: Optional[dict]) -> Optional[float]:
         """Extract dimensionless number from unit object."""

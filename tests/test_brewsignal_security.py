@@ -99,9 +99,8 @@ class TestInputValidation:
 class TestTypeConfusion:
     """Test type confusion and type coercion vulnerabilities."""
 
-    @pytest.mark.xfail(reason="Type coercion vulnerability - Pydantic auto-converts strings to floats. See todo 002-pending-p1-type-coercion-security-bypass.md")
     def test_og_as_string_rejected(self):
-        """OG must be float, not string."""
+        """OG must be float, not string (type coercion prevented)."""
         with pytest.raises(ValidationError):
             BrewSignalRecipe(name="Test", og="1.050", fg=1.010)
 
@@ -520,16 +519,15 @@ class TestEdgeCases:
             BrewSignalRecipe(name="Test", og=1.201, fg=1.1)
 
     def test_very_long_notes(self):
-        """Very long notes field (no max length set - potential issue)."""
-        long_notes = "A" * 1_000_000  # 1 MB of text
-        recipe = BrewSignalRecipe(
-            name="Test",
-            og=1.050,
-            fg=1.010,
-            notes=long_notes
-        )
-        # No max length validation - could be DoS vector
-        assert len(recipe.notes) == 1_000_000
+        """Very long notes field should be rejected (DoS protection)."""
+        long_notes = "A" * 100_000  # 100 KB of text (exceeds 10KB limit)
+        with pytest.raises(ValidationError):
+            BrewSignalRecipe(
+                name="Test",
+                og=1.050,
+                fg=1.010,
+                notes=long_notes
+            )
 
     def test_percentage_conversion_precision(self):
         """Test precision in percentage conversion."""

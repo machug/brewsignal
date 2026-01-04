@@ -2,18 +2,139 @@
 
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from typing import Any, Optional
 
 from ..database import get_db
 from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse
+from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.recipe_validation import validate_recipe_constraints
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 # File upload constraints
 MAX_FILE_SIZE = 1_000_000  # 1MB in bytes
+
+
+class RecipeValidationRequest(BaseModel):
+    format: str
+    data: dict
+
+
+class RecipeValidationError(BaseModel):
+    field: str
+    value: Optional[Any] = None
+    error: str
+
+
+class RecipeValidationWarning(BaseModel):
+    field: str
+    value: Optional[Any] = None
+    warning: str
+
+
+class RecipeValidationResponse(BaseModel):
+    valid: bool
+    errors: list[RecipeValidationError] = Field(default_factory=list)
+    warnings: list[RecipeValidationWarning] = Field(default_factory=list)
+
+
+def _coerce_brewsignal_recipe(data: dict) -> dict:
+    """Extract BrewSignal recipe payload from either envelope or raw recipe."""
+    if not isinstance(data, dict):
+        raise ValueError("Recipe data must be a JSON object")
+    if "recipe" in data:
+        recipe = data.get("recipe")
+        if not isinstance(recipe, dict):
+            raise ValueError("Recipe field must be a JSON object")
+        return recipe
+    return data
+
+
+def _pydantic_errors_to_payload(errors: list[dict]) -> list[RecipeValidationError]:
+    payload = []
+    for err in errors:
+        loc = err.get("loc", ())
+        field = ".".join(str(part) for part in loc) if loc else ""
+        field = f"recipe.{field}" if field else "recipe"
+        payload.append(
+            RecipeValidationError(
+                field=field,
+                value=err.get("input"),
+                error=err.get("msg", "Invalid value"),
+            )
+        )
+    return payload
+
+
+def _append_warnings(recipe_data: dict, warnings: list[RecipeValidationWarning]) -> None:
+    """Populate warnings for unusual values and missing recommended fields."""
+    if not isinstance(recipe_data, dict):
+        return
+
+    def as_number(value: Any) -> Optional[float]:
+        return value if isinstance(value, (int, float)) else None
+
+    og = as_number(recipe_data.get("og"))
+    abv = as_number(recipe_data.get("abv"))
+    ibu = as_number(recipe_data.get("ibu"))
+    boil_time = recipe_data.get("boil_time_minutes")
+
+    if isinstance(boil_time, int):
+        if boil_time < 30 or boil_time > 120:
+            warnings.append(
+                RecipeValidationWarning(
+                    field="recipe.boil_time_minutes",
+                    value=boil_time,
+                    warning=f"Unusual boil time of {boil_time} minutes",
+                )
+            )
+
+    if og is not None and (og < 1.030 or og > 1.100):
+        warnings.append(
+            RecipeValidationWarning(
+                field="recipe.og",
+                value=og,
+                warning=f"Unusual original gravity of {og}",
+            )
+        )
+
+    if ibu is not None and ibu > 100:
+        warnings.append(
+            RecipeValidationWarning(
+                field="recipe.ibu",
+                value=ibu,
+                warning=f"Very high IBU of {ibu}",
+            )
+        )
+
+    if abv is not None and abv > 12:
+        warnings.append(
+            RecipeValidationWarning(
+                field="recipe.abv",
+                value=abv,
+                warning=f"Very high ABV of {abv}%",
+            )
+        )
+
+    if recipe_data.get("batch_size_liters") is None:
+        warnings.append(
+            RecipeValidationWarning(
+                field="recipe.batch_size_liters",
+                warning="Missing batch size (recommended)",
+            )
+        )
+
+    if recipe_data.get("efficiency_percent") is None:
+        warnings.append(
+            RecipeValidationWarning(
+                field="recipe.efficiency_percent",
+                warning="Missing brewhouse efficiency (recommended)",
+            )
+        )
 
 
 @router.get("", response_model=list[RecipeResponse])
@@ -32,6 +153,53 @@ async def list_recipes(
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post("/validate", response_model=RecipeValidationResponse)
+async def validate_recipe(request: RecipeValidationRequest):
+    """Validate recipe data without creating or importing a recipe."""
+    errors: list[RecipeValidationError] = []
+    warnings: list[RecipeValidationWarning] = []
+
+    format_value = request.format.strip().lower()
+    if format_value not in {"brewsignal", "beerjson"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {request.format}")
+
+    if format_value == "beerjson":
+        converter = BeerJSONToBrewSignalConverter()
+        try:
+            brewsignal = converter.convert(request.data)
+            recipe_data = _coerce_brewsignal_recipe(brewsignal)
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            errors.append(
+                RecipeValidationError(
+                    field="data",
+                    value=None,
+                    error=str(exc),
+                )
+            )
+            return RecipeValidationResponse(valid=False, errors=errors, warnings=warnings)
+    else:
+        try:
+            recipe_data = _coerce_brewsignal_recipe(request.data)
+        except ValueError as exc:
+            errors.append(
+                RecipeValidationError(
+                    field="data",
+                    value=None,
+                    error=str(exc),
+                )
+            )
+            return RecipeValidationResponse(valid=False, errors=errors, warnings=warnings)
+
+    try:
+        BrewSignalRecipe(**recipe_data)
+    except PydanticValidationError as exc:
+        errors.extend(_pydantic_errors_to_payload(exc.errors()))
+
+    _append_warnings(recipe_data, warnings)
+
+    return RecipeValidationResponse(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
 @router.get("/{recipe_id}", response_model=RecipeDetailResponse)

@@ -12,6 +12,7 @@ daemon.pid
 bd.sock
 bd.sock.startlock
 last-touched
+sync-state.json
 
 # Legacy database files
 db.sqlite

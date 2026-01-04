@@ -1,6 +1,6 @@
 # BrewSignal Recipe Format v1.0
 
-**Status:** Draft Specification
+**Status:** Implemented (validation/conversion utilities); API endpoints pending
 **Date:** 2025-12-09
 **Author:** BrewSignal Development Team
 
@@ -17,6 +17,7 @@ The **BrewSignal Recipe Format v1.0** is a simplified, human-readable JSON forma
 3. **Fermentation-First**: Optimized for tracking fermentation, not brew day complexity
 4. **Celsius-Native**: All temperatures in Celsius (BrewSignal's internal standard)
 5. **BeerJSON Compatibility**: Can convert to/from BeerJSON 1.0 for ecosystem interop
+6. **Strict Validation**: Unknown fields rejected; core numeric fields are strict; no unit coercion
 
 ### Format Goals
 
@@ -112,9 +113,9 @@ application/vnd.brewsignal.v1+json
 | Field | Type | Required | Range | Description |
 |-------|------|----------|-------|-------------|
 | `name` | string | **Yes** | 1-200 chars | Recipe name |
-| `author` | string | No | 0-100 chars | Recipe author |
-| `type` | string | No | - | "All Grain", "Extract", "Partial Mash" |
-| `style_id` | string | No | - | Style reference (e.g., "bjcp-2021-21a") |
+| `author` | string | No | 0-200 chars | Recipe author |
+| `type` | string | No | 0-100 chars | "All Grain", "Extract", "Partial Mash" |
+| `style_id` | string | No | 0-50 chars | Style reference (e.g., "bjcp-2021-21a") |
 
 #### Gravity & Alcohol
 
@@ -127,12 +128,13 @@ application/vnd.brewsignal.v1+json
 | `color_srm` | number | No | 0-100 | Color in SRM |
 
 **Note**: Gravity values are always in Specific Gravity (SG) format. No unit wrapping.
+**Type safety**: Recipe-level numeric fields must be numbers; strings are rejected.
 
 #### Batch Parameters
 
 | Field | Type | Required | Range | Description |
 |-------|------|----------|-------|-------------|
-| `batch_size_liters` | number | No | 1-1000 | Batch size in liters |
+| `batch_size_liters` | number | No | >0-1000 | Batch size in liters |
 | `boil_time_minutes` | integer | No | 0-300 | Boil time in minutes |
 | `efficiency_percent` | number | No | 0-100 | Brewhouse efficiency (percent) |
 | `carbonation_vols` | number | No | 0-5 | CO2 volumes |
@@ -141,8 +143,8 @@ application/vnd.brewsignal.v1+json
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `notes` | string | No | Brew notes (markdown supported) |
-| `created_at` | string | No | ISO 8601 timestamp (UTC, with 'Z' suffix) |
+| `notes` | string | No | Brew notes (markdown supported, max 10k chars) |
+| `created_at` | string | No | ISO 8601 timestamp (UTC, max 30 chars) |
 
 ---
 
@@ -203,8 +205,8 @@ application/vnd.brewsignal.v1+json
 | `origin` | string | No | Country of origin |
 | `form` | string | No | "pellet", "leaf", "plug", "powder" |
 | `amount_grams` | number | **Yes** | Amount in grams |
-| `alpha_acid_percent` | number | **Yes** | Alpha acids (0-20%) |
-| `beta_acid_percent` | number | No | Beta acids (0-20%) |
+| `alpha_acid_percent` | number | No | Alpha acids (0-25%) |
+| `beta_acid_percent` | number | No | Beta acids (0-25%) |
 | `timing` | object | **Yes** | BeerJSON timing object (see below) |
 
 #### Timing Object (BeerJSON-Compatible)
@@ -214,13 +216,9 @@ application/vnd.brewsignal.v1+json
   "use": "add_to_boil",           // Required
   "duration": {                    // Optional
     "value": 60,
-    "unit": "min"                  // "min", "day", "hour"
+    "unit": "min"                  // e.g., "min", "hr"
   },
-  "continuous": false,             // Optional
-  "temperature": {                 // Optional (for hopstands)
-    "value": 80,
-    "unit": "C"
-  }
+  "continuous": false              // Optional
 }
 ```
 
@@ -230,11 +228,40 @@ application/vnd.brewsignal.v1+json
 - `add_to_fermentation` - Dry hop
 - `add_to_package` - Bottling/kegging
 
+**Note:** Timing objects are passed through as-is. Only `use`, `duration`, and
+`continuous` are recognized in v1.0; extra fields are rejected.
+
 ---
 
-### 3.5 Yeast Object
+### 3.5 Miscs Array
 
-**Note**: BrewSignal simplifies yeast to a single object (not an array), representing the primary yeast strain.
+```json
+"miscs": [
+  {
+    "name": "Irish Moss",
+    "type": "fining",
+    "amount_grams": 10.0,
+    "timing": {
+      "use": "add_to_boil",
+      "duration": { "value": 10, "unit": "min" }
+    }
+  }
+]
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Misc addition name |
+| `type` | string | No | "spice", "fining", "herb", "flavor", "water agent" |
+| `amount_grams` | number | No | Amount in grams (> 0) |
+| `timing` | object | **Yes** | Timing object (same as hops) |
+
+---
+
+### 3.6 Yeast Object
+
+**Note**: BrewSignal v1.0 supports a single yeast culture. When converting
+from BeerJSON, only the first culture is used.
 
 ```json
 "yeast": {
@@ -261,13 +288,36 @@ application/vnd.brewsignal.v1+json
 | `temp_min_c` | number | No | Min fermentation temp (Celsius) |
 | `temp_max_c` | number | No | Max fermentation temp (Celsius) |
 | `amount_grams` | number | No | Amount in grams (for dry yeast) |
-| `amount_ml` | number | No | Amount in milliliters (for liquid yeast) |
 
 **Temperature Units**: Always Celsius. BrewSignal converts to Fahrenheit in UI based on user preference.
+**Liquid yeast amounts**: Not modeled separately in v1.0; use `amount_grams`
+if you need a quantity.
 
 ---
 
-### 3.6 Fermentation Steps Array
+### 3.7 Mash Steps Array
+
+```json
+"mash_steps": [
+  {
+    "step_number": 1,
+    "type": "infusion",
+    "temp_c": 67.0,
+    "time_minutes": 60
+  }
+]
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `step_number` | integer | **Yes** | Step order (1-based) |
+| `type` | string | **Yes** | "infusion", "temperature", "decoction" |
+| `temp_c` | number | **Yes** | Target temperature (Celsius) |
+| `time_minutes` | integer | **Yes** | Duration in minutes |
+
+---
+
+### 3.8 Fermentation Steps Array
 
 ```json
 "fermentation_steps": [
@@ -301,7 +351,7 @@ application/vnd.brewsignal.v1+json
 
 ---
 
-### 3.7 BrewSignal Extensions
+### 3.9 BrewSignal Extensions
 
 **Purpose**: Fermentation-specific features not found in standard recipe formats.
 
@@ -368,6 +418,9 @@ application/vnd.brewsignal.v1+json
 - `rehydration_temp_c` (number) - Rehydration temperature (dry yeast)
 - `rehydration_time_minutes` (integer) - Rehydration duration
 
+**Note:** Extensions are free-form and are not schema-validated in v1.0. Keep
+payload sizes reasonable and treat them as untrusted input.
+
 **Privacy/Security Rules:**
 - ❌ **NEVER** include Home Assistant entity IDs
 - ❌ **NEVER** include device calibration data
@@ -387,27 +440,7 @@ application/vnd.brewsignal.v1+json
   "recipe": {
     "name": "Simple Pale Ale",
     "og": 1.050,
-    "fg": 1.012,
-    "fermentables": [
-      {
-        "name": "Pale Malt",
-        "amount_kg": 4.5
-      }
-    ],
-    "hops": [
-      {
-        "name": "Cascade",
-        "amount_grams": 30,
-        "alpha_acid_percent": 5.5,
-        "timing": {
-          "use": "add_to_boil",
-          "duration": { "value": 60, "unit": "min" }
-        }
-      }
-    ],
-    "yeast": {
-      "name": "US-05"
-    }
+    "fg": 1.012
   }
 }
 ```
@@ -575,27 +608,27 @@ application/vnd.brewsignal.v1+json
 
 ### Required Fields
 
-**Root level:**
-- `brewsignal_version` (string, must be "1.0")
+**Root level (format envelope):**
+- `brewsignal_version` (string, "1.0")
 - `recipe` (object)
+  - Converters expect this envelope; version semantics are not enforced yet.
 
 **Recipe level:**
 - `name` (string, 1-200 chars)
 - `og` (number, 1.000-1.200)
 - `fg` (number, 1.000-1.200)
 
-**Fermentables:**
-- `name` (string)
-- `amount_kg` (number, > 0)
+**Ingredients and process (if provided):**
+- Fermentables: `name`, `amount_kg`
+- Hops: `name`, `amount_grams`, `timing.use`
+- Miscs: `name`, `timing.use`
+- Yeast: `name`
+- Mash steps: `step_number`, `type`, `temp_c`, `time_minutes`
+- Fermentation steps: `step_number`, `type`, `temp_c`, `time_days`
 
-**Hops:**
-- `name` (string)
-- `amount_grams` (number, > 0)
-- `alpha_acid_percent` (number, 0-20)
-- `timing` (object with valid `use` value)
-
-**Yeast:**
-- `name` (string)
+**Strictness:**
+- Unknown fields are rejected (`extra = forbid`).
+- Recipe-level numeric fields are strict (no string coercion).
 
 ### Data Type Validation
 
@@ -636,8 +669,8 @@ interface BrewSignalRecipe {
     brewsignal_extensions?: BrewSignalExtensions;
 
     // Metadata
-    notes?: string;
-    created_at?: string;             // ISO 8601 UTC
+    notes?: string;                  // max 10,000 chars
+    created_at?: string;             // ISO 8601 UTC (max 30 chars)
   };
 }
 ```
@@ -712,95 +745,44 @@ def beerjson_to_brewsignal(bj_recipe):
     }
 ```
 
-### Lossless Round-Trip
+### Round-Trip Behavior (Current Implementation)
 
-**Requirement**: BeerJSON → BrewSignal → BeerJSON must preserve all data.
+Round-trips are **lossy** today. The converters keep only fields mapped in
+`backend/services/brewsignal_format.py`. Unknown BeerJSON fields are dropped.
 
-**Strategy**:
-1. Store original BeerJSON in `format_extensions.beerjson_original`
-2. On export, merge BrewSignal changes with original BeerJSON
-3. Preserve unknown fields in extensions
+**Current limitations:**
+- Multi-yeast BeerJSON arrays are reduced to the first culture.
+- Temperatures must be Celsius during BeerJSON → BrewSignal conversion.
+- Percentage values convert between BeerJSON 0-1 scale and BrewSignal 0-100 scale.
 
 ---
 
 ## 8. API Integration
 
-### 8.1 Current API Endpoints
+### 8.1 Current API Usage
 
-**GET /api/recipes**
-- **Returns**: Array of `RecipeResponse` (already BrewSignal format!)
-- **No changes needed**
+Recipe CRUD endpoints already use BrewSignal-style fields (`og`, `fg`, `abv`,
+etc.) in request/response payloads. The format envelope
+(`brewsignal_version` + `recipe`) is used by the conversion utilities but is
+not yet enforced at the API boundary.
 
-**GET /api/recipes/{id}**
-- **Returns**: `RecipeDetailResponse` (already BrewSignal format!)
-- **No changes needed**
+### 8.2 Validation & Conversion Utilities
 
-**POST /api/recipes**
-- **Accepts**: `RecipeCreate` (BrewSignal format)
-- **No changes needed**
+Backend utilities live in `backend/services/brewsignal_format.py`:
+- `BrewSignalRecipe` (Pydantic validation model)
+- `BeerJSONToBrewSignalConverter`
+- `BrewSignalToBeerJSONConverter`
 
-**PUT /api/recipes/{id}**
-- **Accepts**: `RecipeUpdate` (BrewSignal format)
-- **No changes needed**
+These are ready to be wired into import/export endpoints.
 
-### 8.2 New Export Endpoint
+### 8.3 Planned Endpoints (Not Implemented Yet)
 
 **GET /api/recipes/{id}/export**
-
-Query parameters:
 - `format`: "brewsignal" (default), "beerjson", "beerxml", "brewfather"
-- `include_extensions`: true/false (include BrewSignal extensions)
-
-Response:
-```json
-{
-  "brewsignal_version": "1.0",
-  "recipe": { /* ... */ }
-}
-```
-
-**Content-Type**: `application/vnd.brewsignal.v1+json`
-
-**Content-Disposition**: `attachment; filename="West-Coast-IPA-2025-12-09.brewsignal"`
-
-### 8.3 Validation Endpoint
+- `include_extensions`: true/false
 
 **POST /api/recipes/validate**
-
-Request:
-```json
-{
-  "format": "brewsignal",
-  "data": { /* recipe data */ }
-}
-```
-
-Response (valid):
-```json
-{
-  "valid": true,
-  "warnings": [
-    {
-      "field": "recipe.boil_time_minutes",
-      "warning": "Unusual boil time of 180 minutes"
-    }
-  ]
-}
-```
-
-Response (invalid):
-```json
-{
-  "valid": false,
-  "errors": [
-    {
-      "field": "recipe.og",
-      "value": 1.250,
-      "error": "Value exceeds maximum 1.200"
-    }
-  ]
-}
-```
+- Validates submitted BrewSignal payloads using the Pydantic model
 
 ---
 
@@ -813,16 +795,17 @@ Response (invalid):
 - [ ] API documentation updates
 
 ### Phase 2: Backend Utilities (Week 2)
-- [ ] `backend/services/brewsignal_format.py` - Validation helpers
+- [x] `backend/services/brewsignal_format.py` - Validation + conversion helpers
 - [ ] `backend/models.py` - Add `@property` methods for extension access
 - [ ] `backend/routers/recipes.py` - Add export endpoint
 - [ ] `backend/routers/recipes.py` - Add validation endpoint
 
 ### Phase 3: Testing (Week 3)
-- [ ] Unit tests for validation
-- [ ] Round-trip tests (BrewSignal → BeerJSON → BrewSignal)
+- [x] Unit tests for validation
+- [x] Round-trip tests (BrewSignal → BeerJSON → BrewSignal)
 - [ ] Example recipe validation
 - [ ] API endpoint tests
+- [x] Security-focused validation tests
 
 ### Phase 4: Documentation (Week 4)
 - [ ] Update CLAUDE.md with format reference

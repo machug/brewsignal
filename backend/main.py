@@ -27,7 +27,7 @@ from .cleanup import CleanupService  # noqa: E402
 from .scanner import TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
-from .state import latest_readings  # noqa: E402
+from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
 import time  # noqa: E402
@@ -212,10 +212,11 @@ async def handle_tilt_reading(reading: TiltReading):
 
         # Only broadcast/cache readings for paired devices (prevent pollution from nearby Tilts)
         if device.paired:
-            # Update in-memory latest_readings cache
-            latest_readings[reading.id] = {
+            # Build payload for cache and broadcast
+            payload = {
                 "id": reading.id,  # Frontend expects this field
                 "device_id": reading.id,
+                "device_type": "tilt",
                 "color": reading.color,
                 "beer_name": device.beer_name or "Untitled",
                 "original_gravity": device.original_gravity,
@@ -239,8 +240,11 @@ async def handle_tilt_reading(reading: TiltReading):
                 "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
             }
 
+            # Update cache (persists to disk)
+            update_reading(reading.id, payload)
+
             # Broadcast to WebSocket clients
-            await manager.broadcast(latest_readings[reading.id])
+            await manager.broadcast(payload)
 
 
 @asynccontextmanager
@@ -251,6 +255,10 @@ async def lifespan(app: FastAPI):
     print("Starting BrewSignal...")
     await init_db()
     print("Database initialized")
+
+    # Load cached readings from disk (survives restarts)
+    load_readings_cache()
+    print(f"Loaded {len(latest_readings)} cached device readings")
 
     # Initialize ML pipeline manager
     ml_pipeline_manager = MLPipelineManager()

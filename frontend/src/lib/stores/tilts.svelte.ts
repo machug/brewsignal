@@ -59,6 +59,30 @@ export const tiltsState = $state<{
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Fetch cached readings from the server.
+ * This allows the UI to show readings immediately on page load
+ * without waiting for the next WebSocket broadcast (which could be
+ * up to 5 minutes for GravityMon devices).
+ */
+export async function fetchCachedReadings(): Promise<void> {
+	try {
+		const response = await fetch('/api/devices/readings/latest');
+		if (response.ok) {
+			const readings = await response.json();
+			// Populate the tilts map with cached readings
+			for (const [deviceId, reading] of Object.entries(readings)) {
+				tiltsState.tilts.set(deviceId, reading as TiltReading);
+			}
+			// Trigger reactivity
+			tiltsState.tilts = new Map(tiltsState.tilts);
+			console.log(`Loaded ${Object.keys(readings).length} cached readings`);
+		}
+	} catch (e) {
+		console.warn('Failed to fetch cached readings:', e);
+	}
+}
+
 export function connectWebSocket() {
 	if (ws?.readyState === WebSocket.OPEN) return;
 
@@ -68,13 +92,15 @@ export function connectWebSocket() {
 	console.log('Connecting to WebSocket:', wsUrl);
 	ws = new WebSocket(wsUrl);
 
-	ws.onopen = () => {
+	ws.onopen = async () => {
 		console.log('WebSocket connected');
 		tiltsState.connected = true;
 		if (reconnectTimer) {
 			clearTimeout(reconnectTimer);
 			reconnectTimer = null;
 		}
+		// Fetch cached readings to show immediately (without waiting for next broadcast)
+		await fetchCachedReadings();
 	};
 
 	ws.onmessage = (event) => {

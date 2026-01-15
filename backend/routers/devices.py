@@ -297,6 +297,18 @@ async def list_devices(
     return [DeviceResponse.from_orm_with_calibration(d) for d in devices]
 
 
+@router.get("/readings/latest")
+async def get_latest_readings():
+    """Get cached latest readings for all devices.
+
+    Returns the in-memory cached readings that survive service restarts.
+    This allows the frontend to show readings immediately on page load
+    without waiting for the next WebSocket broadcast.
+    """
+    from ..state import get_all_readings
+    return get_all_readings()
+
+
 @router.get("/{device_id}", response_model=DeviceResponse)
 async def get_device(device_id: str, db: AsyncSession = Depends(get_db)):
     """Get a specific device by ID."""
@@ -412,11 +424,13 @@ async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(device)
 
     # Update in-memory cache (if device has readings)
-    from ..state import latest_readings
+    from ..state import latest_readings, update_reading
     from ..websocket import manager
     if device_id in latest_readings:
-        latest_readings[device_id]["paired"] = True
-        await manager.broadcast(latest_readings[device_id])
+        reading = latest_readings[device_id].copy()
+        reading["paired"] = True
+        update_reading(device_id, reading)
+        await manager.broadcast(reading)
 
     return DeviceResponse.from_orm_with_calibration(device)
 
@@ -437,11 +451,13 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(device)
 
     # Update in-memory cache (if device has readings)
-    from ..state import latest_readings
+    from ..state import latest_readings, update_reading
     from ..websocket import manager
     if device_id in latest_readings:
-        latest_readings[device_id]["paired"] = False
-        await manager.broadcast(latest_readings[device_id])
+        reading = latest_readings[device_id].copy()
+        reading["paired"] = False
+        update_reading(device_id, reading)
+        await manager.broadcast(reading)
 
     return DeviceResponse.from_orm_with_calibration(device)
 

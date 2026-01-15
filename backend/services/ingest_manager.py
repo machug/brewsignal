@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..ingest import AdapterRouter, HydrometerReading, ReadingStatus
 from ..models import Device, Reading, serialize_datetime_to_utc
-from ..state import latest_readings
+from ..state import update_reading
 from ..websocket import manager as ws_manager
 from .calibration import calibration_service
 from .batch_linker import link_reading_to_batch
@@ -304,9 +304,9 @@ class IngestManager:
         try:
             payload = self._build_reading_payload(device, reading)
 
-            # Update the latest_readings cache
-            # This ensures new WebSocket clients get current state
-            latest_readings[device.id] = payload
+            # Update the latest_readings cache (persists to disk)
+            # This ensures readings survive service restarts
+            update_reading(device.id, payload)
 
             # Broadcast to all connected WebSocket clients
             await ws_manager.broadcast(payload)

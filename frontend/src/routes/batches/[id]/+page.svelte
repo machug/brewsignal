@@ -490,7 +490,12 @@
 				/>
 
 				<!-- ML Predictions Panel -->
-				<MLPredictions batchId={batch.id} />
+				<MLPredictions
+					batchId={batch.id}
+					measuredOg={batch.measured_og}
+					currentSg={liveReading?.sg}
+					{liveReading}
+				/>
 
 				<!-- Temperature Control Card -->
 				{#if hasTempControl && (batch.status === 'fermenting' || batch.status === 'conditioning')}

@@ -14,6 +14,22 @@
 
 	let signal = $derived(liveReading?.rssi ? getSignalStrength(liveReading.rssi) : null);
 	let lastSeenText = $derived(liveReading?.last_seen ? timeSince(liveReading.last_seen) : null);
+
+	// Format device display name based on type
+	let deviceDisplayName = $derived.by(() => {
+		if (!liveReading) return batch.device_id || 'Unknown';
+		const deviceType = (liveReading as any).device_type;
+		if (deviceType === 'tilt') {
+			return `${liveReading.color} Tilt`;
+		} else if (deviceType === 'gravitymon') {
+			return `GravityMon (${liveReading.id})`;
+		} else if (deviceType === 'ispindel') {
+			return `iSpindel (${liveReading.id})`;
+		} else if (deviceType === 'floaty') {
+			return `Floaty (${liveReading.id})`;
+		}
+		return liveReading.color || liveReading.id;
+	});
 </script>
 
 <BatchCard title="Tracking Device">
@@ -22,7 +38,7 @@
 			{#if liveReading}
 				<div class="device-status online">
 					<span class="device-dot"></span>
-					{liveReading.color} Tilt - Connected
+					{deviceDisplayName} - Connected
 				</div>
 
 				{#if signal}

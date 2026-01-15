@@ -5,8 +5,13 @@ This is the central pipeline for ingesting readings from any device type:
 2. Get or create Device record
 3. Convert units to standard (SG, Fahrenheit)
 4. Apply device calibration
-5. Store Reading in database
-6. Broadcast via WebSocket
+5. Link to active batch (fermenting or conditioning)
+6. Store Reading in database (only if device paired AND batch active)
+7. Broadcast via WebSocket (for all paired devices)
+
+Storage behavior matches Tilt BLE scanner in main.py:
+- Planning status: Readings visible on dashboard but NOT stored
+- Fermenting/Conditioning: Readings stored AND linked to batch
 """
 
 import logging
@@ -21,6 +26,7 @@ from ..models import Device, Reading, serialize_datetime_to_utc
 from ..state import latest_readings
 from ..websocket import manager as ws_manager
 from .calibration import calibration_service
+from .batch_linker import link_reading_to_batch
 from ..routers.config import get_config_value
 
 logger = logging.getLogger(__name__)
@@ -102,29 +108,37 @@ class IngestManager:
         # Step 6: Apply device calibration
         reading = await calibration_service.calibrate_device_reading(db, device, reading)
 
-        # Step 7: Validate reading for outliers
-        # Validation happens in _store_reading() which calls _validate_reading()
-        # Store reading will mark as invalid if outside valid ranges
+        # Step 7: Link reading to active batch (if any)
+        # Returns batch_id only if batch is fermenting or conditioning
+        batch_id = await link_reading_to_batch(db, device.id)
 
-        # Step 8: Store reading in database
-        db_reading = await self._store_reading(db, device, reading)
-
-        # Step 9: Update device last_seen
+        # Step 8: Update device last_seen (always, regardless of storage)
         device.last_seen = reading.timestamp
         if reading.battery_voltage is not None:
             device.battery_voltage = reading.battery_voltage
 
+        # Step 9: Store reading in database ONLY if:
+        # - Device is paired (prevents pollution from unknown devices)
+        # - Batch is active (fermenting or conditioning)
+        # This matches the Tilt BLE behavior in main.py
+        db_reading = None
+        if device.paired and batch_id is not None:
+            db_reading = await self._store_reading(db, device, reading, batch_id)
+
         await db.commit()
 
-        # Step 10: Broadcast via WebSocket
-        await self._broadcast_reading(device, reading)
+        # Step 10: Broadcast via WebSocket for paired devices
+        # (live readings visible regardless of batch status)
+        if device.paired:
+            await self._broadcast_reading(device, reading)
 
         logger.info(
-            "Ingested %s reading: device=%s, sg=%.4f, temp=%.1f",
+            "Ingested %s reading: device=%s, sg=%.4f, temp=%.1f, stored=%s",
             reading.device_type,
             reading.device_id,
             reading.gravity or 0,
             reading.temperature or 0,
+            "yes" if db_reading else "no (not fermenting)",
         )
 
         return db_reading
@@ -207,13 +221,15 @@ class IngestManager:
         db: AsyncSession,
         device: Device,
         reading: HydrometerReading,
+        batch_id: Optional[int] = None,
     ) -> Reading:
-        """Store reading in database."""
+        """Store reading in database with optional batch linkage."""
         # Validate reading and get status (may be 'invalid' for outliers)
         status = self._validate_reading(reading)
 
         db_reading = Reading(
             device_id=device.id,
+            batch_id=batch_id,
             device_type=reading.device_type,
             timestamp=reading.timestamp or datetime.now(timezone.utc),
             sg_raw=reading.gravity_raw,

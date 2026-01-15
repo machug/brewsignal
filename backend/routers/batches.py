@@ -113,11 +113,13 @@ async def create_batch(
 ):
     """Create a new batch."""
     # Check for heater entity conflicts if a heater is specified
+    # Exclude soft-deleted batches from conflict check
     if batch.heater_entity_id:
         conflict_result = await db.execute(
             select(Batch).where(
                 Batch.status == "fermenting",
                 Batch.heater_entity_id == batch.heater_entity_id,
+                Batch.deleted_at.is_(None),
             )
         )
         conflicting_batch = conflict_result.scalar_one_or_none()
@@ -128,11 +130,13 @@ async def create_batch(
             )
 
     # Check for device_id conflicts if a device is specified and status is fermenting
+    # Exclude soft-deleted batches from conflict check
     if batch.device_id and batch.status == "fermenting":
         conflict_result = await db.execute(
             select(Batch).where(
                 Batch.status == "fermenting",
                 Batch.device_id == batch.device_id,
+                Batch.deleted_at.is_(None),
             )
         )
         conflicting_batch = conflict_result.scalar_one_or_none()
@@ -206,12 +210,14 @@ async def update_batch(
 
     if new_heater and new_status == "fermenting":
         # Only check for conflicts if the heater entity is actually changing
+        # Exclude soft-deleted batches from conflict check
         if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
             conflict_result = await db.execute(
                 select(Batch).where(
                     Batch.status == "fermenting",
                     Batch.heater_entity_id == new_heater,
                     Batch.id != batch_id,
+                    Batch.deleted_at.is_(None),
                 )
             )
             conflicting_batch = conflict_result.scalar_one_or_none()
@@ -222,6 +228,7 @@ async def update_batch(
                 )
 
     # Check for device_id conflicts if changing device and batch is/will be fermenting
+    # Exclude soft-deleted batches from conflict check
     if new_device_id and new_status == "fermenting":
         # Only check for conflicts if the device_id is actually changing
         if update.device_id is not None and update.device_id != batch.device_id:
@@ -230,6 +237,7 @@ async def update_batch(
                     Batch.status == "fermenting",
                     Batch.device_id == new_device_id,
                     Batch.id != batch_id,
+                    Batch.deleted_at.is_(None),
                 )
             )
             conflicting_batch = conflict_result.scalar_one_or_none()

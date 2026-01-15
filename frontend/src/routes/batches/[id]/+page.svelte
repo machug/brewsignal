@@ -56,6 +56,32 @@
 		(batch?.heater_entity_id || batch?.cooler_entity_id)
 	);
 
+	// Pre-pitch chilling mode: planning status with target temp set
+	let isPrePitchChilling = $derived(
+		batch?.status === 'planning' && batch?.temp_target != null
+	);
+
+	// Check if wort has reached pitch temperature
+	let pitchTempReached = $derived.by(() => {
+		if (!isPrePitchChilling || !liveReading?.temp || !batch?.temp_target) return false;
+		return liveReading.temp <= batch.temp_target;
+	});
+
+	// Calculate chilling progress (100% when at or below target)
+	let chillingProgress = $derived.by(() => {
+		if (!isPrePitchChilling || !liveReading?.temp || !batch?.temp_target) return null;
+		// Assume starting temp is roughly 30°C higher than target (typical post-boil)
+		const estimatedStartTemp = batch.temp_target + 30;
+		const currentTemp = liveReading.temp;
+		const targetTemp = batch.temp_target;
+
+		if (currentTemp <= targetTemp) return 100;
+		if (currentTemp >= estimatedStartTemp) return 0;
+
+		const progress = ((estimatedStartTemp - currentTemp) / (estimatedStartTemp - targetTemp)) * 100;
+		return Math.min(100, Math.max(0, progress));
+	});
+
 	// Get live readings from WebSocket if device is linked
 	// Supports all device types: Tilt, GravityMon, iSpindel
 	// - GravityMon/iSpindel: device_id is the device's ID (e.g., "fce4b6")
@@ -375,6 +401,56 @@
 			</div>
 		</div>
 
+		<!-- Pre-Pitch Chilling Banner -->
+		{#if isPrePitchChilling}
+			<div class="chilling-banner" class:ready={pitchTempReached}>
+				<div class="chilling-header">
+					{#if pitchTempReached}
+						<span class="chilling-icon">🍺</span>
+						<h3 class="chilling-title">Ready to Pitch!</h3>
+					{:else}
+						<span class="chilling-icon">❄️</span>
+						<h3 class="chilling-title">Chilling to Pitch Temperature</h3>
+					{/if}
+				</div>
+
+				<div class="chilling-content">
+					<div class="temp-display">
+						<div class="temp-current">
+							<span class="temp-label">Current</span>
+							<span class="temp-value">{liveReading?.temp != null ? formatTempValue(liveReading.temp) : '--'}</span>
+						</div>
+						<div class="temp-arrow">→</div>
+						<div class="temp-target">
+							<span class="temp-label">Target</span>
+							<span class="temp-value">{batch.temp_target != null ? formatTempValue(batch.temp_target) : '--'}</span>
+						</div>
+					</div>
+
+					{#if chillingProgress != null && !pitchTempReached}
+						<div class="progress-section">
+							<div class="progress-bar">
+								<div class="progress-fill" style="width: {chillingProgress}%"></div>
+							</div>
+							<span class="progress-text">{Math.round(chillingProgress)}% to target</span>
+						</div>
+					{/if}
+
+					<div class="chilling-status">
+						{#if !batch.cooler_entity_id}
+							<span class="status-warning">⚠️ No cooler configured - set a cooler entity to enable automated chilling</span>
+						{:else if !configState.config.ha_enabled || !configState.config.temp_control_enabled}
+							<span class="status-warning">⚠️ Temperature control disabled in settings</span>
+						{:else if pitchTempReached}
+							<span class="status-ready">Wort has reached pitch temperature - ready to add yeast!</span>
+						{:else}
+							<span class="status-active">Cooler will run automatically when temp exceeds target + hysteresis</span>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Main content grid -->
 		<div class="content-grid">
 			<!-- Left column -->
@@ -587,6 +663,125 @@
 <style>
 	.page-container {
 		max-width: 1200px;
+	}
+
+	/* Pre-Pitch Chilling Banner */
+	.chilling-banner {
+		margin-bottom: 1.5rem;
+		padding: 1.25rem;
+		background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.05) 100%);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 0.75rem;
+	}
+
+	.chilling-banner.ready {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(134, 239, 172, 0.05) 100%);
+		border-color: rgba(34, 197, 94, 0.4);
+	}
+
+	.chilling-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.chilling-icon {
+		font-size: 1.5rem;
+	}
+
+	.chilling-title {
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.chilling-content {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.temp-display {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1.5rem;
+	}
+
+	.temp-current,
+	.temp-target {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.temp-label {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.temp-value {
+		font-size: 1.75rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.temp-arrow {
+		font-size: 1.5rem;
+		color: var(--text-muted);
+	}
+
+	.progress-section {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.progress-bar {
+		width: 100%;
+		max-width: 300px;
+		height: 8px;
+		background: var(--bg-elevated);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3b82f6, #60a5fa);
+		border-radius: 4px;
+		transition: width 0.5s ease;
+	}
+
+	.progress-text {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.chilling-status {
+		text-align: center;
+		font-size: 0.875rem;
+	}
+
+	.status-warning {
+		color: #f59e0b;
+	}
+
+	.status-active {
+		color: var(--text-secondary);
+	}
+
+	.status-ready {
+		color: var(--positive);
+		font-weight: 500;
 	}
 
 	.back-link {

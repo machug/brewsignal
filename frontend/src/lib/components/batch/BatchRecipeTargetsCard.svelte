@@ -17,7 +17,7 @@
 
 	// Calculate ABV from recipe targets if not provided
 	let calculatedABV = $derived.by(() => {
-		if (recipe.abv != null) return recipe.abv * 100; // Convert to percentage
+		if (recipe.abv != null) return recipe.abv; // Already stored as percentage
 		if (recipe.og && recipe.fg) {
 			return (recipe.og - recipe.fg) * ABV_MULTIPLIER;
 		}

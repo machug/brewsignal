@@ -12,7 +12,10 @@
 
 	let { batch, liveReading, onEdit }: Props = $props();
 
-	let signal = $derived(liveReading?.rssi ? getSignalStrength(liveReading.rssi) : null);
+	// Signal strength only applies to BLE devices (Tilt)
+	// GravityMon/iSpindel use HTTP push, so RSSI is not meaningful
+	let isBleDevice = $derived((liveReading as any)?.device_type === 'tilt');
+	let signal = $derived(isBleDevice && liveReading?.rssi ? getSignalStrength(liveReading.rssi) : null);
 	let lastSeenText = $derived(liveReading?.last_seen ? timeSince(liveReading.last_seen) : null);
 
 	// Format device display name based on type

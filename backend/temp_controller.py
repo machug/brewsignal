@@ -30,6 +30,10 @@ _batch_cooler_states: dict[int, dict] = {}
 # Keys are batch_id, values are {"state": "on"/"off", "until": datetime or None}
 _batch_overrides: dict[int, dict] = {}
 
+# Track pitch-ready notifications sent (to avoid spamming)
+# Keys are batch_id, values are True if notification already sent
+_pitch_ready_sent: dict[int, bool] = {}
+
 # Track HA config to detect changes
 
 
@@ -70,6 +74,41 @@ def _trigger_immediate_check() -> None:
     global _wake_event
     if _wake_event is not None:
         _wake_event.set()
+
+
+async def _send_pitch_ready_notification(batch: Batch, wort_temp: float, target_temp: float) -> None:
+    """Send a WebSocket notification that wort has reached pitch temperature.
+
+    This is called when a batch in "planning" status reaches its target temp
+    during pre-pitch chilling.
+    """
+    batch_id = batch.id
+
+    # Check if we already sent notification for this batch
+    if _pitch_ready_sent.get(batch_id):
+        return
+
+    # Mark as sent to avoid spamming
+    _pitch_ready_sent[batch_id] = True
+
+    logger.info(
+        f"Batch {batch_id} ({batch.name}): Pitch temperature reached! "
+        f"Wort: {wort_temp:.1f}°C, Target: {target_temp:.1f}°C"
+    )
+
+    # Broadcast via WebSocket
+    try:
+        await ws_manager.broadcast({
+            "type": "pitch_ready",
+            "batch_id": batch_id,
+            "batch_name": batch.name,
+            "wort_temp": round(wort_temp, 1),
+            "target_temp": round(target_temp, 1),
+            "message": f"🍺 Ready to pitch! {batch.name} has reached {wort_temp:.1f}°C",
+            "timestamp": serialize_datetime_to_utc(datetime.now(timezone.utc)),
+        })
+    except Exception as e:
+        logger.warning(f"Failed to send pitch_ready notification: {e}")
 
 
 def get_device_temp(device_id: str) -> Optional[float]:
@@ -304,11 +343,22 @@ async def control_batch_temperature(
     global_hysteresis: float,
     ambient_temp: Optional[float],
 ) -> None:
-    """Control both heating and cooling for a single batch."""
+    """Control both heating and cooling for a single batch.
+
+    For "planning" status batches (pre-pitch chilling):
+    - Only cooling is allowed to bring wort down to pitch temp
+    - Heating is disabled to prevent accidentally warming the wort
+    - A "pitch_ready" WebSocket notification is sent when target is reached
+    """
     batch_id = batch.id
     device_id = batch.device_id
     heater_entity = batch.heater_entity_id
     cooler_entity = batch.cooler_entity_id
+    is_chilling_mode = batch.status == "planning"  # Pre-pitch chilling
+
+    # In chilling mode, only cooler is used
+    if is_chilling_mode:
+        heater_entity = None  # Disable heater during planning
 
     if not heater_entity and not cooler_entity:
         return
@@ -479,11 +529,18 @@ async def control_batch_temperature(
             )
         elif wort_temp <= cool_off_threshold and cooler_entity and current_cooler_state == "on":
             # Reached target temp while cooling - turn cooler OFF to prevent undershoot
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F reached target {cool_off_threshold:.1f}F, turning cooler OFF")
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C reached target {cool_off_threshold:.1f}C, turning cooler OFF")
             await set_cooler_state_for_batch(
                 ha_client, cooler_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
+            # If in chilling mode (planning status), send pitch-ready notification
+            if is_chilling_mode:
+                await _send_pitch_ready_notification(batch, wort_temp, target_temp)
+        elif is_chilling_mode and wort_temp <= target_temp:
+            # In chilling mode and at/below target - send pitch-ready notification
+            # This catches the case where temp drifted to target without active cooling
+            await _send_pitch_ready_notification(batch, wort_temp, target_temp)
         else:
             # Maintain current states
             logger.debug(
@@ -546,11 +603,20 @@ async def temperature_control_loop() -> None:
                 ambient_temp = await get_latest_ambient_temp(db)
 
                 # Get all active batches with heater OR cooler entities configured
+                # Include "planning" batches with cooler for pre-pitch chilling
                 result = await db.execute(
                     select(Batch).where(
-                        Batch.status.in_(["fermenting", "conditioning"]),
+                        Batch.deleted_at.is_(None),  # Exclude soft-deleted
                         Batch.device_id.isnot(None),
-                        (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
+                        Batch.temp_target.isnot(None),  # Must have target temp set
+                        (
+                            # Fermenting/conditioning: heater or cooler
+                            (Batch.status.in_(["fermenting", "conditioning"]) &
+                             ((Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None))))
+                            |
+                            # Planning: cooler only (for pre-pitch chilling)
+                            (Batch.status == "planning") & (Batch.cooler_entity_id.isnot(None))
+                        ),
                     )
                 )
                 batches = result.scalars().all()
@@ -566,6 +632,8 @@ async def temperature_control_loop() -> None:
 
                 # Cleanup old batch entries from in-memory state dictionaries
                 active_batch_ids = {b.id for b in batches}
+                planning_batch_ids = {b.id for b in batches if b.status == "planning"}
+
                 for batch_id in list(_batch_heater_states.keys()):
                     if batch_id not in active_batch_ids:
                         logger.debug(f"Cleaning up heater state for inactive batch {batch_id}")
@@ -578,6 +646,11 @@ async def temperature_control_loop() -> None:
                     if batch_id not in active_batch_ids:
                         logger.debug(f"Cleaning up override for inactive batch {batch_id}")
                         del _batch_overrides[batch_id]
+                # Clean up pitch_ready tracking for batches no longer in planning
+                for batch_id in list(_pitch_ready_sent.keys()):
+                    if batch_id not in planning_batch_ids:
+                        logger.debug(f"Cleaning up pitch_ready flag for batch {batch_id} (no longer planning)")
+                        del _pitch_ready_sent[batch_id]
 
         except Exception as e:
             logger.error(f"Temperature control error: {e}", exc_info=True)

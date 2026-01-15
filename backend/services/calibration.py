@@ -171,7 +171,11 @@ class CalibrationService:
         return cal_sg, cal_temp
 
     def convert_units(self, reading: "HydrometerReading") -> "HydrometerReading":
-        """Convert raw values to standard units (SG, Fahrenheit).
+        """Convert raw values to standard units (SG, Celsius).
+
+        Internal standard is Celsius for temperature per CLAUDE.md:
+        - GravityMon/iSpindel: Already send Celsius (no conversion needed)
+        - Tilt BLE: Has separate F→C conversion in main.py scanner callback
 
         Args:
             reading: HydrometerReading with raw values
@@ -180,13 +184,16 @@ class CalibrationService:
             Reading with gravity/temperature filled from unit conversion
         """
         from ..ingest.base import GravityUnit, TemperatureUnit
-        from ..ingest.units import celsius_to_fahrenheit, plato_to_sg
+        from ..ingest.units import fahrenheit_to_celsius, plato_to_sg
 
-        # Temperature: Convert to Fahrenheit if Celsius
+        # Temperature: Convert to Celsius if Fahrenheit
+        # GravityMon/iSpindel already send Celsius, so this is mainly for any
+        # future device types that might send Fahrenheit via HTTP ingest
         if reading.temperature_raw is not None:
-            if reading.temperature_unit == TemperatureUnit.CELSIUS:
-                reading.temperature = celsius_to_fahrenheit(reading.temperature_raw)
+            if reading.temperature_unit == TemperatureUnit.FAHRENHEIT:
+                reading.temperature = fahrenheit_to_celsius(reading.temperature_raw)
             else:
+                # Already in Celsius - pass through unchanged
                 reading.temperature = reading.temperature_raw
 
         # Gravity: Convert to SG if Plato

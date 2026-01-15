@@ -38,11 +38,17 @@ class GravityMonAdapter(BaseAdapter):
             return None
         device_id = str(device_id)
 
-        # Detect gravity unit
+        # Detect gravity unit from payload
         gravity_unit = GravityUnit.SG
-        unit_field = payload.get("gravity-unit", "")
-        if unit_field == "P":
+        gravity_unit_field = payload.get("gravity-unit", "")
+        if gravity_unit_field == "P":
             gravity_unit = GravityUnit.PLATO
+
+        # Detect temperature unit from payload (GravityMon sends temp_units: "C" or "F")
+        temp_unit = TemperatureUnit.CELSIUS  # Default
+        temp_unit_field = payload.get("temp_units", payload.get("temp-unit", "C"))
+        if temp_unit_field and temp_unit_field.upper() == "F":
+            temp_unit = TemperatureUnit.FAHRENHEIT
 
         # Check for pre-filtered corrected gravity
         is_pre_filtered = "corr-gravity" in payload
@@ -116,7 +122,7 @@ class GravityMonAdapter(BaseAdapter):
             gravity_raw=gravity_raw,
             gravity_unit=gravity_unit,
             temperature_raw=temperature_raw,
-            temperature_unit=self.native_temp_unit,
+            temperature_unit=temp_unit,  # Use detected unit from payload
             angle=angle,
             rssi=rssi,
             battery_voltage=battery_voltage,

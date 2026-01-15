@@ -78,6 +78,7 @@
 	const CYAN = '#22d3ee'; // Ambient temp color
 	const PURPLE = '#a78bfa'; // Chamber temp color
 	const TREND_COLOR = 'rgba(250, 204, 21, 0.5)'; // Semi-transparent yellow for trend line
+	const ANOMALY_COLOR = '#ef4444'; // Red for anomaly markers
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
@@ -86,8 +87,18 @@
 	// Ambient and Chamber visibility toggles
 	const AMBIENT_STORAGE_KEY = 'brewsignal_chart_ambient_enabled';
 	const CHAMBER_STORAGE_KEY = 'brewsignal_chart_chamber_enabled';
+	const ANOMALY_STORAGE_KEY = 'brewsignal_chart_anomaly_enabled';
 	let showAmbient = $state(true);
 	let showChamber = $state(true);
+	let showAnomalies = $state(true);
+
+	// Anomaly data for tooltip
+	interface AnomalyInfo {
+		timestamp: number;
+		sg: number;
+		reasons: string[];
+	}
+	let anomalyData = $state<AnomalyInfo[]>([]);
 
 	// Control period data for heating/cooling bands
 	interface ControlPeriod {
@@ -441,6 +452,22 @@
 					points: { show: false },
 					show: showTrendLine
 					// Linear path (no spline for trend line)
+				},
+				{
+					// Anomaly markers series
+					label: 'Anomaly',
+					scale: 'sg',
+					stroke: ANOMALY_COLOR,
+					width: 0, // No line
+					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) + ' ⚠️' : '--',
+					points: {
+						show: true,
+						size: 8,
+						fill: ANOMALY_COLOR,
+						stroke: '#ffffff',
+						width: 2
+					},
+					show: showAnomalies
 				}
 			]
 		};
@@ -591,10 +618,31 @@
 		let timestamps: number[] = [];
 		let sgValues: (number | null)[] = [];
 		let tempValues: (number | null)[] = [];
+		let anomalyValues: (number | null)[] = [];
+		const anomalyInfoList: AnomalyInfo[] = [];
 
 		for (const r of sorted) {
-			timestamps.push(parseUtcTimestamp(r.timestamp));
-			sgValues.push(r.sg_calibrated ?? r.sg_raw);
+			const ts = parseUtcTimestamp(r.timestamp);
+			const sg = r.sg_calibrated ?? r.sg_raw;
+			timestamps.push(ts);
+			sgValues.push(sg);
+
+			// Track anomaly data - show SG value only for anomaly points
+			if (r.is_anomaly && sg !== null) {
+				anomalyValues.push(sg);
+				// Parse anomaly reasons (stored as comma-separated string or JSON)
+				let reasons: string[] = [];
+				if (r.anomaly_reasons) {
+					try {
+						reasons = JSON.parse(r.anomaly_reasons);
+					} catch {
+						reasons = r.anomaly_reasons.split(',').map(s => s.trim());
+					}
+				}
+				anomalyInfoList.push({ timestamp: ts, sg, reasons });
+			} else {
+				anomalyValues.push(null);
+			}
 
 			// Temperature is already in Celsius from API (since PR #66)
 			// Convert to Fahrenheit only if user preference is F
@@ -606,11 +654,14 @@
 			}
 		}
 
+		// Store anomaly info for tooltips
+		anomalyData = anomalyInfoList;
+
 		// Interpolate ambient and chamber readings to match tilt timestamps
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
 		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
 
-		// Apply smoothing if enabled in config
+		// Apply smoothing if enabled in config (don't smooth anomaly markers)
 		if (smoothingEnabled && smoothingSamples > 1) {
 			sgValues = smoothData(sgValues, smoothingSamples);
 			tempValues = smoothData(tempValues, smoothingSamples);
@@ -618,9 +669,29 @@
 			chamberValues = smoothData(chamberValues, smoothingSamples);
 		}
 
-			// Downsample for performance (max 500 points)
+		// Downsample for performance (max 500 points)
+		// Note: anomalyValues are handled separately to preserve all anomaly markers
 		const maxPoints = 500;
+		const originalTimestamps = [...timestamps];
+		const originalAnomalyValues = [...anomalyValues];
 		[timestamps, sgValues, tempValues, ambientValues, chamberValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, maxPoints);
+
+		// Map anomaly values to downsampled timestamps
+		// For each downsampled timestamp, check if any original anomaly was near it
+		anomalyValues = timestamps.map(ts => {
+			// Find the closest original anomaly within a reasonable window
+			for (let i = 0; i < originalTimestamps.length; i++) {
+				if (originalAnomalyValues[i] !== null) {
+					// Check if this anomaly is close to the current downsampled timestamp
+					const timeDiff = Math.abs(originalTimestamps[i] - ts);
+					const windowSize = (originalTimestamps[originalTimestamps.length - 1] - originalTimestamps[0]) / maxPoints;
+					if (timeDiff <= windowSize) {
+						return originalAnomalyValues[i];
+					}
+				}
+			}
+			return null;
+		});
 
 		// Calculate trend line
 		const trend = calculateLinearRegression(timestamps, sgValues);
@@ -631,7 +702,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -746,6 +817,10 @@ onMount(async () => {
 	if (storedChamber !== null) {
 		showChamber = storedChamber === 'true';
 	}
+	const storedAnomaly = localStorage.getItem(ANOMALY_STORAGE_KEY);
+	if (storedAnomaly !== null) {
+		showAnomalies = storedAnomaly === 'true';
+	}
 
 	// Fetch system timezone for chart display
 	try {
@@ -832,6 +907,15 @@ onMount(async () => {
 			chart.setSeries(4, { show: showChamber });
 		}
 	}
+
+	function toggleAnomalies() {
+		showAnomalies = !showAnomalies;
+		localStorage.setItem(ANOMALY_STORAGE_KEY, String(showAnomalies));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(6, { show: showAnomalies });
+		}
+	}
 </script>
 
 <div class="chart-wrapper">
@@ -905,6 +989,18 @@ onMount(async () => {
 					<span class="legend-line legend-line-dashed" style="background: {TREND_COLOR};"></span>
 					<span>Trend</span>
 				</button>
+				{#if anomalyData.length > 0}
+					<button
+						type="button"
+						class="legend-item legend-toggle anomaly-toggle"
+						class:legend-disabled={!showAnomalies}
+						onclick={toggleAnomalies}
+						title={showAnomalies ? 'Hide anomaly markers' : 'Show anomaly markers'}
+					>
+						<span class="legend-dot anomaly-dot" style="background: {ANOMALY_COLOR};"></span>
+						<span>Anomalies ({anomalyData.length})</span>
+					</button>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -1077,6 +1173,23 @@ onMount(async () => {
 
 	.legend-disabled .legend-line-dashed {
 		background: linear-gradient(90deg, var(--text-muted) 6px, transparent 6px) !important;
+	}
+
+	.anomaly-toggle {
+		color: var(--text-secondary);
+	}
+
+	.anomaly-toggle:not(.legend-disabled) {
+		color: #ef4444;
+	}
+
+	.anomaly-dot {
+		box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+	}
+
+	.legend-disabled .anomaly-dot {
+		background: var(--text-muted) !important;
+		box-shadow: none;
 	}
 
 	.chart-container {

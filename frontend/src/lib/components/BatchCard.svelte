@@ -1,17 +1,19 @@
 <script lang="ts">
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
+	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 
 	interface Props {
 		batch: BatchResponse;
 		progress?: BatchProgressResponse;
+		liveReading?: TiltReading | null;
 		expanded?: boolean;
 		onToggleExpand?: () => void;
 		onStatusChange?: (status: string) => void;
 		onViewDetails?: () => void;
 	}
 
-	let { batch, progress, expanded = false, onToggleExpand, onStatusChange, onViewDetails }: Props = $props();
+	let { batch, progress, liveReading = null, expanded = false, onToggleExpand, onStatusChange, onViewDetails }: Props = $props();
 
 	// Status configuration
 	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
@@ -34,6 +36,25 @@
 	let tempStatus = $derived(progress?.temperature?.status ? tempStatusConfig[progress.temperature.status] : tempStatusConfig.unknown);
 	let gravityUnit = $derived(getGravityUnit());
 	let tempUnit = $derived(getTempUnit());
+
+	// Determine fermentation activity status based on sg_rate
+	let activityStatus = $derived.by(() => {
+		if (batch.status !== 'fermenting' && batch.status !== 'conditioning') return null;
+
+		const sgRate = liveReading?.sg_rate;
+		if (sgRate === null || sgRate === undefined) return null;
+
+		// sg_rate is in points per hour (e.g., -0.001 means dropping 0.001 SG per hour)
+		const absRate = Math.abs(sgRate);
+
+		if (absRate > 0.002) return { label: 'Very Active', color: '#22c55e', emoji: '🔥' };
+		if (absRate > 0.0005) return { label: 'Active', color: '#84cc16', emoji: '✨' };
+		if (absRate > 0.0001) return { label: 'Slowing', color: '#eab308', emoji: '🐢' };
+		return { label: 'Complete', color: '#6b7280', emoji: '✓' };
+	});
+
+	// Check for anomalies in live reading
+	let hasAnomaly = $derived(liveReading?.is_anomaly ?? false);
 
 	// Format gravity for display
 	function formatSG(value?: number): string {
@@ -75,9 +96,10 @@
 	class="batch-card"
 	class:expanded
 	class:fermenting={batch.status === 'fermenting'}
+	class:has-anomaly={hasAnomaly}
 >
 	<!-- Status accent stripe -->
-	<div class="accent-stripe" style="background: {statusInfo.color};"></div>
+	<div class="accent-stripe" style="background: {hasAnomaly ? '#f59e0b' : statusInfo.color};"></div>
 
 	<div class="card-content">
 		<!-- Header -->
@@ -91,17 +113,24 @@
 					{/if}
 				</div>
 			</div>
-			<button
-				type="button"
-				class="status-pill"
-				style="color: {statusInfo.color}; background: {statusInfo.bg};"
-				onclick={() => onStatusChange?.(batch.status)}
-			>
-				{#if batch.status === 'fermenting'}
-					<span class="status-dot"></span>
+			<div class="header-right">
+				{#if activityStatus}
+					<span class="activity-badge" style="color: {activityStatus.color};">
+						{activityStatus.emoji} {activityStatus.label}
+					</span>
 				{/if}
-				{statusInfo.label}
-			</button>
+				<button
+					type="button"
+					class="status-pill"
+					style="color: {statusInfo.color}; background: {statusInfo.bg};"
+					onclick={() => onStatusChange?.(batch.status)}
+				>
+					{#if batch.status === 'fermenting'}
+						<span class="status-dot"></span>
+					{/if}
+					{statusInfo.label}
+				</button>
+			</div>
 		</div>
 
 		<!-- Main metrics row -->
@@ -234,6 +263,11 @@
 		box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.1);
 	}
 
+	.batch-card.has-anomaly {
+		border-color: rgba(245, 158, 11, 0.4);
+		box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+	}
+
 	.batch-card.expanded {
 		grid-column: span 2;
 	}
@@ -300,6 +334,22 @@
 		color: var(--text-muted);
 		display: block;
 		margin-top: 0.125rem;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+
+	.activity-badge {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		white-space: nowrap;
 	}
 
 	/* Status pill */

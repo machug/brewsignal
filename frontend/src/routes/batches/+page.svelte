@@ -288,6 +288,7 @@
 					<BatchCard
 						{batch}
 						progress={liveProgressMap.get(batch.id)}
+						liveReading={batch.device_id ? tiltsState.tilts.get(batch.device_id) : null}
 						onViewDetails={() => handleViewDetails(batch.id)}
 					/>
 

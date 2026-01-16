@@ -1,47 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
   <defs>
-    <!-- Hop gradient from dark green (top) to light green (bottom) -->
     <linearGradient id="hopGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a5a2e"/>
-      <stop offset="50%" style="stop-color:#2d8a47"/>
+      <stop offset="0%" style="stop-color:#2d8a47"/>
       <stop offset="100%" style="stop-color:#4abe5e"/>
     </linearGradient>
   </defs>
 
-  <!-- Hop cone shape -->
-  <g transform="translate(60, 60)">
-    <!-- Stem at top -->
-    <path d="M0,-45 L0,-52" stroke="#2d8a47" stroke-width="3" fill="none"/>
+  <!-- Hop cone -->
+  <g transform="translate(55, 60)">
+    <!-- Main hop shape - pointed oval with segments -->
+    <path d="M0,-48
+             C-8,-42 -20,-28 -24,-14
+             C-28,0 -28,14 -24,28
+             C-20,38 -10,48 0,52
+             C10,48 20,38 24,28
+             C28,14 28,0 24,-14
+             C20,-28 8,-42 0,-48Z"
+          fill="url(#hopGradient)"
+          stroke="#1a5a2e"
+          stroke-width="2"/>
 
-    <!-- Top leaf pair -->
-    <ellipse cx="-12" cy="-32" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(-20)"/>
-    <ellipse cx="12" cy="-32" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(20)"/>
+    <!-- Horizontal segment lines -->
+    <path d="M-22,-24 Q0,-28 22,-24" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
+    <path d="M-26,-8 Q0,-12 26,-8" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
+    <path d="M-26,8 Q0,4 26,8" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
+    <path d="M-22,24 Q0,20 22,24" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
+    <path d="M-14,40 Q0,36 14,40" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
 
-    <!-- Second row -->
-    <ellipse cx="-18" cy="-18" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(-15)"/>
-    <ellipse cx="0" cy="-22" rx="14" ry="10" fill="url(#hopGradient)"/>
-    <ellipse cx="18" cy="-18" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(15)"/>
-
-    <!-- Third row (widest) -->
-    <ellipse cx="-22" cy="-2" rx="18" ry="12" fill="url(#hopGradient)" transform="rotate(-10)"/>
-    <ellipse cx="0" cy="-6" rx="16" ry="11" fill="url(#hopGradient)"/>
-    <ellipse cx="22" cy="-2" rx="18" ry="12" fill="url(#hopGradient)" transform="rotate(10)"/>
-
-    <!-- Fourth row -->
-    <ellipse cx="-16" cy="14" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(-8)"/>
-    <ellipse cx="0" cy="10" rx="14" ry="10" fill="url(#hopGradient)"/>
-    <ellipse cx="16" cy="14" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(8)"/>
-
-    <!-- Bottom leaves -->
-    <ellipse cx="-10" cy="28" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(-5)"/>
-    <ellipse cx="10" cy="28" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(5)"/>
-
-    <!-- Bottom tip -->
-    <ellipse cx="0" cy="40" rx="10" ry="8" fill="url(#hopGradient)"/>
+    <!-- Vertical center line -->
+    <path d="M0,-48 L0,52" stroke="#1a5a2e" stroke-width="1.5" fill="none"/>
 
     <!-- Signal/heartbeat line -->
-    <path d="M-50,0 L-15,0 L-8,-18 L0,18 L8,-8 L15,0 L50,0"
-          stroke="#f0dc28"
+    <path d="M-55,0 L-28,0 L-18,0 L-10,-20 L0,20 L10,-10 L18,0 L28,0 L55,0"
+          stroke="#f5d742"
           stroke-width="3.5"
           fill="none"
           stroke-linecap="round"
@@ -49,9 +40,9 @@
   </g>
 
   <!-- BrewSignal text -->
-  <text x="125" y="68"
+  <text x="120" y="70"
         font-family="Arial, Helvetica, sans-serif"
-        font-size="38"
-        font-weight="bold"
-        fill="white">BrewSignal</text>
+        font-size="42"
+        font-weight="600"
+        fill="#e8e8e8">BrewSignal</text>
 </svg>

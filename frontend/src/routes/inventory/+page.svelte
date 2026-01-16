@@ -90,6 +90,39 @@
 	let yeastSearchQuery = $state('');
 	let includeExpired = $state(false);
 
+	// Yeast strain search/select state
+	let strainSearchInput = $state('');
+	let showStrainDropdown = $state(false);
+	let highlightedStrainIndex = $state(-1);
+	let selectedStrain = $state<YeastStrainResponse | null>(null);
+
+	// Fuzzy search for yeast strains
+	let searchedStrains = $derived(() => {
+		if (!strainSearchInput.trim()) return yeastStrains.slice(0, 50);
+		const query = strainSearchInput.toLowerCase();
+		const terms = query.split(/\s+/).filter(Boolean);
+
+		return yeastStrains
+			.map(strain => {
+				const searchText = `${strain.name} ${strain.producer} ${strain.product_id || ''}`.toLowerCase();
+				// Score based on how many terms match and position
+				let score = 0;
+				for (const term of terms) {
+					if (searchText.includes(term)) {
+						score += 10;
+						// Bonus for exact start match
+						if (strain.name.toLowerCase().startsWith(term)) score += 5;
+						if (strain.product_id?.toLowerCase().startsWith(term)) score += 5;
+					}
+				}
+				return { strain, score };
+			})
+			.filter(item => item.score > 0)
+			.sort((a, b) => b.score - a.score)
+			.slice(0, 30)
+			.map(item => item.strain);
+	});
+
 	// Adjust modal state
 	let showAdjustModal = $state(false);
 	let adjustingHop = $state<HopInventoryResponse | null>(null);
@@ -300,6 +333,14 @@
 				supplier: item.supplier || '',
 				notes: item.notes || ''
 			};
+			// Set the selected strain for editing
+			if (item.yeast_strain_id) {
+				selectedStrain = yeastStrains.find(s => s.id === item.yeast_strain_id) || null;
+				strainSearchInput = selectedStrain ? `${selectedStrain.name} (${selectedStrain.producer})` : '';
+			} else {
+				selectedStrain = null;
+				strainSearchInput = '';
+			}
 		} else {
 			editingYeast = null;
 			newYeast = {
@@ -311,8 +352,70 @@
 				storage_location: '',
 				notes: ''
 			};
+			selectedStrain = null;
+			strainSearchInput = '';
 		}
+		showStrainDropdown = false;
+		highlightedStrainIndex = -1;
 		showYeastModal = true;
+	}
+
+	function selectYeastStrain(strain: YeastStrainResponse | null) {
+		selectedStrain = strain;
+		if (strain) {
+			newYeast.yeast_strain_id = strain.id;
+			strainSearchInput = `${strain.name} (${strain.producer})`;
+		} else {
+			newYeast.yeast_strain_id = undefined;
+			strainSearchInput = '';
+		}
+		showStrainDropdown = false;
+		highlightedStrainIndex = -1;
+	}
+
+	function handleStrainKeydown(e: KeyboardEvent) {
+		const strains = searchedStrains();
+		if (!showStrainDropdown && e.key !== 'Escape') {
+			showStrainDropdown = true;
+			return;
+		}
+
+		switch (e.key) {
+			case 'ArrowDown':
+				e.preventDefault();
+				highlightedStrainIndex = Math.min(highlightedStrainIndex + 1, strains.length - 1);
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				highlightedStrainIndex = Math.max(highlightedStrainIndex - 1, -1);
+				break;
+			case 'Enter':
+				e.preventDefault();
+				if (highlightedStrainIndex >= 0 && highlightedStrainIndex < strains.length) {
+					selectYeastStrain(strains[highlightedStrainIndex]);
+				}
+				break;
+			case 'Escape':
+				showStrainDropdown = false;
+				highlightedStrainIndex = -1;
+				break;
+			case 'Tab':
+				showStrainDropdown = false;
+				break;
+		}
+	}
+
+	function handleStrainInput() {
+		showStrainDropdown = true;
+		highlightedStrainIndex = -1;
+		// Clear selection if user is typing something different
+		if (selectedStrain) {
+			const currentDisplay = `${selectedStrain.name} (${selectedStrain.producer})`;
+			if (strainSearchInput !== currentDisplay) {
+				selectedStrain = null;
+				newYeast.yeast_strain_id = undefined;
+			}
+		}
 	}
 
 	async function handleSaveYeast() {
@@ -1046,19 +1149,52 @@
 				{editingYeast ? 'Edit Yeast' : 'Add Yeast'}
 			</h2>
 			<div class="space-y-4">
-				<div>
+				<div class="relative">
 					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Yeast Strain</label>
-					<select
-						bind:value={newYeast.yeast_strain_id}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					>
-						<option value={undefined}>-- Select or enter custom --</option>
-						{#each yeastStrains as strain}
-							<option value={strain.id}>
-								{strain.name} ({strain.producer} - {strain.product_id})
-							</option>
-						{/each}
-					</select>
+					<div class="relative mt-1">
+						<input
+							type="text"
+							bind:value={strainSearchInput}
+							oninput={handleStrainInput}
+							onkeydown={handleStrainKeydown}
+							onfocus={() => (showStrainDropdown = true)}
+							onblur={() => setTimeout(() => (showStrainDropdown = false), 200)}
+							placeholder="Search by name, producer, or product ID..."
+							class="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-8 dark:border-zinc-600 dark:bg-zinc-700"
+						/>
+						{#if selectedStrain}
+							<button
+								type="button"
+								onclick={() => selectYeastStrain(null)}
+								class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						{/if}
+					</div>
+					{#if showStrainDropdown && searchedStrains().length > 0}
+						<div class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+							{#each searchedStrains() as strain, i}
+								<button
+									type="button"
+									class="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-zinc-600 {highlightedStrainIndex === i ? 'bg-amber-100 dark:bg-zinc-600' : ''}"
+									onmouseenter={() => (highlightedStrainIndex = i)}
+									onmousedown={() => selectYeastStrain(strain)}
+								>
+									<div class="font-medium text-zinc-900 dark:text-zinc-100">{strain.name}</div>
+									<div class="text-xs text-zinc-500 dark:text-zinc-400">
+										{strain.producer} {strain.product_id ? `- ${strain.product_id}` : ''}
+									</div>
+								</button>
+							{/each}
+						</div>
+					{:else if showStrainDropdown && strainSearchInput.trim() && searchedStrains().length === 0}
+						<div class="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-500 shadow-lg dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
+							No matching strains found. Use "Custom Name" below.
+						</div>
+					{/if}
 				</div>
 				{#if !newYeast.yeast_strain_id}
 					<div>

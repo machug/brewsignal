@@ -284,6 +284,13 @@ async def init_db():
         if result.get("action") == "seeded":
             print(f"Seeded {result.get('count', 0)} yeast strains")
 
+    # Seed BJCP styles from JSON file
+    from .services.style_seeder import seed_styles
+    async with async_session_factory() as session:
+        result = await seed_styles(session)
+        if result.get("action") == "seeded":
+            print(f"Seeded {result.get('count', 0)} BJCP styles")
+
 
 def _migrate_add_original_gravity(conn):
     """Add original_gravity column to tilts table if not present."""

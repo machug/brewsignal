@@ -3,11 +3,13 @@
 This module implements the Agent-User Interaction Protocol (AG-UI)
 for real-time streaming communication with the AI assistant.
 
-Includes thread persistence for chat history.
+Includes thread persistence for chat history and title summarization.
 """
 
+import asyncio
 import json
 import logging
+import os
 import uuid
 from typing import AsyncGenerator, Optional
 from datetime import datetime
@@ -27,6 +29,9 @@ from backend.models import (
     AgUiThread, AgUiMessage,
     AgUiThreadResponse, AgUiThreadListItem, AgUiMessageResponse
 )
+
+# Model for title summarization (fast, cheap)
+TITLE_SUMMARY_MODEL = "claude-3-5-haiku-20241022"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ag-ui", tags=["ag-ui"])
@@ -159,6 +164,11 @@ async def generate_ag_ui_events(
             runId=run_id,
         ).to_sse()
 
+        # Trigger title summarization in background (don't block response)
+        # Use a new session since the generator's session may close
+        from backend.database import async_session_factory
+        asyncio.create_task(_summarize_thread_background(thread_id))
+
     except Exception as e:
         logger.error(f"AG-UI streaming error: {e}")
         yield AGUIEvent(
@@ -166,6 +176,16 @@ async def generate_ag_ui_events(
             message=str(e),
             code="INTERNAL_ERROR",
         ).to_sse()
+
+
+async def _summarize_thread_background(thread_id: str):
+    """Background task to summarize thread title."""
+    from backend.database import async_session_factory
+    try:
+        async with async_session_factory() as db:
+            await _summarize_thread_title(db, thread_id)
+    except Exception as e:
+        logger.warning(f"Background title summarization failed: {e}")
 
 
 def _parse_sse_event(sse: str) -> Optional[dict]:
@@ -239,6 +259,68 @@ async def _save_message(
     db.add(message)
     await db.commit()
     return message
+
+
+async def _summarize_thread_title(
+    db: AsyncSession,
+    thread_id: str,
+) -> Optional[str]:
+    """Generate a concise title for a thread using Haiku.
+
+    Called asynchronously after a run completes to update the thread title
+    with a semantic summary instead of just the first message.
+    """
+    try:
+        import litellm
+
+        # Get thread messages
+        messages = await _get_thread_messages(db, thread_id)
+        if not messages:
+            return None
+
+        # Build context from messages (just first few)
+        context_messages = []
+        for msg in messages[:4]:  # First 4 messages max
+            context_messages.append(f"{msg.role}: {msg.content[:200]}")
+        context = "\n".join(context_messages)
+
+        # Call Haiku for summarization
+        response = await litellm.acompletion(
+            model=TITLE_SUMMARY_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Generate a 3-6 word title summarizing this conversation. "
+                               "Be specific about the topic (e.g., beer style, brewing question). "
+                               "Output ONLY the title, no quotes or punctuation."
+                },
+                {"role": "user", "content": context}
+            ],
+            temperature=0.3,
+            max_tokens=30,
+        )
+
+        title = response.choices[0].message.content.strip()
+        # Clean up: remove quotes, limit length
+        title = title.strip('"\'').strip()
+        if len(title) > 60:
+            title = title[:57] + "..."
+
+        # Update thread title
+        result = await db.execute(
+            select(AgUiThread).where(AgUiThread.id == thread_id)
+        )
+        thread = result.scalar_one_or_none()
+        if thread:
+            thread.title = title
+            await db.commit()
+            logger.info(f"Updated thread {thread_id} title to: {title}")
+
+        return title
+
+    except Exception as e:
+        logger.warning(f"Failed to summarize thread title: {e}")
+        return None
 
 
 async def _run_agent_loop(
@@ -451,9 +533,9 @@ def _get_recipe_system_prompt(state: Optional[dict] = None) -> str:
 ## Your Tools
 You have access to tools to search the BrewSignal database:
 - **search_yeast**: Search 449+ yeast strains by name, producer, type, attenuation, or temperature range
-- **search_styles**: Search BJCP beer styles by name, category, or characteristics
+- **search_styles**: Search 116 BJCP 2021 beer styles by name, category, or characteristics
 - **get_yeast_by_id**: Get detailed info about a specific yeast by product ID
-- **get_style_by_name**: Get complete BJCP guidelines for a specific style
+- **get_style_by_name**: Get complete BJCP guidelines for a specific style (use exact BJCP name like "American IPA")
 
 **IMPORTANT**: Use these tools when discussing yeast or styles! Don't rely on memory - search the database for accurate, up-to-date information.
 

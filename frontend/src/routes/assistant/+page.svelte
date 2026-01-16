@@ -280,14 +280,14 @@
 			<!-- Empty state with example prompts -->
 			<div class="empty-state">
 				<div class="empty-icon">
-					<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+					<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 						<path d="M12 2L2 7l10 5 10-5-10-5z"/>
 						<path d="M2 17l10 5 10-5"/>
 						<path d="M2 12l10 5 10-5"/>
 					</svg>
 				</div>
 				<h2>Start a conversation</h2>
-				<p>Ask me about beer recipes, brewing techniques, or ingredient substitutions.</p>
+				<p class="empty-description">Ask about recipes, techniques, or ingredients</p>
 				<div class="example-prompts">
 					{#each examplePrompts as prompt}
 						<button type="button" class="prompt-chip" onclick={() => usePrompt(prompt)}>
@@ -663,6 +663,7 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+		min-height: 0; /* Critical for flex shrinking */
 		overflow: hidden;
 	}
 
@@ -757,7 +758,8 @@
 	.chat-container {
 		flex: 1;
 		overflow-y: auto;
-		padding: var(--space-6);
+		padding: var(--space-4);
+		min-height: 0; /* Allow flex shrinking */
 	}
 
 	.empty-state {
@@ -765,26 +767,27 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: 100%;
+		min-height: 200px;
+		padding: var(--space-4) 0;
 		text-align: center;
 		color: var(--text-secondary);
 	}
 
 	.empty-icon {
 		color: var(--text-muted);
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-2);
 	}
 
 	.empty-state h2 {
-		margin: 0 0 var(--space-2);
-		font-size: 1.125rem;
+		margin: 0 0 var(--space-1);
+		font-size: 1rem;
 		font-weight: 500;
 		color: var(--text-primary);
 	}
 
-	.empty-state p {
-		margin: 0 0 var(--space-6);
-		max-width: 400px;
+	.empty-description {
+		margin: 0 0 var(--space-3);
+		font-size: 0.875rem;
 	}
 
 	.example-prompts {
@@ -799,9 +802,9 @@
 		padding: var(--space-2) var(--space-3);
 		background: var(--bg-elevated);
 		border: 1px solid var(--border-subtle);
-		border-radius: 20px;
+		border-radius: 16px;
 		color: var(--text-secondary);
-		font-size: 0.875rem;
+		font-size: 0.8125rem;
 		cursor: pointer;
 		transition: all var(--transition);
 	}

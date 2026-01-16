@@ -53,8 +53,8 @@ export function createAgentState() {
 		streamingMessageId: null as string | null,
 		streamingContent: '',
 
-		// Tool calls
-		toolCalls: new Map<string, ToolCall>(),
+		// Tool calls - using array for better Svelte reactivity
+		toolCallsList: [] as ToolCall[],
 
 		// Agent state (shared state from agent)
 		agentState: {} as Record<string, unknown>,
@@ -62,6 +62,18 @@ export function createAgentState() {
 		// Current step
 		currentStep: null as string | null
 	});
+
+	// Helper to find/update tool calls
+	function findToolCall(id: string): ToolCall | undefined {
+		return state.toolCallsList.find(tc => tc.id === id);
+	}
+
+	function updateToolCall(id: string, updates: Partial<ToolCall>) {
+		const idx = state.toolCallsList.findIndex(tc => tc.id === id);
+		if (idx >= 0) {
+			state.toolCallsList[idx] = { ...state.toolCallsList[idx], ...updates };
+		}
+	}
 
 	// Derived state
 	const isStreaming = $derived(state.streamingMessageId !== null);
@@ -171,37 +183,34 @@ export function createAgentState() {
 				break;
 
 			case 'TOOL_CALL_START':
-				state.toolCalls.set(event.toolCallId, {
+				// Add new tool call to array (creates new array for reactivity)
+				state.toolCallsList = [...state.toolCallsList, {
 					id: event.toolCallId,
 					// Handle both toolCallName (spec) and toolName (backend variant)
 					name: event.toolCallName || (event as any).toolName || 'unknown',
 					args: '',
 					status: 'running'
-				});
+				}];
 				break;
 
 			case 'TOOL_CALL_ARGS':
-				const toolCall = state.toolCalls.get(event.toolCallId);
+				const toolCall = findToolCall(event.toolCallId);
 				if (toolCall) {
-					toolCall.args += event.delta;
+					updateToolCall(event.toolCallId, { args: toolCall.args + event.delta });
 				}
 				break;
 
 			case 'TOOL_CALL_END':
-				const endingCall = state.toolCalls.get(event.toolCallId);
-				if (endingCall) {
-					endingCall.status = 'completed';
-				}
+				updateToolCall(event.toolCallId, { status: 'completed' });
 				break;
 
 			case 'TOOL_CALL_RESULT':
 			case 'TOOL_RESULT': // Backend variant
-				const resultCall = state.toolCalls.get(event.toolCallId);
-				if (resultCall) {
-					// Handle both content (spec) and result (backend variant)
-					resultCall.result = event.content || (event as any).result;
-					resultCall.status = 'completed';
-				}
+				// Handle both content (spec) and result (backend variant)
+				updateToolCall(event.toolCallId, {
+					result: event.content || (event as any).result,
+					status: 'completed'
+				});
 				break;
 
 			case 'STATE_SNAPSHOT':
@@ -259,7 +268,7 @@ export function createAgentState() {
 		state.messages = [];
 		state.streamingMessageId = null;
 		state.streamingContent = '';
-		state.toolCalls.clear();
+		state.toolCallsList = [];
 		state.agentState = {};
 		state.threadId = null;
 		state.runId = null;
@@ -284,7 +293,7 @@ export function createAgentState() {
 		get messages() { return state.messages; },
 		get streamingMessageId() { return state.streamingMessageId; },
 		get streamingContent() { return state.streamingContent; },
-		get toolCalls() { return state.toolCalls; },
+		get toolCalls() { return state.toolCallsList; },
 		get agentState() { return state.agentState; },
 		get currentStep() { return state.currentStep; },
 

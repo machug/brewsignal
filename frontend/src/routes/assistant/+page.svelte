@@ -26,10 +26,8 @@
 		}
 	});
 
-	// Get tool calls as array for display
-	function getToolCalls(): ToolCall[] {
-		return Array.from(agent.toolCalls.values());
-	}
+	// Reactive tool calls array - toolCalls is now an array in the client
+	let toolCallsArray = $derived(agent.toolCalls);
 
 	// Input state
 	let input = $state('');
@@ -239,11 +237,11 @@
 						<div class="debug-value">{agent.messages.length}</div>
 					</div>
 
-					{#if getToolCalls().length > 0}
+					{#if toolCallsArray.length > 0}
 						<div class="debug-section tool-calls-section">
-							<div class="debug-label">Tool Calls ({getToolCalls().length})</div>
+							<div class="debug-label">Tool Calls ({toolCallsArray.length})</div>
 							<div class="tool-calls-list">
-								{#each getToolCalls() as tool (tool.id)}
+								{#each toolCallsArray as tool (tool.id)}
 									<div class="tool-call" class:running={tool.status === 'running'} class:completed={tool.status === 'completed'}>
 										<div class="tool-call-header">
 											<span class="tool-name">{tool.name}</span>

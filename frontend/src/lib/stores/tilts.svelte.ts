@@ -12,6 +12,11 @@ export interface TiltReading {
 	rssi: number;
 	last_seen: string;
 	paired: boolean;
+	// Device-specific fields
+	device_type?: string;
+	battery_voltage?: number | null;
+	battery_percent?: number | null;
+	angle?: number | null;
 	// ML outputs
 	sg_filtered?: number | null;
 	temp_filtered?: number | null;

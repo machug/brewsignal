@@ -5,6 +5,7 @@
 		title: string;
 		icon?: string;
 		highlight?: boolean;
+		compact?: boolean;
 		collapsible?: boolean;
 		expanded?: boolean;
 		onToggle?: () => void;
@@ -15,6 +16,7 @@
 		title,
 		icon,
 		highlight = false,
+		compact = false,
 		collapsible = false,
 		expanded = false,
 		onToggle,
@@ -22,7 +24,7 @@
 	}: Props = $props();
 </script>
 
-<div class="batch-card" class:highlight>
+<div class="batch-card" class:highlight class:compact>
 	{#if highlight}
 		<div class="accent-bar"></div>
 	{/if}
@@ -91,6 +93,11 @@
 		margin-bottom: 1rem;
 	}
 
+	.compact .card-header {
+		padding: 0.875rem 1rem 0 1rem;
+		margin-bottom: 0.625rem;
+	}
+
 	.header-left {
 		display: flex;
 		align-items: center;
@@ -145,6 +152,10 @@
 		overflow: hidden;
 		transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
 		opacity: 1;
+	}
+
+	.compact .card-content {
+		padding: 0 1rem 0.875rem 1rem;
 	}
 
 	.card-content.collapsed {

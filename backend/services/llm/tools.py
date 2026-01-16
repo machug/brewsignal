@@ -2145,24 +2145,33 @@ async def _save_recipe(
         # Add to database
         db.add(db_recipe)
         await db.commit()
-        await db.refresh(db_recipe)
+
+        # Re-fetch with eager loading to avoid lazy-load errors
+        from sqlalchemy.orm import selectinload
+        stmt = select(Recipe).options(
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        ).where(Recipe.id == db_recipe.id)
+        result = await db.execute(stmt)
+        saved_recipe = result.scalar_one()
 
         # Build response with recipe summary
         return {
             "success": True,
-            "recipe_id": db_recipe.id,
-            "name": db_recipe.name,
-            "type": db_recipe.type,
-            "batch_size_liters": db_recipe.batch_size_liters,
-            "og": db_recipe.og,
-            "fg": db_recipe.fg,
-            "abv": db_recipe.abv,
-            "ibu": db_recipe.ibu,
-            "color_srm": db_recipe.color_srm,
-            "fermentables_count": len(db_recipe.fermentables),
-            "hops_count": len(db_recipe.hops),
-            "cultures_count": len(db_recipe.cultures),
-            "message": f"Recipe '{db_recipe.name}' saved successfully with ID {db_recipe.id}",
+            "recipe_id": saved_recipe.id,
+            "name": saved_recipe.name,
+            "type": saved_recipe.type,
+            "batch_size_liters": saved_recipe.batch_size_liters,
+            "og": saved_recipe.og,
+            "fg": saved_recipe.fg,
+            "abv": saved_recipe.abv,
+            "ibu": saved_recipe.ibu,
+            "color_srm": saved_recipe.color_srm,
+            "fermentables_count": len(saved_recipe.fermentables),
+            "hops_count": len(saved_recipe.hops),
+            "cultures_count": len(saved_recipe.cultures),
+            "message": f"Recipe '{saved_recipe.name}' saved successfully with ID {saved_recipe.id}",
         }
 
     except KeyError as e:

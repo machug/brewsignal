@@ -804,6 +804,9 @@ async def get_thread(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
+    # Sort messages by created_at to ensure correct order
+    sorted_messages = sorted(thread.messages, key=lambda m: m.created_at)
+
     return AgUiThreadResponse(
         id=thread.id,
         title=thread.title,
@@ -818,7 +821,7 @@ async def get_thread(
                 tool_calls=m.tool_calls_data,
                 created_at=m.created_at,
             )
-            for m in thread.messages
+            for m in sorted_messages
         ],
         message_count=len(thread.messages),
     )

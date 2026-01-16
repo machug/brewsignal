@@ -565,6 +565,12 @@ async def serve_assistant():
     return FileResponse(static_dir / "assistant.html")
 
 
+@app.get("/inventory", response_class=FileResponse)
+async def serve_inventory():
+    """Serve the inventory page."""
+    return FileResponse(static_dir / "inventory.html")
+
+
 @app.get("/favicon.png", response_class=FileResponse)
 async def serve_favicon():
     """Serve the favicon."""

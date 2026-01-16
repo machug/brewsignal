@@ -464,19 +464,20 @@
 					// Linear path (no spline for trend line)
 				},
 				{
-					// Anomaly markers series
+					// Anomaly markers series - show points only, no line
 					label: 'Anomaly',
 					scale: 'sg',
 					stroke: ANOMALY_COLOR,
-					width: 0, // No line
+					width: 2, // Non-zero width required for point rendering
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) + ' ⚠️' : '--',
 					points: {
 						show: true,
-						size: 8,
+						size: 10,
 						fill: ANOMALY_COLOR,
 						stroke: '#ffffff',
 						width: 2
 					},
+					paths: () => null, // Don't draw line path, only points
 					show: showAnomalies
 				},
 				{

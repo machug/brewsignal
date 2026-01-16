@@ -578,8 +578,26 @@ async def get_device_readings(
     all_readings = list(result.scalars().all())
 
     # Apply downsampling by taking every Nth reading
+    # IMPORTANT: Always preserve anomaly readings regardless of downsample interval
     if downsample_interval > 1:
-        downsampled = all_readings[::downsample_interval]
+        # Separate anomaly readings from normal readings
+        anomaly_readings = [r for r in all_readings if r.is_anomaly]
+        normal_readings = [r for r in all_readings if not r.is_anomaly]
+
+        # Downsample only normal readings
+        downsampled_normal = normal_readings[::downsample_interval]
+
+        # Merge anomaly readings back in
+        # Use a set of IDs to avoid duplicates if anomaly happened to be in downsample
+        downsampled_ids = {r.id for r in downsampled_normal}
+        merged = list(downsampled_normal)
+        for anomaly in anomaly_readings:
+            if anomaly.id not in downsampled_ids:
+                merged.append(anomaly)
+
+        # Re-sort by timestamp DESC (since we merged in anomalies)
+        merged.sort(key=lambda r: r.timestamp, reverse=True)
+        downsampled = merged
     else:
         downsampled = all_readings
 

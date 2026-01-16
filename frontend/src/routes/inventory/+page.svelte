@@ -374,7 +374,7 @@
 	}
 
 	function handleStrainKeydown(e: KeyboardEvent) {
-		const strains = searchedStrains();
+		const strains = searchedStrains;
 		if (!showStrainDropdown && e.key !== 'Escape') {
 			showStrainDropdown = true;
 			return;
@@ -696,7 +696,7 @@
 					</button>
 				</div>
 
-				{#if filteredHops().length === 0}
+				{#if filteredHops.length === 0}
 					<div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
 						<p class="text-zinc-500 dark:text-zinc-400">
 							{hopSearchQuery ? 'No hops match your search' : 'No hops in inventory'}
@@ -717,7 +717,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredHops() as hop}
+								{#each filteredHops as hop}
 									<tr class="border-b border-zinc-100 dark:border-zinc-800">
 										<td class="py-3 font-medium text-zinc-900 dark:text-zinc-100">{hop.variety}</td>
 										<td class="py-3 text-right text-zinc-600 dark:text-zinc-300">
@@ -833,7 +833,7 @@
 					</button>
 				</div>
 
-				{#if filteredYeasts().length === 0}
+				{#if filteredYeasts.length === 0}
 					<div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
 						<p class="text-zinc-500 dark:text-zinc-400">
 							{yeastSearchQuery ? 'No yeast matches your search' : 'No yeast in inventory'}
@@ -853,7 +853,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredYeasts() as yeast}
+								{#each filteredYeasts as yeast}
 									<tr class="border-b border-zinc-100 dark:border-zinc-800">
 										<td class="py-3">
 											<div class="font-medium text-zinc-900 dark:text-zinc-100">
@@ -1174,9 +1174,9 @@
 							</button>
 						{/if}
 					</div>
-					{#if showStrainDropdown && searchedStrains().length > 0}
+					{#if showStrainDropdown && searchedStrains.length > 0}
 						<div class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
-							{#each searchedStrains() as strain, i}
+							{#each searchedStrains as strain, i}
 								<button
 									type="button"
 									class="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-zinc-600 {highlightedStrainIndex === i ? 'bg-amber-100 dark:bg-zinc-600' : ''}"
@@ -1190,7 +1190,7 @@
 								</button>
 							{/each}
 						</div>
-					{:else if showStrainDropdown && strainSearchInput.trim() && searchedStrains().length === 0}
+					{:else if showStrainDropdown && strainSearchInput.trim() && searchedStrains.length === 0}
 						<div class="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-500 shadow-lg dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
 							No matching strains found. Use "Custom Name" below.
 						</div>

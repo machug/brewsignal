@@ -1994,6 +1994,9 @@ def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
             # Timing
             timing = h.get("timing")
             if timing:
+                # Normalize timing.time → timing.duration for consistency
+                if "time" in timing and "duration" not in timing:
+                    timing = {**timing, "duration": timing.pop("time")}
                 norm_h["timing"] = timing
             else:
                 # Build timing from flat fields
@@ -2001,9 +2004,9 @@ def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
                 time_val = h.get("time") or h.get("time_min") or h.get("time_minutes")
                 if time_val is not None:
                     if isinstance(time_val, dict):
-                        norm_h["timing"] = {"use": f"add_to_{use}", "time": time_val}
+                        norm_h["timing"] = {"use": use, "duration": time_val}
                     else:
-                        norm_h["timing"] = {"use": f"add_to_{use}", "time": {"value": float(time_val), "unit": "min"}}
+                        norm_h["timing"] = {"use": use, "duration": {"value": float(time_val), "unit": "min"}}
 
             normalized_hops.append(norm_h)
         normalized_ingredients["hop_additions"] = normalized_hops

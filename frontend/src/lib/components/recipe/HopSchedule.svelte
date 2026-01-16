@@ -9,7 +9,16 @@
 		amount_grams?: number;
 		timing?: {
 			use?: string;
+			// BeerJSON uses 'duration', but some sources use 'time'
 			duration?: {
+				value?: number;
+				unit?: string;
+			};
+			time?: {
+				value?: number;
+				unit?: string;
+			};
+			temperature?: {
 				value?: number;
 				unit?: string;
 			};
@@ -17,6 +26,15 @@
 	}
 
 	let { hops }: { hops: Hop[] } = $props();
+
+	// Helper to get timing value (handles both 'duration' and 'time' keys)
+	function getTimingValue(timing?: Hop['timing']): number | undefined {
+		return timing?.duration?.value ?? timing?.time?.value;
+	}
+
+	function getTimingUnit(timing?: Hop['timing']): string | undefined {
+		return timing?.duration?.unit ?? timing?.time?.unit;
+	}
 
 	// Group hops by use (Boil, Dry Hop, etc.)
 	let groupedHops = $derived.by(() => {
@@ -28,8 +46,8 @@
 		}
 		// Sort boil hops by time (longest first)
 		for (const [use, hopList] of Object.entries(groups)) {
-			if (use === 'add_to_boil' || use === 'Boil') {
-				hopList.sort((a, b) => (b.timing?.duration?.value || 0) - (a.timing?.duration?.value || 0));
+			if (use === 'add_to_boil' || use === 'Boil' || use === 'boil') {
+				hopList.sort((a, b) => (getTimingValue(b.timing) || 0) - (getTimingValue(a.timing) || 0));
 			}
 		}
 		return groups;
@@ -45,24 +63,31 @@
 		return percent.toFixed(1) + '%';
 	}
 
-	function formatTime(timing?: { use?: string; duration?: { value?: number; unit?: string } }): string {
-		if (!timing?.duration?.value) return '--';
-		const value = timing.duration.value;
-		const use = timing.use;
+	function formatTime(timing?: Hop['timing']): string {
+		const value = getTimingValue(timing);
+		if (value === undefined) return '--';
+		const unit = getTimingUnit(timing) || 'min';
+		const use = timing?.use;
 
-		// Both dry_hop and add_to_fermentation use day-based timing
-		if (use === 'dry_hop' || use === 'add_to_fermentation') {
-			return value === 0 ? 'At packaging' : `Day ${value}`;
+		// Dry hop and fermentation additions use day-based timing
+		if (use === 'dry_hop' || use === 'dry hop' || use === 'add_to_fermentation') {
+			return value === 0 ? 'At packaging' : `${value} ${unit}`;
 		}
-		return `${value} ${timing.duration.unit || 'min'}`;
+		// Whirlpool - show time and temperature if available
+		if ((use === 'whirlpool' || use === 'Whirlpool') && timing?.temperature?.value) {
+			return `${value} ${unit} @ ${timing.temperature.value}°${timing.temperature.unit || 'C'}`;
+		}
+		return `${value} ${unit}`;
 	}
 
 	function formatUse(use?: string): string {
 		if (!use) return 'Other';
+		// Normalize to lowercase for consistent lookup
+		const normalized = use.toLowerCase().replace(/\s+/g, '_');
 		// Convert BeerJSON format to readable names
-		// Note: add_to_fermentation typically means dry hopping, but could include other fermentation additions
 		const useMap: Record<string, string> = {
 			'add_to_boil': 'Boil',
+			'boil': 'Boil',
 			'dry_hop': 'Dry Hop',
 			'add_to_fermentation': 'Fermentation',
 			'whirlpool': 'Whirlpool',
@@ -71,7 +96,7 @@
 			'aroma': 'Aroma'
 		};
 		// Gracefully handle unknown timing keys by converting snake_case to Title Case
-		return useMap[use] || use.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+		return useMap[normalized] || use.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 	}
 </script>
 

@@ -14,15 +14,17 @@ Storage behavior matches Tilt BLE scanner in main.py:
 - Fermenting/Conditioning: Readings stored AND linked to batch
 """
 
+import json
 import logging
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..ingest import AdapterRouter, HydrometerReading, ReadingStatus
-from ..models import Device, Reading, serialize_datetime_to_utc
+from ..models import Batch, Device, Reading, serialize_datetime_to_utc
 from ..state import update_reading
 from ..websocket import manager as ws_manager
 from .calibration import calibration_service
@@ -47,6 +49,47 @@ class IngestManager:
         # Cache for config values to avoid DB query on every reading
         self._min_rssi_cache: Optional[int] = None
         self._min_rssi_cache_time: float = 0
+        # Cache for batch start times (batch_id -> datetime)
+        self._batch_start_cache: dict[int, datetime] = {}
+
+    def _get_ml_manager(self):
+        """Get the ML pipeline manager from main module."""
+        from ..main import get_ml_manager
+        return get_ml_manager()
+
+    async def _get_batch_start_time(self, db: AsyncSession, batch_id: int) -> Optional[datetime]:
+        """Get the start time for a batch (cached for performance)."""
+        if batch_id in self._batch_start_cache:
+            return self._batch_start_cache[batch_id]
+
+        query = select(Batch.start_date).where(Batch.id == batch_id)
+        result = await db.execute(query)
+        start_date = result.scalar_one_or_none()
+
+        if start_date:
+            self._batch_start_cache[batch_id] = start_date
+        return start_date
+
+    def _calculate_time_hours(
+        self,
+        reading_time: datetime,
+        batch_start: Optional[datetime],
+    ) -> float:
+        """Calculate hours since batch start for ML pipeline.
+
+        Falls back to 0.0 if batch start time is not available.
+        """
+        if not batch_start:
+            return 0.0
+
+        # Ensure both times are timezone-aware
+        if batch_start.tzinfo is None:
+            batch_start = batch_start.replace(tzinfo=timezone.utc)
+        if reading_time.tzinfo is None:
+            reading_time = reading_time.replace(tzinfo=timezone.utc)
+
+        delta = reading_time - batch_start
+        return max(0.0, delta.total_seconds() / 3600)
 
     async def _get_min_rssi(self, db: AsyncSession) -> Optional[int]:
         """Get min_rssi config with caching to reduce DB queries."""
@@ -112,25 +155,53 @@ class IngestManager:
         # Returns batch_id only if batch is fermenting or conditioning
         batch_id = await link_reading_to_batch(db, device.id)
 
-        # Step 8: Update device last_seen (always, regardless of storage)
+        # Step 8: Process through ML pipeline if available
+        ml_outputs = {}
+        if device.paired and batch_id is not None:
+            ml_manager = self._get_ml_manager()
+            if ml_manager:
+                try:
+                    # Get batch start time for time_hours calculation
+                    batch_start = await self._get_batch_start_time(db, batch_id)
+                    reading_time = reading.timestamp or datetime.now(timezone.utc)
+                    time_hours = self._calculate_time_hours(reading_time, batch_start)
+
+                    # Process through ML pipeline (synchronous call)
+                    ml_outputs = ml_manager.process_reading(
+                        device_id=device.id,
+                        sg=reading.gravity,
+                        temp=reading.temperature,
+                        rssi=reading.rssi or -70,  # Default RSSI for HTTP devices
+                        time_hours=time_hours,
+                    )
+                    logger.debug(
+                        "ML pipeline processed reading for %s: filtered_sg=%.4f",
+                        device.id,
+                        ml_outputs.get("sg_filtered", 0),
+                    )
+                except Exception as e:
+                    logger.error("ML pipeline failed for %s: %s", device.id, e)
+                    # ML failure is non-fatal - continue with empty outputs
+
+        # Step 9: Update device last_seen (always, regardless of storage)
         device.last_seen = reading.timestamp
         if reading.battery_voltage is not None:
             device.battery_voltage = reading.battery_voltage
 
-        # Step 9: Store reading in database ONLY if:
+        # Step 10: Store reading in database ONLY if:
         # - Device is paired (prevents pollution from unknown devices)
         # - Batch is active (fermenting or conditioning)
         # This matches the Tilt BLE behavior in main.py
         db_reading = None
         if device.paired and batch_id is not None:
-            db_reading = await self._store_reading(db, device, reading, batch_id)
+            db_reading = await self._store_reading(db, device, reading, batch_id, ml_outputs)
 
         await db.commit()
 
-        # Step 10: Broadcast via WebSocket for paired devices
+        # Step 11: Broadcast via WebSocket for paired devices
         # (live readings visible regardless of batch status)
         if device.paired:
-            await self._broadcast_reading(device, reading)
+            await self._broadcast_reading(device, reading, ml_outputs)
 
         logger.info(
             "Ingested %s reading: device=%s, sg=%.4f, temp=%.1f, stored=%s",
@@ -222,10 +293,18 @@ class IngestManager:
         device: Device,
         reading: HydrometerReading,
         batch_id: Optional[int] = None,
+        ml_outputs: Optional[dict] = None,
     ) -> Reading:
-        """Store reading in database with optional batch linkage."""
+        """Store reading in database with optional batch linkage and ML outputs."""
         # Validate reading and get status (may be 'invalid' for outliers)
         status = self._validate_reading(reading)
+        ml_outputs = ml_outputs or {}
+
+        # Serialize anomaly_reasons if present
+        anomaly_reasons = ml_outputs.get("anomaly_reasons")
+        anomaly_reasons_json = None
+        if anomaly_reasons:
+            anomaly_reasons_json = json.dumps(anomaly_reasons)
 
         db_reading = Reading(
             device_id=device.id,
@@ -243,6 +322,15 @@ class IngestManager:
             source_protocol=reading.source_protocol,
             status=status,
             is_pre_filtered=reading.is_pre_filtered,
+            # ML outputs
+            sg_filtered=ml_outputs.get("sg_filtered"),
+            temp_filtered=ml_outputs.get("temp_filtered"),
+            confidence=ml_outputs.get("confidence"),
+            sg_rate=ml_outputs.get("sg_rate"),
+            temp_rate=ml_outputs.get("temp_rate"),
+            is_anomaly=ml_outputs.get("is_anomaly", False),
+            anomaly_score=ml_outputs.get("anomaly_score"),
+            anomaly_reasons=anomaly_reasons_json,
         )
 
         db.add(db_reading)
@@ -254,6 +342,7 @@ class IngestManager:
         self,
         device: Device,
         reading: HydrometerReading,
+        ml_outputs: Optional[dict] = None,
     ) -> dict:
         """Build WebSocket payload in legacy-compatible format.
 
@@ -271,8 +360,15 @@ class IngestManager:
         - device_type: type of device
         - angle: tilt angle (iSpindel)
         - battery_voltage/battery_percent: battery status
+
+        ML pipeline outputs (when available):
+        - sg_filtered, temp_filtered: Kalman filtered values
+        - confidence: Reading quality (0.0-1.0)
+        - sg_rate, temp_rate: Derivatives
+        - is_anomaly, anomaly_score, anomaly_reasons: Anomaly detection
         """
         timestamp = reading.timestamp or datetime.now(timezone.utc)
+        ml_outputs = ml_outputs or {}
 
         payload = {
             # Core fields (legacy format)
@@ -291,6 +387,15 @@ class IngestManager:
             "angle": reading.angle,
             "battery_voltage": reading.battery_voltage,
             "battery_percent": reading.battery_percent,
+            # ML outputs
+            "sg_filtered": ml_outputs.get("sg_filtered"),
+            "temp_filtered": ml_outputs.get("temp_filtered"),
+            "confidence": ml_outputs.get("confidence"),
+            "sg_rate": ml_outputs.get("sg_rate"),
+            "temp_rate": ml_outputs.get("temp_rate"),
+            "is_anomaly": ml_outputs.get("is_anomaly", False),
+            "anomaly_score": ml_outputs.get("anomaly_score"),
+            "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
         }
 
         return payload
@@ -299,10 +404,11 @@ class IngestManager:
         self,
         device: Device,
         reading: HydrometerReading,
+        ml_outputs: Optional[dict] = None,
     ) -> None:
         """Broadcast reading update via WebSocket and update latest_readings cache."""
         try:
-            payload = self._build_reading_payload(device, reading)
+            payload = self._build_reading_payload(device, reading, ml_outputs)
 
             # Update the latest_readings cache (persists to disk)
             # This ensures readings survive service restarts

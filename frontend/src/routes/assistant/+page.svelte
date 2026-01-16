@@ -511,9 +511,26 @@
 	.assistant-page {
 		display: flex;
 		flex-direction: row;
-		height: 100vh;
-		max-height: 100vh;
+		/* Account for nav (56px) + layout padding (24px top + 24px bottom) */
+		height: calc(100vh - 56px - 48px);
+		max-height: calc(100vh - 56px - 48px);
 		background: var(--bg-base);
+		margin: -24px -16px; /* Offset the layout padding */
+		width: calc(100% + 32px);
+	}
+
+	@media (min-width: 640px) {
+		.assistant-page {
+			margin: -24px -24px;
+			width: calc(100% + 48px);
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.assistant-page {
+			margin: -24px -32px;
+			width: calc(100% + 64px);
+		}
 	}
 
 	/* Sidebar */

@@ -64,9 +64,6 @@
 		{ href: '/inventory', label: 'Inventory' },
 		{ href: '/yeast', label: 'Yeast' },
 		{ href: '/assistant', label: 'Assistant' },
-		{ href: '/devices', label: 'Devices' },
-		{ href: '/logging', label: 'Logging' },
-		{ href: '/calibration', label: 'Calibration' },
 		{ href: '/system', label: 'System' }
 	];
 

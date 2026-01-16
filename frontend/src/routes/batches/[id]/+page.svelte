@@ -7,7 +7,6 @@
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import BatchForm from '$lib/components/BatchForm.svelte';
-	import BatchLiveReadingsCard from '$lib/components/batch/BatchLiveReadingsCard.svelte';
 	import BatchFermentationCard from '$lib/components/batch/BatchFermentationCard.svelte';
 	import BatchTimelineCard from '$lib/components/batch/BatchTimelineCard.svelte';
 	import BatchDeviceCard from '$lib/components/batch/BatchDeviceCard.svelte';
@@ -455,20 +454,12 @@
 		<div class="content-grid">
 			<!-- Left column -->
 			<div class="stats-section">
-				<!-- Live Readings Card (only if device is linked and has live data) -->
-				{#if liveReading || progress?.measured?.current_sg != null}
-					<BatchLiveReadingsCard
-						{liveReading}
-						currentSg={progress?.measured?.current_sg}
-						currentTemp={progress?.temperature?.current}
-					/>
-				{/if}
-
-				<!-- Fermentation Card -->
+				<!-- Fermentation Card (includes live readings) -->
 				<BatchFermentationCard
 					{batch}
 					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
 					{progress}
+					{liveReading}
 				/>
 
 				<!-- Recipe Targets Card (only if recipe exists) -->

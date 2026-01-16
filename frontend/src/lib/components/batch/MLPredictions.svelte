@@ -169,16 +169,11 @@
 		{/if}
 
 		<div class="metrics">
-			<!-- Predicted FG with current comparison -->
+			<!-- Predicted FG -->
 			{#if predictions.predicted_fg}
 				<div class="metric">
 					<span class="label">Predicted FG:</span>
-					<span class="value">
-						{formatGravity(predictions.predicted_fg)}
-						{#if currentSg || liveReading?.sg}
-							<span class="current-hint">(now: {formatGravity(currentSg ?? liveReading?.sg ?? 0)})</span>
-						{/if}
-					</span>
+					<span class="value">{formatGravity(predictions.predicted_fg)}</span>
 				</div>
 			{/if}
 
@@ -412,12 +407,6 @@
 		color: var(--text-primary);
 		font-family: var(--font-mono);
 		font-weight: 500;
-	}
-
-	.current-hint {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		margin-left: 0.25rem;
 	}
 
 	.attenuation {

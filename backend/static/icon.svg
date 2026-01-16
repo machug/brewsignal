@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <!-- Hop gradient from dark green (top) to light green (bottom) -->
+    <linearGradient id="hopGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a5a2e"/>
+      <stop offset="50%" style="stop-color:#2d8a47"/>
+      <stop offset="100%" style="stop-color:#4abe5e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Hop cone shape -->
+  <g transform="translate(60, 60)">
+    <!-- Stem at top -->
+    <path d="M0,-45 L0,-52" stroke="#2d8a47" stroke-width="3" fill="none"/>
+
+    <!-- Top leaf pair -->
+    <ellipse cx="-12" cy="-32" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(-20)"/>
+    <ellipse cx="12" cy="-32" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(20)"/>
+
+    <!-- Second row -->
+    <ellipse cx="-18" cy="-18" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(-15)"/>
+    <ellipse cx="0" cy="-22" rx="14" ry="10" fill="url(#hopGradient)"/>
+    <ellipse cx="18" cy="-18" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(15)"/>
+
+    <!-- Third row (widest) -->
+    <ellipse cx="-22" cy="-2" rx="18" ry="12" fill="url(#hopGradient)" transform="rotate(-10)"/>
+    <ellipse cx="0" cy="-6" rx="16" ry="11" fill="url(#hopGradient)"/>
+    <ellipse cx="22" cy="-2" rx="18" ry="12" fill="url(#hopGradient)" transform="rotate(10)"/>
+
+    <!-- Fourth row -->
+    <ellipse cx="-16" cy="14" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(-8)"/>
+    <ellipse cx="0" cy="10" rx="14" ry="10" fill="url(#hopGradient)"/>
+    <ellipse cx="16" cy="14" rx="16" ry="11" fill="url(#hopGradient)" transform="rotate(8)"/>
+
+    <!-- Bottom leaves -->
+    <ellipse cx="-10" cy="28" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(-5)"/>
+    <ellipse cx="10" cy="28" rx="14" ry="10" fill="url(#hopGradient)" transform="rotate(5)"/>
+
+    <!-- Bottom tip -->
+    <ellipse cx="0" cy="40" rx="10" ry="8" fill="url(#hopGradient)"/>
+
+    <!-- Signal/heartbeat line -->
+    <path d="M-50,0 L-15,0 L-8,-18 L0,18 L8,-8 L15,0 L50,0"
+          stroke="#f0dc28"
+          stroke-width="3.5"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

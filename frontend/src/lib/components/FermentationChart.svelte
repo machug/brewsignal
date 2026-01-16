@@ -79,18 +79,24 @@
 	const PURPLE = '#a78bfa'; // Chamber temp color
 	const TREND_COLOR = 'rgba(250, 204, 21, 0.5)'; // Semi-transparent yellow for trend line
 	const ANOMALY_COLOR = '#ef4444'; // Red for anomaly markers
+	const BATTERY_COLOR = '#22c55e'; // Green for battery level
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
 	let showTrendLine = $state(true);
 
-	// Ambient and Chamber visibility toggles
+	// Ambient, Chamber, Battery visibility toggles
 	const AMBIENT_STORAGE_KEY = 'brewsignal_chart_ambient_enabled';
 	const CHAMBER_STORAGE_KEY = 'brewsignal_chart_chamber_enabled';
 	const ANOMALY_STORAGE_KEY = 'brewsignal_chart_anomaly_enabled';
+	const BATTERY_STORAGE_KEY = 'brewsignal_chart_battery_enabled';
 	let showAmbient = $state(true);
 	let showChamber = $state(true);
 	let showAnomalies = $state(true);
+	let showBattery = $state(true);
+
+	// Track if battery data is available
+	let hasBatteryData = $state(false);
 
 	// Anomaly data for tooltip
 	interface AnomalyInfo {
@@ -349,6 +355,10 @@
 						const padding = dataRange * 0.1;
 						return [min - padding, max + padding];
 					}
+				},
+				battery: {
+					auto: false,
+					range: [0, 105] // Fixed 0-100% range with padding
 				}
 			},
 			axes: [
@@ -468,6 +478,18 @@
 						width: 2
 					},
 					show: showAnomalies
+				},
+				{
+					// Battery level series
+					label: 'Battery',
+					scale: 'battery',
+					stroke: BATTERY_COLOR,
+					width: 1.5,
+					dash: [2, 2],
+					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(0) + '%' : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
+					show: showBattery
 				}
 			]
 		};
@@ -504,10 +526,11 @@
 		tempValues: (number | null)[],
 		ambientValues: (number | null)[],
 		chamberValues: (number | null)[],
+		batteryValues: (number | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -516,6 +539,7 @@
 		const newTemp: (number | null)[] = [];
 		const newAmbient: (number | null)[] = [];
 		const newChamber: (number | null)[] = [];
+		const newBattery: (number | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -524,12 +548,14 @@
 			let tempSum = 0, tempCount = 0;
 			let ambientSum = 0, ambientCount = 0;
 			let chamberSum = 0, chamberCount = 0;
+			let batterySum = 0, batteryCount = 0;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
 				if (tempValues[j] !== null) { tempSum += tempValues[j]!; tempCount++; }
 				if (ambientValues[j] !== null) { ambientSum += ambientValues[j]!; ambientCount++; }
 				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
+				if (batteryValues[j] !== null) { batterySum += batteryValues[j]!; batteryCount++; }
 			}
 
 			// Use middle timestamp of bucket
@@ -538,9 +564,10 @@
 			newTemp.push(tempCount > 0 ? tempSum / tempCount : null);
 			newAmbient.push(ambientCount > 0 ? ambientSum / ambientCount : null);
 			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
+			newBattery.push(batteryCount > 0 ? batterySum / batteryCount : null);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newBattery];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -618,8 +645,10 @@
 		let timestamps: number[] = [];
 		let sgValues: (number | null)[] = [];
 		let tempValues: (number | null)[] = [];
+		let batteryValues: (number | null)[] = [];
 		let anomalyValues: (number | null)[] = [];
 		const anomalyInfoList: AnomalyInfo[] = [];
+		let foundBatteryData = false;
 
 		for (const r of sorted) {
 			const ts = parseUtcTimestamp(r.timestamp);
@@ -652,7 +681,18 @@
 			} else {
 				tempValues.push(null);
 			}
+
+			// Battery level (GravityMon/iSpindel only)
+			if (r.battery_percent !== null && r.battery_percent !== undefined) {
+				batteryValues.push(r.battery_percent);
+				foundBatteryData = true;
+			} else {
+				batteryValues.push(null);
+			}
 		}
+
+		// Update whether we have battery data
+		hasBatteryData = foundBatteryData;
 
 		// Store anomaly info for tooltips
 		anomalyData = anomalyInfoList;
@@ -661,12 +701,13 @@
 		let ambientValues = interpolateAmbientToTimestamps(ambient, timestamps, celsius);
 		let chamberValues = interpolateAmbientToTimestamps(chamber, timestamps, celsius);
 
-		// Apply smoothing if enabled in config (don't smooth anomaly markers)
+		// Apply smoothing if enabled in config (don't smooth anomaly markers or battery)
 		if (smoothingEnabled && smoothingSamples > 1) {
 			sgValues = smoothData(sgValues, smoothingSamples);
 			tempValues = smoothData(tempValues, smoothingSamples);
 			ambientValues = smoothData(ambientValues, smoothingSamples);
 			chamberValues = smoothData(chamberValues, smoothingSamples);
+			// Note: Don't smooth battery values - they should show actual readings
 		}
 
 		// Downsample for performance (max 500 points)
@@ -674,7 +715,7 @@
 		const maxPoints = 500;
 		const originalTimestamps = [...timestamps];
 		const originalAnomalyValues = [...anomalyValues];
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, maxPoints);
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, maxPoints);
 
 		// Map anomaly values to downsampled timestamps
 		// For each downsampled timestamp, check if any original anomaly was near it
@@ -702,7 +743,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues, batteryValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -821,6 +862,10 @@ onMount(async () => {
 	if (storedAnomaly !== null) {
 		showAnomalies = storedAnomaly === 'true';
 	}
+	const storedBattery = localStorage.getItem(BATTERY_STORAGE_KEY);
+	if (storedBattery !== null) {
+		showBattery = storedBattery === 'true';
+	}
 
 	// Fetch system timezone for chart display
 	try {
@@ -916,6 +961,15 @@ onMount(async () => {
 			chart.setSeries(6, { show: showAnomalies });
 		}
 	}
+
+	function toggleBattery() {
+		showBattery = !showBattery;
+		localStorage.setItem(BATTERY_STORAGE_KEY, String(showBattery));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(7, { show: showBattery });
+		}
+	}
 </script>
 
 <div class="chart-wrapper">
@@ -999,6 +1053,18 @@ onMount(async () => {
 					>
 						<span class="legend-dot anomaly-dot" style="background: {ANOMALY_COLOR};"></span>
 						<span>Anomalies ({anomalyData.length})</span>
+					</button>
+				{/if}
+				{#if hasBatteryData}
+					<button
+						type="button"
+						class="legend-item legend-toggle"
+						class:legend-disabled={!showBattery}
+						onclick={toggleBattery}
+						title={showBattery ? 'Hide battery level' : 'Show battery level'}
+					>
+						<span class="legend-line legend-line-dotted" style="background: {BATTERY_COLOR};"></span>
+						<span>Battery</span>
 					</button>
 				{/if}
 			</div>

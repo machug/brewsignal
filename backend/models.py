@@ -869,6 +869,9 @@ class ReadingResponse(BaseModel):
     rssi: Optional[int]
     status: Optional[str] = None  # 'valid', 'invalid', 'uncalibrated', 'incomplete'
 
+    # Battery (GravityMon/iSpindel)
+    battery_percent: Optional[int] = None
+
     # ML outputs
     sg_filtered: Optional[float] = None
     temp_filtered: Optional[float] = None

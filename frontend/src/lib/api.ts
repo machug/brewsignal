@@ -11,6 +11,8 @@ export interface HistoricalReading {
 	temp_calibrated: number | null;
 	rssi: number | null;
 	status?: string; // 'valid', 'invalid', 'uncalibrated', 'incomplete'
+	// Battery (GravityMon/iSpindel)
+	battery_percent?: number | null;
 	// ML fields
 	sg_filtered?: number | null;
 	temp_filtered?: number | null;

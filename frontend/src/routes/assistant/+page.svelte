@@ -450,16 +450,17 @@
 	.page-title {
 		font-size: 1.75rem;
 		font-weight: 700;
-		color: var(--text-primary, #1f2937);
+		color: var(--text-primary);
 		margin: 0;
 	}
 
 	.model-badge {
 		font-size: 0.75rem;
 		padding: 0.25rem 0.5rem;
-		background: var(--surface-secondary, #f3f4f6);
-		color: var(--text-secondary, #6b7280);
+		background: var(--bg-elevated);
+		color: var(--text-secondary);
 		border-radius: 0.375rem;
+		border: 1px solid var(--border-subtle);
 	}
 
 	.header-actions {
@@ -472,7 +473,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.5rem 1rem;
-		background: var(--primary, #3b82f6);
+		background: var(--accent);
 		color: white;
 		border: none;
 		border-radius: 0.5rem;
@@ -482,7 +483,7 @@
 	}
 
 	.new-btn:hover {
-		background: var(--primary-hover, #2563eb);
+		background: var(--accent-hover);
 	}
 
 	.icon {
@@ -504,8 +505,8 @@
 	.spinner {
 		width: 2rem;
 		height: 2rem;
-		border: 3px solid var(--surface-secondary, #e5e7eb);
-		border-top-color: var(--primary, #3b82f6);
+		border: 3px solid var(--bg-elevated);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -534,17 +535,21 @@
 	}
 
 	.empty-description {
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 		margin-bottom: 1.5rem;
 	}
 
 	.empty-cta {
 		padding: 0.75rem 1.5rem;
-		background: var(--primary, #3b82f6);
+		background: var(--accent);
 		color: white;
 		border-radius: 0.5rem;
 		text-decoration: none;
 		font-weight: 500;
+	}
+
+	.empty-cta:hover {
+		background: var(--accent-hover);
 	}
 
 	/* Chat Layout */
@@ -566,9 +571,9 @@
 	.chat-panel {
 		display: flex;
 		flex-direction: column;
-		background: var(--surface, white);
+		background: var(--bg-surface);
 		border-radius: 0.75rem;
-		border: 1px solid var(--border, #e5e7eb);
+		border: 1px solid var(--border-subtle);
 		overflow: hidden;
 	}
 
@@ -576,8 +581,8 @@
 		display: flex;
 		gap: 1.5rem;
 		padding: 0.75rem 1rem;
-		background: var(--surface-secondary, #f9fafb);
-		border-bottom: 1px solid var(--border, #e5e7eb);
+		background: var(--bg-elevated);
+		border-bottom: 1px solid var(--border-subtle);
 	}
 
 	.setting {
@@ -588,20 +593,22 @@
 
 	.setting label {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 	}
 
 	.setting input {
 		width: 60px;
 		padding: 0.25rem 0.5rem;
-		border: 1px solid var(--border, #e5e7eb);
+		border: 1px solid var(--border-subtle);
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
+		background: var(--bg-primary);
+		color: var(--text-primary);
 	}
 
 	.setting .unit {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 	}
 
 	/* Messages */
@@ -622,10 +629,11 @@
 	.welcome-message h2 {
 		font-size: 1.5rem;
 		margin-bottom: 0.5rem;
+		color: var(--text-primary);
 	}
 
 	.welcome-message p {
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 		margin-bottom: 1.5rem;
 	}
 
@@ -638,18 +646,19 @@
 
 	.suggestions button {
 		padding: 0.5rem 1rem;
-		background: var(--surface-secondary, #f3f4f6);
-		border: 1px solid var(--border, #e5e7eb);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
 		border-radius: 2rem;
 		font-size: 0.875rem;
 		cursor: pointer;
 		transition: all 0.2s;
+		color: var(--text-primary);
 	}
 
 	.suggestions button:hover {
-		background: var(--primary, #3b82f6);
+		background: var(--accent);
 		color: white;
-		border-color: var(--primary, #3b82f6);
+		border-color: var(--accent);
 	}
 
 	.message {
@@ -671,13 +680,14 @@
 	}
 
 	.message.user .message-content {
-		background: var(--primary, #3b82f6);
+		background: var(--accent);
 		color: white;
 		border-bottom-right-radius: 0.25rem;
 	}
 
 	.message.assistant .message-content {
-		background: var(--surface-secondary, #f3f4f6);
+		background: var(--bg-elevated);
+		color: var(--text-primary);
 		border-bottom-left-radius: 0.25rem;
 	}
 
@@ -690,7 +700,7 @@
 	.typing span {
 		width: 0.5rem;
 		height: 0.5rem;
-		background: var(--text-secondary, #9ca3af);
+		background: var(--text-muted);
 		border-radius: 50%;
 		animation: typing 1.4s infinite ease-in-out;
 	}
@@ -719,8 +729,8 @@
 	.recipe-preview {
 		margin-top: 0.5rem;
 		padding: 0.75rem;
-		background: white;
-		border: 1px solid var(--border, #e5e7eb);
+		background: var(--bg-primary);
+		border: 1px solid var(--border-subtle);
 		border-radius: 0.5rem;
 	}
 
@@ -730,11 +740,12 @@
 		gap: 0.5rem;
 		font-weight: 600;
 		margin-bottom: 0.5rem;
+		color: var(--text-primary);
 	}
 
 	.recipe-preview-content {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 	}
 
 	/* Input Area */
@@ -742,22 +753,29 @@
 		display: flex;
 		gap: 0.5rem;
 		padding: 1rem;
-		border-top: 1px solid var(--border, #e5e7eb);
+		border-top: 1px solid var(--border-subtle);
+		background: var(--bg-elevated);
 	}
 
 	.input-area textarea {
 		flex: 1;
 		padding: 0.75rem 1rem;
-		border: 1px solid var(--border, #e5e7eb);
+		border: 1px solid var(--border-subtle);
 		border-radius: 0.5rem;
 		resize: none;
 		font-family: inherit;
 		font-size: 1rem;
+		background: var(--bg-primary);
+		color: var(--text-primary);
+	}
+
+	.input-area textarea::placeholder {
+		color: var(--text-muted);
 	}
 
 	.input-area textarea:focus {
 		outline: none;
-		border-color: var(--primary, #3b82f6);
+		border-color: var(--accent);
 	}
 
 	.send-btn {
@@ -766,7 +784,7 @@
 		justify-content: center;
 		width: 3rem;
 		height: 3rem;
-		background: var(--primary, #3b82f6);
+		background: var(--accent);
 		color: white;
 		border: none;
 		border-radius: 0.5rem;
@@ -775,7 +793,7 @@
 	}
 
 	.send-btn:hover:not(:disabled) {
-		background: var(--primary-hover, #2563eb);
+		background: var(--accent-hover);
 	}
 
 	.send-btn:disabled {
@@ -790,9 +808,9 @@
 
 	/* Recipe Panel */
 	.recipe-panel {
-		background: var(--surface, white);
+		background: var(--bg-surface);
 		border-radius: 0.75rem;
-		border: 1px solid var(--border, #e5e7eb);
+		border: 1px solid var(--border-subtle);
 		padding: 1.5rem;
 		overflow-y: auto;
 	}
@@ -805,13 +823,14 @@
 		font-size: 1.25rem;
 		font-weight: 600;
 		margin-bottom: 0.5rem;
+		color: var(--text-primary);
 	}
 
 	.style-badge {
 		display: inline-block;
 		padding: 0.25rem 0.75rem;
-		background: var(--primary-light, #dbeafe);
-		color: var(--primary, #3b82f6);
+		background: var(--accent-muted);
+		color: var(--accent);
 		border-radius: 2rem;
 		font-size: 0.875rem;
 	}
@@ -826,20 +845,21 @@
 	.stat {
 		text-align: center;
 		padding: 0.75rem 0.5rem;
-		background: var(--surface-secondary, #f9fafb);
+		background: var(--bg-elevated);
 		border-radius: 0.5rem;
 	}
 
 	.stat-label {
 		display: block;
 		font-size: 0.75rem;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-muted);
 		margin-bottom: 0.25rem;
 	}
 
 	.stat-value {
 		font-size: 1rem;
 		font-weight: 600;
+		color: var(--text-primary);
 	}
 
 	.recipe-section {
@@ -850,29 +870,31 @@
 		font-size: 0.875rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-muted);
 		margin-bottom: 0.5rem;
 	}
 
 	.recipe-section p {
 		margin: 0;
+		color: var(--text-primary);
 	}
 
 	.recipe-section .small {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #6b7280);
+		color: var(--text-secondary);
 		margin-top: 0.25rem;
 	}
 
 	.notes {
 		font-size: 0.875rem;
 		line-height: 1.6;
+		color: var(--text-secondary);
 	}
 
 	.recipe-actions {
 		margin-top: 1.5rem;
 		padding-top: 1.5rem;
-		border-top: 1px solid var(--border, #e5e7eb);
+		border-top: 1px solid var(--border-subtle);
 	}
 
 	.save-btn {
@@ -882,7 +904,7 @@
 		gap: 0.5rem;
 		width: 100%;
 		padding: 0.75rem 1rem;
-		background: var(--success, #10b981);
+		background: var(--positive);
 		color: white;
 		border: none;
 		border-radius: 0.5rem;
@@ -891,7 +913,7 @@
 	}
 
 	.save-btn:hover:not(:disabled) {
-		background: var(--success-hover, #059669);
+		filter: brightness(1.1);
 	}
 
 	.save-btn:disabled {
@@ -901,8 +923,8 @@
 
 	.success-message {
 		padding: 0.75rem;
-		background: var(--success-light, #d1fae5);
-		color: var(--success, #059669);
+		background: rgba(16, 185, 129, 0.15);
+		color: var(--positive);
 		border-radius: 0.5rem;
 		text-align: center;
 		margin-bottom: 0.75rem;
@@ -910,8 +932,8 @@
 
 	.error-message {
 		padding: 0.75rem;
-		background: var(--error-light, #fee2e2);
-		color: var(--error, #dc2626);
+		background: rgba(239, 68, 68, 0.15);
+		color: var(--negative);
 		border-radius: 0.5rem;
 		text-align: center;
 		margin-bottom: 0.75rem;

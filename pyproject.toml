@@ -34,6 +34,7 @@ dev = [
 ai = [
     "litellm>=1.0",
     "tiktoken>=0.5",
+    "python-dotenv>=1.0",
 ]
 
 [build-system]

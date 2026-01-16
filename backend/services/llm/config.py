@@ -1,9 +1,21 @@
 """Configuration for LLM service."""
 
+import os
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, SecretStr, field_validator
+
+
+# Environment variable names for API keys per provider
+ENV_VAR_NAMES = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "huggingface": "HUGGINGFACE_API_KEY",
+}
 
 
 class LLMProvider(str, Enum):
@@ -84,11 +96,24 @@ class LLMConfig(BaseModel):
         """Check if this provider requires an API key."""
         return self.provider != LLMProvider.LOCAL
 
+    @property
+    def has_env_api_key(self) -> bool:
+        """Check if API key is available from environment variable."""
+        env_var = ENV_VAR_NAMES.get(self.provider.value if isinstance(self.provider, LLMProvider) else self.provider)
+        if env_var:
+            return bool(os.environ.get(env_var))
+        return False
+
+    @property
+    def has_any_api_key(self) -> bool:
+        """Check if API key is available from config or environment."""
+        return bool(self.api_key) or self.has_env_api_key
+
     def is_configured(self) -> bool:
         """Check if the LLM is properly configured."""
         if not self.enabled:
             return False
-        if self.requires_api_key and not self.api_key:
+        if self.requires_api_key and not self.has_any_api_key:
             return False
         return True
 

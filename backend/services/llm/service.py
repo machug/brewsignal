@@ -1,11 +1,32 @@
 """LLM service using LiteLLM for unified API access."""
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from backend.services.llm.config import LLMConfig, LLMProvider
 
 logger = logging.getLogger(__name__)
+
+
+def load_dotenv_if_available():
+    """Load .env file if python-dotenv is available."""
+    try:
+        from dotenv import load_dotenv
+
+        # Look for .env in project root (parent of backend/)
+        env_path = Path(__file__).parent.parent.parent.parent / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            logger.info(f"Loaded environment from {env_path}")
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+# Try to load .env on module import
+load_dotenv_if_available()
 
 # Global service instance
 _llm_service: Optional["LLMService"] = None
@@ -91,7 +112,8 @@ class LLMService:
             "max_tokens": max_tokens or self.config.max_tokens,
         }
 
-        # Add API key if required
+        # Only pass explicit API key if configured in UI (not from env)
+        # LiteLLM automatically reads env vars like ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
         api_key = self._get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
@@ -154,7 +176,8 @@ class LLMService:
             "provider": self.config.provider.value if self.config.provider else None,
             "model": self.config.effective_model if self.config.enabled else None,
             "requires_api_key": self.config.requires_api_key,
-            "has_api_key": bool(self.config.api_key),
+            "has_api_key": self.config.has_any_api_key,
+            "has_env_api_key": self.config.has_env_api_key,
             "litellm_available": litellm_available,
         }
 

@@ -43,6 +43,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Alerts (threshold in Celsius)
     "weather_alerts_enabled": False,
     "alert_temp_threshold": 3.0,
+    # AI Assistant settings
+    "ai_enabled": False,
+    "ai_provider": "local",
+    "ai_model": "",
+    "ai_api_key": "",
+    "ai_base_url": "",
+    "ai_temperature": 0.7,
+    "ai_max_tokens": 2000,
 }
 
 

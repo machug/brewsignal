@@ -48,6 +48,7 @@ class StatusResponse(BaseModel):
     model: Optional[str] = None
     requires_api_key: bool
     has_api_key: bool
+    has_env_api_key: bool = False
     litellm_available: bool
 
 

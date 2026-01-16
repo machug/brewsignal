@@ -503,9 +503,11 @@
 							<h3 class="info-title">Temperature Control</h3>
 							<div class="collapse-indicator">
 								{#if controlStatus?.heater_state === 'on'}
-									<span class="status-badge heater">🔥 ON</span>
+									<span class="status-badge heater">🔥 Heating</span>
 								{:else if controlStatus?.cooler_state === 'on'}
-									<span class="status-badge cooler">❄️ ON</span>
+									<span class="status-badge cooler">❄️ Cooling</span>
+								{:else if tempControlCollapsed && controlStatus}
+									<span class="status-badge idle">🎯 {formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
 								{/if}
 								<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -1104,6 +1106,11 @@
 	.status-badge.cooler {
 		background: rgba(59, 130, 246, 0.15);
 		color: var(--tilt-blue);
+	}
+
+	.status-badge.idle {
+		background: var(--bg-elevated);
+		color: var(--text-secondary);
 	}
 
 	.chevron {

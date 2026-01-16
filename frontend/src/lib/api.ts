@@ -948,3 +948,439 @@ export async function refreshYeastStrains(): Promise<{
 	}
 	return response.json();
 }
+
+// ============================================================================
+// Inventory Types & API
+// ============================================================================
+
+// Equipment Types
+export type EquipmentType =
+	| 'kettle'
+	| 'fermenter'
+	| 'pump'
+	| 'chiller'
+	| 'mill'
+	| 'mash_tun'
+	| 'lauter_tun'
+	| 'hot_liquor_tank'
+	| 'bottling'
+	| 'kegging'
+	| 'other';
+
+export interface EquipmentResponse {
+	id: number;
+	name: string;
+	type: EquipmentType;
+	brand?: string;
+	model?: string;
+	capacity_liters?: number;
+	capacity_kg?: number;
+	is_active: boolean;
+	notes?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface EquipmentCreate {
+	name: string;
+	type: EquipmentType;
+	brand?: string;
+	model?: string;
+	capacity_liters?: number;
+	capacity_kg?: number;
+	is_active?: boolean;
+	notes?: string;
+}
+
+export interface EquipmentUpdate {
+	name?: string;
+	type?: EquipmentType;
+	brand?: string;
+	model?: string;
+	capacity_liters?: number;
+	capacity_kg?: number;
+	is_active?: boolean;
+	notes?: string;
+}
+
+// Hop Inventory Types
+export type HopForm = 'pellet' | 'leaf' | 'plug';
+
+export interface HopInventoryResponse {
+	id: number;
+	variety: string;
+	amount_grams: number;
+	alpha_acid_percent?: number;
+	crop_year?: number;
+	form: HopForm;
+	storage_location?: string;
+	purchase_date?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface HopInventoryCreate {
+	variety: string;
+	amount_grams: number;
+	alpha_acid_percent?: number;
+	crop_year?: number;
+	form?: HopForm;
+	storage_location?: string;
+	purchase_date?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+}
+
+export interface HopInventoryUpdate {
+	variety?: string;
+	amount_grams?: number;
+	alpha_acid_percent?: number;
+	crop_year?: number;
+	form?: HopForm;
+	storage_location?: string;
+	purchase_date?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+}
+
+export interface HopSummary {
+	total_items: number;
+	total_grams: number;
+	unique_varieties: number;
+}
+
+// Yeast Inventory Types
+export type YeastInventoryForm = 'dry' | 'liquid' | 'slant' | 'harvested';
+
+export interface YeastInventoryResponse {
+	id: number;
+	yeast_strain_id?: number;
+	custom_name?: string;
+	quantity: number;
+	form: YeastInventoryForm;
+	manufacture_date?: string;
+	expiry_date?: string;
+	generation?: number;
+	source_batch_id?: number;
+	storage_location?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+	created_at: string;
+	updated_at: string;
+	yeast_strain?: YeastStrainResponse;
+}
+
+export interface YeastInventoryCreate {
+	yeast_strain_id?: number;
+	custom_name?: string;
+	quantity?: number;
+	form: YeastInventoryForm;
+	manufacture_date?: string;
+	expiry_date?: string;
+	generation?: number;
+	source_batch_id?: number;
+	storage_location?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+}
+
+export interface YeastInventoryUpdate {
+	yeast_strain_id?: number;
+	custom_name?: string;
+	quantity?: number;
+	form?: YeastInventoryForm;
+	manufacture_date?: string;
+	expiry_date?: string;
+	generation?: number;
+	source_batch_id?: number;
+	storage_location?: string;
+	supplier?: string;
+	lot_number?: string;
+	notes?: string;
+}
+
+export interface YeastInventorySummary {
+	total_items: number;
+	total_quantity: number;
+	expiring_soon: number;
+	expired: number;
+}
+
+// Equipment API
+export async function fetchEquipment(params?: {
+	type?: EquipmentType;
+	is_active?: boolean;
+	limit?: number;
+	offset?: number;
+}): Promise<EquipmentResponse[]> {
+	const urlParams = new URLSearchParams();
+	if (params?.type) urlParams.append('type', params.type);
+	if (params?.is_active !== undefined) urlParams.append('is_active', String(params.is_active));
+	if (params?.limit) urlParams.append('limit', String(params.limit));
+	if (params?.offset) urlParams.append('offset', String(params.offset));
+
+	const response = await fetch(`${BASE_URL}/inventory/equipment?${urlParams}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch equipment: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchEquipmentTypes(): Promise<string[]> {
+	const response = await fetch(`${BASE_URL}/inventory/equipment/types`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch equipment types: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchEquipmentItem(id: number): Promise<EquipmentResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch equipment: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function createEquipment(equipment: EquipmentCreate): Promise<EquipmentResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/equipment`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(equipment)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to create equipment');
+	}
+	return response.json();
+}
+
+export async function updateEquipment(id: number, equipment: EquipmentUpdate): Promise<EquipmentResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(equipment)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to update equipment');
+	}
+	return response.json();
+}
+
+export async function deleteEquipment(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete equipment: ${response.statusText}`);
+	}
+}
+
+// Hop Inventory API
+export async function fetchHopInventory(params?: {
+	variety?: string;
+	form?: HopForm;
+	min_amount_grams?: number;
+	limit?: number;
+	offset?: number;
+}): Promise<HopInventoryResponse[]> {
+	const urlParams = new URLSearchParams();
+	if (params?.variety) urlParams.append('variety', params.variety);
+	if (params?.form) urlParams.append('form', params.form);
+	if (params?.min_amount_grams !== undefined) urlParams.append('min_amount_grams', String(params.min_amount_grams));
+	if (params?.limit) urlParams.append('limit', String(params.limit));
+	if (params?.offset) urlParams.append('offset', String(params.offset));
+
+	const response = await fetch(`${BASE_URL}/inventory/hops?${urlParams}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop inventory: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchHopVarieties(): Promise<string[]> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/varieties`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop varieties: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchHopSummary(): Promise<HopSummary> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/summary`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop summary: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchHopItem(id: number): Promise<HopInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function createHopInventory(hop: HopInventoryCreate): Promise<HopInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/hops`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(hop)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to create hop inventory');
+	}
+	return response.json();
+}
+
+export async function updateHopInventory(id: number, hop: HopInventoryUpdate): Promise<HopInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(hop)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to update hop inventory');
+	}
+	return response.json();
+}
+
+export async function adjustHopAmount(id: number, delta_grams: number): Promise<HopInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/${id}/adjust`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ delta_grams })
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to adjust hop amount');
+	}
+	return response.json();
+}
+
+export async function deleteHopInventory(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete hop: ${response.statusText}`);
+	}
+}
+
+// Yeast Inventory API
+export async function fetchYeastInventory(params?: {
+	query?: string;
+	form?: YeastInventoryForm;
+	include_expired?: boolean;
+	limit?: number;
+	offset?: number;
+}): Promise<YeastInventoryResponse[]> {
+	const urlParams = new URLSearchParams();
+	if (params?.query) urlParams.append('query', params.query);
+	if (params?.form) urlParams.append('form', params.form);
+	if (params?.include_expired !== undefined) urlParams.append('include_expired', String(params.include_expired));
+	if (params?.limit) urlParams.append('limit', String(params.limit));
+	if (params?.offset) urlParams.append('offset', String(params.offset));
+
+	const response = await fetch(`${BASE_URL}/inventory/yeast?${urlParams}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast inventory: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchExpiringYeast(days: number = 30): Promise<YeastInventoryResponse[]> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/expiring-soon?days=${days}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch expiring yeast: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchYeastInventorySummary(): Promise<YeastInventorySummary> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/summary`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast summary: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function fetchYeastInventoryItem(id: number): Promise<YeastInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+export async function createYeastInventory(yeast: YeastInventoryCreate): Promise<YeastInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(yeast)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to create yeast inventory');
+	}
+	return response.json();
+}
+
+export async function updateYeastInventory(id: number, yeast: YeastInventoryUpdate): Promise<YeastInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(yeast)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to update yeast inventory');
+	}
+	return response.json();
+}
+
+export async function useYeast(id: number, quantity: number = 1): Promise<YeastInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}/use`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ quantity })
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to use yeast');
+	}
+	return response.json();
+}
+
+export async function harvestYeast(source_batch_id: number, quantity: number = 1, notes?: string): Promise<YeastInventoryResponse> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/harvest`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ source_batch_id, quantity, notes })
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to harvest yeast');
+	}
+	return response.json();
+}
+
+export async function deleteYeastInventory(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete yeast: ${response.statusText}`);
+	}
+}

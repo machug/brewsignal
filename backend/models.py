@@ -1628,6 +1628,94 @@ class AgUiMessage(Base):
 
 # AG-UI Pydantic Schemas
 
+# =============================================================================
+# Inventory Models - Equipment, Hops, and Yeast tracking
+# =============================================================================
+
+class Equipment(Base):
+    """Brewing equipment (kettles, fermenters, etc.)."""
+    __tablename__ = "equipment"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # kettle, fermenter, pump, chiller, etc.
+    brand: Mapped[Optional[str]] = mapped_column(String(100))
+    model: Mapped[Optional[str]] = mapped_column(String(100))
+    capacity_liters: Mapped[Optional[float]] = mapped_column()  # Volume capacity
+    capacity_kg: Mapped[Optional[float]] = mapped_column()  # Weight capacity (for grain mills, etc.)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+
+class HopInventory(Base):
+    """Hops in inventory."""
+    __tablename__ = "hop_inventory"
+    __table_args__ = (
+        Index("ix_hop_inventory_variety", "variety"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    variety: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Citra", "Cascade"
+    amount_grams: Mapped[float] = mapped_column(nullable=False)  # Current amount in grams
+    alpha_acid_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
+    crop_year: Mapped[Optional[int]] = mapped_column()  # Year harvested
+    form: Mapped[str] = mapped_column(String(20), default="pellet")  # pellet, leaf, plug
+    storage_location: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "Freezer A"
+    purchase_date: Mapped[Optional[datetime]] = mapped_column()
+    supplier: Mapped[Optional[str]] = mapped_column(String(100))
+    lot_number: Mapped[Optional[str]] = mapped_column(String(50))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+
+class YeastInventory(Base):
+    """Yeast strains in inventory."""
+    __tablename__ = "yeast_inventory"
+    __table_args__ = (
+        Index("ix_yeast_inventory_strain", "yeast_strain_id"),
+        Index("ix_yeast_inventory_expiry", "expiry_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # Link to yeast strain database or custom name
+    yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))
+    custom_name: Mapped[Optional[str]] = mapped_column(String(200))  # For unlisted strains
+
+    quantity: Mapped[int] = mapped_column(nullable=False, default=1)  # Number of packages/vials/jars
+    form: Mapped[str] = mapped_column(String(20), nullable=False)  # dry, liquid, slant, harvested
+    manufacture_date: Mapped[Optional[datetime]] = mapped_column()
+    expiry_date: Mapped[Optional[datetime]] = mapped_column()
+
+    # For harvested yeast
+    generation: Mapped[Optional[int]] = mapped_column()  # Generation number (1 = first harvest)
+    source_batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("batches.id"))
+
+    storage_location: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "Fridge A"
+    supplier: Mapped[Optional[str]] = mapped_column(String(100))
+    lot_number: Mapped[Optional[str]] = mapped_column(String(50))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    yeast_strain: Mapped[Optional["YeastStrain"]] = relationship()
+    source_batch: Mapped[Optional["Batch"]] = relationship()
+
+
+# AG-UI Pydantic Schemas
+
 class AgUiMessageResponse(BaseModel):
     """AG-UI message response."""
     model_config = ConfigDict(from_attributes=True)
@@ -1682,3 +1770,278 @@ class AgUiThreadListItem(BaseModel):
     @field_serializer('created_at', 'updated_at')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt) or ""
+
+
+# =============================================================================
+# Inventory Pydantic Schemas
+# =============================================================================
+
+# Equipment schemas
+class EquipmentCreate(BaseModel):
+    """Schema for creating equipment."""
+    name: str
+    type: str  # kettle, fermenter, pump, chiller, etc.
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    capacity_liters: Optional[float] = None
+    capacity_kg: Optional[float] = None
+    is_active: bool = True
+    notes: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "other")
+        if v not in valid_types:
+            raise ValueError(f"type must be one of: {', '.join(valid_types)}")
+        return v
+
+
+class EquipmentUpdate(BaseModel):
+    """Schema for updating equipment."""
+    name: Optional[str] = None
+    type: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    capacity_liters: Optional[float] = None
+    capacity_kg: Optional[float] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "other")
+        if v not in valid_types:
+            raise ValueError(f"type must be one of: {', '.join(valid_types)}")
+        return v
+
+
+class EquipmentResponse(BaseModel):
+    """Schema for equipment API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    capacity_liters: Optional[float] = None
+    capacity_kg: Optional[float] = None
+    is_active: bool
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt) or ""
+
+
+# Hop Inventory schemas
+class HopInventoryCreate(BaseModel):
+    """Schema for creating hop inventory."""
+    variety: str
+    amount_grams: float
+    alpha_acid_percent: Optional[float] = None
+    crop_year: Optional[int] = None
+    form: str = "pellet"
+    storage_location: Optional[str] = None
+    purchase_date: Optional[datetime] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("form")
+    @classmethod
+    def validate_form(cls, v: str) -> str:
+        valid_forms = ("pellet", "leaf", "plug")
+        if v not in valid_forms:
+            raise ValueError(f"form must be one of: {', '.join(valid_forms)}")
+        return v
+
+    @field_validator("amount_grams")
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("amount_grams must be >= 0")
+        return v
+
+    @field_validator("alpha_acid_percent")
+    @classmethod
+    def validate_alpha(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("alpha_acid_percent must be between 0 and 100")
+        return v
+
+
+class HopInventoryUpdate(BaseModel):
+    """Schema for updating hop inventory."""
+    variety: Optional[str] = None
+    amount_grams: Optional[float] = None
+    alpha_acid_percent: Optional[float] = None
+    crop_year: Optional[int] = None
+    form: Optional[str] = None
+    storage_location: Optional[str] = None
+    purchase_date: Optional[datetime] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("form")
+    @classmethod
+    def validate_form(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid_forms = ("pellet", "leaf", "plug")
+        if v not in valid_forms:
+            raise ValueError(f"form must be one of: {', '.join(valid_forms)}")
+        return v
+
+    @field_validator("amount_grams")
+    @classmethod
+    def validate_amount(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0:
+            raise ValueError("amount_grams must be >= 0")
+        return v
+
+
+class HopInventoryAdjust(BaseModel):
+    """Schema for adjusting hop amount."""
+    delta_grams: float  # Positive to add, negative to subtract
+
+    @field_validator("delta_grams")
+    @classmethod
+    def validate_delta(cls, v: float) -> float:
+        if v == 0:
+            raise ValueError("delta_grams must not be 0")
+        return v
+
+
+class HopInventoryResponse(BaseModel):
+    """Schema for hop inventory API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variety: str
+    amount_grams: float
+    alpha_acid_percent: Optional[float] = None
+    crop_year: Optional[int] = None
+    form: str
+    storage_location: Optional[str] = None
+    purchase_date: Optional[datetime] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at', 'purchase_date')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        return serialize_datetime_to_utc(dt)
+
+
+# Yeast Inventory schemas
+class YeastInventoryCreate(BaseModel):
+    """Schema for creating yeast inventory."""
+    yeast_strain_id: Optional[int] = None  # Either this or custom_name required
+    custom_name: Optional[str] = None
+    quantity: int = 1
+    form: str  # dry, liquid, slant, harvested
+    manufacture_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    generation: Optional[int] = None  # For harvested yeast
+    source_batch_id: Optional[int] = None  # For harvested yeast
+    storage_location: Optional[str] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("form")
+    @classmethod
+    def validate_form(cls, v: str) -> str:
+        valid_forms = ("dry", "liquid", "slant", "harvested")
+        if v not in valid_forms:
+            raise ValueError(f"form must be one of: {', '.join(valid_forms)}")
+        return v
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("quantity must be >= 0")
+        return v
+
+
+class YeastInventoryUpdate(BaseModel):
+    """Schema for updating yeast inventory."""
+    yeast_strain_id: Optional[int] = None
+    custom_name: Optional[str] = None
+    quantity: Optional[int] = None
+    form: Optional[str] = None
+    manufacture_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    generation: Optional[int] = None
+    source_batch_id: Optional[int] = None
+    storage_location: Optional[str] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("form")
+    @classmethod
+    def validate_form(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid_forms = ("dry", "liquid", "slant", "harvested")
+        if v not in valid_forms:
+            raise ValueError(f"form must be one of: {', '.join(valid_forms)}")
+        return v
+
+
+class YeastInventoryUse(BaseModel):
+    """Schema for using yeast (decrementing quantity)."""
+    quantity: int = 1  # How many to use
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("quantity must be >= 1")
+        return v
+
+
+class YeastInventoryHarvest(BaseModel):
+    """Schema for harvesting yeast from a batch."""
+    source_batch_id: int
+    quantity: int = 1
+    notes: Optional[str] = None
+
+
+class YeastInventoryResponse(BaseModel):
+    """Schema for yeast inventory API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    yeast_strain_id: Optional[int] = None
+    custom_name: Optional[str] = None
+    quantity: int
+    form: str
+    manufacture_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    generation: Optional[int] = None
+    source_batch_id: Optional[int] = None
+    storage_location: Optional[str] = None
+    supplier: Optional[str] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    # Nested relationships
+    yeast_strain: Optional[YeastStrainResponse] = None
+
+    @field_serializer('created_at', 'updated_at', 'manufacture_date', 'expiry_date')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        return serialize_datetime_to_utc(dt)

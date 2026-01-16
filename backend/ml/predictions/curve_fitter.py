@@ -99,14 +99,31 @@ class FermentationCurveFitter:
         fg_guess = sgs_arr[-1]  # Last reading
         k_guess = 0.02  # Typical fermentation rate
 
+        # Check if we have enough SG drop to make a meaningful prediction
+        # Need at least 0.005 SG drop from OG to see fermentation curve shape
+        sg_drop = og_guess - sgs_arr[-1]
+        if sg_drop < 0.005:
+            return {
+                "fitted": False,
+                "model_type": None,
+                "predicted_og": None,
+                "predicted_fg": None,
+                "decay_rate": None,
+                "r_squared": None,
+                "hours_to_completion": None,
+                "reason": "insufficient_fermentation_progress",
+            }
+
         try:
             # Fit the curve
+            # FG lower bound of 1.000 - very few beers finish below 1.000
+            # Even with high attenuation, 1.000 is an extreme floor
             popt, pcov = curve_fit(
                 exp_decay,
                 times_arr,
                 sgs_arr,
                 p0=[og_guess, fg_guess, k_guess],
-                bounds=([1.000, 0.990, 0.001], [1.200, 1.100, 0.5]),  # Reasonable bounds
+                bounds=([1.000, 1.000, 0.001], [1.200, 1.100, 0.5]),
                 maxfev=10000
             )
 
@@ -118,6 +135,10 @@ class FermentationCurveFitter:
             ss_tot = np.sum((sgs_arr - np.mean(sgs_arr)) ** 2)
             r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
 
+            # Check if FG hit the lower bound (1.000) - prediction may be unreliable
+            # This happens early in fermentation when curve shape isn't fully developed
+            fg_hit_bound = fg_fit <= 1.001
+
             # Store fitted parameters
             self.og = float(og_fit)
             self.fg = float(fg_fit)
@@ -126,6 +147,19 @@ class FermentationCurveFitter:
 
             # Calculate hours to completion
             hours_to_completion = self._calculate_completion_time(times_arr[-1], sgs_arr[-1])
+
+            # If FG hit lower bound and R² is not great, mark as unreliable
+            if fg_hit_bound and r_squared < 0.85:
+                return {
+                    "fitted": False,
+                    "model_type": None,
+                    "predicted_og": None,
+                    "predicted_fg": None,
+                    "decay_rate": None,
+                    "r_squared": None,
+                    "hours_to_completion": None,
+                    "reason": "insufficient_curve_data",
+                }
 
             return {
                 "fitted": True,

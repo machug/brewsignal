@@ -1380,6 +1380,14 @@ def _migrate_yeast_strains_alcohol_tolerance(conn):
     # Check the column type - if it's REAL, we need to migrate
     col_type = str(columns["alcohol_tolerance"]["type"]).upper()
     if "REAL" in col_type or "FLOAT" in col_type or "NUMERIC" in col_type:
+        # Clear yeast_strain_id references on batches before dropping
+        # (IDs will change after re-seeding, so old references would be wrong)
+        if "batches" in inspector.get_table_names():
+            batch_cols = [c["name"] for c in inspector.get_columns("batches")]
+            if "yeast_strain_id" in batch_cols:
+                conn.execute(text("UPDATE batches SET yeast_strain_id = NULL"))
+                print("Migration: Cleared yeast_strain_id references on batches")
+
         # Drop the table - it will be recreated by create_all() with correct schema
         # and then re-seeded from the JSON file
         conn.execute(text("DROP TABLE yeast_strains"))

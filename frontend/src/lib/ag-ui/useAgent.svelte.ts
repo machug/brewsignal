@@ -1,0 +1,152 @@
+/**
+ * AG-UI useAgent Hook for Svelte 5
+ * High-level hook for interacting with AG-UI agents
+ */
+
+import { createAgentState, createAgentClient, type AgentState, type AgentClient } from './client.svelte';
+import type { Message, ToolDefinition, RunConfig } from './types';
+
+export interface UseAgentConfig {
+	/** AG-UI endpoint URL */
+	url: string;
+	/** Optional HTTP headers */
+	headers?: Record<string, string>;
+	/** Optional thread ID for conversation continuity */
+	threadId?: string;
+	/** Tool definitions available to the agent */
+	tools?: ToolDefinition[];
+	/** Initial shared state */
+	initialState?: Record<string, unknown>;
+	/** Called when agent state changes */
+	onStateChange?: (state: Record<string, unknown>) => void;
+	/** Called when a tool is invoked */
+	onToolCall?: (name: string, args: string) => void;
+	/** Called when run completes */
+	onComplete?: () => void;
+	/** Called on error */
+	onError?: (error: string) => void;
+}
+
+/**
+ * Create an AG-UI agent hook
+ * Returns reactive state and methods for interacting with the agent
+ */
+export function useAgent(config: UseAgentConfig) {
+	const agentState = createAgentState();
+	const client = createAgentClient({
+		url: config.url,
+		headers: config.headers
+	});
+
+	// Track tools and state from config
+	let tools = $state(config.tools || []);
+	let sharedState = $state(config.initialState || {});
+
+	// Watch for state changes from agent
+	$effect(() => {
+		if (Object.keys(agentState.agentState).length > 0) {
+			sharedState = { ...sharedState, ...agentState.agentState };
+			config.onStateChange?.(sharedState);
+		}
+	});
+
+	// Watch for tool calls
+	$effect(() => {
+		for (const [, toolCall] of agentState.toolCalls) {
+			if (toolCall.status === 'running') {
+				config.onToolCall?.(toolCall.name, toolCall.args);
+			}
+		}
+	});
+
+	// Watch for completion
+	$effect(() => {
+		if (agentState.status === 'connected' && !agentState.isStreaming && agentState.runId) {
+			config.onComplete?.();
+		}
+	});
+
+	// Watch for errors
+	$effect(() => {
+		if (agentState.error) {
+			config.onError?.(agentState.error);
+		}
+	});
+
+	/**
+	 * Send a message to the agent
+	 */
+	async function send(content: string): Promise<void> {
+		// Add user message to state
+		agentState.addUserMessage(content);
+
+		// Build run config
+		const runConfig: RunConfig = {
+			threadId: config.threadId || agentState.threadId || undefined,
+			messages: agentState.messages,
+			tools: tools.length > 0 ? tools : undefined,
+			state: Object.keys(sharedState).length > 0 ? sharedState : undefined
+		};
+
+		// Run the agent
+		await client.run(agentState, runConfig);
+	}
+
+	/**
+	 * Stop the current run
+	 */
+	function stop(): void {
+		client.abort();
+	}
+
+	/**
+	 * Clear the conversation
+	 */
+	function clear(): void {
+		client.abort();
+		agentState.clear();
+	}
+
+	/**
+	 * Update shared state
+	 */
+	function setState(newState: Record<string, unknown>): void {
+		sharedState = { ...sharedState, ...newState };
+	}
+
+	/**
+	 * Update tools
+	 */
+	function setTools(newTools: ToolDefinition[]): void {
+		tools = newTools;
+	}
+
+	return {
+		// State (reactive getters)
+		get status() { return agentState.status; },
+		get error() { return agentState.error; },
+		get messages() { return agentState.allMessages; },
+		get isStreaming() { return agentState.isStreaming; },
+		get isRunning() { return agentState.isRunning; },
+		get threadId() { return agentState.threadId; },
+		get currentStep() { return agentState.currentStep; },
+		get toolCalls() { return agentState.toolCalls; },
+		get sharedState() { return sharedState; },
+
+		// Streaming state for current message
+		get streamingContent() { return agentState.streamingContent; },
+
+		// Methods
+		send,
+		stop,
+		clear,
+		setState,
+		setTools,
+
+		// Raw access if needed
+		_agentState: agentState,
+		_client: client
+	};
+}
+
+export type UseAgentReturn = ReturnType<typeof useAgent>;

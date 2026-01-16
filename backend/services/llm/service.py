@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from backend.services.llm.config import LLMConfig, LLMProvider
 
@@ -129,6 +129,62 @@ class LLMService:
         except Exception as e:
             logger.error(f"LLM API error: {e}")
             raise LLMServiceError(f"LLM API error: {str(e)}") from e
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream a chat completion response.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            temperature: Override config temperature
+            max_tokens: Override config max_tokens
+
+        Yields:
+            Text chunks as they arrive from the LLM
+
+        Raises:
+            LLMNotConfiguredError: If LLM is not configured
+            LLMServiceError: If the API call fails
+        """
+        if not self.config.is_configured():
+            raise LLMNotConfiguredError("LLM is not configured or disabled")
+
+        litellm = self._get_litellm()
+
+        # Build kwargs
+        kwargs = {
+            "model": self.config.effective_model,
+            "messages": messages,
+            "temperature": temperature or self.config.temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,
+            "stream": True,
+        }
+
+        # Only pass explicit API key if configured in UI (not from env)
+        api_key = self._get_api_key()
+        if api_key:
+            kwargs["api_key"] = api_key
+
+        # Add base URL for Ollama
+        if self.config._provider_str() == "local":
+            kwargs["api_base"] = self.config.base_url or "http://localhost:11434"
+
+        try:
+            logger.info(f"Starting streaming chat to {self.config.effective_model}")
+            response = await litellm.acompletion(**kwargs)
+
+            async for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            logger.error(f"LLM streaming error: {e}")
+            raise LLMServiceError(f"LLM streaming error: {str(e)}") from e
 
     async def test_connection(self) -> dict:
         """

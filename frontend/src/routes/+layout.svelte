@@ -62,6 +62,7 @@
 		{ href: '/batches', label: 'Batches' },
 		{ href: '/recipes', label: 'Recipes' },
 		{ href: '/yeast', label: 'Yeast' },
+		{ href: '/assistant', label: 'Assistant' },
 		{ href: '/devices', label: 'Devices' },
 		{ href: '/logging', label: 'Logging' },
 		{ href: '/calibration', label: 'Calibration' },

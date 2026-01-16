@@ -1567,3 +1567,118 @@ class BatchPredictionsResponse(BaseModel):
     num_readings: int = 0
     error: Optional[str] = None
     reason: Optional[str] = None
+
+
+# =============================================================================
+# AG-UI Models - Conversation threads and messages for AI assistant
+# =============================================================================
+
+class AgUiThread(Base):
+    """AG-UI conversation thread."""
+    __tablename__ = "ag_ui_threads"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    title: Mapped[Optional[str]] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    messages: Mapped[list["AgUiMessage"]] = relationship(
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="AgUiMessage.created_at"
+    )
+
+
+class AgUiMessage(Base):
+    """AG-UI message within a thread."""
+    __tablename__ = "ag_ui_messages"
+    __table_args__ = (
+        Index("ix_ag_ui_messages_thread_created", "thread_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_id: Mapped[str] = mapped_column(String(100), ForeignKey("ag_ui_threads.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(20))  # user, assistant, tool
+    content: Mapped[str] = mapped_column(Text)
+    tool_calls: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of tool calls
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    thread: Mapped["AgUiThread"] = relationship(back_populates="messages")
+
+    @property
+    def tool_calls_data(self) -> Optional[list[dict[str, Any]]]:
+        """Get tool calls as list of dicts."""
+        if self.tool_calls:
+            return json.loads(self.tool_calls)
+        return None
+
+    @tool_calls_data.setter
+    def tool_calls_data(self, value: Optional[list[dict[str, Any]]]) -> None:
+        """Set tool calls from list of dicts."""
+        if value is not None:
+            self.tool_calls = json.dumps(value)
+        else:
+            self.tool_calls = None
+
+
+# AG-UI Pydantic Schemas
+
+class AgUiMessageResponse(BaseModel):
+    """AG-UI message response."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    thread_id: str
+    role: str
+    content: str
+    tool_calls: Optional[list[dict[str, Any]]] = None
+    created_at: datetime
+
+    @field_serializer('created_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt) or ""
+
+    @field_validator('tool_calls', mode='before')
+    @classmethod
+    def parse_tool_calls(cls, v: Any) -> Optional[list[dict[str, Any]]]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+
+class AgUiThreadResponse(BaseModel):
+    """AG-UI thread response."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    messages: list[AgUiMessageResponse] = []
+    message_count: int = 0
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt) or ""
+
+
+class AgUiThreadListItem(BaseModel):
+    """AG-UI thread list item (without messages)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt) or ""

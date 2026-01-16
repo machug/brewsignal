@@ -42,16 +42,22 @@ export function useAgent(config: UseAgentConfig) {
 	let tools: ToolDefinition[] = config.tools || [];
 	let sharedState: Record<string, unknown> = config.initialState || {};
 
+	// Track current thread ID
+	let currentThreadId: string | undefined = config.threadId;
+
 	/**
 	 * Send a message to the agent
 	 */
-	async function send(content: string): Promise<void> {
+	async function send(content: string, threadId?: string): Promise<void> {
 		// Add user message to state
 		agentState.addUserMessage(content);
 
+		// Use provided threadId or current one
+		const effectiveThreadId = threadId || currentThreadId || agentState.threadId;
+
 		// Build run config
 		const runConfig: RunConfig = {
-			threadId: config.threadId || agentState.threadId || undefined,
+			threadId: effectiveThreadId,
 			messages: agentState.messages,
 			tools: tools.length > 0 ? tools : undefined,
 			state: Object.keys(sharedState).length > 0 ? sharedState : undefined
@@ -60,11 +66,33 @@ export function useAgent(config: UseAgentConfig) {
 		// Run the agent
 		await client.run(agentState, runConfig);
 
+		// Update current thread ID from response
+		if (agentState.threadId) {
+			currentThreadId = agentState.threadId;
+		}
+
 		// Call completion callback if no error
 		if (!agentState.error) {
 			config.onComplete?.();
 		} else {
 			config.onError?.(agentState.error);
+		}
+	}
+
+	/**
+	 * Load messages from a persisted thread
+	 */
+	function loadMessages(messages: Message[], threadId: string): void {
+		// Clear current state
+		agentState.clear();
+
+		// Set thread ID
+		currentThreadId = threadId;
+		agentState._setThreadId(threadId);
+
+		// Add messages to state
+		for (const msg of messages) {
+			agentState._addMessage(msg);
 		}
 	}
 
@@ -118,6 +146,7 @@ export function useAgent(config: UseAgentConfig) {
 		clear,
 		setState,
 		setTools,
+		loadMessages,
 
 		// Raw access if needed
 		_agentState: agentState,

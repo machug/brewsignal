@@ -311,7 +311,9 @@ export function createAgentState() {
 
 		// Internal state mutation (for agent client)
 		_setStatus(status: ConnectionStatus) { state.status = status; },
-		_setError(error: string | null) { state.error = error; }
+		_setError(error: string | null) { state.error = error; },
+		_setThreadId(threadId: string) { state.threadId = threadId; },
+		_addMessage(message: Message) { state.messages.push(message); }
 	};
 }
 

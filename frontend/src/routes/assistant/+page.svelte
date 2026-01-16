@@ -1,12 +1,18 @@
 <script lang="ts">
 	import { useAgent } from '$lib/ag-ui';
 	import { onMount } from 'svelte';
-	import type { Message, ToolCall } from '$lib/ag-ui/types';
+	import type { Message, ToolCall, Thread } from '$lib/ag-ui/types';
 
 	// Configuration
 	let batchSize = $state(19);
 	let efficiency = $state(72);
 	let showDebugPanel = $state(false);
+	let showSidebar = $state(true);
+
+	// Thread state
+	let threads = $state<Thread[]>([]);
+	let currentThreadId = $state<string | null>(null);
+	let loadingThreads = $state(false);
 
 	// Initialize AG-UI agent
 	const agent = useAgent({
@@ -32,6 +38,64 @@
 	// Input state
 	let input = $state('');
 	let inputRef = $state<HTMLTextAreaElement | null>(null);
+
+	// Thread management functions
+	async function fetchThreads() {
+		loadingThreads = true;
+		try {
+			const res = await fetch('/api/ag-ui/threads?limit=50');
+			if (res.ok) {
+				threads = await res.json();
+			}
+		} catch (e) {
+			console.error('Failed to fetch threads:', e);
+		} finally {
+			loadingThreads = false;
+		}
+	}
+
+	async function loadThread(threadId: string) {
+		try {
+			const res = await fetch(`/api/ag-ui/threads/${threadId}`);
+			if (res.ok) {
+				const thread = await res.json();
+				currentThreadId = threadId;
+				// Convert thread messages to agent messages format
+				const messages: Message[] = thread.messages
+					.filter((m: any) => m.role === 'user' || m.role === 'assistant')
+					.map((m: any) => ({
+						id: String(m.id),
+						role: m.role,
+						content: m.content,
+						createdAt: m.created_at
+					}));
+				agent.loadMessages(messages, threadId);
+			}
+		} catch (e) {
+			console.error('Failed to load thread:', e);
+		}
+	}
+
+	async function deleteThread(threadId: string) {
+		if (!confirm('Delete this conversation?')) return;
+		try {
+			const res = await fetch(`/api/ag-ui/threads/${threadId}`, { method: 'DELETE' });
+			if (res.ok) {
+				threads = threads.filter(t => t.id !== threadId);
+				if (currentThreadId === threadId) {
+					startNewConversation();
+				}
+			}
+		} catch (e) {
+			console.error('Failed to delete thread:', e);
+		}
+	}
+
+	function startNewConversation() {
+		currentThreadId = null;
+		agent.clear();
+		inputRef?.focus();
+	}
 
 	// Update agent state when settings change
 	function updateBatchSize(value: number) {
@@ -60,7 +124,14 @@
 			inputRef.style.height = 'auto';
 		}
 
-		await agent.send(content);
+		await agent.send(content, currentThreadId || undefined);
+
+		// Update currentThreadId after first message (agent creates new thread)
+		if (!currentThreadId && agent.threadId) {
+			currentThreadId = agent.threadId;
+			// Refresh thread list to show new conversation
+			fetchThreads();
+		}
 	}
 
 	// Handle keyboard shortcuts
@@ -87,8 +158,25 @@
 		}
 	}
 
+	// Format relative time
+	function formatRelativeTime(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / 60000);
+		const diffHours = Math.floor(diffMs / 3600000);
+		const diffDays = Math.floor(diffMs / 86400000);
+
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		if (diffHours < 24) return `${diffHours}h ago`;
+		if (diffDays < 7) return `${diffDays}d ago`;
+		return date.toLocaleDateString();
+	}
+
 	onMount(() => {
 		inputRef?.focus();
+		fetchThreads();
 	});
 </script>
 
@@ -96,36 +184,98 @@
 	<title>AI Assistant | BrewSignal</title>
 </svelte:head>
 
-<div class="assistant-page">
-	<header class="page-header">
-		<div class="header-content">
-			<h1>Brewing Assistant</h1>
-			<p class="subtitle">AI-powered recipe creation and brewing advice</p>
-		</div>
-		<div class="settings">
-			<label class="setting">
-				<span>Batch Size</span>
-				<input type="number" value={batchSize} min="1" max="100" onchange={(e) => updateBatchSize(Number(e.currentTarget.value))} /> L
-			</label>
-			<label class="setting">
-				<span>Efficiency</span>
-				<input type="number" value={efficiency} min="50" max="100" onchange={(e) => updateEfficiency(Number(e.currentTarget.value))} /> %
-			</label>
-			<button
-				type="button"
-				class="debug-toggle"
-				class:active={showDebugPanel}
-				onclick={() => showDebugPanel = !showDebugPanel}
-				title="Toggle agent debug panel"
-			>
+<div class="assistant-page" class:sidebar-open={showSidebar}>
+	<!-- Sidebar with conversation history -->
+	<aside class="sidebar" class:open={showSidebar}>
+		<div class="sidebar-header">
+			<h2>History</h2>
+			<button type="button" class="new-chat-btn" onclick={startNewConversation} title="New conversation">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+					<path d="M12 5v14M5 12h14"/>
 				</svg>
 			</button>
 		</div>
-	</header>
+		<div class="sidebar-content">
+			{#if loadingThreads}
+				<div class="sidebar-loading">Loading...</div>
+			{:else if threads.length === 0}
+				<div class="sidebar-empty">No conversations yet</div>
+			{:else}
+				<div class="thread-list">
+					{#each threads as thread (thread.id)}
+						<div
+							class="thread-item"
+							class:active={currentThreadId === thread.id}
+							role="button"
+							tabindex="0"
+							onclick={() => loadThread(thread.id)}
+							onkeydown={(e) => e.key === 'Enter' && loadThread(thread.id)}
+						>
+							<div class="thread-title">{thread.title || 'Untitled'}</div>
+							<div class="thread-meta">
+								<span>{thread.message_count} msgs</span>
+								<span>{formatRelativeTime(thread.updated_at)}</span>
+							</div>
+							<button
+								type="button"
+								class="thread-delete"
+								onclick={(e) => { e.stopPropagation(); deleteThread(thread.id); }}
+								title="Delete conversation"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+								</svg>
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</aside>
 
-	<main class="chat-container">
+	<!-- Main content -->
+	<div class="main-content">
+		<header class="page-header">
+			<div class="header-left">
+				<button
+					type="button"
+					class="sidebar-toggle"
+					onclick={() => showSidebar = !showSidebar}
+					title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M3 12h18M3 6h18M3 18h18"/>
+					</svg>
+				</button>
+				<div class="header-content">
+					<h1>Brewing Assistant</h1>
+					<p class="subtitle">AI-powered recipe creation and brewing advice</p>
+				</div>
+			</div>
+			<div class="settings">
+				<label class="setting">
+					<span>Batch Size</span>
+					<input type="number" value={batchSize} min="1" max="100" onchange={(e) => updateBatchSize(Number(e.currentTarget.value))} /> L
+				</label>
+				<label class="setting">
+					<span>Efficiency</span>
+					<input type="number" value={efficiency} min="50" max="100" onchange={(e) => updateEfficiency(Number(e.currentTarget.value))} /> %
+				</label>
+				<button
+					type="button"
+					class="debug-toggle"
+					class:active={showDebugPanel}
+					onclick={() => showDebugPanel = !showDebugPanel}
+					title="Toggle agent debug panel"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+					</svg>
+				</button>
+			</div>
+		</header>
+
+		<main class="chat-container">
 		{#if agent.messages.length === 0}
 			<!-- Empty state with example prompts -->
 			<div class="empty-state">
@@ -311,6 +461,7 @@
 			Press Enter to send, Shift+Enter for new line
 		</div>
 	</footer>
+	</div><!-- end main-content -->
 </div>
 
 <script lang="ts" module>
@@ -359,10 +510,197 @@
 <style>
 	.assistant-page {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		height: 100vh;
 		max-height: 100vh;
 		background: var(--bg-base);
+	}
+
+	/* Sidebar */
+	.sidebar {
+		width: 280px;
+		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		background: var(--bg-surface);
+		border-right: 1px solid var(--border-subtle);
+		transform: translateX(-100%);
+		transition: transform var(--transition);
+	}
+
+	.sidebar.open {
+		transform: translateX(0);
+	}
+
+	.sidebar-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--space-4);
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.sidebar-header h2 {
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.new-chat-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		background: var(--accent);
+		border: none;
+		border-radius: 6px;
+		color: white;
+		cursor: pointer;
+		transition: background var(--transition);
+	}
+
+	.new-chat-btn:hover {
+		background: var(--accent-hover);
+	}
+
+	.sidebar-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: var(--space-2);
+	}
+
+	.sidebar-loading,
+	.sidebar-empty {
+		padding: var(--space-4);
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+
+	.thread-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.thread-item {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		width: 100%;
+		padding: var(--space-3);
+		background: transparent;
+		border: none;
+		border-radius: 8px;
+		cursor: pointer;
+		text-align: left;
+		transition: background var(--transition);
+		position: relative;
+	}
+
+	.thread-item:hover {
+		background: var(--bg-hover);
+	}
+
+	.thread-item.active {
+		background: var(--accent-muted);
+	}
+
+	.thread-title {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		width: 100%;
+		padding-right: 24px;
+	}
+
+	.thread-meta {
+		display: flex;
+		gap: var(--space-2);
+		margin-top: var(--space-1);
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.thread-delete {
+		position: absolute;
+		top: 50%;
+		right: var(--space-2);
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		background: none;
+		border: none;
+		border-radius: 4px;
+		color: var(--text-muted);
+		cursor: pointer;
+		opacity: 0;
+		transition: all var(--transition);
+	}
+
+	.thread-item:hover .thread-delete {
+		opacity: 1;
+	}
+
+	.thread-delete:hover {
+		background: var(--negative-muted, rgba(239, 68, 68, 0.1));
+		color: var(--negative);
+	}
+
+	/* Main content */
+	.main-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.assistant-page:not(.sidebar-open) .sidebar {
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 50;
+	}
+
+	.assistant-page:not(.sidebar-open) .main-content {
+		width: 100%;
+	}
+
+	.header-left {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.sidebar-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: all var(--transition);
+	}
+
+	.sidebar-toggle:hover {
+		background: var(--bg-hover);
+		color: var(--text-secondary);
 	}
 
 	.page-header {

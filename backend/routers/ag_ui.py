@@ -2,6 +2,8 @@
 
 This module implements the Agent-User Interaction Protocol (AG-UI)
 for real-time streaming communication with the AI assistant.
+
+Includes thread persistence for chat history.
 """
 
 import json
@@ -10,15 +12,21 @@ import uuid
 from typing import AsyncGenerator, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
 from backend.routers.assistant import get_llm_config
 from backend.services.llm import LLMService
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
+from backend.models import (
+    AgUiThread, AgUiMessage,
+    AgUiThreadResponse, AgUiThreadListItem, AgUiMessageResponse
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ag-ui", tags=["ag-ui"])
@@ -78,8 +86,12 @@ async def generate_ag_ui_events(
 ) -> AsyncGenerator[str, None]:
     """Generate AG-UI events from LLM streaming response."""
 
+    is_new_thread = request.threadId is None
     thread_id = request.threadId or str(uuid.uuid4())
     run_id = str(uuid.uuid4())
+
+    # Create or get thread
+    thread = await _get_or_create_thread(db, thread_id, request.messages)
 
     # Emit RUN_STARTED
     yield AGUIEvent(
@@ -98,16 +110,22 @@ async def generate_ag_ui_events(
         return
 
     try:
-        # Build messages for LLM
-        llm_messages = [
-            {"role": m.role, "content": m.content}
-            for m in request.messages
-            if m.role != "tool"  # Handle tool messages separately
-        ]
+        # If resuming thread, load previous messages from database
+        llm_messages = []
+        if not is_new_thread:
+            # Load history from database
+            db_messages = await _get_thread_messages(db, thread_id)
+            for msg in db_messages:
+                if msg.role in ("user", "assistant"):
+                    llm_messages.append({"role": msg.role, "content": msg.content})
 
-        # Add tool result messages
+        # Add new messages from request (not already in DB)
         for m in request.messages:
-            if m.role == "tool" and m.toolCallId:
+            if m.role == "user":
+                llm_messages.append({"role": m.role, "content": m.content})
+                # Save user message to database
+                await _save_message(db, thread_id, m.role, m.content)
+            elif m.role == "tool" and m.toolCallId:
                 llm_messages.append({
                     "role": "tool",
                     "tool_call_id": m.toolCallId,
@@ -118,11 +136,21 @@ async def generate_ag_ui_events(
         system_prompt = _get_recipe_system_prompt(request.state)
         llm_messages.insert(0, {"role": "system", "content": system_prompt})
 
-        # Run agent loop (handles tool calls)
+        # Run agent loop (handles tool calls) - collect final response
+        final_response = ""
         async for event in _run_agent_loop(
             service, db, llm_messages, thread_id, run_id
         ):
             yield event
+            # Capture final response content
+            parsed = _parse_sse_event(event)
+            if parsed and parsed.get("type") == "TEXT_MESSAGE_END":
+                # Save accumulated content at end of message
+                pass  # Content is accumulated in the loop
+
+        # Save assistant response to database
+        # We need to get the final content from the last iteration
+        # This is handled inside _run_agent_loop now
 
         # Emit RUN_FINISHED
         yield AGUIEvent(
@@ -138,6 +166,79 @@ async def generate_ag_ui_events(
             message=str(e),
             code="INTERNAL_ERROR",
         ).to_sse()
+
+
+def _parse_sse_event(sse: str) -> Optional[dict]:
+    """Parse SSE event string back to dict."""
+    if not sse.startswith("data: "):
+        return None
+    try:
+        return json.loads(sse[6:].strip())
+    except json.JSONDecodeError:
+        return None
+
+
+async def _get_or_create_thread(
+    db: AsyncSession,
+    thread_id: str,
+    messages: list[Message]
+) -> AgUiThread:
+    """Get existing thread or create new one."""
+    result = await db.execute(
+        select(AgUiThread).where(AgUiThread.id == thread_id)
+    )
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        # Generate title from first user message
+        title = None
+        for m in messages:
+            if m.role == "user" and m.content:
+                title = m.content[:100]
+                if len(m.content) > 100:
+                    title += "..."
+                break
+
+        thread = AgUiThread(id=thread_id, title=title)
+        db.add(thread)
+        await db.commit()
+        logger.info(f"Created new AG-UI thread: {thread_id}")
+    else:
+        # Update timestamp
+        thread.updated_at = datetime.utcnow()
+        await db.commit()
+
+    return thread
+
+
+async def _get_thread_messages(db: AsyncSession, thread_id: str) -> list[AgUiMessage]:
+    """Get all messages for a thread."""
+    result = await db.execute(
+        select(AgUiMessage)
+        .where(AgUiMessage.thread_id == thread_id)
+        .order_by(AgUiMessage.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def _save_message(
+    db: AsyncSession,
+    thread_id: str,
+    role: str,
+    content: str,
+    tool_calls: Optional[list[dict]] = None
+) -> AgUiMessage:
+    """Save a message to the database."""
+    message = AgUiMessage(
+        thread_id=thread_id,
+        role=role,
+        content=content,
+    )
+    if tool_calls:
+        message.tool_calls_data = tool_calls
+    db.add(message)
+    await db.commit()
+    return message
 
 
 async def _run_agent_loop(
@@ -253,9 +354,11 @@ async def _run_agent_loop(
                     ],
                 ).to_sse()
 
-        # If no tool calls, we're done
+        # If no tool calls, we're done - save final assistant response
         if not tool_calls or not any(tc.get("id") for tc in tool_calls):
             logger.info("AG-UI: No tool calls, finishing")
+            if full_content:
+                await _save_message(db, thread_id, "assistant", full_content)
             break
 
         # Process tool calls
@@ -497,3 +600,139 @@ async def get_tools() -> dict:
             for t in TOOL_DEFINITIONS
         ]
     }
+
+
+# =============================================================================
+# Thread Management Endpoints
+# =============================================================================
+
+@router.get("/threads", response_model=list[AgUiThreadListItem])
+async def list_threads(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None, description="Search thread titles"),
+    db: AsyncSession = Depends(get_db),
+) -> list[AgUiThreadListItem]:
+    """List all conversation threads."""
+    query = select(AgUiThread)
+
+    # Apply search filter if provided
+    if search:
+        query = query.where(AgUiThread.title.ilike(f"%{search}%"))
+
+    # Order by most recent first
+    query = query.order_by(AgUiThread.updated_at.desc())
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    threads = result.scalars().all()
+
+    # Get message counts
+    response = []
+    for thread in threads:
+        count_result = await db.execute(
+            select(func.count(AgUiMessage.id))
+            .where(AgUiMessage.thread_id == thread.id)
+        )
+        message_count = count_result.scalar() or 0
+
+        response.append(AgUiThreadListItem(
+            id=thread.id,
+            title=thread.title,
+            created_at=thread.created_at,
+            updated_at=thread.updated_at,
+            message_count=message_count,
+        ))
+
+    return response
+
+
+@router.get("/threads/{thread_id}", response_model=AgUiThreadResponse)
+async def get_thread(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> AgUiThreadResponse:
+    """Get a specific thread with all messages."""
+    result = await db.execute(
+        select(AgUiThread)
+        .options(selectinload(AgUiThread.messages))
+        .where(AgUiThread.id == thread_id)
+    )
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    return AgUiThreadResponse(
+        id=thread.id,
+        title=thread.title,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        messages=[
+            AgUiMessageResponse(
+                id=m.id,
+                thread_id=m.thread_id,
+                role=m.role,
+                content=m.content,
+                tool_calls=m.tool_calls_data,
+                created_at=m.created_at,
+            )
+            for m in thread.messages
+        ],
+        message_count=len(thread.messages),
+    )
+
+
+@router.delete("/threads/{thread_id}")
+async def delete_thread(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Delete a conversation thread and all its messages."""
+    result = await db.execute(
+        select(AgUiThread).where(AgUiThread.id == thread_id)
+    )
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    await db.delete(thread)
+    await db.commit()
+
+    logger.info(f"Deleted AG-UI thread: {thread_id}")
+    return {"success": True, "deleted": thread_id}
+
+
+@router.patch("/threads/{thread_id}")
+async def update_thread(
+    thread_id: str,
+    title: str = Query(..., description="New thread title"),
+    db: AsyncSession = Depends(get_db),
+) -> AgUiThreadListItem:
+    """Update a thread's title."""
+    result = await db.execute(
+        select(AgUiThread).where(AgUiThread.id == thread_id)
+    )
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.title = title
+    await db.commit()
+
+    # Get message count
+    count_result = await db.execute(
+        select(func.count(AgUiMessage.id))
+        .where(AgUiMessage.thread_id == thread.id)
+    )
+    message_count = count_result.scalar() or 0
+
+    return AgUiThreadListItem(
+        id=thread.id,
+        title=thread.title,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        message_count=message_count,
+    )

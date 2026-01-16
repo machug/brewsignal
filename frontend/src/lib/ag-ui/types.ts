@@ -259,3 +259,25 @@ export interface RunResult {
 
 // Connection status
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+// Thread types for persistence
+export interface Thread {
+	id: string;
+	title: string | null;
+	created_at: string;
+	updated_at: string;
+	message_count: number;
+}
+
+export interface ThreadWithMessages extends Thread {
+	messages: ThreadMessage[];
+}
+
+export interface ThreadMessage {
+	id: number;
+	thread_id: string;
+	role: 'user' | 'assistant' | 'tool';
+	content: string;
+	tool_calls: unknown[] | null;
+	created_at: string;
+}

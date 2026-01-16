@@ -1791,7 +1791,7 @@ class EquipmentCreate(BaseModel):
     @field_validator("type")
     @classmethod
     def validate_type(cls, v: str) -> str:
-        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "other")
+        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "all_in_one", "other")
         if v not in valid_types:
             raise ValueError(f"type must be one of: {', '.join(valid_types)}")
         return v
@@ -1813,7 +1813,7 @@ class EquipmentUpdate(BaseModel):
     def validate_type(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "other")
+        valid_types = ("kettle", "fermenter", "pump", "chiller", "mill", "mash_tun", "lauter_tun", "hot_liquor_tank", "bottling", "kegging", "all_in_one", "other")
         if v not in valid_types:
             raise ValueError(f"type must be one of: {', '.join(valid_types)}")
         return v

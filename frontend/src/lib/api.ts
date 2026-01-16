@@ -965,6 +965,7 @@ export type EquipmentType =
 	| 'hot_liquor_tank'
 	| 'bottling'
 	| 'kegging'
+	| 'all_in_one'
 	| 'other';
 
 export interface EquipmentResponse {

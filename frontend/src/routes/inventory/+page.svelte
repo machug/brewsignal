@@ -103,6 +103,7 @@
 
 	// Equipment types for dropdown
 	const equipmentTypes: { value: EquipmentType; label: string }[] = [
+		{ value: 'all_in_one', label: 'All-in-One System' },
 		{ value: 'kettle', label: 'Brew Kettle' },
 		{ value: 'fermenter', label: 'Fermenter' },
 		{ value: 'mash_tun', label: 'Mash Tun' },

@@ -244,6 +244,46 @@ class Style(Base):
     recipes: Mapped[list["Recipe"]] = relationship(back_populates="style")
 
 
+class YeastStrain(Base):
+    """Yeast strain reference database.
+
+    Seeded from JSON file on startup, with support for custom user strains.
+    """
+    __tablename__ = "yeast_strains"
+    __table_args__ = (
+        Index("ix_yeast_strains_producer_product", "producer", "product_id"),
+        Index("ix_yeast_strains_type", "type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Core identification
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    producer: Mapped[Optional[str]] = mapped_column(String(100))  # Lab name (Fermentis, White Labs, etc.)
+    product_id: Mapped[Optional[str]] = mapped_column(String(50))  # e.g., "US-05", "WLP001"
+
+    # Classification
+    type: Mapped[Optional[str]] = mapped_column(String(20))  # ale, lager, wine, wild, hybrid
+    form: Mapped[Optional[str]] = mapped_column(String(20))  # dry, liquid, slant
+
+    # Fermentation characteristics
+    attenuation_low: Mapped[Optional[float]] = mapped_column()  # % (e.g., 73.0)
+    attenuation_high: Mapped[Optional[float]] = mapped_column()  # % (e.g., 77.0)
+    temp_low: Mapped[Optional[float]] = mapped_column()  # Celsius
+    temp_high: Mapped[Optional[float]] = mapped_column()  # Celsius
+    alcohol_tolerance: Mapped[Optional[float]] = mapped_column()  # % ABV tolerance
+    flocculation: Mapped[Optional[str]] = mapped_column(String(20))  # low, medium, high, very_high
+
+    # Metadata
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(50), default="custom")  # brewunited, beermaverick, custom
+    is_custom: Mapped[bool] = mapped_column(default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class Recipe(Base):
     """Recipes following BeerJSON 1.0 schema (with BeerXML backward compatibility)."""
     __tablename__ = "recipes"
@@ -344,6 +384,7 @@ class Batch(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
     device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"))
+    yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))
 
     # Batch identification
     batch_number: Mapped[Optional[int]] = mapped_column()
@@ -380,6 +421,7 @@ class Batch(Base):
     # Relationships
     recipe: Mapped[Optional["Recipe"]] = relationship(back_populates="batches")
     device: Mapped[Optional["Device"]] = relationship()
+    yeast_strain: Mapped[Optional["YeastStrain"]] = relationship()
     readings: Mapped[list["Reading"]] = relationship(
         back_populates="batch",
         cascade="all, delete-orphan"
@@ -1092,6 +1134,71 @@ class StyleResponse(BaseModel):
     description: Optional[str] = None
 
 
+# Yeast Strain Pydantic Schemas
+class YeastStrainCreate(BaseModel):
+    """Schema for creating a custom yeast strain."""
+    name: str
+    producer: Optional[str] = None
+    product_id: Optional[str] = None
+    type: Optional[str] = None  # ale, lager, wine, wild, hybrid
+    form: Optional[str] = None  # dry, liquid, slant
+    attenuation_low: Optional[float] = None
+    attenuation_high: Optional[float] = None
+    temp_low: Optional[float] = None  # Celsius
+    temp_high: Optional[float] = None  # Celsius
+    alcohol_tolerance: Optional[float] = None
+    flocculation: Optional[str] = None  # low, medium, high, very_high
+    description: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ("ale", "lager", "wine", "wild", "hybrid"):
+            raise ValueError("type must be ale, lager, wine, wild, or hybrid")
+        return v
+
+    @field_validator("form")
+    @classmethod
+    def validate_form(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ("dry", "liquid", "slant"):
+            raise ValueError("form must be dry, liquid, or slant")
+        return v
+
+    @field_validator("flocculation")
+    @classmethod
+    def validate_flocculation(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ("low", "medium", "high", "very_high"):
+            raise ValueError("flocculation must be low, medium, high, or very_high")
+        return v
+
+
+class YeastStrainResponse(BaseModel):
+    """Schema for yeast strain API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    producer: Optional[str] = None
+    product_id: Optional[str] = None
+    type: Optional[str] = None
+    form: Optional[str] = None
+    attenuation_low: Optional[float] = None
+    attenuation_high: Optional[float] = None
+    temp_low: Optional[float] = None
+    temp_high: Optional[float] = None
+    alcohol_tolerance: Optional[float] = None
+    flocculation: Optional[str] = None
+    description: Optional[str] = None
+    source: str
+    is_custom: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
 class RecipeCreate(BaseModel):
     name: str
     author: Optional[str] = None
@@ -1268,6 +1375,7 @@ class RecipeDetailResponse(BaseModel):
 class BatchCreate(BaseModel):
     recipe_id: Optional[int] = None
     device_id: Optional[str] = None
+    yeast_strain_id: Optional[int] = None  # Override recipe yeast with specific strain
     name: Optional[str] = None
     status: str = "planning"
     brew_date: Optional[datetime] = None
@@ -1316,6 +1424,7 @@ class BatchUpdate(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
     device_id: Optional[str] = None
+    yeast_strain_id: Optional[int] = None  # Override recipe yeast with specific strain
     brew_date: Optional[datetime] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -1368,6 +1477,7 @@ class BatchResponse(BaseModel):
     id: int
     recipe_id: Optional[int] = None
     device_id: Optional[str] = None
+    yeast_strain_id: Optional[int] = None
     batch_number: Optional[int] = None
     name: Optional[str] = None
     status: str
@@ -1382,6 +1492,7 @@ class BatchResponse(BaseModel):
     created_at: datetime
     deleted_at: Optional[datetime] = None
     recipe: Optional[RecipeResponse] = None
+    yeast_strain: Optional[YeastStrainResponse] = None
     # Temperature control
     heater_entity_id: Optional[str] = None
     cooler_entity_id: Optional[str] = None

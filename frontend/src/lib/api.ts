@@ -238,10 +238,47 @@ export interface RecipeResponse {
 	miscs?: MiscResponse[];
 }
 
+// Yeast Strain types
+export interface YeastStrainResponse {
+	id: number;
+	name: string;
+	producer?: string;
+	product_id?: string;
+	type?: string;  // ale, lager, wine, wild, hybrid
+	form?: string;  // dry, liquid, slant
+	attenuation_low?: number;
+	attenuation_high?: number;
+	temp_low?: number;  // Celsius
+	temp_high?: number;  // Celsius
+	alcohol_tolerance?: number;
+	flocculation?: string;  // low, medium, high, very_high
+	description?: string;
+	source: string;
+	is_custom: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface YeastStrainCreate {
+	name: string;
+	producer?: string;
+	product_id?: string;
+	type?: string;
+	form?: string;
+	attenuation_low?: number;
+	attenuation_high?: number;
+	temp_low?: number;
+	temp_high?: number;
+	alcohol_tolerance?: number;
+	flocculation?: string;
+	description?: string;
+}
+
 export interface BatchResponse {
 	id: number;
 	recipe_id?: number;
 	device_id?: string;
+	yeast_strain_id?: number;
 	batch_number?: number;
 	name?: string;
 	status: BatchStatus;
@@ -255,6 +292,7 @@ export interface BatchResponse {
 	notes?: string;
 	created_at: string;
 	recipe?: RecipeResponse;
+	yeast_strain?: YeastStrainResponse;
 	// Temperature control
 	heater_entity_id?: string;
 	cooler_entity_id?: string;
@@ -267,6 +305,7 @@ export interface BatchResponse {
 export interface BatchCreate {
 	recipe_id?: number;
 	device_id?: string;
+	yeast_strain_id?: number;
 	name?: string;
 	status?: BatchStatus;
 	brew_date?: string;
@@ -284,6 +323,7 @@ export interface BatchUpdate {
 	status?: BatchStatus;
 	device_id?: string;
 	recipe_id?: number;
+	yeast_strain_id?: number;
 	brew_date?: string;
 	start_time?: string;
 	end_time?: string;
@@ -793,6 +833,118 @@ export async function fetchBatchControlEvents(
 	const response = await fetch(`${BASE_URL}/batches/${batchId}/control-events?hours=${hours}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch control events: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+// ============================================================================
+// Yeast Strain API
+// ============================================================================
+
+export interface YeastStrainFilters {
+	type?: string;
+	producer?: string;
+	form?: string;
+	search?: string;
+	is_custom?: boolean;
+	limit?: number;
+	offset?: number;
+}
+
+/**
+ * Fetch yeast strains with optional filters
+ */
+export async function fetchYeastStrains(filters?: YeastStrainFilters): Promise<YeastStrainResponse[]> {
+	const params = new URLSearchParams();
+	if (filters?.type) params.append('type', filters.type);
+	if (filters?.producer) params.append('producer', filters.producer);
+	if (filters?.form) params.append('form', filters.form);
+	if (filters?.search) params.append('search', filters.search);
+	if (filters?.is_custom !== undefined) params.append('is_custom', String(filters.is_custom));
+	if (filters?.limit) params.append('limit', String(filters.limit));
+	if (filters?.offset) params.append('offset', String(filters.offset));
+
+	const response = await fetch(`${BASE_URL}/yeast-strains?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast strains: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch a single yeast strain by ID
+ */
+export async function fetchYeastStrain(id: number): Promise<YeastStrainResponse> {
+	const response = await fetch(`${BASE_URL}/yeast-strains/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast strain: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch yeast strain statistics
+ */
+export async function fetchYeastStrainStats(): Promise<{ total: number; custom: number; seeded: number }> {
+	const response = await fetch(`${BASE_URL}/yeast-strains/stats`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast strain stats: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch list of unique producers
+ */
+export async function fetchYeastProducers(): Promise<{ producers: string[] }> {
+	const response = await fetch(`${BASE_URL}/yeast-strains/producers`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch yeast producers: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Create a custom yeast strain
+ */
+export async function createYeastStrain(strain: YeastStrainCreate): Promise<YeastStrainResponse> {
+	const response = await fetch(`${BASE_URL}/yeast-strains`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(strain)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to create yeast strain: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Delete a custom yeast strain
+ */
+export async function deleteYeastStrain(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/yeast-strains/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete yeast strain: ${response.statusText}`);
+	}
+}
+
+/**
+ * Refresh yeast strains from seed file
+ */
+export async function refreshYeastStrains(): Promise<{
+	success: boolean;
+	action: string;
+	count?: number;
+	version?: string;
+}> {
+	const response = await fetch(`${BASE_URL}/yeast-strains/refresh`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to refresh yeast strains: ${response.statusText}`);
 	}
 	return response.json();
 }

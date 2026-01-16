@@ -38,7 +38,7 @@ async def list_batches(
     """List batches with optional filters. By default excludes deleted batches."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
         .order_by(Batch.created_at.desc())
     )
 
@@ -63,7 +63,7 @@ async def list_active_batches(db: AsyncSession = Depends(get_db)):
     """Active batches: planning or fermenting status, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
         .where(
             Batch.deleted_at.is_(None),
             Batch.status.in_(["planning", "fermenting"])
@@ -79,7 +79,7 @@ async def list_completed_batches(db: AsyncSession = Depends(get_db)):
     """Historical batches: completed or conditioning, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
         .where(
             Batch.deleted_at.is_(None),
             Batch.status.in_(["completed", "conditioning"])
@@ -95,7 +95,7 @@ async def get_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific batch by ID."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
         .where(Batch.id == batch_id)
     )
     result = await db.execute(query)
@@ -160,6 +160,7 @@ async def create_batch(
     db_batch = Batch(
         recipe_id=batch.recipe_id,
         device_id=batch.device_id,
+        yeast_strain_id=batch.yeast_strain_id,
         batch_number=max_num + 1,
         name=batch_name,
         status=batch.status,
@@ -183,7 +184,7 @@ async def create_batch(
     if db_batch.recipe_id:
         query = (
             select(Batch)
-            .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+            .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
             .where(Batch.id == db_batch.id)
         )
         result = await db.execute(query)
@@ -271,6 +272,8 @@ async def update_batch(
             batch.device_id = None
     if update.device_id is not None:
         batch.device_id = update.device_id
+    if update.yeast_strain_id is not None:
+        batch.yeast_strain_id = update.yeast_strain_id
     if update.brew_date is not None:
         batch.brew_date = update.brew_date
     if update.start_time is not None:
@@ -303,7 +306,8 @@ async def update_batch(
     # Always reload batch with eager loading to avoid MissingGreenlet errors
     # Load recipe relationship for response with eager loading of nested style
     stmt = select(Batch).where(Batch.id == batch_id).options(
-        selectinload(Batch.recipe).selectinload(Recipe.style)
+        selectinload(Batch.recipe).selectinload(Recipe.style),
+        selectinload(Batch.yeast_strain)
     )
     result = await db.execute(stmt)
     batch = result.scalar_one()
@@ -358,7 +362,7 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     # Get batch with recipe
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
         .where(Batch.id == batch_id)
     )
     result = await db.execute(query)

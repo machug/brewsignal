@@ -253,6 +253,8 @@ async def init_db():
         await conn.run_sync(_migrate_add_paired_to_tilts_and_devices)  # Add paired field
         await conn.run_sync(_migrate_add_deleted_at)  # Add soft delete support to batches
         await conn.run_sync(_migrate_add_deleted_at_index)  # Add index on deleted_at column
+        await conn.run_sync(_migrate_create_yeast_strains_table)  # Create yeast strain reference table
+        await conn.run_sync(_migrate_add_yeast_strain_to_batches)  # Add yeast override to batches
 
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
@@ -267,6 +269,13 @@ async def init_db():
 
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
+
+    # Seed yeast strains from JSON file
+    from .services.yeast_seeder import seed_yeast_strains
+    async with async_session_factory() as session:
+        result = await seed_yeast_strains(session)
+        if result.get("action") == "seeded":
+            print(f"Seeded {result.get('count', 0)} yeast strains")
 
 
 def _migrate_add_original_gravity(conn):
@@ -1294,6 +1303,54 @@ def _migrate_control_events_tilt_id_to_device_id(conn):
         # Recreate index
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_control_timestamp ON control_events(timestamp)"))
         print("Migration: Recreated control_events table with device_id")
+
+
+def _migrate_create_yeast_strains_table(conn):
+    """Create yeast_strains table if it doesn't exist."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "yeast_strains" in inspector.get_table_names():
+        return  # Table exists
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS yeast_strains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(200) NOT NULL,
+            producer VARCHAR(100),
+            product_id VARCHAR(50),
+            type VARCHAR(20),
+            form VARCHAR(20),
+            attenuation_low REAL,
+            attenuation_high REAL,
+            temp_low REAL,
+            temp_high REAL,
+            alcohol_tolerance REAL,
+            flocculation VARCHAR(20),
+            description TEXT,
+            source VARCHAR(50) DEFAULT 'custom',
+            is_custom INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_yeast_strains_producer_product ON yeast_strains(producer, product_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_yeast_strains_type ON yeast_strains(type)"))
+    print("Migration: Created yeast_strains table")
+
+
+def _migrate_add_yeast_strain_to_batches(conn):
+    """Add yeast_strain_id column to batches table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "batches" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("batches")]
+    if "yeast_strain_id" not in columns:
+        conn.execute(text("ALTER TABLE batches ADD COLUMN yeast_strain_id INTEGER REFERENCES yeast_strains(id)"))
+        print("Migration: Added yeast_strain_id column to batches table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

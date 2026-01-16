@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus, HeaterEntity } from '$lib/api';
+	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus, HeaterEntity, YeastStrainResponse } from '$lib/api';
 	import { fetchRecipes, fetchHeaterEntities, fetchCoolerEntities } from '$lib/api';
 	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 	import { fetchAllDevices, type DeviceResponse } from '$lib/api/devices';
 	import RecipeSelector from './RecipeSelector.svelte';
+	import YeastSelector from './batch/YeastSelector.svelte';
 
 	interface Props {
 		batch?: BatchResponse;
@@ -18,6 +19,7 @@
 	// Form state
 	let name = $state(batch?.name || '');
 	let recipeId = $state<number | null>(batch?.recipe_id || null);
+	let yeastStrainId = $state<number | null>(batch?.yeast_strain_id || null);
 	let deviceId = $state<string | null>(batch?.device_id || null);
 	let status = $state<BatchStatus>(batch?.status || 'planning');
 	let brewDate = $state(batch?.brew_date ? batch.brew_date.split('T')[0] : '');
@@ -96,6 +98,7 @@
 
 	let error = $state<string | null>(null);
 	let selectedRecipe = $state<RecipeResponse | null>(null);
+	let selectedYeast = $state<YeastStrainResponse | null>(null);
 
 	// Check if HA is enabled
 	let haEnabled = $derived(configState.config.ha_enabled);
@@ -171,6 +174,11 @@
 		}
 	}
 
+	function handleYeastSelect(yeast: YeastStrainResponse | null) {
+		selectedYeast = yeast;
+		yeastStrainId = yeast?.id || null;
+	}
+
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
 		if (saving) return;
@@ -183,6 +191,7 @@
 				name: name || undefined,
 				status,
 				device_id: deviceId || undefined,
+				yeast_strain_id: yeastStrainId || undefined,
 				brew_date: brewDate ? new Date(brewDate).toISOString() : undefined,
 				measured_og: measuredOg ? parseFloat(measuredOg) : undefined,
 				notes: notes || undefined,
@@ -256,6 +265,13 @@
 		}
 	});
 
+	// Initialize selectedYeast when editing batch with yeast_strain
+	$effect(() => {
+		if (isEditMode && batch?.yeast_strain && !selectedYeast) {
+			selectedYeast = batch.yeast_strain;
+		}
+	});
+
 	onMount(() => {
 		loadRecipes();
 		loadDevices();
@@ -301,6 +317,13 @@
 					{/if}
 				</div>
 			{/if}
+
+		<!-- Yeast Strain Selection -->
+		<YeastSelector
+			selectedYeastId={selectedYeast?.id}
+			onSelect={handleYeastSelect}
+			label="Override Yeast Strain (Optional)"
+		/>
 
 		<!-- Batch Name -->
 		<div class="form-group">

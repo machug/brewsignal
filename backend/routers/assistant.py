@@ -162,9 +162,10 @@ async def get_models(provider: str) -> ModelsResponse:
             {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo", "description": "Budget option"},
         ],
         "anthropic": [
-            {"id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "description": "Best balance"},
-            {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku", "description": "Fast and cheap"},
-            {"id": "claude-3-opus-latest", "name": "Claude 3 Opus", "description": "Most capable"},
+            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "description": "Best balance, smart agents & coding"},
+            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "description": "Fastest, near-frontier intelligence"},
+            {"id": "claude-opus-4-5", "name": "Claude Opus 4.5", "description": "Most capable, premium"},
+            {"id": "claude-sonnet-4-0", "name": "Claude Sonnet 4", "description": "Previous gen, still excellent"},
         ],
         "google": [
             {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "Most capable"},

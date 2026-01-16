@@ -34,7 +34,7 @@ class LLMProvider(str, Enum):
 DEFAULT_MODELS = {
     LLMProvider.LOCAL: "phi3:mini",
     LLMProvider.OPENAI: "gpt-4o-mini",
-    LLMProvider.ANTHROPIC: "claude-3-5-haiku-latest",
+    LLMProvider.ANTHROPIC: "claude-haiku-4-5",
     LLMProvider.GOOGLE: "gemini-1.5-flash",
     LLMProvider.GROQ: "llama-3.1-8b-instant",
     LLMProvider.DEEPSEEK: "deepseek-chat",

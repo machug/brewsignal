@@ -27,6 +27,8 @@ class FermentationAnomalyDetector:
         self,
         min_history: int = 20,
         sg_rate_threshold: float = 0.001,  # SG per hour
+        min_hours_for_stuck: float = 24.0,  # Minimum hours before flagging stuck
+        min_sg_drop_for_stuck: float = 0.005,  # Must have fermented at least this much
     ):
         """Initialize the anomaly detector.
 
@@ -34,9 +36,15 @@ class FermentationAnomalyDetector:
             min_history: Minimum readings required before scoring
             sg_rate_threshold: Minimum acceptable SG decline rate (SG/hour)
                               Below this = stuck fermentation
+            min_hours_for_stuck: Minimum hours of fermentation before flagging stuck
+                                 (accounts for lag phase)
+            min_sg_drop_for_stuck: Minimum SG drop from first reading required before
+                                   flagging stuck (fermentation must have started first)
         """
         self.min_history = min_history
         self.sg_rate_threshold = sg_rate_threshold
+        self.min_hours_for_stuck = min_hours_for_stuck
+        self.min_sg_drop_for_stuck = min_sg_drop_for_stuck
 
         # History buffers
         self.sg_history: list[float] = []
@@ -99,15 +107,34 @@ class FermentationAnomalyDetector:
         # Check for stuck fermentation (average SG rate near zero)
         # Must have enough data and the rate should be consistently near zero
         # Using abs(rate) catches both stuck and reverse fermentation
+        #
+        # IMPORTANT: Requires additional conditions to avoid false positives:
+        # 1. Minimum time elapsed (default 24h) - accounts for lag phase
+        # 2. Fermentation must have started first (OG dropped by min threshold)
         elif (sg_rate is not None and
               abs(sg_rate) < self.sg_rate_threshold * 2 and  # Increased tolerance
               len(self.sg_history) >= self.min_history + 10):
-            # Verify it's truly stuck by checking last 10 readings (excluding current)
-            # Use [-2] to [-11] to avoid including the current reading
-            recent_sg_change = abs(self.sg_history[-2] - self.sg_history[-11])
-            if recent_sg_change < 0.002:  # Less than 0.002 SG change over 10 readings
-                is_anomaly = True
-                reason = "stuck_fermentation"
+
+            # Check minimum time elapsed (avoid flagging during lag phase)
+            time_elapsed = self.time_history[-1] - self.time_history[0]
+
+            # Check if fermentation has actually started (OG has dropped)
+            og = self.sg_history[0]  # First reading is approximate OG
+            current_sg = self.sg_history[-1]
+            total_drop = og - current_sg
+
+            # Only flag stuck if:
+            # 1. At least min_hours_for_stuck have passed (default 24h)
+            # 2. Fermentation had started (dropped at least min_sg_drop_for_stuck)
+            # 3. Last 10 readings show < 0.002 change (truly stuck, not lag phase)
+            if (time_elapsed >= self.min_hours_for_stuck and
+                total_drop >= self.min_sg_drop_for_stuck):
+                # Verify it's truly stuck by checking last 10 readings (excluding current)
+                # Use [-2] to [-11] to avoid including the current reading
+                recent_sg_change = abs(self.sg_history[-2] - self.sg_history[-11])
+                if recent_sg_change < 0.002:  # Less than 0.002 SG change over 10 readings
+                    is_anomaly = True
+                    reason = "stuck_fermentation"
 
         return {
             "is_anomaly": is_anomaly,

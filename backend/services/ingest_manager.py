@@ -62,7 +62,7 @@ class IngestManager:
         if batch_id in self._batch_start_cache:
             return self._batch_start_cache[batch_id]
 
-        query = select(Batch.start_date).where(Batch.id == batch_id)
+        query = select(Batch.start_time).where(Batch.id == batch_id)
         result = await db.execute(query)
         start_date = result.scalar_one_or_none()
 

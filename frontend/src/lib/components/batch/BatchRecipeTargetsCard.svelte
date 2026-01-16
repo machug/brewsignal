@@ -25,8 +25,8 @@
 	});
 </script>
 
-<BatchCard title="Recipe Targets">
-	<div class="targets-grid">
+<BatchCard title="Recipe Targets" compact>
+	<div class="targets-row">
 		<div class="target">
 			<span class="target-label">OG</span>
 			<span class="target-value">{formatSG(recipe.og)}</span>
@@ -41,34 +41,29 @@
 				{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}
 			</span>
 		</div>
-		{#if recipe.yeast_name}
-			<div class="target wide">
-				<span class="target-label">Yeast</span>
-				<span class="target-value">{recipe.yeast_name}</span>
-			</div>
-		{/if}
 	</div>
+	{#if recipe.yeast_name}
+		<div class="yeast-row">
+			<span class="yeast-label">Yeast</span>
+			<span class="yeast-value">{recipe.yeast_name}</span>
+		</div>
+	{/if}
 </BatchCard>
 
 <style>
-	.targets-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 0.75rem;
+	.targets-row {
+		display: flex;
+		gap: 1.5rem;
 	}
 
 	.target {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.target.wide {
-		grid-column: span 2;
+		gap: 0.125rem;
 	}
 
 	.target-label {
-		font-size: 0.6875rem;
+		font-size: 0.625rem;
 		font-weight: 500;
 		color: var(--text-muted);
 		text-transform: uppercase;
@@ -76,14 +71,29 @@
 
 	.target-value {
 		font-family: var(--font-mono);
-		font-size: 1rem;
+		font-size: 0.9375rem;
 		font-weight: 500;
 		color: var(--text-secondary);
 	}
 
-	@media (max-width: 640px) {
-		.targets-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
+	.yeast-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--border-subtle);
+	}
+
+	.yeast-label {
+		font-size: 0.625rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+	}
+
+	.yeast-value {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
 	}
 </style>

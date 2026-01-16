@@ -125,19 +125,25 @@ async def generate_ag_ui_events(
     try:
         # If resuming thread, load previous messages from database
         llm_messages = []
+        existing_message_contents: set[str] = set()
+
         if not is_new_thread:
             # Load history from database
             db_messages = await _get_thread_messages(db, thread_id)
             for msg in db_messages:
                 if msg.role in ("user", "assistant"):
                     llm_messages.append({"role": msg.role, "content": msg.content})
+                    # Track existing message contents to avoid re-saving
+                    existing_message_contents.add(msg.content)
 
-        # Add new messages from request (not already in DB)
+        # Add new messages from request (only save truly new ones)
         for m in request.messages:
             if m.role == "user":
                 llm_messages.append({"role": m.role, "content": m.content})
-                # Save user message to database
-                await _save_message(db, thread_id, m.role, m.content)
+                # Only save if this message isn't already in the database
+                if m.content not in existing_message_contents:
+                    await _save_message(db, thread_id, m.role, m.content)
+                    existing_message_contents.add(m.content)
             elif m.role == "tool" and m.toolCallId:
                 llm_messages.append({
                     "role": "tool",

@@ -144,6 +144,133 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Recipe generation models
+class RecipeChatRequest(BaseModel):
+    """Request for recipe chat conversation."""
+
+    message: str
+    conversation_id: Optional[str] = None
+    batch_size: Optional[float] = None  # liters
+    efficiency: Optional[float] = None  # percent
+
+
+class RecipeChatResponse(BaseModel):
+    """Response from recipe chat."""
+
+    response: str
+    has_recipe: bool = False
+    recipe: Optional[dict] = None
+    conversation_id: str
+
+
+class RecipeGenerateRequest(BaseModel):
+    """Request for one-shot recipe generation."""
+
+    prompt: str
+    style: Optional[str] = None
+    batch_size: float = 19.0
+    efficiency: float = 72.0
+
+
+class RecipeGenerateResponse(BaseModel):
+    """Response from recipe generation."""
+
+    response: str
+    has_recipe: bool = False
+    recipe: Optional[dict] = None
+
+
+# In-memory conversation storage (for simplicity)
+# In production, you might want to use Redis or database
+_recipe_conversations: dict[str, list[dict]] = {}
+
+
+@router.post("/recipe/chat", response_model=RecipeChatResponse)
+async def recipe_chat(
+    request: RecipeChatRequest,
+    service: LLMService = Depends(get_llm_service),
+) -> RecipeChatResponse:
+    """Chat with the recipe assistant for conversational recipe building."""
+    from backend.services.llm.recipe_agent import RecipeAgent, extract_recipe_json
+    import uuid
+
+    if not service.config.is_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="AI assistant is not configured. Enable it in Settings.",
+        )
+
+    # Get or create conversation
+    conv_id = request.conversation_id or str(uuid.uuid4())
+
+    # Create agent with conversation history
+    agent = RecipeAgent(service)
+    if conv_id in _recipe_conversations:
+        agent.conversation_history = _recipe_conversations[conv_id].copy()
+
+    try:
+        result = await agent.chat(
+            user_message=request.message,
+            batch_size=request.batch_size,
+            efficiency=request.efficiency,
+        )
+
+        # Store updated conversation
+        _recipe_conversations[conv_id] = agent.conversation_history
+
+        return RecipeChatResponse(
+            response=result["response"],
+            has_recipe=result["has_recipe"],
+            recipe=result.get("recipe"),
+            conversation_id=conv_id,
+        )
+    except Exception as e:
+        logger.error(f"Recipe chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recipe/generate", response_model=RecipeGenerateResponse)
+async def generate_recipe(
+    request: RecipeGenerateRequest,
+    service: LLMService = Depends(get_llm_service),
+) -> RecipeGenerateResponse:
+    """Generate a recipe from a single prompt (one-shot generation)."""
+    from backend.services.llm.recipe_agent import generate_recipe_from_prompt
+
+    if not service.config.is_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="AI assistant is not configured. Enable it in Settings.",
+        )
+
+    try:
+        result = await generate_recipe_from_prompt(
+            service=service,
+            prompt=request.prompt,
+            style=request.style,
+            batch_size=request.batch_size,
+            efficiency=request.efficiency,
+        )
+
+        return RecipeGenerateResponse(
+            response=result["response"],
+            has_recipe=result["has_recipe"],
+            recipe=result.get("recipe"),
+        )
+    except Exception as e:
+        logger.error(f"Recipe generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/recipe/conversation/{conversation_id}")
+async def clear_conversation(conversation_id: str) -> dict:
+    """Clear a recipe conversation history."""
+    if conversation_id in _recipe_conversations:
+        del _recipe_conversations[conversation_id]
+        return {"status": "cleared"}
+    return {"status": "not_found"}
+
+
 @router.get("/models/{provider}", response_model=ModelsResponse)
 async def get_models(provider: str) -> ModelsResponse:
     """Get available models for a provider."""

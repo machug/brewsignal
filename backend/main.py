@@ -495,6 +495,12 @@ async def serve_yeast():
     return FileResponse(static_dir / "yeast.html")
 
 
+@app.get("/assistant", response_class=FileResponse)
+async def serve_assistant():
+    """Serve the AI assistant page."""
+    return FileResponse(static_dir / "assistant.html")
+
+
 @app.get("/batches", response_class=FileResponse)
 async def serve_batches():
     """Serve the batches page."""

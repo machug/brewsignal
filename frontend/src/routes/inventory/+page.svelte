@@ -83,7 +83,7 @@
 	let selectedVariety = $state<HopVarietyResponse | null>(null);
 
 	// Fuzzy search for hop varieties
-	let searchedVarieties = $derived(() => {
+	let searchedVarieties = $derived.by(() => {
 		if (!varietySearchInput.trim()) return hopVarieties.slice(0, 50);
 		const query = varietySearchInput.toLowerCase();
 		const terms = query.split(/\s+/).filter(Boolean);
@@ -132,7 +132,7 @@
 	let selectedStrain = $state<YeastStrainResponse | null>(null);
 
 	// Fuzzy search for yeast strains
-	let searchedStrains = $derived(() => {
+	let searchedStrains = $derived.by(() => {
 		if (!strainSearchInput.trim()) return yeastStrains.slice(0, 50);
 		const query = strainSearchInput.toLowerCase();
 		const terms = query.split(/\s+/).filter(Boolean);
@@ -186,7 +186,7 @@
 	];
 
 	// Filtered lists
-	let filteredHops = $derived(() => {
+	let filteredHops = $derived.by(() => {
 		if (!hopSearchQuery) return hops;
 		const q = hopSearchQuery.toLowerCase();
 		return hops.filter(
@@ -197,7 +197,7 @@
 		);
 	});
 
-	let filteredYeasts = $derived(() => {
+	let filteredYeasts = $derived.by(() => {
 		if (!yeastSearchQuery) return yeasts;
 		const q = yeastSearchQuery.toLowerCase();
 		return yeasts.filter(

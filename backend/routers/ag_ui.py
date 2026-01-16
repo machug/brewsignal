@@ -30,8 +30,16 @@ from backend.models import (
     AgUiThreadResponse, AgUiThreadListItem, AgUiMessageResponse
 )
 
-# Model for title summarization (fast, cheap)
-TITLE_SUMMARY_MODEL = "claude-3-5-haiku-20241022"
+# Fast models per provider for title summarization (cheap, fast)
+FAST_MODELS_BY_PROVIDER = {
+    "anthropic": "claude-3-5-haiku-20241022",
+    "openrouter": "openrouter/anthropic/claude-3-5-haiku-20241022",
+    "openai": "gpt-4o-mini",
+    "google": "gemini/gemini-1.5-flash",
+    "groq": "groq/llama-3.1-8b-instant",
+    "deepseek": "deepseek/deepseek-chat",
+    "local": "ollama/phi3:mini",
+}
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ag-ui", tags=["ag-ui"])
@@ -265,13 +273,19 @@ async def _summarize_thread_title(
     db: AsyncSession,
     thread_id: str,
 ) -> Optional[str]:
-    """Generate a concise title for a thread using Haiku.
+    """Generate a concise title for a thread using a fast LLM.
 
     Called asynchronously after a run completes to update the thread title
     with a semantic summary instead of just the first message.
     """
     try:
         import litellm
+
+        # Get LLM config to access API key and provider
+        config = await get_llm_config(db)
+        if not config.is_configured():
+            logger.debug("LLM not configured, skipping title summarization")
+            return None
 
         # Get thread messages
         messages = await _get_thread_messages(db, thread_id)
@@ -284,10 +298,14 @@ async def _summarize_thread_title(
             context_messages.append(f"{msg.role}: {msg.content[:200]}")
         context = "\n".join(context_messages)
 
-        # Call Haiku for summarization
-        response = await litellm.acompletion(
-            model=TITLE_SUMMARY_MODEL,
-            messages=[
+        # Determine provider and fast model
+        provider_str = config._provider_str()
+        fast_model = FAST_MODELS_BY_PROVIDER.get(provider_str, "gpt-4o-mini")
+
+        # Build kwargs for litellm
+        kwargs = {
+            "model": fast_model,
+            "messages": [
                 {
                     "role": "system",
                     "content": "Generate a 3-6 word title summarizing this conversation. "
@@ -296,9 +314,20 @@ async def _summarize_thread_title(
                 },
                 {"role": "user", "content": context}
             ],
-            temperature=0.3,
-            max_tokens=30,
-        )
+            "temperature": 0.3,
+            "max_tokens": 30,
+        }
+
+        # Pass API key if configured (same approach as main LLM service)
+        if config.api_key:
+            kwargs["api_key"] = config.api_key.get_secret_value()
+
+        # Add base URL for Ollama
+        if provider_str == "local":
+            kwargs["api_base"] = config.base_url or "http://localhost:11434"
+
+        logger.info(f"Summarizing thread {thread_id} title with {fast_model}")
+        response = await litellm.acompletion(**kwargs)
 
         title = response.choices[0].message.content.strip()
         # Clean up: remove quotes, limit length

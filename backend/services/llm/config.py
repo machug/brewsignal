@@ -80,11 +80,31 @@ class LLMConfig(BaseModel):
             raise ValueError("Max tokens must be positive")
         return min(v, 8000)  # Cap at 8000
 
+    def _provider_str(self) -> str:
+        """Get provider as string, handling both enum and string values."""
+        if hasattr(self.provider, "value"):
+            return self.provider.value
+        return str(self.provider) if self.provider else "local"
+
     @property
     def effective_model(self) -> str:
         """Get the model name with appropriate prefix for LiteLLM."""
-        base_model = self.model or DEFAULT_MODELS.get(self.provider, "phi3:mini")
-        prefix = MODEL_PREFIXES.get(self.provider, "")
+        provider_str = self._provider_str()
+        # Look up using string key or enum key
+        base_model = self.model
+        if not base_model:
+            for key, val in DEFAULT_MODELS.items():
+                if (hasattr(key, "value") and key.value == provider_str) or key == provider_str:
+                    base_model = val
+                    break
+            if not base_model:
+                base_model = "phi3:mini"
+
+        prefix = ""
+        for key, val in MODEL_PREFIXES.items():
+            if (hasattr(key, "value") and key.value == provider_str) or key == provider_str:
+                prefix = val
+                break
 
         # Don't double-prefix
         if base_model.startswith(prefix):
@@ -94,12 +114,12 @@ class LLMConfig(BaseModel):
     @property
     def requires_api_key(self) -> bool:
         """Check if this provider requires an API key."""
-        return self.provider != LLMProvider.LOCAL
+        return self._provider_str() != "local"
 
     @property
     def has_env_api_key(self) -> bool:
         """Check if API key is available from environment variable."""
-        env_var = ENV_VAR_NAMES.get(self.provider.value if isinstance(self.provider, LLMProvider) else self.provider)
+        env_var = ENV_VAR_NAMES.get(self._provider_str())
         if env_var:
             return bool(os.environ.get(env_var))
         return False

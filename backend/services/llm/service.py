@@ -119,7 +119,7 @@ class LLMService:
             kwargs["api_key"] = api_key
 
         # Add base URL for Ollama
-        if self.config.provider == LLMProvider.LOCAL:
+        if self.config._provider_str() == "local":
             kwargs["api_base"] = self.config.base_url or "http://localhost:11434"
 
         try:
@@ -170,10 +170,17 @@ class LLMService:
         except LLMNotAvailableError:
             litellm_available = False
 
+        # Handle provider as either enum or string
+        provider = self.config.provider
+        if hasattr(provider, "value"):
+            provider_str = provider.value
+        else:
+            provider_str = str(provider) if provider else None
+
         return {
             "enabled": self.config.enabled,
             "configured": self.config.is_configured(),
-            "provider": self.config.provider.value if self.config.provider else None,
+            "provider": provider_str,
             "model": self.config.effective_model if self.config.enabled else None,
             "requires_api_key": self.config.requires_api_key,
             "has_api_key": self.config.has_any_api_key,

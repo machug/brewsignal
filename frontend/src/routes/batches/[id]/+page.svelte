@@ -8,7 +8,6 @@
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import BatchForm from '$lib/components/BatchForm.svelte';
 	import BatchFermentationCard from '$lib/components/batch/BatchFermentationCard.svelte';
-	import BatchTimelineCard from '$lib/components/batch/BatchTimelineCard.svelte';
 	import BatchDeviceCard from '$lib/components/batch/BatchDeviceCard.svelte';
 	import BatchRecipeTargetsCard from '$lib/components/batch/BatchRecipeTargetsCard.svelte';
 	import BatchNotesCard from '$lib/components/batch/BatchNotesCard.svelte';
@@ -288,6 +287,24 @@
 		return formatTemp(value);
 	}
 
+	function formatShortDate(isoString?: string | null): string {
+		if (!isoString) return '--';
+		const date = new Date(isoString);
+		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+	}
+
+	function formatDuration(startIso?: string | null): string {
+		if (!startIso) return '--';
+		const start = new Date(startIso);
+		const now = new Date();
+		const hours = (now.getTime() - start.getTime()) / (1000 * 60 * 60);
+		if (hours < 1) return `${Math.round(hours * 60)}m`;
+		if (hours < 24) return `${hours.toFixed(1)}h`;
+		const days = hours / 24;
+		if (days < 7) return `${days.toFixed(1)}d`;
+		return `${Math.round(days)}d`;
+	}
+
 	function formatDate(dateStr?: string | null): string {
 		if (!dateStr) return '--';
 		return new Date(dateStr).toLocaleDateString('en-GB', {
@@ -369,6 +386,15 @@
 								<span class="recipe-type">({batch.recipe.type})</span>
 							{/if}
 						</a>
+					{/if}
+					{#if batch.start_time}
+						<div class="batch-timing">
+							Started {formatShortDate(batch.start_time)} · {formatDuration(batch.start_time)} ago
+						</div>
+					{:else if batch.brew_date}
+						<div class="batch-timing">
+							Brewed {formatShortDate(batch.brew_date)}
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -471,9 +497,6 @@
 
 			<!-- Right column -->
 			<div class="info-section">
-				<!-- Timeline Card -->
-				<BatchTimelineCard {batch} />
-
 				<!-- Device Card -->
 				<BatchDeviceCard
 					{batch}
@@ -931,6 +954,12 @@
 
 	.recipe-type {
 		color: var(--text-muted);
+	}
+
+	.batch-timing {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		margin-top: 0.25rem;
 	}
 
 	.header-actions {

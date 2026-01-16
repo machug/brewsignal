@@ -284,6 +284,13 @@ async def init_db():
         if result.get("action") == "seeded":
             print(f"Seeded {result.get('count', 0)} yeast strains")
 
+    # Seed hop varieties from JSON file
+    from .services.hop_seeder import seed_hop_varieties
+    async with async_session_factory() as session:
+        result = await seed_hop_varieties(session)
+        if result.get("action") == "seeded":
+            print(f"Seeded {result.get('count', 0)} hop varieties")
+
     # Seed BJCP styles from JSON file
     from .services.style_seeder import seed_styles
     async with async_session_factory() as session:

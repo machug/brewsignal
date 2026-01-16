@@ -274,6 +274,47 @@ export interface YeastStrainCreate {
 	description?: string;
 }
 
+// Hop Variety types
+export interface HopVarietyResponse {
+	id: number;
+	name: string;
+	origin?: string;
+	alpha_acid_low?: number;
+	alpha_acid_high?: number;
+	beta_acid_low?: number;
+	beta_acid_high?: number;
+	purpose?: string;  // bittering, aroma, dual
+	aroma_profile?: string;
+	substitutes?: string;
+	description?: string;
+	source: string;
+	is_custom: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface HopVarietyCreate {
+	name: string;
+	origin?: string;
+	alpha_acid_low?: number;
+	alpha_acid_high?: number;
+	beta_acid_low?: number;
+	beta_acid_high?: number;
+	purpose?: string;
+	aroma_profile?: string;
+	substitutes?: string;
+	description?: string;
+}
+
+export interface HopVarietyFilters {
+	origin?: string;
+	purpose?: string;
+	search?: string;
+	is_custom?: boolean;
+	limit?: number;
+	offset?: number;
+}
+
 export interface BatchResponse {
 	id: number;
 	recipe_id?: number;
@@ -950,6 +991,107 @@ export async function refreshYeastStrains(): Promise<{
 }
 
 // ============================================================================
+// Hop Variety API
+// ============================================================================
+
+/**
+ * Fetch hop varieties with optional filters
+ */
+export async function fetchHopVarieties(filters?: HopVarietyFilters): Promise<HopVarietyResponse[]> {
+	const params = new URLSearchParams();
+	if (filters?.origin) params.append('origin', filters.origin);
+	if (filters?.purpose) params.append('purpose', filters.purpose);
+	if (filters?.search) params.append('search', filters.search);
+	if (filters?.is_custom !== undefined) params.append('is_custom', String(filters.is_custom));
+	if (filters?.limit) params.append('limit', String(filters.limit));
+	if (filters?.offset) params.append('offset', String(filters.offset));
+
+	const response = await fetch(`${BASE_URL}/hop-varieties?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop varieties: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch a single hop variety by ID
+ */
+export async function fetchHopVariety(id: number): Promise<HopVarietyResponse> {
+	const response = await fetch(`${BASE_URL}/hop-varieties/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop variety: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch hop variety statistics
+ */
+export async function fetchHopVarietyStats(): Promise<{ total: number; custom: number; seeded: number }> {
+	const response = await fetch(`${BASE_URL}/hop-varieties/stats`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop variety stats: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch list of unique hop origins
+ */
+export async function fetchHopOrigins(): Promise<{ origins: string[] }> {
+	const response = await fetch(`${BASE_URL}/hop-varieties/origins`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch hop origins: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Create a custom hop variety
+ */
+export async function createHopVariety(variety: HopVarietyCreate): Promise<HopVarietyResponse> {
+	const response = await fetch(`${BASE_URL}/hop-varieties`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(variety)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to create hop variety: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Delete a custom hop variety
+ */
+export async function deleteHopVariety(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/hop-varieties/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete hop variety: ${response.statusText}`);
+	}
+}
+
+/**
+ * Refresh hop varieties from seed file
+ */
+export async function refreshHopVarieties(): Promise<{
+	success: boolean;
+	action: string;
+	count?: number;
+	version?: string;
+}> {
+	const response = await fetch(`${BASE_URL}/hop-varieties/refresh`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to refresh hop varieties: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+// ============================================================================
 // Inventory Types & API
 // ============================================================================
 
@@ -1203,14 +1345,6 @@ export async function fetchHopInventory(params?: {
 	const response = await fetch(`${BASE_URL}/inventory/hops?${urlParams}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop inventory: ${response.statusText}`);
-	}
-	return response.json();
-}
-
-export async function fetchHopVarieties(): Promise<string[]> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/varieties`);
-	if (!response.ok) {
-		throw new Error(`Failed to fetch hop varieties: ${response.statusText}`);
 	}
 	return response.json();
 }

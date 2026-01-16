@@ -284,6 +284,47 @@ class YeastStrain(Base):
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class HopVariety(Base):
+    """Hop variety reference database.
+
+    Seeded from JSON file on startup, with support for custom user varieties.
+    """
+    __tablename__ = "hop_varieties"
+    __table_args__ = (
+        Index("ix_hop_varieties_name", "name"),
+        Index("ix_hop_varieties_origin", "origin"),
+        Index("ix_hop_varieties_purpose", "purpose"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Core identification
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    origin: Mapped[Optional[str]] = mapped_column(String(100))  # Country/region
+
+    # Alpha/Beta acids
+    alpha_acid_low: Mapped[Optional[float]] = mapped_column()  # % (e.g., 5.5)
+    alpha_acid_high: Mapped[Optional[float]] = mapped_column()  # % (e.g., 8.5)
+    beta_acid_low: Mapped[Optional[float]] = mapped_column()
+    beta_acid_high: Mapped[Optional[float]] = mapped_column()
+
+    # Classification
+    purpose: Mapped[Optional[str]] = mapped_column(String(20))  # bittering, aroma, dual
+
+    # Characteristics
+    aroma_profile: Mapped[Optional[str]] = mapped_column(Text)  # Citrus, pine, floral, etc.
+    substitutes: Mapped[Optional[str]] = mapped_column(Text)  # Comma-separated similar hops
+
+    # Metadata
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(50), default="custom")
+    is_custom: Mapped[bool] = mapped_column(default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class Recipe(Base):
     """Recipes following BeerJSON 1.0 schema (with BeerXML backward compatibility)."""
     __tablename__ = "recipes"
@@ -1226,6 +1267,52 @@ class YeastStrainResponse(BaseModel):
     temp_high: Optional[float] = None
     alcohol_tolerance: Optional[str] = None
     flocculation: Optional[str] = None
+    description: Optional[str] = None
+    source: str
+    is_custom: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
+class HopVarietyCreate(BaseModel):
+    """Schema for creating a custom hop variety."""
+    name: str
+    origin: Optional[str] = None
+    alpha_acid_low: Optional[float] = None
+    alpha_acid_high: Optional[float] = None
+    beta_acid_low: Optional[float] = None
+    beta_acid_high: Optional[float] = None
+    purpose: Optional[str] = None  # bittering, aroma, dual
+    aroma_profile: Optional[str] = None
+    substitutes: Optional[str] = None
+    description: Optional[str] = None
+
+    @field_validator("purpose")
+    @classmethod
+    def validate_purpose(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ("bittering", "aroma", "dual"):
+            raise ValueError("purpose must be bittering, aroma, or dual")
+        return v
+
+
+class HopVarietyResponse(BaseModel):
+    """Schema for hop variety API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    origin: Optional[str] = None
+    alpha_acid_low: Optional[float] = None
+    alpha_acid_high: Optional[float] = None
+    beta_acid_low: Optional[float] = None
+    beta_acid_high: Optional[float] = None
+    purpose: Optional[str] = None
+    aroma_profile: Optional[str] = None
+    substitutes: Optional[str] = None
     description: Optional[str] = None
     source: str
     is_custom: bool

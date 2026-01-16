@@ -10,6 +10,7 @@
 		HopSummary,
 		YeastInventorySummary,
 		YeastStrainResponse,
+		HopVarietyResponse,
 		EquipmentType,
 		HopForm,
 		YeastInventoryForm
@@ -32,7 +33,8 @@
 		updateYeastInventory,
 		deleteYeastInventory,
 		useYeast,
-		fetchYeastStrains
+		fetchYeastStrains,
+		fetchHopVarieties
 	} from '$lib/api';
 
 	type Tab = 'equipment' | 'hops' | 'yeast';
@@ -70,6 +72,39 @@
 		notes: ''
 	});
 	let hopSearchQuery = $state('');
+
+	// Hop variety database
+	let hopVarieties = $state<HopVarietyResponse[]>([]);
+
+	// Hop variety search/select state
+	let varietySearchInput = $state('');
+	let showVarietyDropdown = $state(false);
+	let highlightedVarietyIndex = $state(-1);
+	let selectedVariety = $state<HopVarietyResponse | null>(null);
+
+	// Fuzzy search for hop varieties
+	let searchedVarieties = $derived(() => {
+		if (!varietySearchInput.trim()) return hopVarieties.slice(0, 50);
+		const query = varietySearchInput.toLowerCase();
+		const terms = query.split(/\s+/).filter(Boolean);
+
+		return hopVarieties
+			.map(variety => {
+				const searchText = `${variety.name} ${variety.origin || ''} ${variety.aroma_profile || ''}`.toLowerCase();
+				let score = 0;
+				for (const term of terms) {
+					if (searchText.includes(term)) {
+						score += 10;
+						if (variety.name.toLowerCase().startsWith(term)) score += 5;
+					}
+				}
+				return { variety, score };
+			})
+			.filter(item => item.score > 0)
+			.sort((a, b) => b.score - a.score)
+			.slice(0, 30)
+			.map(item => item.variety);
+	});
 
 	// Yeast state
 	let yeasts = $state<YeastInventoryResponse[]>([]);
@@ -177,7 +212,7 @@
 		loading = true;
 		error = null;
 		try {
-			const [equipData, hopData, hopSumData, yeastData, yeastSumData, expiringData, strainsData] =
+			const [equipData, hopData, hopSumData, yeastData, yeastSumData, expiringData, strainsData, varietiesData] =
 				await Promise.all([
 					fetchEquipment(),
 					fetchHopInventory(),
@@ -185,7 +220,8 @@
 					fetchYeastInventory({ include_expired: includeExpired }),
 					fetchYeastInventorySummary(),
 					fetchExpiringYeast(30),
-					fetchYeastStrains({ limit: 500 })
+					fetchYeastStrains({ limit: 500 }),
+					fetchHopVarieties({ limit: 500 })
 				]);
 			equipment = equipData;
 			hops = hopData;
@@ -194,6 +230,7 @@
 			yeastSummary = yeastSumData;
 			expiringYeasts = expiringData;
 			yeastStrains = strainsData;
+			hopVarieties = varietiesData;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load inventory';
 		} finally {
@@ -262,6 +299,9 @@
 				supplier: item.supplier || '',
 				notes: item.notes || ''
 			};
+			// Find matching variety from database
+			selectedVariety = hopVarieties.find(v => v.name.toLowerCase() === item.variety.toLowerCase()) || null;
+			varietySearchInput = item.variety;
 		} else {
 			editingHop = null;
 			newHop = {
@@ -273,8 +313,76 @@
 				storage_location: '',
 				notes: ''
 			};
+			selectedVariety = null;
+			varietySearchInput = '';
 		}
+		showVarietyDropdown = false;
+		highlightedVarietyIndex = -1;
 		showHopModal = true;
+	}
+
+	function selectHopVariety(variety: HopVarietyResponse | null) {
+		selectedVariety = variety;
+		if (variety) {
+			newHop.variety = variety.name;
+			varietySearchInput = variety.name;
+			// Auto-fill alpha acid if available
+			if (variety.alpha_acid_low && variety.alpha_acid_high) {
+				newHop.alpha_acid_percent = (variety.alpha_acid_low + variety.alpha_acid_high) / 2;
+			}
+		} else {
+			newHop.variety = '';
+			varietySearchInput = '';
+		}
+		showVarietyDropdown = false;
+		highlightedVarietyIndex = -1;
+	}
+
+	function handleVarietyKeydown(e: KeyboardEvent) {
+		const varieties = searchedVarieties;
+		if (!showVarietyDropdown && e.key !== 'Escape') {
+			showVarietyDropdown = true;
+			return;
+		}
+
+		switch (e.key) {
+			case 'ArrowDown':
+				e.preventDefault();
+				highlightedVarietyIndex = Math.min(highlightedVarietyIndex + 1, varieties.length - 1);
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				highlightedVarietyIndex = Math.max(highlightedVarietyIndex - 1, -1);
+				break;
+			case 'Enter':
+				e.preventDefault();
+				if (highlightedVarietyIndex >= 0 && highlightedVarietyIndex < varieties.length) {
+					selectHopVariety(varieties[highlightedVarietyIndex]);
+				} else if (varietySearchInput.trim()) {
+					// Allow custom variety name
+					newHop.variety = varietySearchInput.trim();
+					showVarietyDropdown = false;
+				}
+				break;
+			case 'Escape':
+				showVarietyDropdown = false;
+				highlightedVarietyIndex = -1;
+				break;
+			case 'Tab':
+				showVarietyDropdown = false;
+				break;
+		}
+	}
+
+	function handleVarietyInput() {
+		showVarietyDropdown = true;
+		highlightedVarietyIndex = -1;
+		// Update variety name as user types (allows custom names)
+		newHop.variety = varietySearchInput;
+		// Clear selection if user is typing something different
+		if (selectedVariety && varietySearchInput !== selectedVariety.name) {
+			selectedVariety = null;
+		}
 	}
 
 	async function handleSaveHop() {
@@ -1011,14 +1119,52 @@
 				{editingHop ? 'Edit Hop' : 'Add Hop'}
 			</h2>
 			<div class="space-y-4">
-				<div>
+				<div class="relative">
 					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Variety *</label>
-					<input
-						type="text"
-						bind:value={newHop.variety}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						placeholder="Citra"
-					/>
+					<div class="relative mt-1">
+						<input
+							type="text"
+							bind:value={varietySearchInput}
+							oninput={handleVarietyInput}
+							onkeydown={handleVarietyKeydown}
+							onfocus={() => (showVarietyDropdown = true)}
+							onblur={() => setTimeout(() => (showVarietyDropdown = false), 200)}
+							placeholder="Search by name or origin..."
+							class="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-8 dark:border-zinc-600 dark:bg-zinc-700"
+						/>
+						{#if selectedVariety}
+							<button
+								type="button"
+								onclick={() => selectHopVariety(null)}
+								class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						{/if}
+					</div>
+					{#if showVarietyDropdown && searchedVarieties.length > 0}
+						<div class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+							{#each searchedVarieties as variety, i}
+								<button
+									type="button"
+									class="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-zinc-600 {highlightedVarietyIndex === i ? 'bg-amber-100 dark:bg-zinc-600' : ''}"
+									onmouseenter={() => (highlightedVarietyIndex = i)}
+									onmousedown={() => selectHopVariety(variety)}
+								>
+									<div class="font-medium text-zinc-900 dark:text-zinc-100">{variety.name}</div>
+									<div class="text-xs text-zinc-500 dark:text-zinc-400">
+										{variety.origin} • Alpha: {variety.alpha_acid_low}-{variety.alpha_acid_high}%
+									</div>
+								</button>
+							{/each}
+						</div>
+					{:else if showVarietyDropdown && varietySearchInput.trim() && searchedVarieties.length === 0}
+						<div class="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-500 shadow-lg dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
+							No matching varieties found. Enter custom name.
+						</div>
+					{/if}
 				</div>
 				<div class="grid grid-cols-2 gap-4">
 					<div>

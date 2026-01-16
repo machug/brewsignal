@@ -1737,6 +1737,296 @@ async def _get_yeast_fermentation_advice(
     }
 
 
+def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
+    """Normalize LLM-generated recipe data to BeerJSON format.
+
+    The LLM may send recipes in various simplified formats. This function
+    converts them to the strict BeerJSON format expected by RecipeSerializer.
+    """
+    normalized = {"name": recipe.get("name", "Untitled Recipe")}
+
+    # Copy simple string/text fields
+    for field in ["type", "author", "notes"]:
+        if field in recipe:
+            normalized[field] = recipe[field]
+
+    # Normalize batch_size to unit object
+    batch_size = recipe.get("batch_size") or recipe.get("batch_size_liters")
+    if batch_size is not None:
+        if isinstance(batch_size, dict):
+            normalized["batch_size"] = batch_size
+        else:
+            normalized["batch_size"] = {"value": float(batch_size), "unit": "l"}
+
+    # Normalize boil to unit object
+    boil_time = recipe.get("boil_time") or recipe.get("boil_time_minutes")
+    if boil_time is not None:
+        boil_val = boil_time.get("value") if isinstance(boil_time, dict) else boil_time
+        normalized["boil"] = {"boil_time": {"value": float(boil_val), "unit": "min"}}
+
+    # Normalize efficiency
+    efficiency = recipe.get("efficiency") or recipe.get("efficiency_percent")
+    if efficiency is not None:
+        if isinstance(efficiency, dict):
+            # Could be {"brewhouse": 72} or {"brewhouse": {"value": 0.72}}
+            brewhouse = efficiency.get("brewhouse", efficiency.get("value", efficiency))
+            if isinstance(brewhouse, dict):
+                eff_val = brewhouse.get("value", 0.72)
+            else:
+                eff_val = float(brewhouse)
+        else:
+            eff_val = float(efficiency)
+        # Convert percentage to decimal if > 1
+        if eff_val > 1:
+            eff_val = eff_val / 100
+        normalized["efficiency"] = {"brewhouse": {"value": eff_val, "unit": "%"}}
+
+    # Normalize gravity values
+    og = recipe.get("original_gravity") or recipe.get("og")
+    if og is not None:
+        if isinstance(og, dict):
+            normalized["original_gravity"] = og
+        else:
+            normalized["original_gravity"] = {"value": float(og), "unit": "sg"}
+
+    fg = recipe.get("final_gravity") or recipe.get("fg")
+    if fg is not None:
+        if isinstance(fg, dict):
+            normalized["final_gravity"] = fg
+        else:
+            normalized["final_gravity"] = {"value": float(fg), "unit": "sg"}
+
+    # Normalize ABV
+    abv = recipe.get("alcohol_by_volume") or recipe.get("abv")
+    if abv is not None:
+        if isinstance(abv, dict):
+            normalized["alcohol_by_volume"] = abv
+        else:
+            abv_val = float(abv)
+            # Convert percentage to decimal if > 1
+            if abv_val > 1:
+                abv_val = abv_val / 100
+            normalized["alcohol_by_volume"] = {"value": abv_val, "unit": "%"}
+
+    # Normalize IBU
+    ibu = recipe.get("ibu") or recipe.get("ibu_estimate")
+    if ibu is not None:
+        if isinstance(ibu, dict):
+            normalized["ibu_estimate"] = ibu
+        else:
+            normalized["ibu_estimate"] = {"value": float(ibu), "unit": "IBUs"}
+
+    # Normalize color
+    color = recipe.get("color") or recipe.get("color_srm") or recipe.get("color_estimate")
+    if color is not None:
+        if isinstance(color, dict):
+            normalized["color_estimate"] = color
+        else:
+            normalized["color_estimate"] = {"value": float(color), "unit": "SRM"}
+
+    # Normalize ingredients
+    ingredients = recipe.get("ingredients", {})
+    normalized_ingredients = {}
+
+    # Fermentables - can be "fermentable_additions" or "fermentables"
+    fermentables = ingredients.get("fermentable_additions") or ingredients.get("fermentables") or recipe.get("fermentables", [])
+    if fermentables:
+        normalized_ferms = []
+        for f in fermentables:
+            norm_f = {"name": f.get("name", "Unknown Grain")}
+            if "type" in f:
+                norm_f["type"] = f["type"]
+
+            # Amount
+            amount = f.get("amount") or f.get("amount_kg")
+            if amount is not None:
+                if isinstance(amount, dict):
+                    norm_f["amount"] = amount
+                else:
+                    norm_f["amount"] = {"value": float(amount), "unit": "kg"}
+
+            # Color
+            color = f.get("color") or f.get("color_lovibond") or f.get("color_srm")
+            if color is not None:
+                if isinstance(color, dict):
+                    norm_f["color"] = color
+                else:
+                    norm_f["color"] = {"value": float(color), "unit": "Lovibond"}
+
+            # Yield
+            yield_val = f.get("yield") or f.get("yield_percent")
+            if yield_val is not None:
+                if isinstance(yield_val, dict) and "fine_grind" in yield_val:
+                    fg_val = yield_val["fine_grind"]
+                    if isinstance(fg_val, dict):
+                        norm_f["yield"] = {"fine_grind": fg_val}
+                    else:
+                        y = float(fg_val)
+                        if y > 1:
+                            y = y / 100
+                        norm_f["yield"] = {"fine_grind": {"value": y, "unit": "%"}}
+                elif isinstance(yield_val, (int, float)):
+                    y = float(yield_val)
+                    if y > 1:
+                        y = y / 100
+                    norm_f["yield"] = {"fine_grind": {"value": y, "unit": "%"}}
+
+            normalized_ferms.append(norm_f)
+        normalized_ingredients["fermentable_additions"] = normalized_ferms
+
+    # Hops - can be "hop_additions" or "hops"
+    hops = ingredients.get("hop_additions") or ingredients.get("hops") or recipe.get("hops", [])
+    if hops:
+        normalized_hops = []
+        for h in hops:
+            norm_h = {"name": h.get("name", "Unknown Hop")}
+            if "form" in h:
+                norm_h["form"] = h["form"]
+            if "origin" in h:
+                norm_h["origin"] = h["origin"]
+
+            # Amount
+            amount = h.get("amount") or h.get("amount_g") or h.get("amount_grams")
+            if amount is not None:
+                if isinstance(amount, dict):
+                    norm_h["amount"] = amount
+                else:
+                    norm_h["amount"] = {"value": float(amount), "unit": "g"}
+
+            # Alpha acid
+            alpha = h.get("alpha_acid") or h.get("alpha_acid_percent") or h.get("alpha")
+            if alpha is not None:
+                if isinstance(alpha, dict):
+                    norm_h["alpha_acid"] = alpha
+                else:
+                    a = float(alpha)
+                    if a > 1:
+                        a = a / 100
+                    norm_h["alpha_acid"] = {"value": a, "unit": "%"}
+
+            # Timing
+            timing = h.get("timing")
+            if timing:
+                norm_h["timing"] = timing
+            else:
+                # Build timing from flat fields
+                use = h.get("use", "boil")
+                time_val = h.get("time") or h.get("time_min") or h.get("time_minutes")
+                if time_val is not None:
+                    if isinstance(time_val, dict):
+                        norm_h["timing"] = {"use": f"add_to_{use}", "time": time_val}
+                    else:
+                        norm_h["timing"] = {"use": f"add_to_{use}", "time": {"value": float(time_val), "unit": "min"}}
+
+            normalized_hops.append(norm_h)
+        normalized_ingredients["hop_additions"] = normalized_hops
+
+    # Cultures (yeast) - can be "culture_additions" or "cultures" or "yeast"
+    cultures = ingredients.get("culture_additions") or ingredients.get("cultures") or recipe.get("cultures", [])
+    yeast = recipe.get("yeast")
+    if not cultures and yeast:
+        # Convert single yeast object to culture_additions array
+        cultures = [yeast] if isinstance(yeast, dict) else []
+
+    if cultures:
+        normalized_cultures = []
+        for c in cultures:
+            norm_c = {"name": c.get("name", "Unknown Yeast")}
+            if "type" in c:
+                norm_c["type"] = c["type"]
+            if "form" in c:
+                norm_c["form"] = c["form"]
+
+            # Producer/lab
+            producer = c.get("producer") or c.get("laboratory") or c.get("lab")
+            if producer:
+                norm_c["producer"] = producer
+
+            if "product_id" in c:
+                norm_c["product_id"] = c["product_id"]
+
+            # Temperature range
+            temp_range = c.get("temperature_range")
+            if temp_range:
+                norm_c["temperature_range"] = temp_range
+            else:
+                # Build from flat fields
+                temp_min = c.get("temp_min") or c.get("temp_min_c")
+                temp_max = c.get("temp_max") or c.get("temp_max_c")
+                if temp_min is not None or temp_max is not None:
+                    tr = {}
+                    if temp_min is not None:
+                        if isinstance(temp_min, dict):
+                            tr["minimum"] = temp_min
+                        else:
+                            tr["minimum"] = {"value": float(temp_min), "unit": "C"}
+                    if temp_max is not None:
+                        if isinstance(temp_max, dict):
+                            tr["maximum"] = temp_max
+                        else:
+                            tr["maximum"] = {"value": float(temp_max), "unit": "C"}
+                    norm_c["temperature_range"] = tr
+
+            # Attenuation
+            atten = c.get("attenuation") or c.get("attenuation_range")
+            if atten is not None:
+                if isinstance(atten, dict) and ("minimum" in atten or "maximum" in atten or "value" in atten):
+                    norm_c["attenuation"] = atten
+                else:
+                    a = float(atten) if not isinstance(atten, dict) else float(atten.get("value", 75))
+                    if a > 1:
+                        a = a / 100
+                    norm_c["attenuation"] = {"minimum": {"value": a, "unit": "%"}}
+
+            normalized_cultures.append(norm_c)
+        normalized_ingredients["culture_additions"] = normalized_cultures
+
+    if normalized_ingredients:
+        normalized["ingredients"] = normalized_ingredients
+
+    # Mash steps
+    mash = recipe.get("mash")
+    if mash and "mash_steps" in mash:
+        normalized_mash = {"mash_steps": []}
+        for step in mash["mash_steps"]:
+            norm_step = {"name": step.get("name", step.get("type", "Mash Step"))}
+            if "type" in step:
+                norm_step["type"] = step["type"]
+
+            # Temperature
+            temp = step.get("step_temperature") or step.get("temperature") or step.get("temp")
+            if temp is not None:
+                if isinstance(temp, dict):
+                    norm_step["step_temperature"] = temp
+                else:
+                    norm_step["step_temperature"] = {"value": float(temp), "unit": "C"}
+
+            # Time
+            time_val = step.get("step_time") or step.get("time") or step.get("time_minutes")
+            if time_val is not None:
+                if isinstance(time_val, dict):
+                    norm_step["step_time"] = time_val
+                else:
+                    norm_step["step_time"] = {"value": float(time_val), "unit": "min"}
+
+            normalized_mash["mash_steps"].append(norm_step)
+        normalized["mash"] = normalized_mash
+    elif recipe.get("mash_temp") or recipe.get("mash_time"):
+        # Simple mash from flat fields
+        mash_temp = recipe.get("mash_temp")
+        mash_time = recipe.get("mash_time") or 60
+        normalized["mash"] = {
+            "mash_steps": [{
+                "name": "Saccharification",
+                "type": "infusion",
+                "step_temperature": {"value": float(mash_temp), "unit": "C"} if mash_temp else {"value": 65, "unit": "C"},
+                "step_time": {"value": float(mash_time), "unit": "min"}
+            }]
+        }
+
+    return normalized
+
+
 async def _save_recipe(
     db: AsyncSession,
     recipe: dict[str, Any],
@@ -1757,9 +2047,13 @@ async def _save_recipe(
         recipe["name"] = name_override
 
     try:
+        # Normalize the recipe to BeerJSON format
+        normalized = _normalize_recipe_to_beerjson(recipe)
+        logger.info(f"Normalized recipe: {normalized.get('name')}")
+
         # Use the RecipeSerializer to convert BeerJSON to SQLAlchemy model
         serializer = RecipeSerializer()
-        db_recipe = await serializer.serialize(recipe, db)
+        db_recipe = await serializer.serialize(normalized, db)
 
         # Add to database
         db.add(db_recipe)

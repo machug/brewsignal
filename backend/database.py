@@ -271,8 +271,11 @@ async def init_db():
     await _migrate_add_cooler_entity()
 
     # Migrate yeast_strains table for alcohol_tolerance type change (REAL -> TEXT)
+    # Must run separately and then call create_all() again to recreate the table
     async with engine.begin() as conn:
         await conn.run_sync(_migrate_yeast_strains_alcohol_tolerance)
+        # Recreate the table with correct schema
+        await conn.run_sync(Base.metadata.create_all)
 
     # Seed yeast strains from JSON file
     from .services.yeast_seeder import seed_yeast_strains

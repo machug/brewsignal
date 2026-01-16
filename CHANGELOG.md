@@ -7,8 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-01-16
+
 ### Added
-- Recipe CRUD frontend UI (tilt_ui-pzu)
+- **Inventory Management System** - Track brewing equipment, hops, and yeast inventory
+  - **Equipment Tracking** - Manage kettles, fermenters, mash tuns, and all-in-one systems (Grainfather, etc.)
+    - Track capacity (liters/kg), brand, model, and active status
+    - Support for equipment types: kettle, fermenter, mash_tun, hot_liquor_tank, cooler, pump, chiller, kegging, all_in_one, other
+  - **Hop Inventory** - Track hop varieties with detailed attributes
+    - Amount (grams), alpha acid %, crop year, form (pellet/leaf/plug)
+    - Storage location, purchase date, supplier tracking
+    - Quick amount adjustment for usage tracking
+    - Summary view with total weight and variety counts
+  - **Yeast Inventory** - Track yeast strains with expiration and generation tracking
+    - Link to yeast library strains or use custom names
+    - Track quantity, form (dry/liquid/slant/harvested), expiry dates
+    - Generation tracking for harvested yeast with source batch linking
+    - Expiring soon warnings (configurable days threshold)
+    - Harvest from batch functionality for yeast propagation
+  - **Frontend UI** - Tabbed inventory management interface
+    - Summary cards with statistics per category
+    - Search and filter functionality
+    - CRUD modals for all inventory types
+    - Expiring yeast warnings display
+  - **API Endpoints**
+    - `GET/POST /api/inventory/equipment` - Equipment list and create
+    - `GET/PUT/DELETE /api/inventory/equipment/{id}` - Equipment CRUD
+    - `GET /api/inventory/equipment/types` - List equipment types
+    - `GET/POST /api/inventory/hops` - Hops list and create
+    - `GET/PUT/DELETE /api/inventory/hops/{id}` - Hops CRUD
+    - `GET /api/inventory/hops/varieties` - List hop varieties
+    - `GET /api/inventory/hops/summary` - Inventory statistics
+    - `PATCH /api/inventory/hops/{id}/adjust` - Quick amount adjustment
+    - `GET/POST /api/inventory/yeast` - Yeast list and create
+    - `GET/PUT/DELETE /api/inventory/yeast/{id}` - Yeast CRUD
+    - `GET /api/inventory/yeast/expiring-soon` - Expiring within N days
+    - `GET /api/inventory/yeast/summary` - Inventory statistics
+    - `PATCH /api/inventory/yeast/{id}/use` - Decrement quantity on use
+    - `POST /api/inventory/yeast/harvest` - Create yeast from batch harvest
+- **AI Assistant Inventory Tools** - LLM tools for querying inventory
+  - `search_inventory_hops` - Search hop inventory by variety, form, minimum amount
+  - `search_inventory_yeast` - Search yeast inventory with expiration filtering
+  - `check_recipe_ingredients` - Check if ingredients are available for a recipe
+  - `get_inventory_summary` - Get overview of all inventory categories
+- **Mobile-Responsive Assistant Sidebar** - Improved assistant page for mobile devices
+  - Collapsible sidebar (default collapsed on mobile)
+  - Backdrop overlay for mobile sidebar
+  - Dynamic viewport height support for mobile browsers
+  - Responsive header and input area
+  - Hidden input hints on small screens
+- Recipe CRUD frontend UI
   - Manual recipe creation form with BeerJSON fields
   - Recipe edit functionality
   - Updated recipe detail page with BeerJSON field names (og, fg, abv, color_srm)
@@ -19,6 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Recipe import page now shows all supported formats in help text
 - File picker accepts both .xml and .json files
+- Assistant sidebar collapsed by default for better mobile experience
+
+### Fixed
+- **False Positive Stuck Fermentation Alerts** - Added lag phase protection to anomaly detector
+  - No stuck fermentation alerts during first 24 hours of fermentation (configurable)
+  - Prevents false positives when yeast is still in lag phase
+  - Cleared existing false positive anomaly flags from database
+- **LLM Thread Title Summarization** - Fixed to use configured LLM provider instead of hardcoded default
+- **ML Prediction Reliability** - Improved early fermentation prediction handling
+  - Added minimum progress threshold (5%) before trusting FG predictions
+  - Fixed curve fitting lower bound to prevent unrealistic FG predictions (0.990 minimum)
+  - Context-aware unavailability messages explaining why predictions aren't ready
+- **Mobile Viewport Issues** - Fixed chat input requiring scroll on mobile devices
+
+### Technical
+- New database tables: `equipment`, `hop_inventory`, `yeast_inventory`
+- New routers: `inventory_equipment.py`, `inventory_hops.py`, `inventory_yeast.py`
+- Foreign key relationships: YeastInventory → YeastStrain, YeastInventory → Batch (for harvest tracking)
+- Inventory AI tools integrated into LLM service tool definitions
+- Frontend uses Svelte 5 reactive `$state` patterns for inventory management
 
 ## [2.8.0] - 2026-01-16
 

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timedelta, timezone
 from backend.models import (
-    YeastStrain, Style, HopInventory, YeastInventory,
+    YeastStrain, Style, HopInventory, YeastInventory, Equipment,
     Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture
 )
 from backend.state import latest_readings
@@ -248,6 +248,28 @@ TOOL_DEFINITIONS = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_equipment",
+            "description": "Get the user's brewing equipment. Use this to find batch sizes (fermenter capacity), brewing systems, and equipment details. Essential for determining appropriate recipe scaling.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["fermenter", "kettle", "all_in_one", "mash_tun", "pump", "chiller", "mill", "bottling", "kegging", "other"],
+                        "description": "Filter by equipment type"
+                    },
+                    "active_only": {
+                        "type": "boolean",
+                        "description": "Only return active equipment (default: true)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
     # =============================================================================
     # Fermentation Monitoring Tools
     # =============================================================================
@@ -431,6 +453,8 @@ async def execute_tool(
         return await _check_recipe_ingredients(db, **arguments)
     elif tool_name == "get_inventory_summary":
         return await _get_inventory_summary(db)
+    elif tool_name == "get_equipment":
+        return await _get_equipment(db, **arguments)
     # Fermentation monitoring tools
     elif tool_name == "list_fermentations":
         return await _list_fermentations(db, **arguments)
@@ -928,6 +952,69 @@ async def _get_inventory_summary(db: AsyncSession) -> dict[str, Any]:
             "total_quantity": yeast_row.total_quantity or 0,
             "expiring_within_30_days": expiring_count,
         }
+    }
+
+
+async def _get_equipment(
+    db: AsyncSession,
+    type: Optional[str] = None,
+    active_only: bool = True
+) -> dict[str, Any]:
+    """Get user's brewing equipment."""
+    stmt = select(Equipment).order_by(Equipment.type, Equipment.name)
+
+    if type:
+        stmt = stmt.where(Equipment.type == type)
+
+    if active_only:
+        stmt = stmt.where(Equipment.is_active == True)
+
+    result = await db.execute(stmt)
+    equipment_list = result.scalars().all()
+
+    if not equipment_list:
+        return {
+            "count": 0,
+            "message": "No equipment found. Add your brewing equipment in the Inventory page.",
+            "equipment": [],
+            "brewing_defaults": None
+        }
+
+    # Find primary fermenter or all-in-one for default batch size
+    primary_fermenter = None
+    for eq in equipment_list:
+        if eq.type in ("fermenter", "all_in_one") and eq.capacity_liters:
+            if primary_fermenter is None or eq.type == "all_in_one":
+                primary_fermenter = eq
+
+    brewing_defaults = None
+    if primary_fermenter:
+        # Default batch size is typically 80-90% of fermenter capacity for headspace
+        default_batch_size = round(primary_fermenter.capacity_liters * 0.85, 1)
+        brewing_defaults = {
+            "batch_size_liters": default_batch_size,
+            "fermenter_capacity_liters": primary_fermenter.capacity_liters,
+            "primary_fermenter": primary_fermenter.name,
+            "efficiency_percent": 72  # Default efficiency - could be made configurable
+        }
+
+    return {
+        "count": len(equipment_list),
+        "equipment": [
+            {
+                "id": eq.id,
+                "name": eq.name,
+                "type": eq.type,
+                "brand": eq.brand,
+                "model": eq.model,
+                "capacity_liters": eq.capacity_liters,
+                "capacity_kg": eq.capacity_kg,
+                "is_active": eq.is_active,
+                "notes": eq.notes,
+            }
+            for eq in equipment_list
+        ],
+        "brewing_defaults": brewing_defaults
     }
 
 

@@ -146,7 +146,7 @@ async def generate_ag_ui_events(
                 })
 
         # Add system prompt for recipe assistant
-        system_prompt = _get_recipe_system_prompt(request.state)
+        system_prompt = await _get_recipe_system_prompt(db, request.state)
         llm_messages.insert(0, {"role": "system", "content": system_prompt})
 
         # Run agent loop (handles tool calls) - collect final response
@@ -552,10 +552,40 @@ async def _run_agent_loop(
         logger.warning(f"AG-UI: Hit max iterations ({max_iterations})")
 
 
-def _get_recipe_system_prompt(state: Optional[dict] = None) -> str:
-    """Get the system prompt for recipe assistant."""
-    batch_size = state.get("batchSize", 19) if state else 19
-    efficiency = state.get("efficiency", 72) if state else 72
+async def _get_recipe_system_prompt(db: AsyncSession, state: Optional[dict] = None) -> str:
+    """Get the system prompt for recipe assistant.
+
+    Fetches brewing defaults from equipment inventory (fermenter capacity for batch size).
+    Falls back to state values or defaults if no equipment configured.
+    """
+    from backend.models import Equipment
+
+    # Try to get brewing defaults from equipment
+    batch_size = 19  # Default
+    efficiency = 72  # Default
+    equipment_note = ""
+
+    # Query for fermenters/all-in-one systems with capacity
+    stmt = select(Equipment).where(
+        Equipment.is_active == True,
+        Equipment.type.in_(["fermenter", "all_in_one"]),
+        Equipment.capacity_liters.is_not(None)
+    ).order_by(
+        # Prefer all_in_one, then by capacity
+        Equipment.type.desc(),
+        Equipment.capacity_liters.desc()
+    )
+    result = await db.execute(stmt)
+    primary_equipment = result.scalars().first()
+
+    if primary_equipment:
+        # Use 85% of fermenter capacity as default batch size (leave headspace for krausen)
+        batch_size = round(primary_equipment.capacity_liters * 0.85, 1)
+        equipment_note = f" (based on {primary_equipment.name}: {primary_equipment.capacity_liters}L capacity)"
+    elif state:
+        # Fall back to state values if provided
+        batch_size = state.get("batchSize", batch_size)
+        efficiency = state.get("efficiency", efficiency)
 
     return f"""You are BrewSignal's AI Brewing Assistant, an expert homebrewer who helps create beer recipes.
 

@@ -4,8 +4,6 @@
 	import type { Message, ToolCall, Thread } from '$lib/ag-ui/types';
 
 	// Configuration
-	let batchSize = $state(19);
-	let efficiency = $state(72);
 	let showDebugPanel = $state(false);
 	let showSidebar = $state(false); // Start collapsed, especially important for mobile
 	let isMobile = $state(false);
@@ -16,12 +14,10 @@
 	let loadingThreads = $state(false);
 
 	// Initialize AG-UI agent
+	// Note: Batch size and efficiency are now fetched from equipment inventory on the backend
 	const agent = useAgent({
 		url: '/api/ag-ui/run',
-		initialState: {
-			batchSize,
-			efficiency
-		},
+		initialState: {},
 		onStateChange: (state) => {
 			// Handle recipe extraction from agent
 			if (state.recipe) {
@@ -114,17 +110,6 @@
 		currentThreadId = null;
 		agent.clear();
 		inputRef?.focus();
-	}
-
-	// Update agent state when settings change
-	function updateBatchSize(value: number) {
-		batchSize = value;
-		agent.setState({ batchSize: value });
-	}
-
-	function updateEfficiency(value: number) {
-		efficiency = value;
-		agent.setState({ efficiency: value });
 	}
 
 	// Auto-resize textarea
@@ -298,14 +283,6 @@
 				</div>
 			</div>
 			<div class="settings">
-				<label class="setting">
-					<span>Batch Size</span>
-					<input type="number" value={batchSize} min="1" max="100" onchange={(e) => updateBatchSize(Number(e.currentTarget.value))} /> L
-				</label>
-				<label class="setting">
-					<span>Efficiency</span>
-					<input type="number" value={efficiency} min="50" max="100" onchange={(e) => updateEfficiency(Number(e.currentTarget.value))} /> %
-				</label>
 				<button
 					type="button"
 					class="debug-toggle"

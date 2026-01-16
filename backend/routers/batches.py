@@ -416,8 +416,9 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         total_drop = og - fg
         current_drop = og - current_sg
         if total_drop > 0:
-            progress["percent_complete"] = round(min(100, (current_drop / total_drop) * 100), 1)
-            progress["sg_remaining"] = round(current_sg - fg, 4)
+            # Clamp to 0-100% (negative when current SG > OG at fermentation start)
+            progress["percent_complete"] = round(max(0, min(100, (current_drop / total_drop) * 100)), 1)
+            progress["sg_remaining"] = round(max(0, current_sg - fg), 4)
 
     # Temperature status
     temperature = {

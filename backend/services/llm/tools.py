@@ -373,6 +373,27 @@ TOOL_DEFINITIONS = [
                 "required": ["yeast_query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_recipe",
+            "description": "Save a BeerJSON recipe to the user's recipe library. Use this when you've helped the user create or design a recipe and they want to save it. The recipe data should be in BeerJSON format with name, ingredients (fermentables, hops, cultures), and vitals (OG, FG, IBU, etc.).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe": {
+                        "type": "object",
+                        "description": "BeerJSON recipe object containing name, type, batch_size, original_gravity, final_gravity, ingredients (with fermentable_additions, hop_additions, culture_additions), and other recipe data"
+                    },
+                    "name_override": {
+                        "type": "string",
+                        "description": "Optional name to use instead of the name in the recipe object"
+                    }
+                },
+                "required": ["recipe"]
+            }
+        }
     }
 ]
 
@@ -423,6 +444,8 @@ async def execute_tool(
         return await _compare_batches(db, **arguments)
     elif tool_name == "get_yeast_fermentation_advice":
         return await _get_yeast_fermentation_advice(db, **arguments)
+    elif tool_name == "save_recipe":
+        return await _save_recipe(db, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -1712,3 +1735,64 @@ async def _get_yeast_fermentation_advice(
         "advice": advice,
         "batch_specific": batch_specific,
     }
+
+
+async def _save_recipe(
+    db: AsyncSession,
+    recipe: dict[str, Any],
+    name_override: Optional[str] = None
+) -> dict[str, Any]:
+    """Save a BeerJSON recipe to the database."""
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+
+    if not recipe:
+        return {"error": "Recipe data is required"}
+
+    # Check if recipe has required name field
+    if not recipe.get("name") and not name_override:
+        return {"error": "Recipe must have a name (either in recipe.name or via name_override)"}
+
+    # Apply name override if provided
+    if name_override:
+        recipe["name"] = name_override
+
+    try:
+        # Use the RecipeSerializer to convert BeerJSON to SQLAlchemy model
+        serializer = RecipeSerializer()
+        db_recipe = await serializer.serialize(recipe, db)
+
+        # Add to database
+        db.add(db_recipe)
+        await db.commit()
+        await db.refresh(db_recipe)
+
+        # Build response with recipe summary
+        return {
+            "success": True,
+            "recipe_id": db_recipe.id,
+            "name": db_recipe.name,
+            "type": db_recipe.type,
+            "batch_size_liters": db_recipe.batch_size_liters,
+            "og": db_recipe.og,
+            "fg": db_recipe.fg,
+            "abv": db_recipe.abv,
+            "ibu": db_recipe.ibu,
+            "color_srm": db_recipe.color_srm,
+            "fermentables_count": len(db_recipe.fermentables),
+            "hops_count": len(db_recipe.hops),
+            "cultures_count": len(db_recipe.cultures),
+            "message": f"Recipe '{db_recipe.name}' saved successfully with ID {db_recipe.id}",
+        }
+
+    except KeyError as e:
+        await db.rollback()
+        return {
+            "error": f"Missing required field in recipe: {e}",
+            "hint": "Ensure recipe has at minimum: name, and optionally ingredients.fermentable_additions, ingredients.hop_additions, ingredients.culture_additions"
+        }
+    except Exception as e:
+        await db.rollback()
+        logger.exception(f"Failed to save recipe: {e}")
+        return {
+            "error": f"Failed to save recipe: {str(e)}"
+        }

@@ -30,6 +30,7 @@
 	let heaterLoading = $state(false);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+	let tempControlCollapsed = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
@@ -492,9 +493,27 @@
 				{#if hasTempControl && (batch.status === 'fermenting' || batch.status === 'conditioning')}
 					<div class="info-card temp-control-card"
 						class:heater-on={controlStatus?.heater_state === 'on'}
-						class:cooler-on={controlStatus?.cooler_state === 'on'}>
-						<h3 class="info-title">Temperature Control</h3>
+						class:cooler-on={controlStatus?.cooler_state === 'on'}
+						class:collapsed={tempControlCollapsed}>
+						<button
+							type="button"
+							class="collapsible-header"
+							onclick={() => tempControlCollapsed = !tempControlCollapsed}
+						>
+							<h3 class="info-title">Temperature Control</h3>
+							<div class="collapse-indicator">
+								{#if controlStatus?.heater_state === 'on'}
+									<span class="status-badge heater">🔥 ON</span>
+								{:else if controlStatus?.cooler_state === 'on'}
+									<span class="status-badge cooler">❄️ ON</span>
+								{/if}
+								<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+								</svg>
+							</div>
+						</button>
 
+						{#if !tempControlCollapsed}
 						<!-- Device status indicators -->
 						<div class="device-status-grid">
 							{#if batch.heater_entity_id}
@@ -606,6 +625,7 @@
 									</button>
 								</div>
 							</div>
+						{/if}
 						{/if}
 					</div>
 				{:else if (batch.heater_entity_id || batch.cooler_entity_id) && batch.status !== 'fermenting'}
@@ -1037,6 +1057,64 @@
 	/* Temperature Control Card */
 	.temp-control-card {
 		transition: all 0.3s ease;
+	}
+
+	.temp-control-card.collapsed {
+		padding-bottom: 0.75rem;
+	}
+
+	.collapsible-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+		margin-bottom: 1rem;
+	}
+
+	.temp-control-card.collapsed .collapsible-header {
+		margin-bottom: 0;
+	}
+
+	.collapsible-header .info-title {
+		margin: 0;
+	}
+
+	.collapse-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.status-badge {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		padding: 0.125rem 0.375rem;
+		border-radius: 0.25rem;
+	}
+
+	.status-badge.heater {
+		background: rgba(239, 68, 68, 0.15);
+		color: var(--tilt-red);
+	}
+
+	.status-badge.cooler {
+		background: rgba(59, 130, 246, 0.15);
+		color: var(--tilt-blue);
+	}
+
+	.chevron {
+		width: 1rem;
+		height: 1rem;
+		color: var(--text-muted);
+		transition: transform 0.2s ease;
+	}
+
+	.chevron.rotated {
+		transform: rotate(180deg);
 	}
 
 	.temp-control-card.heater-on {

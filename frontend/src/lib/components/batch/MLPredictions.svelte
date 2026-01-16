@@ -222,7 +222,18 @@
 	</div>
 {:else}
 	<div class="ml-panel disabled">
-		<p class="unavailable-text">ML predictions unavailable</p>
+		<div class="disabled-header">
+			<p class="unavailable-text">ML predictions unavailable</p>
+			<button
+				type="button"
+				class="reload-btn"
+				onclick={handleReload}
+				disabled={reloading || loading}
+				title="Reload predictions from database"
+			>
+				{reloading ? 'Reloading...' : '↻ Reload'}
+			</button>
+		</div>
 		<p class="unavailable-hint">Predictions require at least 10 readings over 2+ hours</p>
 	</div>
 {/if}
@@ -242,10 +253,24 @@
 	}
 
 	.ml-panel.loading,
-	.ml-panel.disabled,
 	.ml-panel.error {
 		text-align: center;
 		padding: 2rem;
+	}
+
+	.ml-panel.disabled {
+		padding: 1rem;
+	}
+
+	.disabled-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.5rem;
+	}
+
+	.disabled-header .unavailable-text {
+		margin: 0;
 	}
 
 	.panel-header {

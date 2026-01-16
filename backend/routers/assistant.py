@@ -185,6 +185,14 @@ async def get_models(provider: str) -> ModelsResponse:
             {"id": "meta-llama/Llama-3.1-8B-Instruct", "name": "Llama 3.1 8B", "description": "Popular open model"},
             {"id": "mistralai/Mistral-7B-Instruct-v0.3", "name": "Mistral 7B", "description": "Strong reasoning"},
         ],
+        "openrouter": [
+            {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "description": "Anthropic via OpenRouter"},
+            {"id": "anthropic/claude-haiku-4", "name": "Claude Haiku 4", "description": "Fast Anthropic via OpenRouter"},
+            {"id": "openai/gpt-4o", "name": "GPT-4o", "description": "OpenAI via OpenRouter"},
+            {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash", "description": "Google via OpenRouter"},
+            {"id": "deepseek/deepseek-chat-v3", "name": "DeepSeek V3", "description": "DeepSeek via OpenRouter"},
+            {"id": "meta-llama/llama-4-maverick", "name": "Llama 4 Maverick", "description": "Meta via OpenRouter"},
+        ],
     }
 
     if provider not in models_by_provider:
@@ -238,5 +246,12 @@ async def get_providers() -> list[dict]:
             "description": "Cost-effective Chinese AI models",
             "requires_api_key": True,
             "setup_url": "https://platform.deepseek.com/api_keys",
+        },
+        {
+            "id": "openrouter",
+            "name": "OpenRouter",
+            "description": "400+ models via unified API (Claude, GPT, Gemini, Llama)",
+            "requires_api_key": True,
+            "setup_url": "https://openrouter.ai/keys",
         },
     ]

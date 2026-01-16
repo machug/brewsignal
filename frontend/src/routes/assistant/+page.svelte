@@ -39,6 +39,24 @@
 	// Input state
 	let input = $state('');
 	let inputRef = $state<HTMLTextAreaElement | null>(null);
+	let messagesContainer = $state<HTMLElement | null>(null);
+
+	// Auto-scroll to bottom when messages change
+	$effect(() => {
+		// Track message count and streaming content to trigger scroll
+		const _ = agent.messages.length;
+		const __ = agent.streamingContent;
+
+		// Use tick to ensure DOM is updated before scrolling
+		if (messagesContainer) {
+			requestAnimationFrame(() => {
+				messagesContainer?.scrollTo({
+					top: messagesContainer.scrollHeight,
+					behavior: 'smooth'
+				});
+			});
+		}
+	});
 
 	// Thread management functions
 	async function fetchThreads() {
@@ -302,7 +320,7 @@
 			</div>
 		</header>
 
-		<main class="chat-container">
+		<main class="chat-container" bind:this={messagesContainer}>
 		{#if agent.messages.length === 0}
 			<!-- Empty state with example prompts -->
 			<div class="empty-state">
@@ -502,7 +520,7 @@
 		}
 	}
 
-	// Simple markdown formatting
+	// Markdown formatting with headers, lists, and more
 	function formatMarkdown(text: string): string {
 		if (!text) return '';
 
@@ -512,11 +530,19 @@
 			.replace(/</g, '&lt;')
 			.replace(/>/g, '&gt;');
 
-		// Code blocks
+		// Code blocks (must be first to protect content inside)
 		html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
 
 		// Inline code
 		html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+		// Headers (must be at start of line)
+		html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+		html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+		html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+		// Horizontal rule
+		html = html.replace(/^---+$/gm, '<hr>');
 
 		// Bold
 		html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -527,8 +553,29 @@
 		// Links
 		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
-		// Line breaks
-		html = html.replace(/\n/g, '<br>');
+		// Process lists - convert consecutive list items to proper lists
+		// Unordered lists
+		html = html.replace(/(?:^|\n)((?:- .+\n?)+)/g, (match, listContent) => {
+			const items = listContent.trim().split('\n')
+				.map((line: string) => line.replace(/^- (.+)$/, '<li>$1</li>'))
+				.join('');
+			return '\n<ul>' + items + '</ul>\n';
+		});
+
+		// Ordered lists
+		html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (match, listContent) => {
+			const items = listContent.trim().split('\n')
+				.map((line: string) => line.replace(/^\d+\. (.+)$/, '<li>$1</li>'))
+				.join('');
+			return '\n<ol>' + items + '</ol>\n';
+		});
+
+		// Line breaks (but not after block elements)
+		html = html.replace(/\n(?!<\/?(ul|ol|li|pre|h[1-6]|hr))/g, '<br>');
+
+		// Clean up extra breaks around block elements
+		html = html.replace(/<br><(ul|ol|pre|h[1-6]|hr)/g, '<$1');
+		html = html.replace(/<\/(ul|ol|pre|h[1-6])><br>/g, '</$1>');
 
 		return html;
 	}
@@ -1021,6 +1068,50 @@
 
 	.message-text :global(a:hover) {
 		text-decoration: underline;
+	}
+
+	.message-text :global(h2),
+	.message-text :global(h3),
+	.message-text :global(h4) {
+		margin: var(--space-3) 0 var(--space-2);
+		font-weight: 600;
+		color: var(--text-primary);
+		line-height: 1.3;
+	}
+
+	.message-text :global(h2) {
+		font-size: 1.25rem;
+	}
+
+	.message-text :global(h3) {
+		font-size: 1.1rem;
+	}
+
+	.message-text :global(h4) {
+		font-size: 1rem;
+	}
+
+	.message-text :global(h2:first-child),
+	.message-text :global(h3:first-child),
+	.message-text :global(h4:first-child) {
+		margin-top: 0;
+	}
+
+	.message-text :global(ul),
+	.message-text :global(ol) {
+		margin: var(--space-2) 0;
+		padding-left: 1.5rem;
+	}
+
+	.message-text :global(li) {
+		margin: var(--space-1) 0;
+		line-height: 1.5;
+	}
+
+	.message-text :global(hr) {
+		margin: var(--space-3) 0;
+		border: none;
+		border-top: 1px solid var(--border-subtle);
 	}
 
 	.streaming .cursor {

@@ -11,7 +11,11 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timedelta, timezone
-from backend.models import YeastStrain, Style, HopInventory, YeastInventory
+from backend.models import (
+    YeastStrain, Style, HopInventory, YeastInventory,
+    Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture
+)
+from backend.state import latest_readings
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +247,132 @@ TOOL_DEFINITIONS = [
                 "required": []
             }
         }
+    },
+    # =============================================================================
+    # Fermentation Monitoring Tools
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "list_fermentations",
+            "description": "List active or completed fermentation batches with their current progress. Use this when the user asks about their fermentations, what's fermenting, or wants an overview of batches.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["fermenting", "conditioning", "completed", "planning", "all"],
+                        "description": "Filter by batch status. 'all' includes all non-deleted batches."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of batches to return (default: 10)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fermentation_status",
+            "description": "Get comprehensive real-time status for a specific fermentation batch. Returns current readings, progress, temperature status relative to yeast tolerance, ML predictions, and any alerts. Use this when the user asks about a specific batch's status or progress.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to get status for"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fermentation_history",
+            "description": "Get historical readings for a fermentation batch with trend analysis. Use this when the user asks about fermentation trends, how it's been progressing, or wants historical data.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to get history for"
+                    },
+                    "hours": {
+                        "type": "integer",
+                        "description": "Number of hours of history to retrieve (default: 24, max: 720)"
+                    },
+                    "include_anomalies_only": {
+                        "type": "boolean",
+                        "description": "If true, only return readings flagged as anomalies (default: false)"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ambient_conditions",
+            "description": "Get current ambient temperature and humidity from environment sensors. Use this when discussing fermentation environment, temperature control, or room conditions.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_batches",
+            "description": "Find similar historical batches for comparison. Useful for comparing current fermentation to past batches with the same recipe, style, or yeast strain.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The reference batch ID to compare against"
+                    },
+                    "comparison_type": {
+                        "type": "string",
+                        "enum": ["recipe", "style", "yeast"],
+                        "description": "Type of comparison: 'recipe' matches same recipe, 'style' matches same beer style, 'yeast' matches same yeast strain"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of similar batches to return (default: 5)"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_yeast_fermentation_advice",
+            "description": "Get yeast-specific fermentation advice and recommendations. Use this when the user asks about how to ferment with a specific yeast, optimal temperatures, or yeast characteristics.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "yeast_query": {
+                        "type": "string",
+                        "description": "Yeast name or product ID to get advice for (e.g., 'US-05', 'WLP001', 'Belgian ale')"
+                    },
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "Optional batch ID to provide batch-specific recommendations"
+                    }
+                },
+                "required": ["yeast_query"]
+            }
+        }
     }
 ]
 
@@ -280,6 +410,19 @@ async def execute_tool(
         return await _check_recipe_ingredients(db, **arguments)
     elif tool_name == "get_inventory_summary":
         return await _get_inventory_summary(db)
+    # Fermentation monitoring tools
+    elif tool_name == "list_fermentations":
+        return await _list_fermentations(db, **arguments)
+    elif tool_name == "get_fermentation_status":
+        return await _get_fermentation_status(db, **arguments)
+    elif tool_name == "get_fermentation_history":
+        return await _get_fermentation_history(db, **arguments)
+    elif tool_name == "get_ambient_conditions":
+        return await _get_ambient_conditions(db)
+    elif tool_name == "compare_batches":
+        return await _compare_batches(db, **arguments)
+    elif tool_name == "get_yeast_fermentation_advice":
+        return await _get_yeast_fermentation_advice(db, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 

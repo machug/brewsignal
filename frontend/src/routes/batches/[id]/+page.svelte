@@ -387,6 +387,18 @@
 							{/if}
 						</a>
 					{/if}
+					{#if batch.yeast_strain}
+						<div class="yeast-strain-info">
+							<span class="yeast-label">Yeast:</span>
+							<span class="yeast-name">{batch.yeast_strain.name}</span>
+							{#if batch.yeast_strain.producer}
+								<span class="yeast-producer">({batch.yeast_strain.producer})</span>
+							{/if}
+							{#if batch.yeast_strain.temp_low && batch.yeast_strain.temp_high}
+								<span class="yeast-temp">{batch.yeast_strain.temp_low.toFixed(0)}-{batch.yeast_strain.temp_high.toFixed(0)}°C</span>
+							{/if}
+						</div>
+					{/if}
 					{#if batch.start_time}
 						<div class="batch-timing">
 							Started {formatShortDate(batch.start_time)} · {formatDuration(batch.start_time)} ago
@@ -960,6 +972,37 @@
 		font-size: 0.8125rem;
 		color: var(--text-muted);
 		margin-top: 0.25rem;
+	}
+
+	.yeast-strain-info {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+		margin-top: 0.25rem;
+	}
+
+	.yeast-label {
+		color: var(--text-muted);
+	}
+
+	.yeast-name {
+		color: var(--text-secondary);
+		font-weight: 500;
+	}
+
+	.yeast-producer {
+		color: var(--text-muted);
+	}
+
+	.yeast-temp {
+		color: var(--text-muted);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--bg-elevated);
+		border-radius: 0.25rem;
 	}
 
 	.header-actions {

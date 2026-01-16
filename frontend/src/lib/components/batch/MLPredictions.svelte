@@ -234,7 +234,17 @@
 				{reloading ? 'Reloading...' : '↻ Reload'}
 			</button>
 		</div>
-		<p class="unavailable-hint">Predictions require at least 10 readings over 2+ hours</p>
+		<p class="unavailable-hint">
+			{#if predictions.reason === 'insufficient_fermentation_progress'}
+				Waiting for fermentation to progress (need visible SG drop)
+			{:else if predictions.reason === 'insufficient_curve_data'}
+				Need more fermentation curve data for reliable prediction
+			{:else if predictions.reason === 'insufficient_data'}
+				Need at least 10 readings to make predictions
+			{:else}
+				Predictions will appear once fermentation is underway
+			{/if}
+		</p>
 	</div>
 {/if}
 

@@ -69,7 +69,7 @@
 		error = null;
 		try {
 			const [strainsData, producersData] = await Promise.all([
-				fetchYeastStrains(),
+				fetchYeastStrains({ limit: 500 }),
 				fetchYeastProducers()
 			]);
 			strains = strainsData;

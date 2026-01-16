@@ -7,7 +7,8 @@
 	let batchSize = $state(19);
 	let efficiency = $state(72);
 	let showDebugPanel = $state(false);
-	let showSidebar = $state(true);
+	let showSidebar = $state(false); // Start collapsed, especially important for mobile
+	let isMobile = $state(false);
 
 	// Thread state
 	let threads = $state<Thread[]>([]);
@@ -174,10 +175,26 @@
 		return date.toLocaleDateString();
 	}
 
+	// Check if mobile on mount and on resize
+	function checkMobile() {
+		isMobile = window.innerWidth < 768;
+	}
+
 	onMount(() => {
 		inputRef?.focus();
 		fetchThreads();
+		checkMobile();
+		window.addEventListener('resize', checkMobile);
+		return () => window.removeEventListener('resize', checkMobile);
 	});
+
+	// Close sidebar on mobile after selecting a thread
+	function handleThreadSelect(threadId: string) {
+		loadThread(threadId);
+		if (isMobile) {
+			showSidebar = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -185,6 +202,16 @@
 </svelte:head>
 
 <div class="assistant-page" class:sidebar-open={showSidebar}>
+	<!-- Mobile backdrop overlay -->
+	{#if showSidebar && isMobile}
+		<button
+			type="button"
+			class="sidebar-backdrop"
+			onclick={() => showSidebar = false}
+			aria-label="Close sidebar"
+		></button>
+	{/if}
+
 	<!-- Sidebar with conversation history -->
 	<aside class="sidebar" class:open={showSidebar}>
 		<div class="sidebar-header">
@@ -208,8 +235,8 @@
 							class:active={currentThreadId === thread.id}
 							role="button"
 							tabindex="0"
-							onclick={() => loadThread(thread.id)}
-							onkeydown={(e) => e.key === 'Enter' && loadThread(thread.id)}
+							onclick={() => handleThreadSelect(thread.id)}
+							onkeydown={(e) => e.key === 'Enter' && handleThreadSelect(thread.id)}
 						>
 							<div class="thread-title">{thread.title || 'Untitled'}</div>
 							<div class="thread-meta">
@@ -533,20 +560,53 @@
 		}
 	}
 
+	/* Sidebar backdrop for mobile */
+	.sidebar-backdrop {
+		display: none;
+	}
+
+	@media (max-width: 767px) {
+		.sidebar-backdrop {
+			display: block;
+			position: fixed;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.5);
+			z-index: 40;
+			border: none;
+			cursor: pointer;
+		}
+	}
+
 	/* Sidebar */
 	.sidebar {
 		width: 280px;
 		flex-shrink: 0;
-		display: flex;
+		display: none;
 		flex-direction: column;
 		background: var(--bg-surface);
 		border-right: 1px solid var(--border-subtle);
-		transform: translateX(-100%);
-		transition: transform var(--transition);
 	}
 
 	.sidebar.open {
-		transform: translateX(0);
+		display: flex;
+	}
+
+	/* Mobile: sidebar as fixed drawer overlay */
+	@media (max-width: 767px) {
+		.sidebar {
+			position: fixed;
+			left: 0;
+			top: 0;
+			bottom: 0;
+			z-index: 50;
+			transform: translateX(-100%);
+			transition: transform 0.2s ease-out;
+			display: flex;
+		}
+
+		.sidebar.open {
+			transform: translateX(0);
+		}
 	}
 
 	.sidebar-header {
@@ -684,16 +744,16 @@
 		overflow: hidden;
 	}
 
-	.assistant-page:not(.sidebar-open) .sidebar {
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		z-index: 50;
-	}
-
+	/* Main content takes full width when sidebar is closed */
 	.assistant-page:not(.sidebar-open) .main-content {
 		width: 100%;
+	}
+
+	/* On mobile, main content always takes full width */
+	@media (max-width: 767px) {
+		.assistant-page .main-content {
+			width: 100%;
+		}
 	}
 
 	.header-left {
@@ -728,6 +788,14 @@
 		padding: var(--space-4) var(--space-6);
 		border-bottom: 1px solid var(--border-subtle);
 		background: var(--bg-surface);
+		gap: var(--space-3);
+	}
+
+	@media (max-width: 767px) {
+		.page-header {
+			padding: var(--space-3) var(--space-4);
+			flex-wrap: wrap;
+		}
 	}
 
 	.header-content h1 {
@@ -743,9 +811,25 @@
 		color: var(--text-muted);
 	}
 
+	@media (max-width: 767px) {
+		.subtitle {
+			display: none;
+		}
+
+		.header-content h1 {
+			font-size: 1.125rem;
+		}
+	}
+
 	.settings {
 		display: flex;
 		gap: var(--space-4);
+	}
+
+	@media (max-width: 767px) {
+		.settings {
+			display: none;
+		}
 	}
 
 	.setting {
@@ -777,6 +861,12 @@
 		overflow-y: auto;
 		padding: var(--space-4);
 		min-height: 0; /* Allow flex shrinking */
+	}
+
+	@media (max-width: 767px) {
+		.chat-container {
+			padding: var(--space-3);
+		}
 	}
 
 	.empty-state {
@@ -987,6 +1077,12 @@
 		background: var(--bg-surface);
 	}
 
+	@media (max-width: 767px) {
+		.input-area {
+			padding: var(--space-3) var(--space-4);
+		}
+	}
+
 	.input-wrapper {
 		display: flex;
 		gap: var(--space-2);
@@ -1062,6 +1158,12 @@
 		margin-top: var(--space-2);
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+
+	@media (max-width: 767px) {
+		.input-hint {
+			display: none;
+		}
 	}
 
 	/* Debug toggle button */

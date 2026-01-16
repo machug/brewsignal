@@ -270,6 +270,10 @@ async def init_db():
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
 
+    # Migrate yeast_strains table for alcohol_tolerance type change (REAL -> TEXT)
+    async with engine.begin() as conn:
+        await conn.run_sync(_migrate_yeast_strains_alcohol_tolerance)
+
     # Seed yeast strains from JSON file
     from .services.yeast_seeder import seed_yeast_strains
     async with async_session_factory() as session:
@@ -1351,6 +1355,32 @@ def _migrate_add_yeast_strain_to_batches(conn):
     if "yeast_strain_id" not in columns:
         conn.execute(text("ALTER TABLE batches ADD COLUMN yeast_strain_id INTEGER REFERENCES yeast_strains(id)"))
         print("Migration: Added yeast_strain_id column to batches table")
+
+
+def _migrate_yeast_strains_alcohol_tolerance(conn):
+    """Migrate alcohol_tolerance column from REAL to TEXT.
+
+    SQLite doesn't support ALTER COLUMN, so we drop and recreate the table.
+    All data will be re-seeded from the JSON file anyway.
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "yeast_strains" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    # Check if alcohol_tolerance column type needs migration
+    columns = {c["name"]: c for c in inspector.get_columns("yeast_strains")}
+    if "alcohol_tolerance" not in columns:
+        return  # Column doesn't exist, create_all will handle it
+
+    # Check the column type - if it's REAL, we need to migrate
+    col_type = str(columns["alcohol_tolerance"]["type"]).upper()
+    if "REAL" in col_type or "FLOAT" in col_type or "NUMERIC" in col_type:
+        # Drop the table - it will be recreated by create_all() with correct schema
+        # and then re-seeded from the JSON file
+        conn.execute(text("DROP TABLE yeast_strains"))
+        print("Migration: Dropped yeast_strains table for schema update (alcohol_tolerance REAL -> TEXT)")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

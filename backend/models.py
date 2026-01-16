@@ -271,7 +271,7 @@ class YeastStrain(Base):
     attenuation_high: Mapped[Optional[float]] = mapped_column()  # % (e.g., 77.0)
     temp_low: Mapped[Optional[float]] = mapped_column()  # Celsius
     temp_high: Mapped[Optional[float]] = mapped_column()  # Celsius
-    alcohol_tolerance: Mapped[Optional[float]] = mapped_column()  # % ABV tolerance
+    alcohol_tolerance: Mapped[Optional[str]] = mapped_column(String(20))  # low, medium, high, very_high
     flocculation: Mapped[Optional[str]] = mapped_column(String(20))  # low, medium, high, very_high
 
     # Metadata
@@ -1146,7 +1146,7 @@ class YeastStrainCreate(BaseModel):
     attenuation_high: Optional[float] = None
     temp_low: Optional[float] = None  # Celsius
     temp_high: Optional[float] = None  # Celsius
-    alcohol_tolerance: Optional[float] = None
+    alcohol_tolerance: Optional[str] = None  # low, medium, high, very_high
     flocculation: Optional[str] = None  # low, medium, high, very_high
     description: Optional[str] = None
 
@@ -1186,7 +1186,7 @@ class YeastStrainResponse(BaseModel):
     attenuation_high: Optional[float] = None
     temp_low: Optional[float] = None
     temp_high: Optional[float] = None
-    alcohol_tolerance: Optional[float] = None
+    alcohol_tolerance: Optional[str] = None
     flocculation: Optional[str] = None
     description: Optional[str] = None
     source: str

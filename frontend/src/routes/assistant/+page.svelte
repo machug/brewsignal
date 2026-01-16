@@ -546,6 +546,17 @@
 		width: calc(100% + 32px);
 	}
 
+	/* Mobile: use dvh to account for browser chrome (address bar, etc.) */
+	@media (max-width: 767px) {
+		.assistant-page {
+			/* Use dvh for mobile browsers, with vh fallback */
+			height: calc(100vh - 56px - 48px);
+			height: calc(100dvh - 56px - 48px);
+			max-height: calc(100vh - 56px - 48px);
+			max-height: calc(100dvh - 56px - 48px);
+		}
+	}
+
 	@media (min-width: 640px) {
 		.assistant-page {
 			margin: -24px -24px;

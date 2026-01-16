@@ -27,6 +27,10 @@
 	let currentTemp = $derived(progress?.temperature?.current ?? null);
 	let deviceColor = $derived(deviceReading?.color ?? 'BLACK');
 	let rssi = $derived(deviceReading?.rssi ?? null);
+	let batteryPercent = $derived(deviceReading?.battery_percent ?? null);
+	let deviceType = $derived(deviceReading?.device_type ?? null);
+	// HTTP devices (GravityMon, iSpindel) have battery but no meaningful RSSI
+	let isBleDevice = $derived(deviceType === 'tilt' || deviceType === null);
 	let isPaired = $derived(deviceReading?.paired ?? true);
 	let lastSeen = $derived(deviceReading?.last_seen ?? new Date().toISOString());
 	let sgRaw = $derived(deviceReading?.sg_raw ?? currentSg);
@@ -139,6 +143,13 @@
 		return { bars: 1, color: 'var(--negative)', label: 'Weak' };
 	}
 
+	function getBatteryLevel(percent: number): { color: string; label: string } {
+		if (percent >= 80) return { color: 'var(--positive)', label: 'Good' };
+		if (percent >= 40) return { color: 'var(--warning)', label: 'Medium' };
+		if (percent >= 20) return { color: 'var(--warning)', label: 'Low' };
+		return { color: 'var(--negative)', label: 'Critical' };
+	}
+
 	function getConfidenceBadge(conf: number | null): { emoji: string; label: string; color: string } | null {
 		if (conf === null || conf === undefined) return null;
 		if (conf >= 0.8) return { emoji: '🟢', label: 'High', color: 'var(--positive)' };
@@ -160,6 +171,7 @@
 
 	let accentColor = $derived(colorVars[deviceColor] || 'var(--tilt-black)');
 	let signal = $derived(rssi !== null ? getSignalStrength(rssi) : { bars: 0, color: 'var(--text-muted)', label: 'No Signal' });
+	let battery = $derived(batteryPercent !== null ? getBatteryLevel(batteryPercent) : null);
 	let lastSeenText = $derived(timeSince(lastSeen));
 </script>
 
@@ -221,22 +233,31 @@
 			</div>
 
 			<div class="flex flex-col items-end gap-2">
-				<!-- Signal indicator -->
-				<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({rssi ?? 'N/A'} dBm)">
-					<div class="flex items-end gap-0.5">
-						{#each Array(4) as _, i}
-							<div
-								class="w-1 rounded-sm transition-all"
-								style="
-									height: {8 + i * 4}px;
-									background: {i < signal.bars ? signal.color : 'var(--bg-hover)'};
-									opacity: {i < signal.bars ? 1 : 0.4};
-								"
-							></div>
-						{/each}
+				<!-- Signal indicator (BLE) or Battery indicator (HTTP) -->
+				{#if isBleDevice && rssi !== null}
+					<div class="flex flex-col items-end gap-1" title="{signal.label} signal ({rssi} dBm)">
+						<div class="flex items-end gap-0.5">
+							{#each Array(4) as _, i}
+								<div
+									class="w-1 rounded-sm transition-all"
+									style="
+										height: {8 + i * 4}px;
+										background: {i < signal.bars ? signal.color : 'var(--bg-hover)'};
+										opacity: {i < signal.bars ? 1 : 0.4};
+									"
+								></div>
+							{/each}
+						</div>
+						<span class="text-[10px] text-[var(--text-muted)] font-mono">{rssi} dBm</span>
 					</div>
-					<span class="text-[10px] text-[var(--text-muted)] font-mono">{rssi ?? 'N/A'} dBm</span>
-				</div>
+				{:else if battery && batteryPercent !== null}
+					<div class="flex flex-col items-end gap-1" title="Battery: {battery.label} ({batteryPercent}%)">
+						<div class="battery-icon" style="border-color: {battery.color};">
+							<div class="battery-level" style="width: {batteryPercent}%; background: {battery.color};"></div>
+						</div>
+						<span class="text-[10px] font-mono" style="color: {battery.color};">{batteryPercent}%</span>
+					</div>
+				{/if}
 
 				<!-- ML Confidence Badge -->
 				{#if confidenceBadge}
@@ -563,5 +584,33 @@
 		list-style: none;
 		padding: 0;
 		margin: 0;
+	}
+
+	/* Battery icon styles */
+	.battery-icon {
+		width: 24px;
+		height: 12px;
+		border: 1.5px solid;
+		border-radius: 2px;
+		padding: 1px;
+		position: relative;
+	}
+
+	.battery-icon::after {
+		content: '';
+		position: absolute;
+		right: -4px;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 2px;
+		height: 6px;
+		background: currentColor;
+		border-radius: 0 1px 1px 0;
+	}
+
+	.battery-level {
+		height: 100%;
+		border-radius: 1px;
+		transition: width 0.3s ease;
 	}
 </style>

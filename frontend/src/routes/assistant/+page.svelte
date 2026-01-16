@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { useAgent } from '$lib/ag-ui';
 	import { onMount } from 'svelte';
-	import type { Message } from '$lib/ag-ui/types';
+	import type { Message, ToolCall } from '$lib/ag-ui/types';
 
 	// Configuration
 	let batchSize = $state(19);
 	let efficiency = $state(72);
+	let showDebugPanel = $state(false);
 
 	// Initialize AG-UI agent
 	const agent = useAgent({
@@ -24,6 +25,11 @@
 			console.error('Agent error:', error);
 		}
 	});
+
+	// Get tool calls as array for display
+	function getToolCalls(): ToolCall[] {
+		return Array.from(agent.toolCalls.values());
+	}
 
 	// Input state
 	let input = $state('');
@@ -107,6 +113,17 @@
 				<span>Efficiency</span>
 				<input type="number" value={efficiency} min="50" max="100" onchange={(e) => updateEfficiency(Number(e.currentTarget.value))} /> %
 			</label>
+			<button
+				type="button"
+				class="debug-toggle"
+				class:active={showDebugPanel}
+				onclick={() => showDebugPanel = !showDebugPanel}
+				title="Toggle agent debug panel"
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+				</svg>
+			</button>
 		</div>
 	</header>
 
@@ -192,6 +209,76 @@
 				<button type="button" onclick={() => agent._agentState.clearError()}>Dismiss</button>
 			</div>
 		{/if}
+
+		{#if showDebugPanel}
+			<div class="debug-panel">
+				<div class="debug-header">
+					<h3>Agent Debug</h3>
+					<button type="button" class="debug-close" onclick={() => showDebugPanel = false}>×</button>
+				</div>
+				<div class="debug-content">
+					<div class="debug-section">
+						<div class="debug-label">Status</div>
+						<div class="debug-value">
+							<span class="status-badge" class:running={agent.isRunning} class:streaming={agent.isStreaming}>
+								{agent.status}
+								{#if agent.isStreaming}(streaming){/if}
+							</span>
+						</div>
+					</div>
+
+					{#if agent.threadId}
+						<div class="debug-section">
+							<div class="debug-label">Thread</div>
+							<div class="debug-value mono">{agent.threadId.slice(0, 8)}...</div>
+						</div>
+					{/if}
+
+					<div class="debug-section">
+						<div class="debug-label">Messages</div>
+						<div class="debug-value">{agent.messages.length}</div>
+					</div>
+
+					{#if getToolCalls().length > 0}
+						<div class="debug-section tool-calls-section">
+							<div class="debug-label">Tool Calls ({getToolCalls().length})</div>
+							<div class="tool-calls-list">
+								{#each getToolCalls() as tool (tool.id)}
+									<div class="tool-call" class:running={tool.status === 'running'} class:completed={tool.status === 'completed'}>
+										<div class="tool-call-header">
+											<span class="tool-name">{tool.name}</span>
+											<span class="tool-status">{tool.status}</span>
+										</div>
+										{#if tool.args}
+											<details class="tool-details">
+												<summary>Arguments</summary>
+												<pre class="tool-json">{formatJson(tool.args)}</pre>
+											</details>
+										{/if}
+										{#if tool.result}
+											<details class="tool-details">
+												<summary>Result</summary>
+												<pre class="tool-json">{formatJson(tool.result)}</pre>
+											</details>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					{#if Object.keys(agent.sharedState).length > 0}
+						<div class="debug-section">
+							<div class="debug-label">Shared State</div>
+							<details class="tool-details">
+								<summary>{Object.keys(agent.sharedState).length} keys</summary>
+								<pre class="tool-json">{JSON.stringify(agent.sharedState, null, 2)}</pre>
+							</details>
+						</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
 	</main>
 
 	<footer class="input-area">
@@ -229,6 +316,16 @@
 </div>
 
 <script lang="ts" module>
+	// Format JSON for display
+	function formatJson(str: string): string {
+		try {
+			const parsed = JSON.parse(str);
+			return JSON.stringify(parsed, null, 2);
+		} catch {
+			return str;
+		}
+	}
+
 	// Simple markdown formatting
 	function formatMarkdown(text: string): string {
 		if (!text) return '';
@@ -609,5 +706,226 @@
 		margin-top: var(--space-2);
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+
+	/* Debug toggle button */
+	.debug-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		border-radius: 6px;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: all var(--transition);
+	}
+
+	.debug-toggle:hover {
+		background: var(--bg-hover);
+		color: var(--text-secondary);
+	}
+
+	.debug-toggle.active {
+		background: var(--accent-muted);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	/* Debug panel */
+	.debug-panel {
+		position: fixed;
+		bottom: 80px;
+		right: var(--space-4);
+		width: 360px;
+		max-height: 60vh;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 12px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		z-index: 100;
+	}
+
+	.debug-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--space-3) var(--space-4);
+		background: var(--bg-elevated);
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.debug-header h3 {
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.debug-close {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		background: none;
+		border: none;
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 1.25rem;
+		cursor: pointer;
+	}
+
+	.debug-close:hover {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.debug-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: var(--space-3);
+	}
+
+	.debug-section {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		padding: var(--space-2) 0;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.debug-section:last-child {
+		border-bottom: none;
+	}
+
+	.debug-label {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.debug-value {
+		font-size: 0.875rem;
+		color: var(--text-primary);
+	}
+
+	.debug-value.mono {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+	}
+
+	.status-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		padding: var(--space-1) var(--space-2);
+		background: var(--bg-elevated);
+		border-radius: 4px;
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+
+	.status-badge.running {
+		background: var(--accent-muted);
+		color: var(--accent);
+	}
+
+	.status-badge.streaming {
+		background: var(--positive-muted, rgba(34, 197, 94, 0.1));
+		color: var(--positive);
+	}
+
+	/* Tool calls */
+	.tool-calls-section {
+		flex-direction: column;
+	}
+
+	.tool-calls-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+	}
+
+	.tool-call {
+		background: var(--bg-elevated);
+		border-radius: 8px;
+		padding: var(--space-2) var(--space-3);
+		border-left: 3px solid var(--text-muted);
+	}
+
+	.tool-call.running {
+		border-left-color: var(--accent);
+		background: var(--accent-muted);
+	}
+
+	.tool-call.completed {
+		border-left-color: var(--positive);
+	}
+
+	.tool-call-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.tool-name {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.tool-status {
+		font-size: 0.6875rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+	}
+
+	.tool-call.running .tool-status {
+		color: var(--accent);
+	}
+
+	.tool-call.completed .tool-status {
+		color: var(--positive);
+	}
+
+	.tool-details {
+		margin-top: var(--space-2);
+	}
+
+	.tool-details summary {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.tool-details summary:hover {
+		color: var(--text-secondary);
+	}
+
+	.tool-json {
+		margin: var(--space-2) 0 0;
+		padding: var(--space-2);
+		background: var(--bg-deep);
+		border-radius: 4px;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		line-height: 1.5;
+		color: var(--text-secondary);
+		overflow-x: auto;
+		max-height: 150px;
+		overflow-y: auto;
 	}
 </style>

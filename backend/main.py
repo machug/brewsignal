@@ -571,6 +571,24 @@ async def serve_favicon():
     return FileResponse(static_dir / "favicon.png")
 
 
+@app.get("/logo.svg", response_class=FileResponse)
+async def serve_logo():
+    """Serve the logo SVG."""
+    return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
+
+
+@app.get("/icon.svg", response_class=FileResponse)
+async def serve_icon():
+    """Serve the icon SVG."""
+    return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
+
+
+@app.get("/logo-preview.html", response_class=FileResponse)
+async def serve_logo_preview():
+    """Serve the logo preview page."""
+    return FileResponse(static_dir / "logo-preview.html")
+
+
 # Mount static files (Svelte build output)
 # Mount _app separately for Svelte's hashed assets, keeping /docs and /redoc accessible
 if static_dir.exists():

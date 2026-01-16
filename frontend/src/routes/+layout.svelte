@@ -61,6 +61,7 @@
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/batches', label: 'Batches' },
 		{ href: '/recipes', label: 'Recipes' },
+		{ href: '/inventory', label: 'Inventory' },
 		{ href: '/yeast', label: 'Yeast' },
 		{ href: '/assistant', label: 'Assistant' },
 		{ href: '/devices', label: 'Devices' },

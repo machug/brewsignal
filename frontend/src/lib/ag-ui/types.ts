@@ -21,6 +21,7 @@ export type EventType =
 	| 'TOOL_CALL_ARGS'
 	| 'TOOL_CALL_END'
 	| 'TOOL_CALL_RESULT'
+	| 'TOOL_RESULT' // Backend variant
 	| 'TOOL_CALL_CHUNK'
 	// State management
 	| 'STATE_SNAPSHOT'

@@ -173,7 +173,8 @@ export function createAgentState() {
 			case 'TOOL_CALL_START':
 				state.toolCalls.set(event.toolCallId, {
 					id: event.toolCallId,
-					name: event.toolCallName,
+					// Handle both toolCallName (spec) and toolName (backend variant)
+					name: event.toolCallName || (event as any).toolName || 'unknown',
 					args: '',
 					status: 'running'
 				});
@@ -194,9 +195,11 @@ export function createAgentState() {
 				break;
 
 			case 'TOOL_CALL_RESULT':
+			case 'TOOL_RESULT': // Backend variant
 				const resultCall = state.toolCalls.get(event.toolCallId);
 				if (resultCall) {
-					resultCall.result = event.content;
+					// Handle both content (spec) and result (backend variant)
+					resultCall.result = event.content || (event as any).result;
 					resultCall.status = 'completed';
 				}
 				break;

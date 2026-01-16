@@ -86,9 +86,9 @@
 					progress: {},
 					targets: {}
 				};
-				// Use ML-filtered values if available, fallback to calibrated
-				const displaySg = tiltReading.sg_filtered ?? tiltReading.sg;
-				const displayTemp = tiltReading.temp_filtered ?? tiltReading.temp;
+				// Use calibrated values (consistent with batch detail view)
+				const displaySg = tiltReading.sg;
+				const displayTemp = tiltReading.temp;
 				// Update with live data
 				enhanced.set(batchId, {
 					...existing,

@@ -20,6 +20,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recipe import page now shows all supported formats in help text
 - File picker accepts both .xml and .json files
 
+## [2.8.0] - 2026-01-16
+
+### Added
+- **Yeast Library** (#82) - Comprehensive yeast strain database with 449+ strains from Beer Maverick
+  - New `/yeast` page for browsing and searching yeast strains
+  - Filter by producer, type (ale/lager/wild/hybrid), form (dry/liquid), and flocculation
+  - Detailed strain cards showing temperature range, attenuation, alcohol tolerance
+  - Full-text search across strain names and producers
+  - Producer dropdown with all major yeast labs (White Labs, Wyeast, Fermentis, Lallemand, etc.)
+- **Batch Yeast Assignment** - Assign yeast strains to batches independent of recipe
+  - Yeast selector on batch create/edit forms
+  - Override recipe yeast with specific strain from library
+  - Yeast strain details displayed on batch detail page in Recipe Targets card
+- **Beer Maverick Scraper** - `scripts/scrape_beermaverick.py` for updating yeast database
+  - Scrapes 449+ strains with detailed fermentation data
+  - Extracts: name, producer, product_id, type, form, temp range, attenuation, flocculation, alcohol tolerance, description
+  - Outputs to `backend/seed/yeast_strains.json`
+- **Yeast API Endpoints**
+  - `GET /api/yeast` - List strains with filtering (search, producer, type, form, flocculation)
+  - `GET /api/yeast/{id}` - Get strain details
+  - `GET /api/yeast/producers` - List all producers
+  - `POST /api/yeast/refresh` - Refresh database from seed file
+
+### Changed
+- Yeast database source changed from BrewUnited (223 strains) to Beer Maverick (449 strains)
+- `alcohol_tolerance` field changed from float to string to support descriptive values (e.g., "medium", "high", "9-11%")
+
+### Fixed
+- **Yeast Library Pagination** - Fixed default limit of 100 preventing display of all strains
+- **Schema Migration Safety** - Added safeguard to clear batch yeast references before dropping yeast_strains table
+  - Prevents foreign key corruption when yeast IDs change during database refresh
+
+### Technical
+- New `backend/routers/yeast.py` router for yeast API endpoints
+- New `frontend/src/routes/yeast/+page.svelte` for yeast library UI
+- Database migration `_migrate_yeast_strains_alcohol_tolerance` handles schema change
+- Yeast seeder in `backend/seed/yeast_seeder.py` loads strains on startup
+- Beer Maverick scraper uses BeautifulSoup with rate limiting and parallel requests
+
+### Data Quality (Beer Maverick)
+- 449 unique yeast strains
+- 98% have temperature ranges
+- 89% have attenuation data
+- 100% have flocculation data
+- 100% have form (dry/liquid) data
+
 ## [2.7.0] - 2025-12-08
 
 ### Added

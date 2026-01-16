@@ -1,6 +1,6 @@
 # BrewSignal
 
-![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.5.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.8.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
 A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. Supports Tilt, iSpindel, and GravityMon devices.
 
@@ -46,6 +46,12 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
   - Safe batch deletion with preview mode
 - **Weather Alerts** - Predictive alerts when forecast temps may affect fermentation
 - **BeerXML Import & Batch Tracking** - Import recipes with full ingredients, link readings to batches, track against targets
+- **Yeast Library** (v2.8.0) - Comprehensive yeast strain database with 449+ strains
+  - Scraped from Beer Maverick with detailed fermentation data
+  - Filter by producer, type (ale/lager/wild), form (dry/liquid), and flocculation
+  - Temperature ranges, attenuation, and alcohol tolerance for each strain
+  - Batch yeast assignment with ability to override recipe yeast
+  - Search and browse yeast strains with detailed property cards
 - **Data Export** - Download all readings as CSV
 - **Dark Theme** - Easy on the eyes during late-night brew checks
 
@@ -284,6 +290,49 @@ Control logic:
 - Preview cleanup operations (dry-run mode) before executing
 - Safe cleanup only removes readings for deleted batches
 
+## Yeast Library (v2.8.0)
+
+BrewSignal includes a comprehensive yeast strain database with 449+ strains scraped from [Beer Maverick](https://beermaverick.com/yeasts/).
+
+### Features
+
+- **Browse & Search** - Full-text search across strain names and producers
+- **Filter by Properties** - Producer, type (ale/lager/wild/hybrid), form (dry/liquid), flocculation
+- **Detailed Strain Cards** - Each strain displays:
+  - Fermentation temperature range (°C)
+  - Attenuation range (%)
+  - Flocculation (low/medium/high/very_high)
+  - Alcohol tolerance
+  - Producer and product ID
+- **Batch Integration** - Assign yeast strains to batches, overriding recipe yeast if desired
+
+### Data Source
+
+Yeast data is scraped from Beer Maverick using `scripts/scrape_beermaverick.py` and stored in `backend/seed/yeast_strains.json`. The database is seeded on application startup.
+
+**Updating Yeast Data:**
+
+```bash
+# Re-scrape yeast data from Beer Maverick
+python scripts/scrape_beermaverick.py
+
+# Refresh database (requires app restart or API call)
+curl -X POST http://localhost:8080/api/yeast/refresh
+```
+
+### Producers
+
+The database includes strains from major yeast producers:
+- White Labs (WLP series)
+- Wyeast (WY series)
+- Fermentis (SafAle, SafLager)
+- Lallemand (LalBrew)
+- Imperial Yeast
+- Omega Yeast Labs
+- Escarpment Labs
+- Mangrove Jack's
+- And many more...
+
 ## API Endpoints
 
 ### Devices & Sensors
@@ -305,6 +354,24 @@ Control logic:
 | `/api/ingest/generic` | POST | Auto-detect device format |
 | `/api/ingest/ispindel` | POST | iSpindel HTTP endpoint |
 | `/api/ingest/gravitymon` | POST | GravityMon HTTP endpoint |
+
+### Yeast Library
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/yeast` | GET | List yeast strains (supports filtering) |
+| `/api/yeast/{id}` | GET | Get yeast strain details |
+| `/api/yeast/producers` | GET | List all yeast producers |
+| `/api/yeast/refresh` | POST | Refresh yeast database from seed file |
+
+**Query Parameters for `/api/yeast`:**
+- `search` - Full-text search on name and producer
+- `producer` - Filter by producer name
+- `type` - Filter by type (ale, lager, wild, hybrid)
+- `form` - Filter by form (dry, liquid)
+- `flocculation` - Filter by flocculation level
+- `limit` - Max results (default: 100)
+- `offset` - Pagination offset
 
 ### Batches & Recipes
 

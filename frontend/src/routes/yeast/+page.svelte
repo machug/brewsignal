@@ -73,7 +73,7 @@
 				fetchYeastProducers()
 			]);
 			strains = strainsData;
-			producers = producersData;
+			producers = producersData.producers;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load yeast strains';
 		} finally {

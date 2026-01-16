@@ -139,11 +139,16 @@ class MLPipelineManager:
 
         return flat_result
 
-    def get_device_state(self, device_id: str) -> Optional[dict]:
+    def get_device_state(
+        self,
+        device_id: str,
+        expected_fg: Optional[float] = None,
+    ) -> Optional[dict]:
         """Get current ML state and predictions for a device.
 
         Args:
             device_id: Unique device identifier
+            expected_fg: Expected final gravity from recipe (constrains predictions)
 
         Returns:
             Dictionary with device ML state including predictions, or None if no pipeline exists
@@ -158,6 +163,7 @@ class MLPipelineManager:
             prediction_result = pipeline.curve_fitter.fit(
                 times=pipeline.time_history,
                 sgs=pipeline.sg_history,
+                expected_fg=expected_fg,
             )
 
             return {

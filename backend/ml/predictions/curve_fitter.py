@@ -55,12 +55,18 @@ class FermentationCurveFitter:
         self.k: Optional[float] = None   # Decay rate constant
         self.r_squared: Optional[float] = None  # Fit quality
 
-    def fit(self, times: list[float], sgs: list[float]) -> dict:
+    def fit(
+        self,
+        times: list[float],
+        sgs: list[float],
+        expected_fg: Optional[float] = None,
+    ) -> dict:
         """Fit exponential decay curve to fermentation data.
 
         Args:
             times: Time points in hours since fermentation start
             sgs: Specific gravity readings
+            expected_fg: Expected final gravity from recipe (used as lower bound)
 
         Returns:
             Dictionary with fit results:
@@ -116,14 +122,20 @@ class FermentationCurveFitter:
 
         try:
             # Fit the curve
-            # FG lower bound of 1.000 - very few beers finish below 1.000
-            # Even with high attenuation, 1.000 is an extreme floor
+            # FG lower bound: use expected_fg from recipe if available, otherwise 1.000
+            # Allow prediction to go slightly below expected_fg (0.003) for margin
+            # but never below 1.000 as an absolute floor
+            if expected_fg is not None:
+                fg_lower = max(1.000, expected_fg - 0.003)
+            else:
+                fg_lower = 1.000
+
             popt, pcov = curve_fit(
                 exp_decay,
                 times_arr,
                 sgs_arr,
                 p0=[og_guess, fg_guess, k_guess],
-                bounds=([1.000, 1.000, 0.001], [1.200, 1.100, 0.5]),
+                bounds=([1.000, fg_lower, 0.001], [1.200, 1.100, 0.5]),
                 maxfev=10000
             )
 
@@ -135,9 +147,9 @@ class FermentationCurveFitter:
             ss_tot = np.sum((sgs_arr - np.mean(sgs_arr)) ** 2)
             r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
 
-            # Check if FG hit the lower bound (1.000) - prediction may be unreliable
+            # Check if FG hit the lower bound - prediction may be unreliable
             # This happens early in fermentation when curve shape isn't fully developed
-            fg_hit_bound = fg_fit <= 1.001
+            fg_hit_bound = fg_fit <= fg_lower + 0.001
 
             # Store fitted parameters
             self.og = float(og_fit)

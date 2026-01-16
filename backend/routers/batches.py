@@ -472,9 +472,11 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
     """
     from ..main import get_ml_manager
 
-    # Get batch
+    # Get batch with recipe eagerly loaded
     result = await db.execute(
-        select(Batch).where(Batch.id == batch_id, Batch.deleted_at.is_(None))
+        select(Batch)
+        .options(selectinload(Batch.recipe))
+        .where(Batch.id == batch_id, Batch.deleted_at.is_(None))
     )
     batch = result.scalar_one_or_none()
 
@@ -489,8 +491,11 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
     if not ml_mgr:
         return {"available": False}
 
-    # Get device state
-    device_state = ml_mgr.get_device_state(batch.device_id)
+    # Get expected FG from recipe to constrain predictions
+    expected_fg = batch.recipe.fg if batch.recipe else None
+
+    # Get device state with expected FG for prediction bounds
+    device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
     if not device_state or not device_state.get("predictions"):
         return {"available": False}
 

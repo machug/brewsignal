@@ -38,40 +38,9 @@ export function useAgent(config: UseAgentConfig) {
 		headers: config.headers
 	});
 
-	// Track tools and state from config
-	let tools = $state(config.tools || []);
-	let sharedState = $state(config.initialState || {});
-
-	// Watch for state changes from agent
-	$effect(() => {
-		if (Object.keys(agentState.agentState).length > 0) {
-			sharedState = { ...sharedState, ...agentState.agentState };
-			config.onStateChange?.(sharedState);
-		}
-	});
-
-	// Watch for tool calls
-	$effect(() => {
-		for (const [, toolCall] of agentState.toolCalls) {
-			if (toolCall.status === 'running') {
-				config.onToolCall?.(toolCall.name, toolCall.args);
-			}
-		}
-	});
-
-	// Watch for completion
-	$effect(() => {
-		if (agentState.status === 'connected' && !agentState.isStreaming && agentState.runId) {
-			config.onComplete?.();
-		}
-	});
-
-	// Watch for errors
-	$effect(() => {
-		if (agentState.error) {
-			config.onError?.(agentState.error);
-		}
-	});
+	// Track tools and state from config (non-reactive to avoid loops)
+	let tools: ToolDefinition[] = config.tools || [];
+	let sharedState: Record<string, unknown> = config.initialState || {};
 
 	/**
 	 * Send a message to the agent
@@ -90,6 +59,13 @@ export function useAgent(config: UseAgentConfig) {
 
 		// Run the agent
 		await client.run(agentState, runConfig);
+
+		// Call completion callback if no error
+		if (!agentState.error) {
+			config.onComplete?.();
+		} else {
+			config.onError?.(agentState.error);
+		}
 	}
 
 	/**

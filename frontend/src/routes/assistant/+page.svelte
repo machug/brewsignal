@@ -30,9 +30,15 @@
 	let inputRef = $state<HTMLTextAreaElement | null>(null);
 
 	// Update agent state when settings change
-	$effect(() => {
-		agent.setState({ batchSize, efficiency });
-	});
+	function updateBatchSize(value: number) {
+		batchSize = value;
+		agent.setState({ batchSize: value });
+	}
+
+	function updateEfficiency(value: number) {
+		efficiency = value;
+		agent.setState({ efficiency: value });
+	}
 
 	// Auto-resize textarea
 	function autoResize(textarea: HTMLTextAreaElement) {
@@ -95,11 +101,11 @@
 		<div class="settings">
 			<label class="setting">
 				<span>Batch Size</span>
-				<input type="number" bind:value={batchSize} min="1" max="100" /> L
+				<input type="number" value={batchSize} min="1" max="100" onchange={(e) => updateBatchSize(Number(e.currentTarget.value))} /> L
 			</label>
 			<label class="setting">
 				<span>Efficiency</span>
-				<input type="number" bind:value={efficiency} min="50" max="100" /> %
+				<input type="number" value={efficiency} min="50" max="100" onchange={(e) => updateEfficiency(Number(e.currentTarget.value))} /> %
 			</label>
 		</div>
 	</header>

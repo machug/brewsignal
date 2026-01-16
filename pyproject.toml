@@ -31,6 +31,11 @@ dev = [
     "pytest-asyncio>=0.21",
     "httpx>=0.25",
 ]
+ai = [
+    "litellm>=1.0",
+    "tiktoken>=0.5",
+    "python-dotenv>=1.0",
+]
 
 [build-system]
 requires = ["hatchling"]

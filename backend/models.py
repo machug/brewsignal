@@ -1015,6 +1015,14 @@ class ConfigUpdate(BaseModel):
     # Alerts
     weather_alerts_enabled: Optional[bool] = None
     alert_temp_threshold: Optional[float] = None
+    # AI Assistant settings
+    ai_enabled: Optional[bool] = None
+    ai_provider: Optional[str] = None  # local, openai, anthropic, google, groq, deepseek
+    ai_model: Optional[str] = None  # Model name (e.g., gpt-4o, claude-3-5-sonnet)
+    ai_api_key: Optional[str] = None  # API key (encrypted at rest)
+    ai_base_url: Optional[str] = None  # For Ollama: http://localhost:11434
+    ai_temperature: Optional[float] = None
+    ai_max_tokens: Optional[int] = None
 
     @field_validator("temp_units")
     @classmethod
@@ -1079,6 +1087,28 @@ class ConfigUpdate(BaseModel):
             raise ValueError("alert_temp_threshold must be between 0.5-11°C (1-20°F)")
         return v
 
+    @field_validator("ai_provider")
+    @classmethod
+    def validate_ai_provider(cls, v: Optional[str]) -> Optional[str]:
+        valid_providers = ("local", "openai", "anthropic", "google", "groq", "deepseek", "huggingface", "openrouter")
+        if v is not None and v not in valid_providers:
+            raise ValueError(f"ai_provider must be one of: {', '.join(valid_providers)}")
+        return v
+
+    @field_validator("ai_temperature")
+    @classmethod
+    def validate_ai_temperature(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (v < 0 or v > 2):
+            raise ValueError("ai_temperature must be between 0 and 2")
+        return v
+
+    @field_validator("ai_max_tokens")
+    @classmethod
+    def validate_ai_max_tokens(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 100 or v > 8000):
+            raise ValueError("ai_max_tokens must be between 100 and 8000")
+        return v
+
 
 class ConfigResponse(BaseModel):
     temp_units: str = "C"
@@ -1108,6 +1138,14 @@ class ConfigResponse(BaseModel):
     # Alerts
     weather_alerts_enabled: bool = False
     alert_temp_threshold: float = 5.0
+    # AI Assistant settings
+    ai_enabled: bool = False
+    ai_provider: str = "local"
+    ai_model: str = ""
+    ai_api_key: str = ""  # Masked in responses, stored encrypted
+    ai_base_url: str = ""
+    ai_temperature: float = 0.7
+    ai_max_tokens: int = 2000
 
 
 # Recipe & Batch Pydantic Schemas

@@ -4,7 +4,8 @@
 		name: string;
 		type?: string;
 		amount_kg?: number;
-		color_lovibond?: number;
+		color_srm?: number;  // API returns SRM
+		color_lovibond?: number;  // Legacy/alternate format
 		origin?: string;
 		supplier?: string;
 		yield_percent?: number;
@@ -27,9 +28,17 @@
 		return kg.toFixed(2) + ' kg';
 	}
 
-	function formatColor(lovibond?: number): string {
-		if (lovibond === undefined || lovibond === null) return '--';
-		return lovibond.toFixed(0) + '°L';
+	function formatColor(ferm: Fermentable): string {
+		// Prefer SRM (what API returns), fallback to Lovibond
+		const srm = ferm.color_srm;
+		const lovibond = ferm.color_lovibond;
+		if (srm !== undefined && srm !== null) {
+			return srm.toFixed(0) + ' SRM';
+		}
+		if (lovibond !== undefined && lovibond !== null) {
+			return lovibond.toFixed(0) + '°L';
+		}
+		return '--';
 	}
 </script>
 
@@ -61,7 +70,7 @@
 						<td>{ferm.type || '--'}</td>
 						<td>{formatKg(ferm.amount_kg)}</td>
 						<td>{getPercent(ferm.amount_kg)}</td>
-						<td>{formatColor(ferm.color_lovibond)}</td>
+						<td>{formatColor(ferm)}</td>
 					</tr>
 				{/each}
 			</tbody>

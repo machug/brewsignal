@@ -1932,13 +1932,51 @@ def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
                 else:
                     norm_f["amount"] = {"value": float(amount), "unit": "kg"}
 
-            # Color
+            # Color - use provided value or lookup default by grain name
             color = f.get("color") or f.get("color_lovibond") or f.get("color_srm")
             if color is not None:
                 if isinstance(color, dict):
                     norm_f["color"] = color
                 else:
                     norm_f["color"] = {"value": float(color), "unit": "Lovibond"}
+            else:
+                # Default colors (SRM) for common grains when not specified
+                default_colors = {
+                    # Base malts
+                    "pale ale malt": 3, "pale malt": 2, "pilsner malt": 1.5, "pilsner": 1.5,
+                    "maris otter": 3, "golden promise": 2.5, "vienna malt": 3.5, "vienna": 3.5,
+                    "munich malt": 9, "munich": 9, "munich light": 6, "munich dark": 12,
+                    # Wheat & other base grains
+                    "wheat malt": 2, "wheat": 2, "white wheat": 2, "red wheat": 3,
+                    "rye malt": 3, "rye": 3, "oat malt": 2,
+                    # Adjuncts
+                    "flaked oats": 1, "oats": 1, "flaked wheat": 1.5, "flaked barley": 2,
+                    "flaked maize": 0.5, "corn": 0.5, "flaked rice": 0.5, "rice": 0.5,
+                    # Crystal/Caramel malts
+                    "carapils": 2, "carafoam": 2, "dextrin malt": 2,
+                    "crystal 10": 10, "crystal 20": 20, "crystal 30": 30, "crystal 40": 40,
+                    "crystal 60": 60, "crystal 80": 80, "crystal 120": 120,
+                    "caramel 10": 10, "caramel 20": 20, "caramel 40": 40, "caramel 60": 60,
+                    "caramel 80": 80, "caramel 120": 120, "caramunich": 50,
+                    "caravienne": 20, "carahell": 10, "carared": 20,
+                    # Roasted malts
+                    "chocolate malt": 400, "chocolate": 400, "pale chocolate": 200,
+                    "black malt": 500, "black patent": 550, "roasted barley": 500,
+                    "carafa i": 350, "carafa ii": 450, "carafa iii": 550,
+                    "midnight wheat": 550, "blackprinz": 500,
+                    # Specialty malts
+                    "biscuit malt": 25, "biscuit": 25, "victory malt": 28, "victory": 28,
+                    "amber malt": 30, "brown malt": 65, "aromatic malt": 20, "aromatic": 20,
+                    "melanoidin malt": 30, "melanoidin": 30, "honey malt": 25, "honey": 25,
+                    "special b": 140, "special roast": 50,
+                    # Sugars
+                    "table sugar": 0, "cane sugar": 0, "corn sugar": 0, "dextrose": 0,
+                    "brown sugar": 15, "belgian candi sugar": 1, "dark candi sugar": 80,
+                    "honey": 2, "maple syrup": 35, "molasses": 80,
+                }
+                grain_name = f.get("name", "").lower().strip()
+                if grain_name in default_colors:
+                    norm_f["color"] = {"value": float(default_colors[grain_name]), "unit": "SRM"}
 
             # Yield
             yield_val = f.get("yield") or f.get("yield_percent")

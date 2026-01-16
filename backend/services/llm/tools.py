@@ -799,7 +799,7 @@ async def _search_inventory_yeast(
                 "quantity": y.quantity,
                 "form": y.form,
                 "expiry_date": y.expiry_date.isoformat() if y.expiry_date else None,
-                "days_until_expiry": (y.expiry_date - now).days if y.expiry_date else None,
+                "days_until_expiry": (y.expiry_date.replace(tzinfo=timezone.utc) - now).days if y.expiry_date else None,
                 "generation": y.generation,
                 "storage_location": y.storage_location,
             }

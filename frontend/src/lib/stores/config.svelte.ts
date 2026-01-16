@@ -28,6 +28,14 @@ export interface AppConfig {
 	// Alerts
 	weather_alerts_enabled: boolean;
 	alert_temp_threshold: number;
+	// AI Assistant
+	ai_enabled: boolean;
+	ai_provider: string;
+	ai_model: string;
+	ai_api_key: string;
+	ai_base_url: string;
+	ai_temperature: number;
+	ai_max_tokens: number;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -57,7 +65,15 @@ const DEFAULT_CONFIG: AppConfig = {
 	ha_weather_entity_id: '',
 	// Alerts
 	weather_alerts_enabled: false,
-	alert_temp_threshold: 3.0
+	alert_temp_threshold: 3.0,
+	// AI Assistant
+	ai_enabled: false,
+	ai_provider: 'local',
+	ai_model: '',
+	ai_api_key: '',
+	ai_base_url: '',
+	ai_temperature: 0.7,
+	ai_max_tokens: 2000
 };
 
 export const configState = $state<{ config: AppConfig; loaded: boolean }>({

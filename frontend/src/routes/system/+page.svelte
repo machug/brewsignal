@@ -69,6 +69,22 @@
 	let alertsError = $state<string | null>(null);
 	let alertsSuccess = $state(false);
 
+	// AI Assistant state
+	let aiEnabled = $state(false);
+	let aiProvider = $state('local');
+	let aiModel = $state('');
+	let aiApiKey = $state('');
+	let aiBaseUrl = $state('');
+	let aiTemperature = $state(0.7);
+	let aiMaxTokens = $state(2000);
+	let aiSaving = $state(false);
+	let aiError = $state<string | null>(null);
+	let aiSuccess = $state(false);
+	let aiTesting = $state(false);
+	let aiTestResult = $state<{ success: boolean; response?: string; error?: string } | null>(null);
+	let aiProviders = $state<Array<{ id: string; name: string; description: string; requires_api_key: boolean; setup_url: string }>>([]);
+	let aiModels = $state<Array<{ id: string; name: string; description: string }>>([]);
+
 	// Derived unit helpers
 	let useCelsius = $derived(configState.config.temp_units === 'C');
 	let tempUnitSymbol = $derived(useCelsius ? '°C' : '°F');
@@ -156,7 +172,97 @@
 		// Weather Alerts
 		weatherAlertsEnabled = configState.config.weather_alerts_enabled;
 		alertTempThreshold = configState.config.alert_temp_threshold;
+		// AI Assistant
+		aiEnabled = configState.config.ai_enabled ?? false;
+		aiProvider = configState.config.ai_provider ?? 'local';
+		aiModel = configState.config.ai_model ?? '';
+		aiApiKey = configState.config.ai_api_key ?? '';
+		aiBaseUrl = configState.config.ai_base_url ?? '';
+		aiTemperature = configState.config.ai_temperature ?? 0.7;
+		aiMaxTokens = configState.config.ai_max_tokens ?? 2000;
 	}
+
+	async function loadAiProviders() {
+		try {
+			const response = await fetch('/api/assistant/providers');
+			if (response.ok) {
+				aiProviders = await response.json();
+			}
+		} catch (e) {
+			console.error('Failed to load AI providers:', e);
+		}
+	}
+
+	async function loadAiModels(provider: string) {
+		try {
+			const response = await fetch(`/api/assistant/models/${provider}`);
+			if (response.ok) {
+				const data = await response.json();
+				aiModels = data.models;
+			}
+		} catch (e) {
+			console.error('Failed to load AI models:', e);
+			aiModels = [];
+		}
+	}
+
+	async function saveAiConfig() {
+		aiSaving = true;
+		aiError = null;
+		aiSuccess = false;
+
+		try {
+			await updateConfig({
+				ai_enabled: aiEnabled,
+				ai_provider: aiProvider,
+				ai_model: aiModel,
+				ai_api_key: aiApiKey,
+				ai_base_url: aiBaseUrl,
+				ai_temperature: aiTemperature,
+				ai_max_tokens: aiMaxTokens
+			});
+			aiSuccess = true;
+			setTimeout(() => (aiSuccess = false), 3000);
+		} catch (e) {
+			aiError = e instanceof Error ? e.message : 'Failed to save AI settings';
+		} finally {
+			aiSaving = false;
+		}
+	}
+
+	async function testAiConnection() {
+		aiTesting = true;
+		aiTestResult = null;
+
+		try {
+			// First save the current config
+			await updateConfig({
+				ai_enabled: aiEnabled,
+				ai_provider: aiProvider,
+				ai_model: aiModel,
+				ai_api_key: aiApiKey,
+				ai_base_url: aiBaseUrl,
+				ai_temperature: aiTemperature,
+				ai_max_tokens: aiMaxTokens
+			});
+
+			// Then test the connection
+			const response = await fetch('/api/assistant/test', { method: 'POST' });
+			const result = await response.json();
+			aiTestResult = result;
+		} catch (e) {
+			aiTestResult = { success: false, error: e instanceof Error ? e.message : 'Connection test failed' };
+		} finally {
+			aiTesting = false;
+		}
+	}
+
+	// Watch for provider changes to load models
+	$effect(() => {
+		if (aiProvider) {
+			loadAiModels(aiProvider);
+		}
+	});
 
 	async function saveConfig() {
 		configSaving = true;
@@ -414,7 +520,8 @@
 			loadSystemInfo(),
 			loadStorageStats(),
 			loadTimezones(),
-			loadHAStatus()
+			loadHAStatus(),
+			loadAiProviders()
 		]);
 		syncConfigFromStore();
 		loading = false;
@@ -1020,6 +1127,209 @@
 					</div>
 				</div>
 			{/if}
+
+			<!-- AI Brewing Assistant -->
+			<div class="card">
+				<div class="card-header">
+					<h2 class="card-title">AI Brewing Assistant</h2>
+				</div>
+				<div class="card-body">
+					<p class="section-description mb-4">
+						Enable an AI assistant to help with recipe creation, fermentation troubleshooting, and brewing advice.
+						Use a local model (Ollama) for free and private operation, or connect to cloud providers.
+					</p>
+
+					<!-- Enable Toggle -->
+					<div class="setting-row">
+						<div class="setting-info">
+							<span class="setting-label">Enable AI Assistant</span>
+							<span class="setting-description">Turn on AI-powered brewing features</span>
+						</div>
+						<button
+							type="button"
+							class="toggle"
+							class:active={aiEnabled}
+							onclick={() => (aiEnabled = !aiEnabled)}
+							aria-pressed={aiEnabled}
+							aria-label="Toggle AI assistant"
+						>
+							<span class="toggle-slider"></span>
+						</button>
+					</div>
+
+					{#if aiEnabled}
+						<!-- Provider Selection -->
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Provider</span>
+								<span class="setting-description">Choose where to run the AI model</span>
+							</div>
+							<select
+								bind:value={aiProvider}
+								class="input-field input-select"
+							>
+								{#each aiProviders as provider}
+									<option value={provider.id}>{provider.name}</option>
+								{/each}
+							</select>
+						</div>
+
+						{#if aiProviders.find(p => p.id === aiProvider)}
+							{@const selectedProvider = aiProviders.find(p => p.id === aiProvider)}
+							<p class="setting-hint mb-3">
+								{selectedProvider?.description}
+								{#if selectedProvider?.setup_url}
+									<a href={selectedProvider.setup_url} target="_blank" rel="noopener" class="text-amber-400 hover:underline ml-1">
+										Setup guide →
+									</a>
+								{/if}
+							</p>
+						{/if}
+
+						<!-- API Key (for cloud providers) -->
+						{#if aiProviders.find(p => p.id === aiProvider)?.requires_api_key}
+							<div class="setting-row">
+								<div class="setting-info">
+									<span class="setting-label">API Key</span>
+									<span class="setting-description">Your API key for {aiProviders.find(p => p.id === aiProvider)?.name}</span>
+								</div>
+								<input
+									type="password"
+									bind:value={aiApiKey}
+									placeholder="sk-..."
+									class="input-field"
+								/>
+							</div>
+						{/if}
+
+						<!-- Base URL (for local/Ollama) -->
+						{#if aiProvider === 'local'}
+							<div class="setting-row">
+								<div class="setting-info">
+									<span class="setting-label">Ollama URL</span>
+									<span class="setting-description">URL of your Ollama server</span>
+								</div>
+								<input
+									type="text"
+									bind:value={aiBaseUrl}
+									placeholder="http://localhost:11434"
+									class="input-field"
+								/>
+							</div>
+						{/if}
+
+						<!-- Model Selection -->
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Model</span>
+								<span class="setting-description">AI model to use</span>
+							</div>
+							<select
+								bind:value={aiModel}
+								class="input-field input-select"
+							>
+								<option value="">Default</option>
+								{#each aiModels as model}
+									<option value={model.id}>{model.name}</option>
+								{/each}
+							</select>
+						</div>
+
+						{#if aiModels.find(m => m.id === aiModel)}
+							<p class="setting-hint mb-3">
+								{aiModels.find(m => m.id === aiModel)?.description}
+							</p>
+						{/if}
+
+						<!-- Advanced Settings (collapsed by default) -->
+						<details class="mt-4">
+							<summary class="cursor-pointer text-zinc-400 hover:text-zinc-200">Advanced Settings</summary>
+							<div class="mt-3 space-y-3">
+								<!-- Temperature -->
+								<div class="setting-row">
+									<div class="setting-info">
+										<span class="setting-label">Temperature</span>
+										<span class="setting-description">Higher = more creative, lower = more focused</span>
+									</div>
+									<input
+										type="number"
+										bind:value={aiTemperature}
+										min="0"
+										max="2"
+										step="0.1"
+										class="input-field input-number"
+									/>
+								</div>
+
+								<!-- Max Tokens -->
+								<div class="setting-row">
+									<div class="setting-info">
+										<span class="setting-label">Max Tokens</span>
+										<span class="setting-description">Maximum response length</span>
+									</div>
+									<input
+										type="number"
+										bind:value={aiMaxTokens}
+										min="100"
+										max="8000"
+										step="100"
+										class="input-field input-number"
+									/>
+								</div>
+							</div>
+						</details>
+
+						<!-- Test Connection -->
+						<div class="mt-4">
+							<button
+								type="button"
+								class="btn-secondary"
+								onclick={testAiConnection}
+								disabled={aiTesting}
+							>
+								{#if aiTesting}
+									<span class="loading-dot"></span>
+									Testing...
+								{:else}
+									Test Connection
+								{/if}
+							</button>
+							{#if aiTestResult}
+								{#if aiTestResult.success}
+									<p class="config-success mt-2">
+										Connected! Response: "{aiTestResult.response}"
+									</p>
+								{:else}
+									<p class="config-error mt-2">{aiTestResult.error}</p>
+								{/if}
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Save Button -->
+					<div class="mt-4 config-actions">
+						<button
+							type="button"
+							class="btn-primary"
+							onclick={saveAiConfig}
+							disabled={aiSaving}
+						>
+							{#if aiSaving}
+								<span class="loading-dot"></span>
+								Saving...
+							{:else}
+								Save AI Settings
+							{/if}
+						</button>
+						{#if aiError}
+							<p class="config-error">{aiError}</p>
+						{/if}
+						{#if aiSuccess}
+							<p class="config-success">Settings saved</p>
+						{/if}
+					</div>
+				</div>
+			</div>
 
 			<!-- Storage & Cleanup -->
 			<div class="card">

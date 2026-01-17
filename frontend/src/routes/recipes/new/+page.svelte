@@ -1,18 +1,69 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import type { RecipeCreate, RecipeUpdateData } from '$lib/api';
+	import type { RecipeCreate } from '$lib/api';
 	import { createRecipe } from '$lib/api';
-	import RecipeForm from '$lib/components/RecipeForm.svelte';
+	import RecipeBuilder from '$lib/components/recipe/RecipeBuilder.svelte';
+	import type { RecipeData } from '$lib/components/recipe/RecipeBuilder.svelte';
 
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
 
-	async function handleSubmit(data: RecipeCreate | RecipeUpdateData) {
+	async function handleSave(data: RecipeData) {
 		submitting = true;
 		error = null;
 
 		try {
-			const recipe = await createRecipe(data as RecipeCreate);
+			// Convert RecipeBuilder output to RecipeCreate format
+			const recipeCreate: RecipeCreate = {
+				name: data.name,
+				author: data.author || undefined,
+				type: data.type || undefined,
+				batch_size_liters: data.batch_size_liters,
+				efficiency_percent: data.efficiency_percent,
+				boil_time_minutes: data.boil_time_minutes,
+				og: data.og,
+				fg: data.fg,
+				abv: data.abv,
+				ibu: data.ibu,
+				color_srm: data.color_srm,
+				notes: data.notes || undefined,
+				// Yeast details
+				yeast_name: data.yeast?.name,
+				yeast_lab: data.yeast?.producer,
+				yeast_product_id: data.yeast?.product_id,
+				yeast_temp_min: data.yeast?.temp_low ?? undefined,
+				yeast_temp_max: data.yeast?.temp_high ?? undefined,
+				yeast_attenuation:
+					data.yeast?.attenuation_low && data.yeast?.attenuation_high
+						? (data.yeast.attenuation_low + data.yeast.attenuation_high) / 2
+						: undefined,
+				// Store ingredient details for future retrieval
+				format_extensions: {
+					fermentables: data.fermentables.map((f) => ({
+						id: f.id,
+						name: f.name,
+						amount_kg: f.amount_kg,
+						color_lovibond: f.color_lovibond,
+						potential_sg: f.potential_sg,
+						type: f.type,
+						origin: f.origin,
+						maltster: f.maltster
+					})),
+					hops: data.hops.map((h) => ({
+						id: h.id,
+						name: h.name,
+						amount_grams: h.amount_grams,
+						alpha_acid_percent: h.alpha_acid_percent,
+						boil_time_minutes: h.boil_time_minutes,
+						use: h.use,
+						form: h.form,
+						origin: h.origin,
+						purpose: h.purpose
+					}))
+				}
+			};
+
+			const recipe = await createRecipe(recipeCreate);
 			goto(`/recipes/${recipe.id}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to create recipe';
@@ -42,31 +93,46 @@
 	<div class="page-header">
 		<h1 class="page-title">Create New Recipe</h1>
 		<p class="page-description">
-			Create a recipe manually or <a href="/recipes/import" class="import-link">import from BeerXML/BeerJSON</a>
+			Build your recipe with real-time calculations, or
+			<a href="/recipes/import" class="import-link">import from BeerXML/BeerJSON</a>
 		</p>
 	</div>
 
 	{#if error}
 		<div class="error-banner">
-			<svg class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+			<svg
+				class="error-icon"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+				/>
 			</svg>
 			<span>{error}</span>
 		</div>
 	{/if}
 
-	<RecipeForm
-		onSubmit={handleSubmit}
-		onCancel={handleCancel}
-		{submitting}
-	/>
+	{#if submitting}
+		<div class="saving-overlay">
+			<div class="spinner"></div>
+			<span>Saving recipe...</span>
+		</div>
+	{/if}
+
+	<RecipeBuilder onSave={handleSave} onCancel={handleCancel} />
 </div>
 
 <style>
 	.page-container {
-		max-width: 900px;
+		max-width: 1200px;
 		margin: 0 auto;
 		padding: var(--space-6);
+		position: relative;
 	}
 
 	.back-link {
@@ -94,8 +160,8 @@
 	}
 
 	.page-header {
-		margin-bottom: var(--space-8);
-		padding-bottom: var(--space-6);
+		margin-bottom: var(--space-6);
+		padding-bottom: var(--space-4);
 		border-bottom: 1px solid var(--border-subtle);
 	}
 
@@ -139,5 +205,37 @@
 		width: 20px;
 		height: 20px;
 		flex-shrink: 0;
+	}
+
+	.saving-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-4);
+		z-index: 1000;
+		color: white;
+		font-size: 16px;
+	}
+
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid rgba(255, 255, 255, 0.3);
+		border-top-color: var(--recipe-accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

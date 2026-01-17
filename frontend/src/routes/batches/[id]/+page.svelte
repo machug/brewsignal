@@ -12,6 +12,7 @@
 	import BatchRecipeTargetsCard from '$lib/components/batch/BatchRecipeTargetsCard.svelte';
 	import BatchNotesCard from '$lib/components/batch/BatchNotesCard.svelte';
 	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
+	import FermentationChart from '$lib/components/FermentationChart.svelte';
 
 	// WebSocket for live heater state updates
 	let controlWs: WebSocket | null = null;
@@ -674,6 +675,18 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Fermentation Chart (shows historical data for all batches with a device) -->
+		{#if batch.device_id}
+			<div class="chart-section">
+				<FermentationChart
+					batchId={batch.id}
+					deviceColor={batch.device_id}
+					originalGravity={batch.measured_og}
+					{controlEvents}
+				/>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -1039,6 +1052,11 @@
 		.content-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	/* Chart section */
+	.chart-section {
+		margin-top: 1.5rem;
 	}
 
 	/* Stats section */

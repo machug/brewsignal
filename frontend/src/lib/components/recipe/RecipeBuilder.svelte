@@ -61,6 +61,23 @@
 
 	let { onSave, onCancel }: Props = $props();
 
+	// Expose methods and state for parent to render actions
+	export function save() {
+		handleSave();
+	}
+
+	export function review() {
+		handleReview();
+	}
+
+	export function getReviewLoading() {
+		return reviewLoading;
+	}
+
+	export function canSave() {
+		return name.trim().length > 0;
+	}
+
 	// Recipe metadata
 	let name = $state('');
 	let author = $state('');
@@ -451,21 +468,6 @@
 			{/each}
 		</div>
 	{/if}
-
-	<!-- Actions (moved to top for visibility) -->
-	<div class="actions top-actions">
-		{#if onCancel}
-			<button type="button" class="btn-secondary" onclick={onCancel}>Cancel</button>
-		{/if}
-		<button type="button" class="btn-ai" onclick={handleReview} disabled={reviewLoading}>
-			{#if reviewLoading}
-				Analyzing...
-			{:else}
-				AI Review
-			{/if}
-		</button>
-		<button type="button" class="btn-primary" onclick={handleSave}>Save Recipe</button>
-	</div>
 
 	<!-- Recipe Metadata -->
 	<div class="section metadata-section">

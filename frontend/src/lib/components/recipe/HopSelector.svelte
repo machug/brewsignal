@@ -471,7 +471,7 @@
 	.add-btn {
 		padding: var(--space-2) var(--space-3);
 		background: var(--accent-primary);
-		color: var(--bg-surface);
+		color: white;
 		border: none;
 		border-radius: 4px;
 		font-size: 13px;

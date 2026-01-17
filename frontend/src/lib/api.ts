@@ -320,6 +320,50 @@ export interface HopVarietyFilters {
 	offset?: number;
 }
 
+// Fermentable types (grains, sugars, extracts, adjuncts)
+export interface FermentableResponse {
+	id: number;
+	name: string;
+	type?: string; // base, specialty, adjunct, sugar, extract, fruit, other
+	origin?: string;
+	maltster?: string;
+	color_srm?: number;
+	potential_sg?: number;
+	max_in_batch_percent?: number;
+	diastatic_power?: number;
+	flavor_profile?: string;
+	substitutes?: string;
+	description?: string;
+	source: string;
+	is_custom: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface FermentableCreate {
+	name: string;
+	type?: string;
+	origin?: string;
+	maltster?: string;
+	color_srm?: number;
+	potential_sg?: number;
+	max_in_batch_percent?: number;
+	diastatic_power?: number;
+	flavor_profile?: string;
+	substitutes?: string;
+	description?: string;
+}
+
+export interface FermentableFilters {
+	type?: string;
+	origin?: string;
+	maltster?: string;
+	search?: string;
+	is_custom?: boolean;
+	limit?: number;
+	offset?: number;
+}
+
 export interface BatchResponse {
 	id: number;
 	recipe_id?: number;
@@ -1092,6 +1136,130 @@ export async function refreshHopVarieties(): Promise<{
 	});
 	if (!response.ok) {
 		throw new Error(`Failed to refresh hop varieties: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+// ============================================================================
+// Fermentables API
+// ============================================================================
+
+/**
+ * Fetch fermentables with optional filters
+ */
+export async function fetchFermentables(filters?: FermentableFilters): Promise<FermentableResponse[]> {
+	const params = new URLSearchParams();
+	if (filters?.type) params.append('type', filters.type);
+	if (filters?.origin) params.append('origin', filters.origin);
+	if (filters?.maltster) params.append('maltster', filters.maltster);
+	if (filters?.search) params.append('search', filters.search);
+	if (filters?.is_custom !== undefined) params.append('is_custom', String(filters.is_custom));
+	if (filters?.limit) params.append('limit', String(filters.limit));
+	if (filters?.offset) params.append('offset', String(filters.offset));
+
+	const response = await fetch(`${BASE_URL}/fermentables?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch fermentables: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch a single fermentable by ID
+ */
+export async function fetchFermentable(id: number): Promise<FermentableResponse> {
+	const response = await fetch(`${BASE_URL}/fermentables/${id}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch fermentable: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch fermentable statistics
+ */
+export async function fetchFermentableStats(): Promise<{ total: number; custom: number; seeded: number }> {
+	const response = await fetch(`${BASE_URL}/fermentables/stats`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch fermentable stats: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch list of unique fermentable types
+ */
+export async function fetchFermentableTypes(): Promise<{ types: string[] }> {
+	const response = await fetch(`${BASE_URL}/fermentables/types`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch fermentable types: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch list of unique fermentable origins
+ */
+export async function fetchFermentableOrigins(): Promise<{ origins: string[] }> {
+	const response = await fetch(`${BASE_URL}/fermentables/origins`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch fermentable origins: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch list of unique maltsters
+ */
+export async function fetchMaltsters(): Promise<{ maltsters: string[] }> {
+	const response = await fetch(`${BASE_URL}/fermentables/maltsters`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch maltsters: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Create a custom fermentable
+ */
+export async function createFermentable(fermentable: FermentableCreate): Promise<FermentableResponse> {
+	const response = await fetch(`${BASE_URL}/fermentables`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(fermentable)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to create fermentable: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Delete a custom fermentable
+ */
+export async function deleteFermentable(id: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/fermentables/${id}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete fermentable: ${response.statusText}`);
+	}
+}
+
+/**
+ * Refresh fermentables from seed file
+ */
+export async function refreshFermentables(): Promise<{
+	success: boolean;
+	action: string;
+	count?: number;
+	version?: string;
+}> {
+	const response = await fetch(`${BASE_URL}/fermentables/refresh`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to refresh fermentables: ${response.statusText}`);
 	}
 	return response.json();
 }

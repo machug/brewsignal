@@ -62,7 +62,7 @@
 		{ href: '/batches', label: 'Batches' },
 		{ href: '/recipes', label: 'Recipes' },
 		{ href: '/inventory', label: 'Inventory' },
-		{ href: '/yeast', label: 'Yeast' },
+		{ href: '/library', label: 'Library' },
 		{ href: '/assistant', label: 'Assistant' },
 		{ href: '/system', label: 'System' }
 	];

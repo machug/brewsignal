@@ -304,7 +304,10 @@
 				show: true,
 				live: true,
 				markers: {
-					show: false
+					show: true,
+					width: 8,
+					stroke: (u, seriesIdx) => u.series[seriesIdx].stroke as string,
+					fill: (u, seriesIdx) => u.series[seriesIdx].stroke as string
 				}
 			},
 			hooks: {

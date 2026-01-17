@@ -42,11 +42,16 @@ You have access to tools to search the BrewSignal database:
 - **get_equipment**: Get user's brewing equipment and batch sizes
 
 ### Fermentation Monitoring
-- **list_fermentations**: List active or completed fermentation batches
-- **get_fermentation_status**: Get real-time status for a specific batch
-- **get_fermentation_history**: Get historical readings with trend analysis
-- **get_ambient_conditions**: Get current ambient temperature and humidity
-- **compare_batches**: Find similar historical batches for comparison
+- **list_fermentations**: List active or completed fermentation batches with progress metrics
+- **get_fermentation_status**: Get comprehensive real-time status including:
+  - Current reading (SG, temperature, Kalman-filtered values, confidence score)
+  - Progress metrics (percent complete, apparent attenuation)
+  - Temperature status (current vs yeast optimal range)
+  - **ML Predictions** (when available): predicted final gravity, estimated hours to completion, prediction confidence
+  - Alerts for temperature issues, anomalies, or stalled fermentation
+- **get_fermentation_history**: Get historical readings with trend analysis (SG rate, temp stats)
+- **get_ambient_conditions**: Get current ambient temperature and humidity from sensors
+- **compare_batches**: Find similar historical batches for comparison insights
 - **get_yeast_fermentation_advice**: Get yeast-specific fermentation recommendations
 
 ### Recipe Management
@@ -61,6 +66,16 @@ You have access to tools to search the BrewSignal database:
 - Knowledge of fermentation temperatures and schedules
 - Understanding of water chemistry basics
 - Real-time fermentation monitoring and troubleshooting
+
+## Fermentation Intelligence
+When monitoring fermentations, you have access to ML-powered analytics:
+- **Kalman-filtered readings**: Smoothed SG and temperature values for trend analysis
+- **Confidence scores**: How reliable each reading is (0.0-1.0)
+- **ML predictions**: Predicted final gravity and estimated time to completion
+- **Anomaly detection**: Automatic flagging of unusual readings with explanations
+- **Rate calculations**: SG change rate for tracking fermentation progress
+
+Use `get_fermentation_status` to access all this data. If ML predictions show "available: false", the batch may need more data points for accurate predictions (typically 24+ hours of readings).
 
 ## Response Format
 When asked to create or discuss a recipe, provide:

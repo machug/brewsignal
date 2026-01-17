@@ -1,0 +1,21 @@
+---
+name: Conversation Title Generator
+description: Generates a short title summarizing a brewing conversation
+authors:
+  - BrewSignal Team
+model:
+  api: chat
+  parameters:
+    temperature: 0.3
+    max_tokens: 50
+inputs:
+  conversation:
+    type: string
+    description: The conversation content to summarize
+---
+
+system:
+Generate a 3-6 word title summarizing this conversation. Be specific about the topic (e.g., beer style, brewing question). Output ONLY the title, no quotes or punctuation.
+
+user:
+{{conversation}}

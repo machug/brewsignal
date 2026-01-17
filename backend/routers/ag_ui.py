@@ -11,8 +11,11 @@ import json
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 from datetime import datetime
+
+import prompty
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -29,6 +32,9 @@ from backend.models import (
     AgUiThread, AgUiMessage,
     AgUiThreadResponse, AgUiThreadListItem, AgUiMessageResponse
 )
+
+# Prompts directory
+PROMPTS_DIR = Path(__file__).parent.parent / "services" / "llm" / "prompts"
 
 # Fast models per provider for title summarization (cheap, fast)
 FAST_MODELS_BY_PROVIDER = {
@@ -283,6 +289,7 @@ async def _summarize_thread_title(
 
     Called asynchronously after a run completes to update the thread title
     with a semantic summary instead of just the first message.
+    Uses Prompty template for the title generation prompt.
     """
     try:
         import litellm
@@ -304,22 +311,19 @@ async def _summarize_thread_title(
             context_messages.append(f"{msg.role}: {msg.content[:200]}")
         context = "\n".join(context_messages)
 
+        # Load and prepare the title prompt using Prompty
+        prompt_path = PROMPTS_DIR / "title.prompty"
+        p = prompty.load(str(prompt_path))
+        rendered = prompty.prepare(p, inputs={"conversation": context})
+
         # Determine provider and fast model
         provider_str = config._provider_str()
         fast_model = FAST_MODELS_BY_PROVIDER.get(provider_str, "gpt-4o-mini")
 
-        # Build kwargs for litellm
+        # Build kwargs for litellm using rendered messages
         kwargs = {
             "model": fast_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Generate a 3-6 word title summarizing this conversation. "
-                               "Be specific about the topic (e.g., beer style, brewing question). "
-                               "Output ONLY the title, no quotes or punctuation."
-                },
-                {"role": "user", "content": context}
-            ],
+            "messages": rendered,
             "temperature": 0.3,
             "max_tokens": 30,
         }
@@ -559,7 +563,7 @@ async def _run_agent_loop(
 
 
 async def _get_recipe_system_prompt(db: AsyncSession, state: Optional[dict] = None) -> str:
-    """Get the system prompt for recipe assistant.
+    """Get the system prompt for recipe assistant using Prompty.
 
     Fetches brewing defaults from equipment inventory (fermenter capacity for batch size).
     Falls back to state values or defaults if no equipment configured.
@@ -593,70 +597,24 @@ async def _get_recipe_system_prompt(db: AsyncSession, state: Optional[dict] = No
         batch_size = state.get("batchSize", batch_size)
         efficiency = state.get("efficiency", efficiency)
 
-    return f"""You are BrewSignal's AI Brewing Assistant, an expert homebrewer who helps create beer recipes.
+    # Load and prepare the assistant prompt using Prompty
+    prompt_path = PROMPTS_DIR / "assistant.prompty"
+    p = prompty.load(str(prompt_path))
+    rendered = prompty.prepare(p, inputs={
+        "batch_size": batch_size,
+        "efficiency": efficiency,
+        "equipment_note": equipment_note,
+    })
 
-## Your Tools
-You have access to tools to search the BrewSignal database:
-- **search_yeast**: Search 449+ yeast strains by name, producer, type, attenuation, or temperature range
-- **search_styles**: Search 116 BJCP 2021 beer styles by name, category, or characteristics
-- **get_yeast_by_id**: Get detailed info about a specific yeast by product ID
-- **get_style_by_name**: Get complete BJCP guidelines for a specific style (use exact BJCP name like "American IPA")
+    # Extract system message content from rendered messages
+    # prompty.prepare returns a list of message dicts
+    for msg in rendered:
+        if msg.get("role") == "system":
+            return msg.get("content", "")
 
-**IMPORTANT**: Use these tools when discussing yeast or styles! Don't rely on memory - search the database for accurate, up-to-date information.
-
-## Your Expertise
-- Deep knowledge of BJCP beer styles and their characteristics
-- Understanding of brewing ingredients: malts, hops, yeast, adjuncts
-- Ability to calculate OG, FG, ABV, IBU, and SRM from ingredients
-- Knowledge of fermentation temperatures and schedules
-- Understanding of water chemistry basics
-
-## Response Format
-When asked to create or discuss a recipe, provide:
-1. A brief description of the beer style and what makes it special
-2. Target specifications (OG, FG, ABV, IBU, SRM)
-3. Suggested ingredients with amounts for a standard batch
-4. Brewing notes (mash temp, boil time, fermentation temp)
-
-## When Generating a Final Recipe
-When the user is ready to create the recipe, output a JSON block with this exact format:
-```json
-{{
-  "name": "Recipe Name",
-  "style": "BJCP Style Name",
-  "type": "all-grain",
-  "og": 1.050,
-  "fg": 1.010,
-  "abv": 5.2,
-  "ibu": 35,
-  "color_srm": 8,
-  "batch_size_liters": {batch_size},
-  "boil_time_minutes": 60,
-  "efficiency_percent": {efficiency},
-  "yeast_name": "Yeast Strain Name",
-  "yeast_lab": "Manufacturer",
-  "yeast_attenuation": 75,
-  "yeast_temp_min": 18,
-  "yeast_temp_max": 22,
-  "notes": "Detailed brewing instructions"
-}}
-```
-
-## Conversation Style
-- Be friendly and enthusiastic about brewing
-- Ask clarifying questions if the request is vague
-- Offer alternatives when appropriate
-- Explain the "why" behind suggestions
-- Keep responses concise but informative
-
-## Important Rules
-- Always use metric units (liters, kg, grams, Celsius)
-- User's batch size: {batch_size} liters
-- User's brewhouse efficiency: {efficiency}%
-- Calculate ABV from OG and FG: ABV = (OG - FG) × 131.25
-- Only output JSON when the user confirms they want to save/create the recipe
-- ALWAYS use tools to look up yeast and style information - your database has 449+ yeast strains!
-"""
+    # Fallback if no system message found
+    logger.warning("No system message found in prompty output")
+    return str(rendered)
 
 
 def _extract_recipe_json(text: str) -> Optional[dict]:

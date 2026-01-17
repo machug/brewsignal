@@ -35,6 +35,7 @@ ai = [
     "litellm>=1.0",
     "tiktoken>=0.5",
     "python-dotenv>=1.0",
+    "prompty>=0.1",
 ]
 
 [build-system]

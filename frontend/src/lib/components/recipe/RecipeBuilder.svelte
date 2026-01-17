@@ -37,7 +37,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchYeastStrains, reviewRecipe, type RecipeReviewResponse } from '$lib/api';
+	import { fetchYeastStrains, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
 	import YeastSelector from '$lib/components/batch/YeastSelector.svelte';
@@ -64,8 +64,15 @@
 	// Recipe metadata
 	let name = $state('');
 	let author = $state('');
-	let type = $state('');
+	let styleInput = $state('');
 	let notes = $state('');
+
+	// Style search/autocomplete state
+	let styleResults = $state<BJCPStyleResponse[]>([]);
+	let selectedStyle = $state<BJCPStyleResponse | null>(null);
+	let styleSearchLoading = $state(false);
+	let showStyleDropdown = $state(false);
+	let styleSearchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Batch parameters
 	let batchSizeLiters = $state(20);
@@ -147,6 +154,141 @@
 		return 'Very Bitter';
 	});
 
+	// Style warnings (proactive validation against BJCP guidelines)
+	interface StyleWarning {
+		stat: string;
+		value: string;
+		range: string;
+		severity: 'warning' | 'error';
+	}
+
+	let styleWarnings = $derived(() => {
+		if (!selectedStyle) return [];
+
+		const stats = recipeStats();
+		const warnings: StyleWarning[] = [];
+		const style = selectedStyle;
+
+		// Check OG
+		if (style.og_min !== undefined && style.og_max !== undefined) {
+			if (stats.og < style.og_min) {
+				warnings.push({
+					stat: 'OG',
+					value: stats.og.toFixed(3),
+					range: `${style.og_min.toFixed(3)} - ${style.og_max.toFixed(3)}`,
+					severity: 'warning'
+				});
+			} else if (stats.og > style.og_max) {
+				warnings.push({
+					stat: 'OG',
+					value: stats.og.toFixed(3),
+					range: `${style.og_min.toFixed(3)} - ${style.og_max.toFixed(3)}`,
+					severity: 'warning'
+				});
+			}
+		}
+
+		// Check FG
+		if (style.fg_min !== undefined && style.fg_max !== undefined) {
+			if (stats.fg < style.fg_min || stats.fg > style.fg_max) {
+				warnings.push({
+					stat: 'FG',
+					value: stats.fg.toFixed(3),
+					range: `${style.fg_min.toFixed(3)} - ${style.fg_max.toFixed(3)}`,
+					severity: 'warning'
+				});
+			}
+		}
+
+		// Check ABV
+		if (style.abv_min !== undefined && style.abv_max !== undefined) {
+			if (stats.abv < style.abv_min || stats.abv > style.abv_max) {
+				warnings.push({
+					stat: 'ABV',
+					value: `${stats.abv.toFixed(1)}%`,
+					range: `${style.abv_min.toFixed(1)}% - ${style.abv_max.toFixed(1)}%`,
+					severity: 'warning'
+				});
+			}
+		}
+
+		// Check IBU
+		if (style.ibu_min !== undefined && style.ibu_max !== undefined) {
+			if (stats.ibu < style.ibu_min || stats.ibu > style.ibu_max) {
+				warnings.push({
+					stat: 'IBU',
+					value: stats.ibu.toFixed(0),
+					range: `${style.ibu_min} - ${style.ibu_max}`,
+					severity: 'warning'
+				});
+			}
+		}
+
+		// Check Color (SRM)
+		if (style.srm_min !== undefined && style.srm_max !== undefined) {
+			if (stats.srm < style.srm_min || stats.srm > style.srm_max) {
+				warnings.push({
+					stat: 'Color',
+					value: `${stats.srm.toFixed(0)} SRM`,
+					range: `${style.srm_min} - ${style.srm_max} SRM`,
+					severity: 'warning'
+				});
+			}
+		}
+
+		return warnings;
+	});
+
+	// Style search with debounce
+	async function handleStyleSearch(query: string) {
+		if (query.length < 2) {
+			styleResults = [];
+			showStyleDropdown = false;
+			return;
+		}
+
+		if (styleSearchTimeout) {
+			clearTimeout(styleSearchTimeout);
+		}
+
+		styleSearchTimeout = setTimeout(async () => {
+			styleSearchLoading = true;
+			try {
+				styleResults = await searchStyles(query, 8);
+				showStyleDropdown = styleResults.length > 0;
+			} catch (err) {
+				console.error('Failed to search styles:', err);
+				styleResults = [];
+			} finally {
+				styleSearchLoading = false;
+			}
+		}, 300);
+	}
+
+	function handleStyleInputChange(event: Event) {
+		const input = event.target as HTMLInputElement;
+		styleInput = input.value;
+		// Clear selected style when user types (they might be searching for a new one)
+		if (selectedStyle && styleInput !== selectedStyle.name) {
+			selectedStyle = null;
+		}
+		handleStyleSearch(styleInput);
+	}
+
+	function selectStyle(style: BJCPStyleResponse) {
+		selectedStyle = style;
+		styleInput = style.name;
+		showStyleDropdown = false;
+		styleResults = [];
+	}
+
+	function clearStyle() {
+		selectedStyle = null;
+		styleInput = '';
+		styleResults = [];
+		showStyleDropdown = false;
+	}
+
 	function handleFermentablesUpdate(updated: RecipeFermentable[]) {
 		fermentables = updated;
 	}
@@ -168,7 +310,7 @@
 		const recipe: RecipeData = {
 			name,
 			author,
-			type,
+			type: styleInput,
 			batch_size_liters: batchSizeLiters,
 			efficiency_percent: efficiencyPercent,
 			boil_time_minutes: boilTimeMinutes,
@@ -187,7 +329,7 @@
 	}
 
 	async function handleReview() {
-		if (!type.trim()) {
+		if (!styleInput.trim()) {
 			reviewError = 'Please enter a beer style to get an AI review';
 			showReviewModal = true;
 			return;
@@ -207,7 +349,7 @@
 			const stats = recipeStats();
 			reviewResult = await reviewRecipe({
 				name: name || 'Untitled Recipe',
-				style: type,
+				style: styleInput,
 				og: stats.og,
 				fg: stats.fg,
 				abv: stats.abv,
@@ -298,6 +440,33 @@
 		</div>
 	</div>
 
+	<!-- Style Warnings (proactive BJCP validation) -->
+	{#if styleWarnings().length > 0}
+		<div class="style-warnings">
+			<span class="warnings-label">Style Guidelines:</span>
+			{#each styleWarnings() as warning}
+				<span class="warning-badge {warning.severity}">
+					{warning.stat}: {warning.value} (target: {warning.range})
+				</span>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Actions (moved to top for visibility) -->
+	<div class="actions top-actions">
+		{#if onCancel}
+			<button type="button" class="btn-secondary" onclick={onCancel}>Cancel</button>
+		{/if}
+		<button type="button" class="btn-ai" onclick={handleReview} disabled={reviewLoading}>
+			{#if reviewLoading}
+				Analyzing...
+			{:else}
+				AI Review
+			{/if}
+		</button>
+		<button type="button" class="btn-primary" onclick={handleSave}>Save Recipe</button>
+	</div>
+
 	<!-- Recipe Metadata -->
 	<div class="section metadata-section">
 		<h2 class="section-title">Recipe Details</h2>
@@ -322,15 +491,41 @@
 					class="form-input"
 				/>
 			</div>
-			<div class="form-field">
+			<div class="form-field style-autocomplete">
 				<label for="style">Style</label>
-				<input
-					id="style"
-					type="text"
-					bind:value={type}
-					placeholder="e.g., American IPA"
-					class="form-input"
-				/>
+				<div class="autocomplete-container">
+					<input
+						id="style"
+						type="text"
+						value={styleInput}
+						oninput={handleStyleInputChange}
+						onfocus={() => styleInput.length >= 2 && styleResults.length > 0 && (showStyleDropdown = true)}
+						onblur={() => setTimeout(() => showStyleDropdown = false, 200)}
+						placeholder="Search BJCP styles..."
+						class="form-input"
+						autocomplete="off"
+					/>
+					{#if styleSearchLoading}
+						<span class="autocomplete-spinner"></span>
+					{/if}
+					{#if selectedStyle}
+						<button type="button" class="clear-style" onclick={clearStyle} aria-label="Clear style">&times;</button>
+					{/if}
+				</div>
+				{#if showStyleDropdown && styleResults.length > 0}
+					<ul class="style-dropdown">
+						{#each styleResults as style}
+							<li>
+								<button type="button" class="style-option" onclick={() => selectStyle(style)}>
+									<span class="style-name">{style.name}</span>
+									{#if style.category}
+										<span class="style-category">{style.category}</span>
+									{/if}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -421,20 +616,6 @@
 		></textarea>
 	</div>
 
-	<!-- Actions -->
-	<div class="actions">
-		{#if onCancel}
-			<button type="button" class="btn-secondary" onclick={onCancel}>Cancel</button>
-		{/if}
-		<button type="button" class="btn-ai" onclick={handleReview} disabled={reviewLoading}>
-			{#if reviewLoading}
-				Analyzing...
-			{:else}
-				AI Review
-			{/if}
-		</button>
-		<button type="button" class="btn-primary" onclick={handleSave}>Save Recipe</button>
-	</div>
 </div>
 
 <!-- AI Review Modal -->
@@ -451,7 +632,7 @@
 				{#if reviewLoading}
 					<div class="review-loading">
 						<div class="spinner"></div>
-						<p>Analyzing your recipe against {type || 'style guidelines'}...</p>
+						<p>Analyzing your recipe against {styleInput || 'style guidelines'}...</p>
 					</div>
 				{:else if reviewError}
 					<div class="review-error">
@@ -891,6 +1072,141 @@
 
 	.review-content :global(li) {
 		margin-bottom: var(--space-2);
+	}
+
+	/* Style Autocomplete */
+	.style-autocomplete {
+		position: relative;
+	}
+
+	.autocomplete-container {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.autocomplete-container .form-input {
+		flex: 1;
+		padding-right: var(--space-8);
+	}
+
+	.autocomplete-spinner {
+		position: absolute;
+		right: 36px;
+		width: 16px;
+		height: 16px;
+		border: 2px solid var(--border-default);
+		border-top-color: var(--accent-primary);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	.clear-style {
+		position: absolute;
+		right: var(--space-2);
+		background: none;
+		border: none;
+		font-size: 18px;
+		color: var(--text-tertiary);
+		cursor: pointer;
+		padding: var(--space-1);
+		line-height: 1;
+	}
+
+	.clear-style:hover {
+		color: var(--text-primary);
+	}
+
+	.style-dropdown {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-default);
+		border-radius: 6px;
+		margin-top: var(--space-1);
+		max-height: 280px;
+		overflow-y: auto;
+		z-index: 200;
+		box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+		list-style: none;
+		padding: 0;
+	}
+
+	.style-option {
+		width: 100%;
+		padding: var(--space-3);
+		background: none;
+		border: none;
+		text-align: left;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		transition: background var(--transition);
+	}
+
+	.style-option:hover {
+		background: var(--bg-hover);
+	}
+
+	.style-name {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.style-category {
+		font-size: 12px;
+		color: var(--text-tertiary);
+	}
+
+	/* Style Warnings */
+	.style-warnings {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-3);
+		background: var(--warning-bg, rgba(245, 158, 11, 0.1));
+		border: 1px solid var(--warning, #f59e0b);
+		border-radius: 8px;
+	}
+
+	.warnings-label {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--warning, #f59e0b);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.warning-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: var(--space-1) var(--space-2);
+		background: var(--bg-elevated);
+		border-radius: 4px;
+		font-size: 12px;
+		font-family: var(--font-mono);
+		color: var(--text-primary);
+	}
+
+	.warning-badge.warning {
+		border-left: 3px solid var(--warning, #f59e0b);
+	}
+
+	.warning-badge.error {
+		border-left: 3px solid var(--negative, #ef4444);
+	}
+
+	/* Top Actions */
+	.top-actions {
+		border-top: none;
+		border-bottom: 1px solid var(--border-subtle);
+		padding-top: 0;
+		padding-bottom: var(--space-4);
 	}
 
 	/* Responsive */

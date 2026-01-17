@@ -3,13 +3,13 @@
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Any, Optional
 
 from ..database import get_db
-from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse
+from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.recipe_validation import validate_recipe_constraints
 
@@ -136,6 +136,62 @@ def _append_warnings(recipe_data: dict, warnings: list[RecipeValidationWarning])
             )
         )
 
+
+# ============================================================================
+# BJCP Styles API
+# ============================================================================
+
+@router.get("/styles/search", response_model=list[StyleResponse])
+async def search_styles(
+    q: str = Query(..., min_length=2, description="Search query for style name"),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search BJCP styles by name. Returns matching styles with their guidelines."""
+    query = (
+        select(Style)
+        .where(func.lower(Style.name).contains(q.lower()))
+        .order_by(Style.name)
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/styles/{style_id}", response_model=StyleResponse)
+async def get_style(
+    style_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a specific BJCP style by ID."""
+    result = await db.execute(select(Style).where(Style.id == style_id))
+    style = result.scalar_one_or_none()
+    if not style:
+        raise HTTPException(status_code=404, detail="Style not found")
+    return style
+
+
+@router.get("/styles", response_model=list[StyleResponse])
+async def list_styles(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    type: Optional[str] = Query(None, description="Filter by type (Ale, Lager, etc.)"),
+    limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all BJCP styles, optionally filtered by category or type."""
+    query = select(Style)
+    if category:
+        query = query.where(func.lower(Style.category).contains(category.lower()))
+    if type:
+        query = query.where(func.lower(Style.type) == type.lower())
+    query = query.order_by(Style.category_number, Style.style_letter).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+# ============================================================================
+# Recipes API
+# ============================================================================
 
 @router.get("", response_model=list[RecipeResponse])
 async def list_recipes(

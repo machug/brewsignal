@@ -1750,3 +1750,74 @@ export async function reviewRecipe(request: RecipeReviewRequest): Promise<Recipe
 	}
 	return response.json();
 }
+
+// ============================================================================
+// BJCP Styles API
+// ============================================================================
+
+export interface BJCPStyleResponse {
+	id: string;
+	guide: string;
+	category_number: string;
+	style_letter?: string;
+	name: string;
+	category: string;
+	type?: string;
+	og_min?: number;
+	og_max?: number;
+	fg_min?: number;
+	fg_max?: number;
+	ibu_min?: number;
+	ibu_max?: number;
+	srm_min?: number;
+	srm_max?: number;
+	abv_min?: number;
+	abv_max?: number;
+	description?: string;
+}
+
+/**
+ * Search BJCP styles by name
+ */
+export async function searchStyles(query: string, limit: number = 10): Promise<BJCPStyleResponse[]> {
+	const params = new URLSearchParams();
+	params.append('q', query);
+	params.append('limit', String(limit));
+
+	const response = await fetch(`${BASE_URL}/recipes/styles/search?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to search styles: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Get a specific BJCP style by ID
+ */
+export async function getStyle(styleId: string): Promise<BJCPStyleResponse> {
+	const response = await fetch(`${BASE_URL}/recipes/styles/${encodeURIComponent(styleId)}`);
+	if (!response.ok) {
+		throw new Error(`Failed to get style: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * List all BJCP styles with optional filters
+ */
+export async function listStyles(params?: {
+	category?: string;
+	type?: string;
+	limit?: number;
+}): Promise<BJCPStyleResponse[]> {
+	const urlParams = new URLSearchParams();
+	if (params?.category) urlParams.append('category', params.category);
+	if (params?.type) urlParams.append('type', params.type);
+	if (params?.limit) urlParams.append('limit', String(params.limit));
+
+	const response = await fetch(`${BASE_URL}/recipes/styles?${urlParams}`);
+	if (!response.ok) {
+		throw new Error(`Failed to list styles: ${response.statusText}`);
+	}
+	return response.json();
+}

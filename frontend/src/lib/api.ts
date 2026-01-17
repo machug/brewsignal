@@ -58,6 +58,22 @@ export async function fetchReadings(
 	return response.json();
 }
 
+export async function fetchBatchReadings(
+	batchId: number,
+	hours?: number
+): Promise<HistoricalReading[]> {
+	const params = new URLSearchParams();
+	params.append('limit', '5000');
+	if (hours !== undefined && hours > 0) {
+		params.append('hours', String(hours));
+	}
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/readings?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch batch readings: ${response.statusText}`);
+	}
+	return response.json();
+}
+
 export async function updateTiltBeerName(tiltId: string, beerName: string): Promise<void> {
 	const response = await fetch(`${BASE_URL}/tilts/${tiltId}`, {
 		method: 'PUT',

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import uPlot from 'uplot';
 	import {
-		fetchReadings,
+		fetchBatchReadings,
 		fetchAmbientHistory,
 		fetchChamberHistory,
 		fetchBatch,
@@ -781,29 +781,20 @@ async function loadData(userTriggered = false) {
 			}
 		}
 
-		// Only fetch readings if we have a device_id
-		if (deviceId) {
-			// Fetch device readings, ambient history, and chamber history in parallel
-			// Filter readings by batchId to show only this batch's data
-			// Pass hours=undefined when selectedRange is 0 (All) to get all data
-			const hoursParam = selectedRange > 0 ? selectedRange : undefined;
-			const [deviceData, ambientData, chamberData] = await Promise.all([
-				fetchReadings(deviceId, hoursParam, batchId),
-				// For ambient/chamber, use 720 hours (30 days) as max when "All" is selected
-				fetchAmbientHistory(hoursParam ?? 720).catch(() => []), // Don't fail if ambient unavailable
-				fetchChamberHistory(hoursParam ?? 720).catch(() => []) // Don't fail if chamber unavailable
-			]);
-			readings = deviceData;
-			ambientReadings = ambientData;
-			chamberReadings = chamberData;
-			updateChart();
-		} else {
-			// No device assigned to batch
-			readings = [];
-			ambientReadings = [];
-			chamberReadings = [];
-			error = 'No device assigned to this batch';
-		}
+		// Fetch batch readings (all readings for batch, regardless of device)
+		// This allows viewing historical data even after switching devices mid-ferment
+		// Pass hours=undefined when selectedRange is 0 (All) to get all data
+		const hoursParam = selectedRange > 0 ? selectedRange : undefined;
+		const [batchData, ambientData, chamberData] = await Promise.all([
+			fetchBatchReadings(batchId, hoursParam),
+			// For ambient/chamber, use 720 hours (30 days) as max when "All" is selected
+			fetchAmbientHistory(hoursParam ?? 720).catch(() => []), // Don't fail if ambient unavailable
+			fetchChamberHistory(hoursParam ?? 720).catch(() => []) // Don't fail if chamber unavailable
+		]);
+		readings = batchData;
+		ambientReadings = ambientData;
+		chamberReadings = chamberData;
+		updateChart();
 	} catch (e) {
 		error = e instanceof Error ? e.message : 'Failed to load data';
 	} finally {

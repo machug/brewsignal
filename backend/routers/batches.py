@@ -20,6 +20,8 @@ from ..models import (
     ControlEventResponse,
     FermentationAlert,
     FermentationAlertResponse,
+    Reading,
+    ReadingResponse,
     Recipe,
 )
 from ..state import latest_readings
@@ -743,3 +745,37 @@ async def dismiss_all_alerts(
         "count": len(alerts),
         "cleared_at": now.isoformat()
     }
+
+
+@router.get("/{batch_id}/readings", response_model=list[ReadingResponse])
+async def get_batch_readings(
+    batch_id: int,
+    hours: Optional[int] = Query(default=None, description="Time window in hours"),
+    limit: int = Query(default=5000, le=10000, description="Maximum readings to return"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get ALL readings for a batch, regardless of which device took them.
+
+    This allows viewing historical data even after switching devices mid-ferment.
+    Readings are returned in chronological order (oldest first).
+    """
+    # Verify batch exists
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Build query for all readings linked to this batch
+    query = select(Reading).where(Reading.batch_id == batch_id)
+
+    # Apply time window filter if specified
+    if hours:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        query = query.where(Reading.timestamp >= cutoff)
+
+    # Order by timestamp and apply limit
+    query = query.order_by(Reading.timestamp.asc()).limit(limit)
+
+    result = await db.execute(query)
+    readings = result.scalars().all()
+
+    return [ReadingResponse.model_validate(r) for r in readings]

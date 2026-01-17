@@ -206,12 +206,12 @@ class MLPipelineManager:
             # Get or create pipeline
             pipeline = self.get_or_create_pipeline(device_id)
 
-            # Query readings from database
-            # Use filtered values and order by timestamp
+            # Query ALL readings for this batch (from any device)
+            # This allows ML predictions to continue when switching devices mid-ferment
+            # Readings are calibrated at ingestion, so mixing devices is fine for ML
             query = (
                 select(Reading)
                 .where(Reading.batch_id == batch_id)
-                .where(Reading.device_id == device_id)
                 .order_by(Reading.timestamp)
             )
 

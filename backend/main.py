@@ -198,6 +198,9 @@ async def handle_tilt_reading(reading: TiltReading):
         device.color = reading.color
         device.mac = reading.mac
 
+        # Always commit device metadata (so unpaired devices show updated last_seen)
+        await session.commit()
+
         # Convert Tilt's Fahrenheit to Celsius immediately
         temp_raw_c = (reading.temp_f - 32) * 5.0 / 9.0
 

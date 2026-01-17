@@ -497,8 +497,14 @@ async def serve_devices():
 
 @app.get("/yeast", response_class=FileResponse)
 async def serve_yeast():
-    """Serve the yeast library page."""
+    """Serve the yeast library page (legacy)."""
     return FileResponse(static_dir / "yeast.html")
+
+
+@app.get("/library", response_class=FileResponse)
+async def serve_library():
+    """Serve unified ingredient library page."""
+    return FileResponse(static_dir / "library.html")
 
 
 @app.get("/batches", response_class=FileResponse)

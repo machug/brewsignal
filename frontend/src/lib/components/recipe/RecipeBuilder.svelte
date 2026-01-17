@@ -108,6 +108,9 @@
 	let reviewLoading = $state(false);
 	let reviewError = $state<string | null>(null);
 
+	// Validation error state
+	let validationError = $state<string | null>(null);
+
 	// Calculate recipe stats in real-time
 	let recipeStats = $derived(() => {
 		if (fermentables.length === 0) {
@@ -321,9 +324,10 @@
 
 	function handleSave() {
 		if (!name.trim()) {
-			alert('Please enter a recipe name');
+			validationError = 'Please enter a recipe name';
 			return;
 		}
+		validationError = null;
 
 		const recipe: RecipeData = {
 			name,
@@ -409,6 +413,20 @@
 </script>
 
 <div class="recipe-builder">
+	{#if validationError}
+		<div class="validation-error">
+			<svg class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+			<span class="error-text">{validationError}</span>
+			<button class="error-dismiss" onclick={() => (validationError = null)} aria-label="Dismiss">
+				<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
+	{/if}
+
 	<!-- Stats Panel (always visible) -->
 	<div class="stats-panel">
 		<div class="stat-group">
@@ -666,6 +684,56 @@
 		gap: var(--space-6);
 		max-width: 900px;
 		margin: 0 auto;
+	}
+
+	/* Validation Error Banner */
+	.validation-error {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4);
+		background: var(--error-bg, rgba(239, 68, 68, 0.1));
+		border: 1px solid var(--negative, #ef4444);
+		border-radius: 6px;
+		color: var(--negative, #ef4444);
+		font-size: 14px;
+	}
+
+	.validation-error .error-icon {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
+	}
+
+	.validation-error .error-text {
+		flex: 1;
+	}
+
+	.validation-error .error-dismiss {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: var(--negative, #ef4444);
+		cursor: pointer;
+		opacity: 0.7;
+		transition: opacity 0.15s ease, background 0.15s ease;
+		flex-shrink: 0;
+	}
+
+	.validation-error .error-dismiss:hover {
+		opacity: 1;
+		background: rgba(239, 68, 68, 0.15);
+	}
+
+	.validation-error .error-dismiss svg {
+		width: 14px;
+		height: 14px;
 	}
 
 	/* Stats Panel */

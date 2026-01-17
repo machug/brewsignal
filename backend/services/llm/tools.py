@@ -1555,26 +1555,29 @@ async def _get_fermentation_status(
         except Exception as e:
             logger.warning(f"Failed to get ML predictions: {e}")
 
-    # Build alerts
+    # Build alerts (include timestamp so AI can tell user when alert was triggered)
     alerts = []
     if temp_info.get("status") == "too_cold":
         alerts.append({
             "type": "temperature",
             "severity": "warning",
-            "message": temp_info["message"]
+            "message": temp_info["message"],
+            "detected_at": reading_time,
         })
     elif temp_info.get("status") == "too_warm":
         alerts.append({
             "type": "temperature",
             "severity": "warning",
-            "message": temp_info["message"]
+            "message": temp_info["message"],
+            "detected_at": reading_time,
         })
 
     if live_reading and live_reading.get("is_anomaly"):
         alerts.append({
             "type": "anomaly",
             "severity": "info",
-            "message": f"Anomaly detected: {live_reading.get('anomaly_reasons', 'unknown reason')}"
+            "message": f"Anomaly detected: {live_reading.get('anomaly_reasons', 'unknown reason')}",
+            "detected_at": reading_time,
         })
 
     # Stalled fermentation check
@@ -1584,7 +1587,8 @@ async def _get_fermentation_status(
             alerts.append({
                 "type": "stalled",
                 "severity": "warning",
-                "message": "Fermentation appears stalled - gravity not changing"
+                "message": "Fermentation appears stalled - gravity not changing",
+                "detected_at": reading_time,
             })
 
     return {

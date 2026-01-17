@@ -175,7 +175,18 @@
 <div class="fermentable-selector">
 	<div class="selector-header">
 		<div class="header-left">
-			<h3>Grain Bill</h3>
+			<h3>
+				<span class="header-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+						<path d="M12 3v18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						<ellipse cx="9" cy="7" rx="2" ry="3" fill="currentColor" opacity="0.7" />
+						<ellipse cx="15" cy="9" rx="2" ry="3" fill="currentColor" opacity="0.6" />
+						<ellipse cx="9" cy="13" rx="2" ry="3" fill="currentColor" opacity="0.55" />
+						<ellipse cx="15" cy="15" rx="2" ry="3" fill="currentColor" opacity="0.5" />
+					</svg>
+				</span>
+				Grain Bill
+			</h3>
 			{#if fermentables.length > 0}
 				<span class="stats">
 					{totalKg.toFixed(2)} kg · OG {recipeStats().og.toFixed(3)} ·
@@ -243,10 +254,12 @@
 	{/if}
 
 	{#if showBrowser}
-		<div class="browser-overlay" onclick={() => (showBrowser = false)}>
-			<div class="browser-modal" onclick={(e) => e.stopPropagation()}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="browser-overlay" onclick={() => (showBrowser = false)} role="presentation">
+			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="fermentable-browser-title" onclick={(e) => e.stopPropagation()}>
 				<div class="browser-header">
-					<h4>Add Fermentable</h4>
+					<h4 id="fermentable-browser-title">Add Fermentable</h4>
 					<button type="button" class="close-btn" onclick={() => (showBrowser = false)}>×</button>
 				</div>
 
@@ -334,19 +347,44 @@
 
 <style>
 	.fermentable-selector {
+		--section-accent: var(--recipe-accent);
+		--section-accent-strong: rgba(245, 158, 11, 0.35);
+		--section-accent-soft: rgba(245, 158, 11, 0.18);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
 	}
 
 	.selector-header {
+		position: relative;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: var(--space-3) var(--space-4);
+		padding: var(--space-4) var(--space-4);
 		background: var(--bg-elevated);
+		background-image:
+			linear-gradient(120deg, var(--section-accent-soft), rgba(24, 24, 27, 0) 70%),
+			var(--recipe-grain-texture);
+		background-size: cover, 8px 8px;
 		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
+		border-radius: 10px;
+		overflow: hidden;
+	}
+
+	.selector-header::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 2px;
+		background: linear-gradient(90deg, var(--section-accent), transparent);
+		opacity: 0.7;
+	}
+
+	.selector-header > * {
+		position: relative;
+		z-index: 1;
 	}
 
 	.header-left {
@@ -356,10 +394,29 @@
 	}
 
 	h3 {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 		font-size: 16px;
 		font-weight: 600;
 		color: var(--text-primary);
 		margin: 0;
+	}
+
+	.header-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 6px;
+		background: rgba(245, 158, 11, 0.18);
+		color: var(--section-accent);
+	}
+
+	.header-icon svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	.stats {
@@ -372,26 +429,30 @@
 	}
 
 	.color-swatch {
-		width: 14px;
-		height: 14px;
-		border-radius: 2px;
+		width: 16px;
+		height: 16px;
+		border-radius: 4px;
 		border: 1px solid var(--border-default);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 	}
 
 	.add-btn {
 		padding: var(--space-2) var(--space-3);
-		background: var(--accent-primary);
+		background: var(--section-accent);
 		color: white;
 		border: none;
-		border-radius: 4px;
+		border-radius: 6px;
 		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: background var(--transition);
+		box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+		transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
 	}
 
 	.add-btn:hover {
-		background: var(--accent-secondary);
+		filter: brightness(1.05);
+		transform: translateY(-1px);
+		box-shadow: 0 10px 16px rgba(0, 0, 0, 0.35);
 	}
 
 	.empty-state {
@@ -401,8 +462,8 @@
 		gap: var(--space-3);
 		padding: var(--space-6);
 		background: var(--bg-surface);
-		border: 1px dashed var(--border-default);
-		border-radius: 6px;
+		border: 1px dashed var(--section-accent-strong);
+		border-radius: 8px;
 	}
 
 	.empty-state p {
@@ -413,16 +474,16 @@
 	.browse-btn {
 		padding: var(--space-2) var(--space-4);
 		background: transparent;
-		color: var(--accent-primary);
-		border: 1px solid var(--accent-primary);
-		border-radius: 4px;
+		color: var(--section-accent);
+		border: 1px solid var(--section-accent);
+		border-radius: 6px;
 		font-size: 13px;
 		cursor: pointer;
 		transition: all var(--transition);
 	}
 
 	.browse-btn:hover {
-		background: var(--accent-primary);
+		background: var(--section-accent);
 		color: var(--bg-surface);
 	}
 
@@ -433,18 +494,31 @@
 	}
 
 	.ferm-item {
+		position: relative;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		padding: var(--space-3) var(--space-4);
 		background: var(--bg-surface);
 		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		transition: border-color var(--transition);
+		border-radius: 8px;
+		transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+		overflow: hidden;
+	}
+
+	.ferm-item::before {
+		content: '';
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 3px;
+		background: var(--section-accent);
+		opacity: 0.35;
 	}
 
 	.ferm-item:hover {
-		border-color: var(--border-default);
+		border-color: var(--section-accent);
+		transform: translateY(-1px);
+		box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
 	}
 
 	.ferm-main {
@@ -713,15 +787,16 @@
 		padding: var(--space-3);
 		background: var(--bg-surface);
 		border: 1px solid var(--border-subtle);
-		border-radius: 4px;
+		border-radius: 6px;
 		text-align: left;
 		cursor: pointer;
 		transition: all var(--transition);
 	}
 
 	.library-item:hover:not(:disabled) {
-		border-color: var(--accent-primary);
+		border-color: var(--section-accent);
 		background: var(--bg-hover);
+		box-shadow: inset 0 0 0 1px var(--section-accent-soft);
 	}
 
 	.library-item.added {

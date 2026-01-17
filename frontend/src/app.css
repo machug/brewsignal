@@ -58,6 +58,17 @@
   --recipe-accent-muted: rgba(245, 158, 11, 0.15);
   --recipe-accent-border: rgba(245, 158, 11, 0.3);
 
+  /* Recipe textures */
+  --recipe-grain-texture: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 0
+  );
+  --recipe-foam: rgba(255, 248, 230, 0.95);
+  --recipe-foam-shadow: rgba(0, 0, 0, 0.2);
+  --recipe-glass: rgba(255, 255, 255, 0.08);
+  --recipe-glass-border: rgba(255, 255, 255, 0.22);
+
   /* Semantic colors - functional only */
   --positive: #22c55e;
   --warning: #eab308;

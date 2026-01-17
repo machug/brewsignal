@@ -428,68 +428,123 @@
 	{/if}
 
 	<!-- Stats Panel (always visible) -->
+	{#if true}
+		{@const stats = recipeStats()}
 	<div class="stats-panel">
-		<div class="stat-group">
-			<div class="stat">
-				<span class="stat-label">OG</span>
-				<span class="stat-value">{recipeStats().og.toFixed(3)}</span>
-			</div>
-			<div class="stat">
-				<span class="stat-label">FG</span>
-				<span class="stat-value">{recipeStats().fg.toFixed(3)}</span>
-			</div>
-			<div class="stat">
-				<span class="stat-label">ABV</span>
-				<span class="stat-value">{recipeStats().abv.toFixed(1)}%</span>
-			</div>
-		</div>
-
-		<div class="stat-group">
-			<div class="stat">
-				<span class="stat-label">IBU</span>
-				<span class="stat-value">{recipeStats().ibu.toFixed(0)}</span>
-			</div>
-			<div class="stat">
-				<span class="stat-label">BU:GU</span>
-				<span class="stat-value balance">{buguRatio().toFixed(2)}</span>
-				<span class="stat-sub">{balanceDescription()}</span>
-			</div>
-		</div>
-
-		<div class="stat-group">
-			<div class="stat color-stat">
-				<span class="stat-label">Color</span>
-				<div class="color-display">
-					<span class="color-swatch" style="background-color: {recipeStats().color_hex}"></span>
-					<span class="stat-value">{recipeStats().srm.toFixed(0)} SRM</span>
+		<div class="beer-hero">
+			<div class="beer-preview" aria-hidden="true">
+				<div class="beer-glow" style="--beer-color: {stats.color_hex}"></div>
+				<div class="beer-glass" style="--beer-color: {stats.color_hex}">
+					<div class="beer-foam">
+						<div class="foam-bubble"></div>
+						<div class="foam-bubble"></div>
+						<div class="foam-bubble"></div>
+					</div>
+					<div class="beer-liquid">
+						<div class="carbonation">
+							<span class="bubble"></span>
+							<span class="bubble"></span>
+							<span class="bubble"></span>
+							<span class="bubble"></span>
+							<span class="bubble"></span>
+						</div>
+					</div>
+					<div class="beer-gloss"></div>
+					<div class="condensation"></div>
 				</div>
-				<span class="stat-sub">{srmToDescription(recipeStats().srm)}</span>
+			</div>
+			<div class="beer-meta">
+				<span class="stat-label">Color</span>
+				{#key stats.srm}
+					<span class="stat-value stat-animate">{stats.srm.toFixed(0)} SRM</span>
+				{/key}
+				<span class="stat-sub">{srmToDescription(stats.srm)}</span>
 			</div>
 		</div>
 
-		<div class="stat-group">
-			<div class="stat">
-				<span class="stat-label">Calories</span>
-				<span class="stat-value">{recipeStats().calories_per_330ml}</span>
-				<span class="stat-sub">per 330ml</span>
+		<div class="stats-grid">
+			<div class="stat-group">
+				<div class="stat">
+					<span class="stat-label">OG</span>
+					{#key stats.og}
+						<span class="stat-value stat-animate">{stats.og.toFixed(3)}</span>
+					{/key}
+				</div>
+				<div class="stat">
+					<span class="stat-label">FG</span>
+					{#key stats.fg}
+						<span class="stat-value stat-animate">{stats.fg.toFixed(3)}</span>
+					{/key}
+				</div>
+				<div class="stat">
+					<span class="stat-label">ABV</span>
+					{#key stats.abv}
+						<span class="stat-value stat-animate">{stats.abv.toFixed(1)}%</span>
+					{/key}
+				</div>
+			</div>
+
+			<div class="stat-group">
+				<div class="stat">
+					<span class="stat-label">IBU</span>
+					{#key stats.ibu}
+						<span class="stat-value stat-animate">{stats.ibu.toFixed(0)}</span>
+					{/key}
+				</div>
+				<div class="stat">
+					<span class="stat-label">BU:GU</span>
+					{#key buguRatio()}
+						<span class="stat-value stat-animate balance">{buguRatio().toFixed(2)}</span>
+					{/key}
+					<span class="stat-sub">{balanceDescription()}</span>
+				</div>
+			</div>
+
+			<div class="stat-group">
+				<div class="stat">
+					<span class="stat-label">Calories</span>
+					{#key stats.calories_per_330ml}
+						<span class="stat-value stat-animate">{stats.calories_per_330ml}</span>
+					{/key}
+					<span class="stat-sub">per 330ml</span>
+				</div>
 			</div>
 		</div>
 	</div>
+	{/if}
 
 	<!-- Style Warnings (proactive BJCP validation) -->
 	{#if styleWarnings().length > 0}
 		<div class="style-warnings">
-			<span class="warnings-label">Style Guidelines:</span>
-			{#each styleWarnings() as warning}
-				<span class="warning-badge {warning.severity}">
-					{warning.stat}: {warning.value} (target: {warning.range})
-				</span>
-			{/each}
+			<svg class="warnings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+			</svg>
+			<span class="warnings-label">Style Guidelines</span>
+			<div class="warnings-list">
+				{#each styleWarnings() as warning}
+					<span class="warning-badge {warning.severity}">
+						{#if warning.severity === 'error'}
+							<svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+								<circle cx="12" cy="12" r="10" />
+								<path stroke-linecap="round" d="M15 9l-6 6M9 9l6 6" />
+							</svg>
+						{:else}
+							<svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+								<circle cx="12" cy="12" r="10" />
+								<path stroke-linecap="round" d="M12 8v4M12 16h.01" />
+							</svg>
+						{/if}
+						<span class="badge-stat">{warning.stat}</span>
+						<span class="badge-value">{warning.value}</span>
+						<span class="badge-target">→ {warning.range}</span>
+					</span>
+				{/each}
+			</div>
 		</div>
 	{/if}
 
 	<!-- Recipe Metadata -->
-	<div class="section metadata-section">
+	<div class="section section-card metadata-section">
 		<h2 class="section-title">Recipe Details</h2>
 		<div class="form-grid">
 			<div class="form-field full-width">
@@ -552,7 +607,7 @@
 	</div>
 
 	<!-- Batch Parameters -->
-	<div class="section params-section">
+	<div class="section section-card params-section">
 		<h2 class="section-title">Batch Parameters</h2>
 		<div class="params-grid">
 			<div class="param-field">
@@ -603,7 +658,7 @@
 	</div>
 
 	<!-- Fermentables -->
-	<div class="section">
+	<div class="section ingredient-section">
 		<FermentableSelector
 			{fermentables}
 			{batchSizeLiters}
@@ -613,12 +668,12 @@
 	</div>
 
 	<!-- Hops -->
-	<div class="section">
+	<div class="section ingredient-section">
 		<HopSelector hops={hops} og={recipeStats().og} {batchSizeLiters} onUpdate={handleHopsUpdate} />
 	</div>
 
 	<!-- Yeast -->
-	<div class="section yeast-section">
+	<div class="section ingredient-section yeast-section">
 		<YeastSelector
 			selectedYeastId={selectedYeast?.id}
 			onSelect={handleYeastSelect}
@@ -627,7 +682,7 @@
 	</div>
 
 	<!-- Notes -->
-	<div class="section notes-section">
+	<div class="section section-card notes-section">
 		<h2 class="section-title">Notes</h2>
 		<textarea
 			bind:value={notes}
@@ -679,6 +734,8 @@
 
 <style>
 	.recipe-builder {
+		--accent-primary: var(--recipe-accent);
+		--accent-secondary: var(--recipe-accent-hover);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-6);
@@ -741,19 +798,216 @@
 		position: sticky;
 		top: 0;
 		z-index: 100;
+		display: grid;
+		grid-template-columns: minmax(180px, 240px) 1fr;
+		align-items: center;
+		gap: var(--space-5);
+		padding: var(--space-5);
+		background: var(--bg-elevated);
+		background-image:
+			linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(24, 24, 27, 0) 65%),
+			var(--recipe-grain-texture);
+		background-size: cover, 8px 8px;
+		border: 1px solid var(--border-subtle);
+		border-radius: 12px;
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+		overflow: hidden;
+	}
+
+	.stats-grid {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-4);
-		padding: var(--space-4);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		align-items: center;
+	}
+
+	.beer-hero {
+		display: flex;
+		align-items: center;
+		gap: var(--space-5);
+	}
+
+	.beer-preview {
+		position: relative;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		min-width: 100px;
+		padding: 12px;
+	}
+
+	.beer-glow {
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(ellipse at center bottom, var(--beer-color), transparent 70%);
+		opacity: 0.35;
+		filter: blur(20px);
+		pointer-events: none;
+		transition: opacity 0.4s ease;
+	}
+
+	.beer-glass {
+		position: relative;
+		width: 72px;
+		height: 108px;
+		border-radius: 14px 14px 10px 10px;
+		border: 1.5px solid var(--recipe-glass-border);
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, var(--recipe-glass) 50%, rgba(0, 0, 0, 0.15) 100%);
+		box-shadow:
+			inset 0 2px 0 rgba(255, 255, 255, 0.25),
+			inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+			0 16px 32px rgba(0, 0, 0, 0.45),
+			0 4px 8px rgba(0, 0, 0, 0.25);
+		overflow: hidden;
+		transition: transform 0.3s ease, box-shadow 0.3s ease;
+	}
+
+	.beer-glass:hover {
+		transform: translateY(-2px);
+		box-shadow:
+			inset 0 2px 0 rgba(255, 255, 255, 0.3),
+			inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+			0 20px 40px rgba(0, 0, 0, 0.5),
+			0 6px 12px rgba(0, 0, 0, 0.3);
+	}
+
+	.beer-liquid {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 74%;
+		background:
+			linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, transparent 20%, rgba(0, 0, 0, 0.25) 100%),
+			var(--beer-color);
+		transition: background 0.5s ease;
+	}
+
+	.carbonation {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	.carbonation .bubble {
+		position: absolute;
+		bottom: 0;
+		width: 3px;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.5);
+		border-radius: 50%;
+		animation: rise 3s ease-in infinite;
+	}
+
+	.carbonation .bubble:nth-child(1) { left: 20%; animation-delay: 0s; animation-duration: 2.5s; }
+	.carbonation .bubble:nth-child(2) { left: 40%; animation-delay: 0.5s; animation-duration: 3s; }
+	.carbonation .bubble:nth-child(3) { left: 55%; animation-delay: 1s; animation-duration: 2.8s; }
+	.carbonation .bubble:nth-child(4) { left: 70%; animation-delay: 1.5s; animation-duration: 3.2s; }
+	.carbonation .bubble:nth-child(5) { left: 30%; animation-delay: 2s; animation-duration: 2.6s; }
+
+	@keyframes rise {
+		0% {
+			transform: translateY(0) scale(1);
+			opacity: 0;
+		}
+		10% {
+			opacity: 0.6;
+		}
+		90% {
+			opacity: 0.3;
+		}
+		100% {
+			transform: translateY(-85px) scale(0.5);
+			opacity: 0;
+		}
+	}
+
+	.beer-foam {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 22%;
+		background:
+			radial-gradient(ellipse at 30% 60%, rgba(255, 255, 255, 0.95) 0%, transparent 60%),
+			radial-gradient(ellipse at 70% 40%, rgba(255, 255, 255, 0.9) 0%, transparent 50%),
+			var(--recipe-foam);
+		box-shadow:
+			inset 0 -3px 8px var(--recipe-foam-shadow),
+			inset 0 2px 4px rgba(255, 255, 255, 0.4);
+		border-bottom: 1px solid rgba(139, 90, 43, 0.3);
+	}
+
+	.foam-bubble {
+		position: absolute;
+		background: rgba(255, 255, 255, 0.7);
+		border-radius: 50%;
+		box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.1);
+	}
+
+	.foam-bubble:nth-child(1) { width: 8px; height: 6px; top: 40%; left: 15%; }
+	.foam-bubble:nth-child(2) { width: 10px; height: 7px; top: 50%; left: 55%; }
+	.foam-bubble:nth-child(3) { width: 6px; height: 5px; top: 35%; left: 75%; }
+
+	.beer-gloss {
+		position: absolute;
+		top: 10%;
+		left: 10%;
+		width: 30%;
+		height: 75%;
+		border-radius: 14px;
+		background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.1) 40%, transparent 100%);
+		opacity: 0.65;
+		pointer-events: none;
+	}
+
+	.condensation {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.condensation::before,
+	.condensation::after {
+		content: '';
+		position: absolute;
+		background: rgba(255, 255, 255, 0.5);
+		border-radius: 50%;
+		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+	}
+
+	.condensation::before {
+		width: 4px;
+		height: 6px;
+		top: 45%;
+		right: 12%;
+	}
+
+	.condensation::after {
+		width: 3px;
+		height: 4px;
+		top: 62%;
+		right: 18%;
+	}
+
+	.beer-meta {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
 	}
 
 	.stat-group {
 		display: flex;
 		gap: var(--space-4);
+		padding: 0 var(--space-3);
+		border-right: 1px solid rgba(255, 255, 255, 0.06);
+	}
+
+	.stat-group:last-child {
+		border-right: none;
 	}
 
 	.stat {
@@ -761,47 +1015,62 @@
 		flex-direction: column;
 		align-items: center;
 		min-width: 60px;
+		padding: var(--space-2);
+		border-radius: 8px;
+		transition: background 0.2s ease;
+	}
+
+	.stat:hover {
+		background: rgba(255, 255, 255, 0.04);
 	}
 
 	.stat-label {
-		font-size: 10px;
-		font-weight: 600;
+		font-size: 9px;
+		font-weight: 700;
 		color: var(--text-tertiary);
 		text-transform: uppercase;
-		letter-spacing: 0.5px;
+		letter-spacing: 0.8px;
+		margin-bottom: 2px;
 	}
 
 	.stat-value {
-		font-size: 18px;
-		font-weight: 600;
+		font-size: 20px;
+		font-weight: 700;
 		color: var(--text-primary);
 		font-family: var(--font-mono);
+		transition: color 0.3s ease, transform 0.3s ease, text-shadow 0.3s ease;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 	}
 
 	.stat-value.balance {
 		color: var(--positive);
+		text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+	}
+
+	.stat-animate {
+		animation: stat-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	@keyframes stat-pop {
+		0% {
+			opacity: 0.4;
+			transform: translateY(4px) scale(0.92);
+			color: var(--accent);
+		}
+		50% {
+			transform: translateY(-1px) scale(1.04);
+		}
+		100% {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+			color: var(--text-primary);
+		}
 	}
 
 	.stat-sub {
 		font-size: 10px;
 		color: var(--text-tertiary);
-	}
-
-	.color-stat {
-		min-width: 80px;
-	}
-
-	.color-display {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-	}
-
-	.color-swatch {
-		width: 20px;
-		height: 20px;
-		border-radius: 4px;
-		border: 1px solid var(--border-default);
+		font-weight: 500;
 	}
 
 	/* Sections */
@@ -811,23 +1080,127 @@
 		gap: var(--space-4);
 	}
 
+	.section-card {
+		position: relative;
+		padding: var(--space-5);
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 12px;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.04),
+			0 4px 12px rgba(0, 0, 0, 0.15);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.section-card:hover {
+		transform: translateY(-1px);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.06),
+			0 6px 16px rgba(0, 0, 0, 0.2);
+	}
+
+	.section-card::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background-image: var(--recipe-grain-texture);
+		background-size: 8px 8px;
+		opacity: 0.35;
+		border-radius: inherit;
+		pointer-events: none;
+	}
+
+	.section-card > * {
+		position: relative;
+		z-index: 1;
+	}
+
 	.section-title {
-		font-size: 14px;
-		font-weight: 600;
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		font-size: 13px;
+		font-weight: 700;
 		color: var(--text-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
 
-	/* Metadata Section */
-	.metadata-section,
-	.params-section,
+	.section-title::before {
+		content: '';
+		width: 4px;
+		height: 16px;
+		border-radius: 2px;
+		background: currentColor;
+		opacity: 0.5;
+	}
+
+	.section-title::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(90deg, currentColor, transparent);
+		opacity: 0.2;
+	}
+
+	/* Metadata Section - Primary importance */
+	.metadata-section {
+		padding: var(--space-6) var(--space-5);
+		border-left: 4px solid rgba(245, 158, 11, 0.6);
+		background: linear-gradient(135deg, rgba(245, 158, 11, 0.04) 0%, transparent 50%);
+	}
+
+	.metadata-section .section-title {
+		color: var(--accent);
+	}
+
+	/* Params Section - Secondary */
+	.params-section {
+		padding: var(--space-4) var(--space-5);
+		border-left: 3px solid rgba(56, 189, 248, 0.4);
+		background: linear-gradient(135deg, rgba(56, 189, 248, 0.03) 0%, transparent 40%);
+	}
+
+	.params-section .section-title {
+		color: rgb(56, 189, 248);
+	}
+
+	/* Notes Section */
 	.notes-section {
-		padding: var(--space-4);
+		padding: var(--space-5);
+		border-left: 3px solid rgba(34, 197, 94, 0.4);
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.03) 0%, transparent 40%);
+	}
+
+	.notes-section .section-title {
+		color: rgb(34, 197, 94);
+	}
+
+	/* Ingredient Section - Warm craft feel */
+	.ingredient-section {
+		position: relative;
+		padding: var(--space-5);
 		background: var(--bg-surface);
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: 12px;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.03),
+			0 2px 8px rgba(0, 0, 0, 0.12);
+		border-left: 3px solid rgba(217, 119, 6, 0.5);
+	}
+
+	.ingredient-section::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background:
+			linear-gradient(135deg, rgba(217, 119, 6, 0.04) 0%, transparent 30%),
+			var(--recipe-grain-texture);
+		background-size: cover, 8px 8px;
+		opacity: 0.5;
+		border-radius: inherit;
+		pointer-events: none;
 	}
 
 	.form-grid {
@@ -904,7 +1277,7 @@
 
 	/* Yeast Section */
 	.yeast-section {
-		padding: 0;
+		padding: var(--space-4);
 	}
 
 	/* Notes Section */
@@ -1259,40 +1632,99 @@
 	/* Style Warnings */
 	.style-warnings {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-3);
-		background: var(--warning-bg, rgba(245, 158, 11, 0.1));
-		border: 1px solid var(--warning, #f59e0b);
-		border-radius: 8px;
+		align-items: flex-start;
+		gap: var(--space-3);
+		padding: var(--space-4);
+		background:
+			linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.02) 100%);
+		border: 1px solid rgba(245, 158, 11, 0.3);
+		border-radius: 10px;
+		box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
+	}
+
+	.warnings-icon {
+		flex-shrink: 0;
+		width: 20px;
+		height: 20px;
+		color: var(--warning, #f59e0b);
 	}
 
 	.warnings-label {
-		font-size: 12px;
-		font-weight: 600;
+		flex-shrink: 0;
+		font-size: 11px;
+		font-weight: 700;
 		color: var(--warning, #f59e0b);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
+		padding-top: 2px;
+	}
+
+	.warnings-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		flex: 1;
 	}
 
 	.warning-badge {
 		display: inline-flex;
 		align-items: center;
-		padding: var(--space-1) var(--space-2);
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
 		background: var(--bg-elevated);
-		border-radius: 4px;
+		border-radius: 6px;
 		font-size: 12px;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.05),
+			0 1px 3px rgba(0, 0, 0, 0.2);
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.warning-badge:hover {
+		transform: translateY(-1px);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			0 3px 6px rgba(0, 0, 0, 0.25);
+	}
+
+	.warning-badge .badge-icon {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+
+	.warning-badge .badge-stat {
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.warning-badge .badge-value {
 		font-family: var(--font-mono);
+		font-weight: 700;
 		color: var(--text-primary);
+	}
+
+	.warning-badge .badge-target {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-tertiary);
 	}
 
 	.warning-badge.warning {
 		border-left: 3px solid var(--warning, #f59e0b);
 	}
 
+	.warning-badge.warning .badge-icon {
+		color: var(--warning, #f59e0b);
+	}
+
 	.warning-badge.error {
 		border-left: 3px solid var(--negative, #ef4444);
+		background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, var(--bg-elevated) 50%);
+	}
+
+	.warning-badge.error .badge-icon {
+		color: var(--negative, #ef4444);
 	}
 
 	/* Top Actions */
@@ -1307,12 +1739,34 @@
 	@media (max-width: 640px) {
 		.stats-panel {
 			position: relative;
-			flex-direction: column;
+			grid-template-columns: 1fr;
 		}
 
-		.stat-group {
+		.beer-hero {
+			justify-content: center;
+		}
+
+		.beer-preview {
+			min-width: 80px;
+			padding: 8px;
+		}
+
+		.beer-glass {
+			width: 56px;
+			height: 84px;
+		}
+
+		.beer-glow {
+			opacity: 0.25;
+		}
+
+		.carbonation .bubble {
+			width: 2px;
+			height: 2px;
+		}
+
+		.stats-grid {
 			justify-content: space-around;
-			width: 100%;
 		}
 
 		.form-grid {

@@ -58,17 +58,23 @@ export interface BatchParams {
  * Calculate Original Gravity from fermentables
  *
  * Formula: OG = 1 + (sum of gravity points / batch volume)
- * Gravity Points = weight_kg * potential_extract * efficiency * 1000 / volume_L
+ *
+ * Note: potential_sg values in brewing databases are based on the US PPG system
+ * (1 lb grain in 1 gal water). To use with metric units (kg, L), we apply a
+ * conversion factor: (lbs/kg) * (L/gal) = 2.205 * 3.785 ≈ 8.345
  */
 export function calculateOG(
   fermentables: Fermentable[],
   batch: BatchParams
 ): number {
+  // Conversion factor: PPG (lb/gal) to metric (kg/L)
+  const PPG_TO_METRIC = 8.345;
+
   const totalPoints = fermentables.reduce((sum, f) => {
     // Convert potential SG to points (e.g., 1.037 -> 37)
     const potentialPoints = (f.potential_sg - 1) * 1000;
-    // Apply efficiency (as decimal) and scale to batch size
-    const points = (f.amount_kg * potentialPoints * (batch.efficiency_percent / 100)) /
+    // Apply metric conversion, efficiency, and scale to batch size
+    const points = (f.amount_kg * potentialPoints * PPG_TO_METRIC * (batch.efficiency_percent / 100)) /
                    batch.batch_size_liters;
     return sum + points;
   }, 0);

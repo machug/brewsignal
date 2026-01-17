@@ -1422,7 +1422,7 @@ async def _get_fermentation_status(
     current_sg = live_reading.get("sg") if live_reading else None
     current_temp = live_reading.get("temp") if live_reading else None
     reading_confidence = live_reading.get("confidence") if live_reading else None
-    reading_time = live_reading.get("timestamp") if live_reading else None
+    reading_time = live_reading.get("last_seen") if live_reading else None
 
     # Build batch info
     batch_info = {

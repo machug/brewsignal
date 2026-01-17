@@ -325,16 +325,16 @@ class HopVariety(Base):
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
-class GrainVariety(Base):
-    """Grain/fermentable variety reference database.
+class Fermentable(Base):
+    """Fermentable reference database (grains, sugars, extracts, adjuncts).
 
-    Seeded from JSON file on startup, with support for custom user varieties.
+    Seeded from JSON file on startup, with support for custom user entries.
     """
-    __tablename__ = "grain_varieties"
+    __tablename__ = "fermentables"
     __table_args__ = (
-        Index("ix_grain_varieties_name", "name"),
-        Index("ix_grain_varieties_type", "type"),
-        Index("ix_grain_varieties_origin", "origin"),
+        Index("ix_fermentables_name", "name"),
+        Index("ix_fermentables_type", "type"),
+        Index("ix_fermentables_origin", "origin"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -1364,8 +1364,8 @@ class HopVarietyResponse(BaseModel):
         return serialize_datetime_to_utc(dt)
 
 
-class GrainVarietyCreate(BaseModel):
-    """Schema for creating a custom grain variety."""
+class FermentableCreate(BaseModel):
+    """Schema for creating a custom fermentable."""
     name: str
     type: Optional[str] = None  # base, specialty, adjunct, sugar, extract, fruit, other
     origin: Optional[str] = None
@@ -1387,8 +1387,8 @@ class GrainVarietyCreate(BaseModel):
         return v
 
 
-class GrainVarietyResponse(BaseModel):
-    """Schema for grain variety API responses."""
+class FermentableResponse(BaseModel):
+    """Schema for fermentable API responses."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int

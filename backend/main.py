@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, grain_varieties, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, recipes, system, yeast_strains  # noqa: E402
+from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, recipes, system, yeast_strains  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
 from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
@@ -324,7 +324,7 @@ app.include_router(batches.router)
 app.include_router(maintenance.router)
 app.include_router(yeast_strains.router)
 app.include_router(hop_varieties.router)
-app.include_router(grain_varieties.router)
+app.include_router(fermentables.router)
 app.include_router(assistant.router)
 app.include_router(ag_ui.router)
 app.include_router(inventory_equipment.router)

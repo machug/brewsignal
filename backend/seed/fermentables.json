@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "sources": ["Brewing With Wheat", "Malt: A Practical Guide", "Various Maltster Specifications"],
-  "varieties": [
+  "fermentables": [
     {
       "name": "Pale Malt (2-Row)",
       "type": "base",

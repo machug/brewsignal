@@ -294,41 +294,38 @@ async def handle_tilt_reading(reading: TiltReading):
 
             await session.commit()
 
-        # Only broadcast/cache readings for paired devices (prevent pollution from nearby Tilts)
-        if device.paired:
-            # Build payload for cache and broadcast
-            payload = {
-                "id": reading.id,  # Frontend expects this field
-                "device_id": reading.id,
-                "device_type": "tilt",
-                "color": reading.color,
-                "beer_name": device.beer_name or "Untitled",
-                "original_gravity": device.original_gravity,
-                "sg": sg_calibrated,
-                "sg_raw": reading.sg,
-                "temp": temp_calibrated_c,
-                "temp_raw": temp_raw_c,
-                "rssi": reading.rssi,
-                "timestamp": serialize_datetime_to_utc(timestamp),
-                "last_seen": serialize_datetime_to_utc(timestamp),
-                "paired": device.paired,
-                "mac": reading.mac,
-                # ML outputs
-                "sg_filtered": ml_outputs.get("sg_filtered"),
-                "temp_filtered": ml_outputs.get("temp_filtered"),
-                "confidence": ml_outputs.get("confidence"),
-                "sg_rate": ml_outputs.get("sg_rate"),
-                "temp_rate": ml_outputs.get("temp_rate"),
-                "is_anomaly": ml_outputs.get("is_anomaly", False),
-                "anomaly_score": ml_outputs.get("anomaly_score"),
-                "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
-            }
+        # Always broadcast detected devices (so unpaired ones show on dashboard)
+        # But only store readings for paired devices linked to active batches (handled above)
+        payload = {
+            "id": reading.id,  # Frontend expects this field
+            "device_id": reading.id,
+            "device_type": "tilt",
+            "color": reading.color,
+            "beer_name": device.beer_name or "Untitled",
+            "original_gravity": device.original_gravity,
+            "sg": sg_calibrated,
+            "sg_raw": reading.sg,
+            "temp": temp_calibrated_c,
+            "temp_raw": temp_raw_c,
+            "rssi": reading.rssi,
+            "timestamp": serialize_datetime_to_utc(timestamp),
+            "last_seen": serialize_datetime_to_utc(timestamp),
+            "paired": device.paired,
+            "mac": reading.mac,
+            # ML outputs (only populated for paired devices with active batches)
+            "sg_filtered": ml_outputs.get("sg_filtered"),
+            "temp_filtered": ml_outputs.get("temp_filtered"),
+            "confidence": ml_outputs.get("confidence"),
+            "sg_rate": ml_outputs.get("sg_rate"),
+            "temp_rate": ml_outputs.get("temp_rate"),
+            "is_anomaly": ml_outputs.get("is_anomaly", False),
+            "anomaly_score": ml_outputs.get("anomaly_score"),
+            "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
+        }
 
-            # Update cache (persists to disk)
-            update_reading(reading.id, payload)
-
-            # Broadcast to WebSocket clients
-            await manager.broadcast(payload)
+        # Update cache (persists to disk) and broadcast to WebSocket clients
+        update_reading(reading.id, payload)
+        await manager.broadcast(payload)
 
 
 @asynccontextmanager

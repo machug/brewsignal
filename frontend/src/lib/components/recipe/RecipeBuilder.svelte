@@ -91,6 +91,7 @@
 	let styleSearchLoading = $state(false);
 	let showStyleDropdown = $state(false);
 	let styleSearchTimeout: ReturnType<typeof setTimeout> | null = null;
+	let styleBlurTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Batch parameters
 	let batchSizeLiters = $state(20);
@@ -263,6 +264,12 @@
 
 	// Style search with debounce
 	async function handleStyleSearch(query: string) {
+		// Cancel any pending blur when user is actively typing
+		if (styleBlurTimeout) {
+			clearTimeout(styleBlurTimeout);
+			styleBlurTimeout = null;
+		}
+
 		if (query.length < 2) {
 			styleResults = [];
 			showStyleDropdown = false;
@@ -298,6 +305,11 @@
 	}
 
 	function selectStyle(style: BJCPStyleResponse) {
+		// Cancel blur timeout since we're making a selection
+		if (styleBlurTimeout) {
+			clearTimeout(styleBlurTimeout);
+			styleBlurTimeout = null;
+		}
 		selectedStyle = style;
 		styleInput = style.name;
 		showStyleDropdown = false;
@@ -309,6 +321,25 @@
 		styleInput = '';
 		styleResults = [];
 		showStyleDropdown = false;
+	}
+
+	function handleStyleFocus() {
+		// Cancel any pending blur
+		if (styleBlurTimeout) {
+			clearTimeout(styleBlurTimeout);
+			styleBlurTimeout = null;
+		}
+		if (styleInput.length >= 2 && styleResults.length > 0) {
+			showStyleDropdown = true;
+		}
+	}
+
+	function handleStyleBlur() {
+		// Use a timeout to allow click events on dropdown items to fire first
+		styleBlurTimeout = setTimeout(() => {
+			showStyleDropdown = false;
+			styleBlurTimeout = null;
+		}, 150);
 	}
 
 	function handleFermentablesUpdate(updated: RecipeFermentable[]) {
@@ -576,8 +607,8 @@
 						type="text"
 						value={styleInput}
 						oninput={handleStyleInputChange}
-						onfocus={() => styleInput.length >= 2 && styleResults.length > 0 && (showStyleDropdown = true)}
-						onblur={() => setTimeout(() => showStyleDropdown = false, 200)}
+						onfocus={handleStyleFocus}
+						onblur={handleStyleBlur}
 						placeholder="Search BJCP styles..."
 						class="form-input"
 						autocomplete="off"
@@ -1227,6 +1258,7 @@
 		padding: var(--space-6) var(--space-5);
 		border-left: 4px solid rgba(245, 158, 11, 0.6);
 		background: linear-gradient(135deg, rgba(245, 158, 11, 0.04) 0%, transparent 50%);
+		z-index: 10; /* Ensure style dropdown appears above params section */
 	}
 
 	.metadata-section .section-title {

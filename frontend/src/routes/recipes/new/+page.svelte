@@ -159,7 +159,12 @@
 					d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 				/>
 			</svg>
-			<span>{error}</span>
+			<span class="error-message">{error}</span>
+			<button class="error-dismiss" onclick={() => (error = null)} aria-label="Dismiss error">
+				<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
 		</div>
 	{/if}
 
@@ -340,6 +345,37 @@
 		width: 20px;
 		height: 20px;
 		flex-shrink: 0;
+	}
+
+	.error-message {
+		flex: 1;
+	}
+
+	.error-dismiss {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: var(--negative);
+		cursor: pointer;
+		opacity: 0.7;
+		transition: opacity 0.15s ease, background 0.15s ease;
+		flex-shrink: 0;
+	}
+
+	.error-dismiss:hover {
+		opacity: 1;
+		background: rgba(239, 68, 68, 0.1);
+	}
+
+	.error-dismiss svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	.saving-overlay {

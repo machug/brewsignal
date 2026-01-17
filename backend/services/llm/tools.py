@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from backend.models import (
     YeastStrain, Style, HopInventory, YeastInventory, Equipment,
-    Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture
+    Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture,
+    HopVariety, Fermentable
 )
 from backend.state import latest_readings
 
@@ -416,6 +417,93 @@ TOOL_DEFINITIONS = [
                 "required": ["recipe"]
             }
         }
+    },
+    # =============================================================================
+    # Ingredient Reference Library Tools
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "search_hop_varieties",
+            "description": "Search the hop variety reference database. Returns hop varieties with their alpha/beta acids, aroma profiles, and substitutes. Use this when the user asks about hop characteristics, recommendations, or needs help choosing hops for a recipe.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term to match against hop name, aroma profile, or description (e.g., 'Citra', 'citrus', 'pine', 'floral')"
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "enum": ["bittering", "aroma", "dual"],
+                        "description": "Filter by hop purpose"
+                    },
+                    "origin": {
+                        "type": "string",
+                        "description": "Filter by origin country/region (e.g., 'USA', 'Germany', 'New Zealand')"
+                    },
+                    "min_alpha": {
+                        "type": "number",
+                        "description": "Minimum alpha acid percentage (for high-alpha bittering hops)"
+                    },
+                    "max_alpha": {
+                        "type": "number",
+                        "description": "Maximum alpha acid percentage (for low-alpha aroma hops)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 15)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_fermentables",
+            "description": "Search the fermentables reference database (grains, sugars, extracts, adjuncts). Returns fermentables with their color, extract potential, diastatic power, and flavor profiles. Use this when the user asks about grain characteristics, malt recommendations, or needs help building a grain bill.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term to match against name, flavor profile, or description (e.g., 'Pilsner', 'caramel', 'Munich', 'biscuit')"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["base", "specialty", "adjunct", "sugar", "extract", "fruit", "other"],
+                        "description": "Filter by fermentable type"
+                    },
+                    "origin": {
+                        "type": "string",
+                        "description": "Filter by origin country/region (e.g., 'Germany', 'Belgium', 'USA')"
+                    },
+                    "maltster": {
+                        "type": "string",
+                        "description": "Filter by maltster/manufacturer (e.g., 'Weyermann', 'Briess', 'Castle')"
+                    },
+                    "max_color_srm": {
+                        "type": "number",
+                        "description": "Maximum color in SRM (for lighter malts)"
+                    },
+                    "min_color_srm": {
+                        "type": "number",
+                        "description": "Minimum color in SRM (for darker specialty malts)"
+                    },
+                    "min_diastatic_power": {
+                        "type": "number",
+                        "description": "Minimum diastatic power in Lintner (for base malts with enzymatic conversion)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 15)"
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
 
@@ -470,6 +558,11 @@ async def execute_tool(
         return await _get_yeast_fermentation_advice(db, **arguments)
     elif tool_name == "save_recipe":
         return await _save_recipe(db, **arguments)
+    # Ingredient reference library tools
+    elif tool_name == "search_hop_varieties":
+        return await _search_hop_varieties(db, **arguments)
+    elif tool_name == "search_fermentables":
+        return await _search_fermentables(db, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -1015,6 +1108,155 @@ async def _get_equipment(
             for eq in equipment_list
         ],
         "brewing_defaults": brewing_defaults
+    }
+
+
+# =============================================================================
+# Ingredient Reference Library Tools
+# =============================================================================
+
+async def _search_hop_varieties(
+    db: AsyncSession,
+    query: Optional[str] = None,
+    purpose: Optional[str] = None,
+    origin: Optional[str] = None,
+    min_alpha: Optional[float] = None,
+    max_alpha: Optional[float] = None,
+    limit: int = 15
+) -> dict[str, Any]:
+    """Search the hop variety reference database."""
+    stmt = select(HopVariety).order_by(HopVariety.name)
+
+    # Text search on name, aroma profile, description
+    if query:
+        search_term = f"%{query}%"
+        stmt = stmt.where(
+            or_(
+                HopVariety.name.ilike(search_term),
+                HopVariety.aroma_profile.ilike(search_term),
+                HopVariety.description.ilike(search_term),
+                HopVariety.substitutes.ilike(search_term),
+            )
+        )
+
+    # Exact/partial filters
+    if purpose:
+        stmt = stmt.where(HopVariety.purpose == purpose.lower())
+    if origin:
+        stmt = stmt.where(HopVariety.origin.ilike(f"%{origin}%"))
+
+    # Alpha acid range filters
+    if min_alpha is not None:
+        stmt = stmt.where(HopVariety.alpha_acid_high >= min_alpha)
+    if max_alpha is not None:
+        stmt = stmt.where(HopVariety.alpha_acid_low <= max_alpha)
+
+    stmt = stmt.limit(limit)
+
+    result = await db.execute(stmt)
+    hops = result.scalars().all()
+
+    if not hops:
+        return {
+            "count": 0,
+            "message": "No hop varieties found matching your criteria",
+            "hop_varieties": []
+        }
+
+    return {
+        "count": len(hops),
+        "hop_varieties": [
+            {
+                "name": h.name,
+                "origin": h.origin,
+                "purpose": h.purpose,
+                "alpha_acid": f"{h.alpha_acid_low or '?'}-{h.alpha_acid_high or '?'}%" if h.alpha_acid_low or h.alpha_acid_high else None,
+                "beta_acid": f"{h.beta_acid_low or '?'}-{h.beta_acid_high or '?'}%" if h.beta_acid_low or h.beta_acid_high else None,
+                "aroma_profile": h.aroma_profile,
+                "substitutes": h.substitutes,
+                "description": h.description[:200] + "..." if h.description and len(h.description) > 200 else h.description,
+                "is_custom": h.is_custom,
+            }
+            for h in hops
+        ]
+    }
+
+
+async def _search_fermentables(
+    db: AsyncSession,
+    query: Optional[str] = None,
+    type: Optional[str] = None,
+    origin: Optional[str] = None,
+    maltster: Optional[str] = None,
+    max_color_srm: Optional[float] = None,
+    min_color_srm: Optional[float] = None,
+    min_diastatic_power: Optional[float] = None,
+    limit: int = 15
+) -> dict[str, Any]:
+    """Search the fermentables reference database."""
+    stmt = select(Fermentable).order_by(Fermentable.name)
+
+    # Text search on name, flavor profile, description
+    if query:
+        search_term = f"%{query}%"
+        stmt = stmt.where(
+            or_(
+                Fermentable.name.ilike(search_term),
+                Fermentable.flavor_profile.ilike(search_term),
+                Fermentable.description.ilike(search_term),
+                Fermentable.substitutes.ilike(search_term),
+            )
+        )
+
+    # Exact/partial filters
+    if type:
+        stmt = stmt.where(Fermentable.type == type.lower())
+    if origin:
+        stmt = stmt.where(Fermentable.origin.ilike(f"%{origin}%"))
+    if maltster:
+        stmt = stmt.where(Fermentable.maltster.ilike(f"%{maltster}%"))
+
+    # Color range filters
+    if max_color_srm is not None:
+        stmt = stmt.where(Fermentable.color_srm <= max_color_srm)
+    if min_color_srm is not None:
+        stmt = stmt.where(Fermentable.color_srm >= min_color_srm)
+
+    # Diastatic power filter (for base malts)
+    if min_diastatic_power is not None:
+        stmt = stmt.where(Fermentable.diastatic_power >= min_diastatic_power)
+
+    stmt = stmt.limit(limit)
+
+    result = await db.execute(stmt)
+    fermentables = result.scalars().all()
+
+    if not fermentables:
+        return {
+            "count": 0,
+            "message": "No fermentables found matching your criteria",
+            "fermentables": []
+        }
+
+    return {
+        "count": len(fermentables),
+        "fermentables": [
+            {
+                "name": f.name,
+                "type": f.type,
+                "origin": f.origin,
+                "maltster": f.maltster,
+                "color_srm": f.color_srm,
+                "potential_sg": f.potential_sg,
+                "max_in_batch_percent": f.max_in_batch_percent,
+                "diastatic_power": f.diastatic_power,
+                "flavor_profile": f.flavor_profile,
+                "substitutes": f.substitutes,
+                "description": f.description[:200] + "..." if f.description and len(f.description) > 200 else f.description,
+                "is_custom": f.is_custom,
+            }
+            for f in fermentables
+        ]
     }
 
 

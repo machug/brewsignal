@@ -176,9 +176,9 @@ export function calculateIBU_Tinseth(
     utilization *= 0.20;  // ~20% of boil utilization
   }
 
-  // IBU = (alpha * amount_grams * utilization * 1000) / (batch_liters * 10)
+  // IBU = (alpha * amount_grams * utilization * 1000) / batch_liters
   const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
-              (batch_size_liters * 10);
+              batch_size_liters;
 
   return Math.max(0, ibu);
 }

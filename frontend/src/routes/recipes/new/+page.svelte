@@ -112,6 +112,7 @@
 		</div>
 		<div class="header-actions">
 			<button type="button" class="btn-ghost" onclick={handleCancel}>Cancel</button>
+			<span class="action-divider"></span>
 			<button
 				type="button"
 				class="btn-review"
@@ -255,6 +256,14 @@
 		flex-shrink: 0;
 	}
 
+	.action-divider {
+		width: 1px;
+		height: 24px;
+		background: var(--border-subtle, rgba(255, 255, 255, 0.08));
+		margin: 0 var(--space-1);
+	}
+
+	/* Button Base Styles */
 	.btn-ghost,
 	.btn-review,
 	.btn-save {
@@ -262,56 +271,82 @@
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4);
-		border-radius: 6px;
-		font-size: 14px;
+		border-radius: 8px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 		white-space: nowrap;
 	}
 
+	/* Cancel - Tertiary/Ghost (smallest, most subtle) */
 	.btn-ghost {
+		padding: 8px 14px;
+		font-size: 13px;
 		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-secondary);
+		border: 1px solid transparent;
+		color: var(--text-tertiary, #6b7280);
 	}
 
 	.btn-ghost:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-		border-color: var(--border-hover);
+		background: rgba(255, 255, 255, 0.04);
+		color: var(--text-secondary);
 	}
 
+	/* AI Review - Secondary (medium prominence) */
 	.btn-review {
-		background: transparent;
-		border: 1px solid var(--positive, #10b981);
+		padding: 9px 16px;
+		font-size: 13px;
+		background: rgba(16, 185, 129, 0.08);
+		border: 1px solid rgba(16, 185, 129, 0.3);
 		color: var(--positive, #10b981);
 	}
 
 	.btn-review:hover:not(:disabled) {
-		background: var(--positive, #10b981);
-		color: var(--bg-base);
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.5);
+		transform: translateY(-1px);
 	}
 
 	.btn-review:disabled {
-		opacity: 0.6;
+		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
+	/* Save Recipe - Primary (largest, most prominent) */
 	.btn-save {
-		background: var(--recipe-accent, #f59e0b);
+		padding: 10px 22px;
+		font-size: 14px;
+		font-weight: 600;
+		background: linear-gradient(135deg, var(--recipe-accent, #f59e0b) 0%, #d97706 100%);
 		border: none;
-		color: var(--bg-base);
+		color: #1a1a1a;
+		box-shadow:
+			0 2px 8px rgba(245, 158, 11, 0.3),
+			0 1px 2px rgba(0, 0, 0, 0.2),
+			inset 0 1px 0 rgba(255, 255, 255, 0.15);
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
 	.btn-save:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--recipe-accent, #f59e0b) 85%, white);
+		background: linear-gradient(135deg, #fbbf24 0%, var(--recipe-accent, #f59e0b) 100%);
+		box-shadow:
+			0 4px 12px rgba(245, 158, 11, 0.4),
+			0 2px 4px rgba(0, 0, 0, 0.2),
+			inset 0 1px 0 rgba(255, 255, 255, 0.2);
+		transform: translateY(-1px);
+	}
+
+	.btn-save:active:not(:disabled) {
+		transform: translateY(0);
+		box-shadow:
+			0 1px 4px rgba(245, 158, 11, 0.3),
+			inset 0 1px 2px rgba(0, 0, 0, 0.1);
 	}
 
 	.btn-save:disabled {
-		opacity: 0.6;
+		opacity: 0.5;
 		cursor: not-allowed;
+		box-shadow: none;
 	}
 
 	.btn-icon {

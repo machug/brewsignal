@@ -113,6 +113,8 @@ async def seed_styles(db: AsyncSession, force: bool = False) -> dict:
 
         # Build description from overall impression
         description = style_data.get("overallimpression", "")
+        # Store comments which may contain aliases (e.g., "NEIPA", "New England IPA")
+        comments = style_data.get("comments", "")
 
         style = Style(
             id=style_id,
@@ -133,6 +135,7 @@ async def seed_styles(db: AsyncSession, force: bool = False) -> dict:
             abv_min=_safe_float(style_data.get("abvmin")),
             abv_max=_safe_float(style_data.get("abvmax")),
             description=description,
+            comments=comments,
         )
         db.add(style)
         inserted += 1

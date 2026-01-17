@@ -272,8 +272,11 @@ async def init_db():
 
     # Migrate yeast_strains table for alcohol_tolerance type change (REAL -> TEXT)
     # Must run separately and then call create_all() again to recreate the table
+    reseed_styles = False
     async with engine.begin() as conn:
         await conn.run_sync(_migrate_yeast_strains_alcohol_tolerance)
+        # Add comments column to styles for alias searching (NEIPA -> Hazy IPA)
+        reseed_styles = await conn.run_sync(_migrate_add_style_comments_column)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
 
@@ -298,10 +301,10 @@ async def init_db():
         if result.get("action") == "seeded":
             print(f"Seeded {result.get('count', 0)} fermentables")
 
-    # Seed BJCP styles from JSON file
+    # Seed BJCP styles from JSON file (force re-seed if comments column was just added)
     from .services.style_seeder import seed_styles
     async with async_session_factory() as session:
-        result = await seed_styles(session)
+        result = await seed_styles(session, force=reseed_styles)
         if result.get("action") == "seeded":
             print(f"Seeded {result.get('count', 0)} BJCP styles")
 
@@ -1413,6 +1416,23 @@ def _migrate_yeast_strains_alcohol_tolerance(conn):
         # and then re-seeded from the JSON file
         conn.execute(text("DROP TABLE yeast_strains"))
         print("Migration: Dropped yeast_strains table for schema update (alcohol_tolerance REAL -> TEXT)")
+
+
+def _migrate_add_style_comments_column(conn):
+    """Add comments column to styles table for alias searching (e.g., NEIPA -> Hazy IPA)."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "styles" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("styles")]
+    if "comments" not in columns:
+        conn.execute(text("ALTER TABLE styles ADD COLUMN comments TEXT"))
+        print("Migration: Added comments column to styles table")
+        # Return True to signal that styles need re-seeding
+        return True
+    return False
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

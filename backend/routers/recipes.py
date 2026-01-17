@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Any, Optional
@@ -143,14 +143,20 @@ def _append_warnings(recipe_data: dict, warnings: list[RecipeValidationWarning])
 
 @router.get("/styles/search", response_model=list[StyleResponse])
 async def search_styles(
-    q: str = Query(..., min_length=2, description="Search query for style name"),
+    q: str = Query(..., min_length=2, description="Search query for style name or alias"),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search BJCP styles by name. Returns matching styles with their guidelines."""
+    """Search BJCP styles by name or alias (e.g., 'NEIPA' finds 'Hazy IPA')."""
+    search_term = q.lower()
     query = (
         select(Style)
-        .where(func.lower(Style.name).contains(q.lower()))
+        .where(
+            or_(
+                func.lower(Style.name).contains(search_term),
+                func.lower(Style.comments).contains(search_term),
+            )
+        )
         .order_by(Style.name)
         .limit(limit)
     )

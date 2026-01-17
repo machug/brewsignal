@@ -238,6 +238,7 @@ class Style(Base):
     abv_min: Mapped[Optional[float]] = mapped_column()
     abv_max: Mapped[Optional[float]] = mapped_column()
     description: Mapped[Optional[str]] = mapped_column(Text)
+    comments: Mapped[Optional[str]] = mapped_column(Text)  # Contains aliases like "NEIPA"
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     # Relationships

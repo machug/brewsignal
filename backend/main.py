@@ -52,6 +52,10 @@ def get_ml_manager() -> Optional[MLPipelineManager]:
 # Prevents N+1 query on every reading when using wall-clock fallback
 _first_reading_cache: dict[str, datetime] = {}
 
+# Cache for last stored reading time per Tilt device (rate limiting)
+# Tilts broadcast constantly via BLE but we only want to store at configured interval
+_last_tilt_storage: dict[str, datetime] = {}
+
 
 async def calculate_time_since_batch_start(
     session,
@@ -212,15 +216,27 @@ async def handle_tilt_reading(reading: TiltReading):
         # Link reading to active batch (if any)
         batch_id = await link_reading_to_batch(session, reading.id)
 
-        # Only store readings if BOTH conditions met:
+        # Rate limit Tilt storage using configured interval
+        # Tilts broadcast constantly via BLE, but we only store at the configured interval
+        interval_minutes = await get_config_value(session, "local_interval_minutes") or 15
+        last_stored = _last_tilt_storage.get(reading.id)
+        should_store = (
+            last_stored is None or
+            (timestamp - last_stored).total_seconds() >= interval_minutes * 60
+        )
+
+        # ML outputs - only populated when we store a reading
+        ml_outputs = {}
+
+        # Only store readings if ALL conditions met:
         # 1. Device is paired (prevents pollution from nearby unpaired Tilts)
         # 2. Reading linked to active batch (fermenting or conditioning status)
-        if device.paired and batch_id is not None:
+        # 3. Enough time has passed since last storage (rate limiting)
+        if device.paired and batch_id is not None and should_store:
             # Calculate time since batch start for ML pipeline (with wall-clock fallback)
             time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
 
             # Process through ML pipeline if available
-            ml_outputs = {}
             if ml_pipeline_manager:
                 try:
                     # Call synchronous process_reading (no await)
@@ -293,6 +309,9 @@ async def handle_tilt_reading(reading: TiltReading):
                 # Alert detection failure is non-fatal
 
             await session.commit()
+
+            # Update rate limit cache after successful storage
+            _last_tilt_storage[reading.id] = timestamp
 
         # Always broadcast detected devices (so unpaired ones show on dashboard)
         # But only store readings for paired devices linked to active batches (handled above)

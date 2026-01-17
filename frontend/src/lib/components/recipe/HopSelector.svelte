@@ -163,7 +163,7 @@
 			alpha_acid_percent: avgAA
 		};
 		onUpdate([...hops, newHop]);
-		showBrowser = false;
+		// Keep browser open to allow adding multiple items
 	}
 
 	function removeHop(index: number) {

@@ -126,7 +126,7 @@
 			amount_kg: 0.5 // Default amount
 		};
 		onUpdate([...fermentables, newFerm]);
-		showBrowser = false;
+		// Keep browser open to allow adding multiple items
 	}
 
 	function removeFermentable(id: number) {

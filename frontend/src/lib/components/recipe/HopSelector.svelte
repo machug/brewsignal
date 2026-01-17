@@ -237,9 +237,6 @@
 	{#if hops.length === 0}
 		<div class="empty-state">
 			<p>No hops added yet.</p>
-			<button type="button" class="browse-btn" onclick={() => (showBrowser = true)}>
-				Browse Library
-			</button>
 		</div>
 	{:else}
 		<div class="hops-list">
@@ -563,22 +560,6 @@
 	.empty-state p {
 		color: var(--text-secondary);
 		margin: 0;
-	}
-
-	.browse-btn {
-		padding: var(--space-2) var(--space-4);
-		background: transparent;
-		color: var(--section-accent);
-		border: 1px solid var(--section-accent);
-		border-radius: 6px;
-		font-size: 13px;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.browse-btn:hover {
-		background: var(--section-accent);
-		color: var(--bg-surface);
 	}
 
 	.hops-list {

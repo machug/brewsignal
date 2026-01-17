@@ -496,6 +496,12 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
 
     # Get device state with expected FG for prediction bounds
     device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
+
+    # Auto-reload from database if pipeline is empty or has insufficient history
+    if not device_state or device_state.get("history_count", 0) < 10:
+        await ml_mgr.reload_from_database(batch.device_id, batch_id, db)
+        device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
+
     if not device_state or not device_state.get("predictions"):
         return {"available": False}
 

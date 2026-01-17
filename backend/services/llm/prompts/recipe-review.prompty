@@ -91,7 +91,7 @@ Please review my recipe "{{recipe_name}}" designed as a **{{style_name}}**.
 ## Yeast
 {{yeast_info}}
 
-{{#if style_guidelines}}
+{% if style_guidelines %}
 ## BJCP Style Guidelines for {{style_name}}
 {{style_guidelines}}
-{{/if}}
+{% endif %}

@@ -674,67 +674,61 @@
 	</div>
 
 	<!-- Yeast -->
-	<div class="section ingredient-section yeast-section">
-		<div class="selector-header">
+	<div class="section ingredient-section yeast-selector">
+		<div class="selector-header yeast-header">
 			<div class="header-left">
 				<h3>
-					<span class="header-icon yeast-icon" aria-hidden="true">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+					<span class="header-icon">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<circle cx="12" cy="8" r="4" />
 							<circle cx="8" cy="16" r="3" />
 							<circle cx="16" cy="17" r="2.5" />
-							<path d="M12 12v1.5M8 13v0M16 14.5v0" stroke-linecap="round" />
 						</svg>
 					</span>
 					Yeast
 				</h3>
 				{#if selectedYeast}
-					<span class="stats yeast-stats">
+					<span class="stats">
 						{#if selectedYeast.attenuation_low || selectedYeast.attenuation_high}
-							<span class="yeast-stat">{selectedYeast.attenuation_low ?? '?'}-{selectedYeast.attenuation_high ?? '?'}% atten</span>
+							<span class="stat">{selectedYeast.attenuation_low ?? '?'}-{selectedYeast.attenuation_high ?? '?'}% atten</span>
 						{/if}
 						{#if selectedYeast.temp_low || selectedYeast.temp_high}
-							<span class="yeast-stat">{selectedYeast.temp_low ?? '?'}-{selectedYeast.temp_high ?? '?'}°C</span>
+							<span class="stat">{selectedYeast.temp_low ?? '?'}-{selectedYeast.temp_high ?? '?'}°C</span>
 						{/if}
 					</span>
 				{/if}
 			</div>
-			<button type="button" class="add-btn yeast-add-btn" onclick={() => (showYeastModal = true)}>
-				{selectedYeast ? 'Change Yeast' : '+ Select Yeast'}
+			<button type="button" class="add-btn" onclick={() => (showYeastModal = true)}>
+				{selectedYeast ? 'Change' : '+ Add Yeast'}
 			</button>
 		</div>
 
 		{#if !selectedYeast}
-			<div class="empty-state">
+			<div class="empty-state yeast-empty">
 				<p>No yeast selected yet.</p>
-				<button type="button" class="browse-btn yeast-browse-btn" onclick={() => (showYeastModal = true)}>
-					Browse Strains
-				</button>
 			</div>
 		{:else}
-			<div class="selected-yeast-card">
-				<div class="yeast-card-main">
-					<div class="yeast-card-info">
-						<span class="yeast-card-name">{selectedYeast.name}</span>
+			<div class="yeast-item">
+				<div class="yeast-main">
+					<div class="yeast-info">
+						<span class="yeast-name">{selectedYeast.name}</span>
 						{#if selectedYeast.type}
-							<span class="yeast-card-type" class:ale={selectedYeast.type === 'ale'} class:lager={selectedYeast.type === 'lager'} class:wild={selectedYeast.type === 'wild'}>
-								{selectedYeast.type}
-							</span>
+							<span class="yeast-type">{selectedYeast.type}</span>
 						{/if}
 					</div>
-					{#if selectedYeast.producer}
-						<span class="yeast-card-producer">{selectedYeast.producer}</span>
-					{/if}
+					<div class="yeast-details">
+						{#if selectedYeast.producer}
+							<span class="detail">{selectedYeast.producer}</span>
+						{/if}
+						{#if selectedYeast.product_id}
+							<span class="detail">{selectedYeast.product_id}</span>
+						{/if}
+						{#if selectedYeast.flocculation}
+							<span class="detail">Floc: {selectedYeast.flocculation}</span>
+						{/if}
+					</div>
 				</div>
-				<div class="yeast-card-specs">
-					{#if selectedYeast.flocculation}
-						<span class="yeast-spec">Floc: {selectedYeast.flocculation}</span>
-					{/if}
-					{#if selectedYeast.product_id}
-						<span class="yeast-spec">{selectedYeast.product_id}</span>
-					{/if}
-				</div>
-				<button type="button" class="remove-yeast-btn" onclick={() => handleYeastSelect(null)} aria-label="Remove yeast">
+				<button type="button" class="remove-btn" onclick={() => handleYeastSelect(null)} aria-label="Remove yeast">
 					×
 				</button>
 			</div>
@@ -758,20 +752,13 @@
 {#if showYeastModal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div class="modal-overlay yeast-modal-overlay" onclick={() => (showYeastModal = false)} role="presentation">
-		<div class="modal-content yeast-modal" role="dialog" aria-modal="true" aria-labelledby="yeast-modal-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-			<div class="modal-header yeast-modal-header">
-				<h2 id="yeast-modal-title">
-					<svg class="modal-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<circle cx="12" cy="8" r="4" />
-						<circle cx="8" cy="16" r="3" />
-						<circle cx="16" cy="17" r="2.5" />
-					</svg>
-					Select Yeast Strain
-				</h2>
+	<div class="modal-overlay" onclick={() => (showYeastModal = false)} role="presentation">
+		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="yeast-modal-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2 id="yeast-modal-title">Select Yeast</h2>
 				<button class="modal-close" onclick={() => (showYeastModal = false)} aria-label="Close">&times;</button>
 			</div>
-			<div class="modal-body yeast-modal-body">
+			<div class="modal-body">
 				<YeastSelector
 					selectedYeastId={selectedYeast?.id}
 					onSelect={(yeast) => {
@@ -1366,220 +1353,165 @@
 		color: var(--text-tertiary);
 	}
 
-	/* Yeast Section - Purple Theme */
-	.yeast-section {
-		padding: var(--space-4);
-		border-left: 3px solid rgba(168, 85, 247, 0.5);
-		background: linear-gradient(135deg, rgba(168, 85, 247, 0.04) 0%, transparent 40%);
-	}
-
-	.yeast-section .header-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		flex-shrink: 0;
-	}
-
-	.yeast-section .header-icon svg {
-		width: 18px;
-		height: 18px;
-	}
-
-	.yeast-section:hover {
-		border-left-color: rgba(168, 85, 247, 0.7);
-	}
-
-	.yeast-icon {
-		color: rgba(168, 85, 247, 0.9);
-	}
-
-	.yeast-add-btn {
-		background: rgba(168, 85, 247, 0.15);
-		border-color: rgba(168, 85, 247, 0.4);
-		color: rgb(192, 132, 252);
-	}
-
-	.yeast-add-btn:hover {
-		background: rgba(168, 85, 247, 0.25);
-		border-color: rgba(168, 85, 247, 0.6);
-	}
-
-	.yeast-browse-btn {
-		color: rgb(192, 132, 252);
-		border-color: rgba(168, 85, 247, 0.3);
-	}
-
-	.yeast-browse-btn:hover {
-		background: rgba(168, 85, 247, 0.1);
-		border-color: rgba(168, 85, 247, 0.5);
-	}
-
-	.yeast-stats {
-		display: flex;
-		gap: var(--space-3);
-	}
-
-	.yeast-stat {
-		font-size: 12px;
-		color: rgb(192, 132, 252);
-		font-family: var(--font-mono);
-	}
-
-	/* Selected Yeast Card */
-	.selected-yeast-card {
-		display: flex;
-		align-items: center;
-		gap: var(--space-4);
-		padding: var(--space-4);
-		background: rgba(168, 85, 247, 0.06);
-		border: 1px solid rgba(168, 85, 247, 0.25);
-		border-radius: 8px;
-		position: relative;
-		transition: all 0.2s ease;
-	}
-
-	.selected-yeast-card:hover {
-		border-color: rgba(168, 85, 247, 0.4);
-		background: rgba(168, 85, 247, 0.08);
-	}
-
-	.yeast-card-main {
-		flex: 1;
+	/* Yeast Selector - Purple Theme */
+	.yeast-selector {
+		--yeast-accent: rgb(168, 85, 247);
+		--yeast-accent-strong: rgba(168, 85, 247, 0.35);
+		--yeast-accent-soft: rgba(168, 85, 247, 0.18);
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
-	}
-
-	.yeast-card-info {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-	}
-
-	.yeast-card-name {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.yeast-card-type {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		padding: 2px 6px;
-		border-radius: 4px;
-		background: rgba(168, 85, 247, 0.15);
-		color: rgb(192, 132, 252);
-	}
-
-	.yeast-card-type.ale {
-		background: rgba(34, 197, 94, 0.15);
-		color: rgb(74, 222, 128);
-	}
-
-	.yeast-card-type.lager {
-		background: rgba(56, 189, 248, 0.15);
-		color: rgb(125, 211, 252);
-	}
-
-	.yeast-card-type.wild {
-		background: rgba(239, 68, 68, 0.15);
-		color: rgb(252, 165, 165);
-	}
-
-	.yeast-card-producer {
-		font-size: 13px;
-		color: var(--text-secondary);
-	}
-
-	.yeast-card-specs {
-		display: flex;
 		gap: var(--space-3);
-		flex-shrink: 0;
 	}
 
-	.yeast-spec {
-		font-size: 11px;
-		color: var(--text-tertiary);
-		font-family: var(--font-mono);
-	}
-
-	.remove-yeast-btn {
-		position: absolute;
-		top: 8px;
-		right: 8px;
-		width: 24px;
-		height: 24px;
+	.yeast-header {
+		position: relative;
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
-		justify-content: center;
-		background: transparent;
-		border: none;
-		color: var(--text-tertiary);
-		font-size: 18px;
-		cursor: pointer;
-		border-radius: 4px;
-		transition: all 0.15s ease;
-		opacity: 0;
-	}
-
-	.selected-yeast-card:hover .remove-yeast-btn {
-		opacity: 1;
-	}
-
-	.remove-yeast-btn:hover {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--negative);
-	}
-
-	/* Yeast Modal */
-	.yeast-modal-overlay {
-		background: rgba(0, 0, 0, 0.85);
-	}
-
-	.yeast-modal {
-		max-width: 700px;
-		max-height: 80vh;
-		border: 1px solid rgba(168, 85, 247, 0.3);
-	}
-
-	.yeast-modal-header {
-		border-bottom-color: rgba(168, 85, 247, 0.2);
-	}
-
-	.yeast-modal-header h2 {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		color: rgb(192, 132, 252);
-	}
-
-	.modal-title-icon {
-		width: 24px;
-		height: 24px;
-	}
-
-	.yeast-modal-body {
-		padding: 0;
+		padding: var(--space-4);
+		background: var(--bg-elevated);
+		background-image: linear-gradient(120deg, var(--yeast-accent-soft), rgba(24, 24, 27, 0) 70%);
+		border: 1px solid var(--border-subtle);
+		border-radius: 10px;
 		overflow: hidden;
 	}
 
-	/* Override YeastSelector styles inside modal */
-	.yeast-modal-body :global(.yeast-selector) {
+	.yeast-header::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 2px;
+		background: linear-gradient(90deg, var(--yeast-accent), transparent);
+		opacity: 0.7;
+	}
+
+	.yeast-header > * {
+		position: relative;
+		z-index: 1;
+	}
+
+	.yeast-selector .header-left {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.yeast-selector h3 {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.yeast-selector .header-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 6px;
+		background: var(--yeast-accent-soft);
+		color: var(--yeast-accent);
+	}
+
+	.yeast-selector .header-icon svg {
+		width: 16px;
+		height: 16px;
+	}
+
+	.yeast-selector .stats {
+		font-size: 13px;
+		color: var(--text-secondary);
+		font-family: var(--font-mono);
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.yeast-selector .add-btn {
+		padding: var(--space-2) var(--space-3);
+		background: var(--yeast-accent);
+		color: white;
 		border: none;
-		border-radius: 0;
-		background: transparent;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+		transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
 	}
 
-	.yeast-modal-body :global(.strain-list) {
-		max-height: 50vh;
+	.yeast-selector .add-btn:hover {
+		filter: brightness(1.1);
+		transform: translateY(-1px);
+		box-shadow: 0 10px 16px rgba(0, 0, 0, 0.35);
 	}
 
-	.yeast-modal-body :global(.selector-header) {
-		display: none;
+	.yeast-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-6);
+		background: var(--bg-surface);
+		border: 1px dashed var(--yeast-accent-strong);
+		border-radius: 8px;
+	}
+
+	.yeast-empty p {
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	/* Yeast Item */
+	.yeast-item {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-default);
+		border-radius: 8px;
+	}
+
+	.yeast-main {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.yeast-info {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+	}
+
+	.yeast-name {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.yeast-type {
+		font-size: 11px;
+		font-weight: 500;
+		text-transform: capitalize;
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: var(--yeast-accent-soft);
+		color: rgb(192, 132, 252);
+	}
+
+	.yeast-details {
+		display: flex;
+		gap: var(--space-3);
+		margin-top: var(--space-1);
+		flex-wrap: wrap;
 	}
 
 	/* Notes Section */

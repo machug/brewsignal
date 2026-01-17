@@ -37,6 +37,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { marked } from 'marked';
 	import { fetchYeastStrains, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
@@ -649,8 +650,8 @@
 						{/if}
 						<span class="model-badge">Model: {reviewResult.model}</span>
 					</div>
-					<div class="review-content">
-						{@html reviewResult.review.replace(/\n/g, '<br>')}
+					<div class="review-content markdown-body">
+						{@html marked(reviewResult.review)}
 					</div>
 				{/if}
 			</div>
@@ -1074,6 +1075,29 @@
 
 	.review-content :global(li) {
 		margin-bottom: var(--space-2);
+	}
+
+	.review-content :global(p) {
+		margin: var(--space-3) 0;
+	}
+
+	.review-content :global(p:first-child) {
+		margin-top: 0;
+	}
+
+	.review-content :global(strong) {
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.review-content :global(em) {
+		font-style: italic;
+	}
+
+	.review-content :global(hr) {
+		border: none;
+		border-top: 1px solid var(--border-subtle);
+		margin: var(--space-4) 0;
 	}
 
 	/* Style Autocomplete */

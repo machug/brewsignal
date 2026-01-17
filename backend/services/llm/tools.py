@@ -504,6 +504,21 @@ TOOL_DEFINITIONS = [
                 "required": []
             }
         }
+    },
+    # =============================================================================
+    # System / Utility Tools
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_datetime",
+            "description": "Get the current date and time. Use this when you need to know today's date, current time, or when calculating future dates (e.g., when fermentation will complete). Always call this tool when making date/time-based predictions.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
 
@@ -563,6 +578,9 @@ async def execute_tool(
         return await _search_hop_varieties(db, **arguments)
     elif tool_name == "search_fermentables":
         return await _search_fermentables(db, **arguments)
+    # System / utility tools
+    elif tool_name == "get_current_datetime":
+        return _get_current_datetime()
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -2471,3 +2489,45 @@ async def _save_recipe(
         return {
             "error": f"Failed to save recipe: {str(e)}"
         }
+
+
+# =============================================================================
+# System / Utility Tools
+# =============================================================================
+
+
+def _get_current_datetime() -> dict[str, Any]:
+    """Get the current date and time in the system timezone.
+
+    Returns a dictionary with various date/time representations
+    useful for making time-based calculations and predictions.
+    """
+    import zoneinfo
+
+    # Get current time in UTC
+    now_utc = datetime.now(timezone.utc)
+
+    # Try to get local timezone, fallback to UTC
+    try:
+        # Try common Australian timezone (where the system is)
+        local_tz = zoneinfo.ZoneInfo("Australia/Sydney")
+        now_local = now_utc.astimezone(local_tz)
+    except Exception:
+        # Fallback to UTC if timezone not available
+        now_local = now_utc
+        local_tz = timezone.utc
+
+    # Calculate day of week
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_of_week = day_names[now_local.weekday()]
+
+    return {
+        "current_datetime": now_local.isoformat(),
+        "date": now_local.strftime("%Y-%m-%d"),
+        "time": now_local.strftime("%H:%M:%S"),
+        "day_of_week": day_of_week,
+        "timezone": str(local_tz),
+        "timestamp_utc": now_utc.isoformat(),
+        "unix_timestamp": int(now_utc.timestamp()),
+        "human_readable": now_local.strftime("%A, %B %d, %Y at %I:%M %p"),
+    }

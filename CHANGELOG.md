@@ -7,9 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.9.0] - 2026-01-16
+## [2.9.0] - 2026-01-17
 
 ### Added
+- **Unified Library Page** - Consolidated reference data into single `/library` page
+  - Tabbed interface for Yeast, Hops, and Fermentables
+  - Search and filter across all ingredient types
+  - Renamed "Yeast" nav link to "Library"
+- **Hop Varieties Reference Database** - 200+ hop varieties from Beer Maverick
+  - Search by name, purpose (bittering/aroma/dual), origin, alpha acid range
+  - Detailed profiles with aroma descriptors and substitutes
+  - New `search_hop_varieties` AI assistant tool
+- **Fermentables Reference Database** - Grain, sugar, and extract library
+  - Search by name, type, maltster, color range, diastatic power
+  - Covers base malts, specialty malts, sugars, extracts
+  - New `search_fermentables` AI assistant tool
+- **Prompty Template System** - Externalized AI prompts using Microsoft Prompty standard
+  - `assistant.prompty` - Main brewing assistant system prompt
+  - `title.prompty` - Conversation title generation
+  - Template variables for batch size, efficiency, equipment
 - **Inventory Management System** - Track brewing equipment, hops, and yeast inventory
   - **Equipment Tracking** - Manage kettles, fermenters, mash tuns, and all-in-one systems (Grainfather, etc.)
     - Track capacity (liters/kg), brand, model, and active status
@@ -80,13 +96,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed curve fitting lower bound to prevent unrealistic FG predictions (0.990 minimum)
   - Context-aware unavailability messages explaining why predictions aren't ready
 - **Mobile Viewport Issues** - Fixed chat input requiring scroll on mobile devices
+- **Library Page 404 on Refresh** - Added `/library` route to FastAPI for SPA navigation
+- **ML Predictions Auto-Reload** - Predictions now load automatically without manual refresh
+  - Frontend triggers reload on page load
+  - Backend auto-reloads from database when in-memory pipeline is empty
+- **AI Assistant ML Awareness** - Assistant now understands and explains ML prediction data
+  - Documented Kalman-filtered readings, confidence scores, predicted FG
+  - Explains when predictions are unavailable and why
 
 ### Technical
-- New database tables: `equipment`, `hop_inventory`, `yeast_inventory`
-- New routers: `inventory_equipment.py`, `inventory_hops.py`, `inventory_yeast.py`
+- New database tables: `equipment`, `hop_inventory`, `yeast_inventory`, `hop_variety`, `fermentable`
+- New routers: `inventory_equipment.py`, `inventory_hops.py`, `inventory_yeast.py`, `hop_varieties.py`, `fermentables.py`
 - Foreign key relationships: YeastInventory → YeastStrain, YeastInventory → Batch (for harvest tracking)
 - Inventory AI tools integrated into LLM service tool definitions
 - Frontend uses Svelte 5 reactive `$state` patterns for inventory management
+- Prompty templates in `backend/services/llm/prompts/` for externalized AI prompts
+- Renamed grain_varieties to fermentables throughout codebase for broader ingredient scope
 
 ## [2.8.0] - 2026-01-16
 

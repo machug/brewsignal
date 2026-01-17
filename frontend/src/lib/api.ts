@@ -928,6 +928,77 @@ export async function fetchBatchControlEvents(
 }
 
 // ============================================================================
+// Fermentation Alerts Types & API
+// ============================================================================
+
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+export type AlertType = 'stall' | 'temperature_high' | 'temperature_low' | 'anomaly';
+
+export interface FermentationAlert {
+	id: number;
+	batch_id: number;
+	device_id?: string;
+	alert_type: AlertType;
+	severity: AlertSeverity;
+	message: string;
+	context?: string; // JSON string with additional data
+	trigger_reading_id?: number;
+	first_detected_at: string;
+	last_seen_at: string;
+	cleared_at?: string;
+}
+
+/**
+ * Fetch fermentation alerts for a batch
+ */
+export async function fetchBatchAlerts(
+	batchId: number,
+	includeCleared: boolean = false
+): Promise<FermentationAlert[]> {
+	const params = new URLSearchParams();
+	if (includeCleared) params.append('include_cleared', 'true');
+
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts?${params}`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch batch alerts: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Dismiss a single fermentation alert
+ */
+export async function dismissAlert(
+	batchId: number,
+	alertId: number
+): Promise<{ status: string; alert_id: number; alert_type: string; cleared_at: string }> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts/${alertId}/dismiss`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to dismiss alert');
+	}
+	return response.json();
+}
+
+/**
+ * Dismiss all active alerts for a batch
+ */
+export async function dismissAllAlerts(
+	batchId: number
+): Promise<{ status: string; count: number; cleared_at?: string }> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts/dismiss-all`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to dismiss alerts');
+	}
+	return response.json();
+}
+
+// ============================================================================
 // Yeast Strain API
 // ============================================================================
 

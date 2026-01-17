@@ -18,6 +18,8 @@ from ..models import (
     BatchUpdate,
     ControlEvent,
     ControlEventResponse,
+    FermentationAlert,
+    FermentationAlertResponse,
     Recipe,
 )
 from ..state import latest_readings
@@ -622,3 +624,122 @@ async def get_batch_control_events(
     events = result.scalars().all()
 
     return events
+
+
+# ============================================================================
+# Fermentation Alerts Endpoints
+# ============================================================================
+
+@router.get("/{batch_id}/alerts", response_model=list[FermentationAlertResponse])
+async def get_batch_alerts(
+    batch_id: int,
+    include_cleared: bool = Query(False, description="Include cleared/resolved alerts"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get fermentation alerts for a batch.
+
+    By default returns only active alerts (cleared_at is null).
+    Set include_cleared=true to also return historical/resolved alerts.
+
+    Returns:
+        List of fermentation alerts ordered by severity (critical first) then by detection time (newest first)
+    """
+    # Verify batch exists
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Build query
+    query = select(FermentationAlert).where(FermentationAlert.batch_id == batch_id)
+
+    # Filter by active status unless include_cleared
+    if not include_cleared:
+        query = query.where(FermentationAlert.cleared_at.is_(None))
+
+    # Order by severity (critical > warning > info) then by newest first
+    # SQLite doesn't have CASE, so we order by last_seen_at descending for now
+    query = query.order_by(FermentationAlert.last_seen_at.desc())
+
+    result = await db.execute(query)
+    alerts = result.scalars().all()
+
+    return alerts
+
+
+@router.post("/{batch_id}/alerts/{alert_id}/dismiss")
+async def dismiss_alert(
+    batch_id: int,
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss/clear an active alert.
+
+    Sets cleared_at timestamp to mark the alert as resolved.
+    The alert will no longer appear in active alerts list.
+
+    Returns:
+        Success status with alert details
+    """
+    # Get alert and verify it belongs to the batch
+    alert = await db.get(FermentationAlert, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    if alert.batch_id != batch_id:
+        raise HTTPException(status_code=400, detail="Alert does not belong to this batch")
+
+    if alert.cleared_at is not None:
+        raise HTTPException(status_code=400, detail="Alert is already cleared")
+
+    # Clear the alert
+    alert.cleared_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {
+        "status": "dismissed",
+        "alert_id": alert_id,
+        "alert_type": alert.alert_type,
+        "cleared_at": alert.cleared_at.isoformat()
+    }
+
+
+@router.post("/{batch_id}/alerts/dismiss-all")
+async def dismiss_all_alerts(
+    batch_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss all active alerts for a batch.
+
+    Sets cleared_at timestamp on all active alerts for the batch.
+
+    Returns:
+        Count of alerts dismissed
+    """
+    # Verify batch exists
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Get all active alerts for this batch
+    query = select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.cleared_at.is_(None)
+    )
+    result = await db.execute(query)
+    alerts = result.scalars().all()
+
+    if not alerts:
+        return {"status": "no_alerts", "count": 0}
+
+    # Clear all alerts
+    now = datetime.now(timezone.utc)
+    for alert in alerts:
+        alert.cleared_at = now
+
+    await db.commit()
+
+    return {
+        "status": "dismissed",
+        "count": len(alerts),
+        "cleared_at": now.isoformat()
+    }

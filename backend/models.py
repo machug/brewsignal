@@ -325,6 +325,46 @@ class HopVariety(Base):
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class GrainVariety(Base):
+    """Grain/fermentable variety reference database.
+
+    Seeded from JSON file on startup, with support for custom user varieties.
+    """
+    __tablename__ = "grain_varieties"
+    __table_args__ = (
+        Index("ix_grain_varieties_name", "name"),
+        Index("ix_grain_varieties_type", "type"),
+        Index("ix_grain_varieties_origin", "origin"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Core identification
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    type: Mapped[Optional[str]] = mapped_column(String(30))  # base, specialty, adjunct, sugar, extract, fruit, other
+    origin: Mapped[Optional[str]] = mapped_column(String(100))  # Country/region
+    maltster: Mapped[Optional[str]] = mapped_column(String(100))  # Manufacturer (e.g., Weyermann, Briess)
+
+    # Brewing characteristics
+    color_srm: Mapped[Optional[float]] = mapped_column()  # Color in SRM/Lovibond
+    potential_sg: Mapped[Optional[float]] = mapped_column()  # Extract potential (e.g., 1.037)
+    max_in_batch_percent: Mapped[Optional[float]] = mapped_column()  # Max recommended % in grain bill
+    diastatic_power: Mapped[Optional[float]] = mapped_column()  # Lintner (enzymatic power for base malts)
+
+    # Characteristics
+    flavor_profile: Mapped[Optional[str]] = mapped_column(Text)  # Biscuit, caramel, roasty, etc.
+    substitutes: Mapped[Optional[str]] = mapped_column(Text)  # Comma-separated similar grains
+
+    # Metadata
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(50), default="custom")
+    is_custom: Mapped[bool] = mapped_column(default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class Recipe(Base):
     """Recipes following BeerJSON 1.0 schema (with BeerXML backward compatibility)."""
     __tablename__ = "recipes"
@@ -1312,6 +1352,55 @@ class HopVarietyResponse(BaseModel):
     beta_acid_high: Optional[float] = None
     purpose: Optional[str] = None
     aroma_profile: Optional[str] = None
+    substitutes: Optional[str] = None
+    description: Optional[str] = None
+    source: str
+    is_custom: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
+class GrainVarietyCreate(BaseModel):
+    """Schema for creating a custom grain variety."""
+    name: str
+    type: Optional[str] = None  # base, specialty, adjunct, sugar, extract, fruit, other
+    origin: Optional[str] = None
+    maltster: Optional[str] = None
+    color_srm: Optional[float] = None
+    potential_sg: Optional[float] = None
+    max_in_batch_percent: Optional[float] = None
+    diastatic_power: Optional[float] = None
+    flavor_profile: Optional[str] = None
+    substitutes: Optional[str] = None
+    description: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        valid_types = ("base", "specialty", "adjunct", "sugar", "extract", "fruit", "other")
+        if v and v not in valid_types:
+            raise ValueError(f"type must be one of: {', '.join(valid_types)}")
+        return v
+
+
+class GrainVarietyResponse(BaseModel):
+    """Schema for grain variety API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: Optional[str] = None
+    origin: Optional[str] = None
+    maltster: Optional[str] = None
+    color_srm: Optional[float] = None
+    potential_sg: Optional[float] = None
+    max_in_batch_percent: Optional[float] = None
+    diastatic_power: Optional[float] = None
+    flavor_profile: Optional[str] = None
     substitutes: Optional[str] = None
     description: Optional[str] = None
     source: str

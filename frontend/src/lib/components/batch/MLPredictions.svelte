@@ -47,7 +47,8 @@
 		}
 	}
 
-	onMount(loadPredictions);
+	// Always reload fresh predictions on mount
+	onMount(handleReload);
 
 	function formatDate(dateStr: string | undefined): string {
 		if (!dateStr) return 'N/A';

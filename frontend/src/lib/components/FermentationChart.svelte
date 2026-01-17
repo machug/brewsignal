@@ -50,12 +50,13 @@
 	let chart: uPlot | null = null;
 	let loading = $state(true);
 	let error = $state<string | null>(null);
-	let selectedRange = $state(24); // hours
+	let selectedRange = $state(24); // hours (0 = all data)
 	let readings = $state<HistoricalReading[]>([]);
 	let ambientReadings = $state<AmbientHistoricalReading[]>([]);
 	let chamberReadings = $state<ChamberHistoricalReading[]>([]);
 	let currentTrend = $state<TrendResult | null>(null);
 	let deviceId = $state<string | null>(null); // Store device_id from batch
+	let isHistoricalBatch = $state(false); // Track if batch is completed/conditioning
 
 	// Color mapping for tilt accent in chart
 	const tiltColorMap: Record<string, string> = {
@@ -764,20 +765,30 @@ async function loadData(userTriggered = false) {
 	error = null;
 
 	try {
-		// Fetch batch to get device_id if we don't have it yet
+		// Fetch batch to get device_id and status if we don't have it yet
 		if (!deviceId) {
 			const batch = await fetchBatch(batchId);
 			deviceId = batch.device_id ?? null;
+			// Check if this is a historical/completed batch
+			const historicalStatuses = ['completed', 'conditioning', 'archived'];
+			isHistoricalBatch = historicalStatuses.includes(batch.status);
+			// Default to "All" for historical batches on first load
+			if (isHistoricalBatch && selectedRange !== 0) {
+				selectedRange = 0; // 0 = all data
+			}
 		}
 
 		// Only fetch readings if we have a device_id
 		if (deviceId) {
 			// Fetch device readings, ambient history, and chamber history in parallel
 			// Filter readings by batchId to show only this batch's data
+			// Pass hours=undefined when selectedRange is 0 (All) to get all data
+			const hoursParam = selectedRange > 0 ? selectedRange : undefined;
 			const [deviceData, ambientData, chamberData] = await Promise.all([
-				fetchReadings(deviceId, selectedRange, batchId),
-				fetchAmbientHistory(selectedRange).catch(() => []), // Don't fail if ambient unavailable
-				fetchChamberHistory(selectedRange).catch(() => []) // Don't fail if chamber unavailable
+				fetchReadings(deviceId, hoursParam, batchId),
+				// For ambient/chamber, use 720 hours (30 days) as max when "All" is selected
+				fetchAmbientHistory(hoursParam ?? 720).catch(() => []), // Don't fail if ambient unavailable
+				fetchChamberHistory(hoursParam ?? 720).catch(() => []) // Don't fail if chamber unavailable
 			]);
 			readings = deviceData;
 			ambientReadings = ambientData;

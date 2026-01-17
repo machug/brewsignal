@@ -27,6 +27,7 @@ from .cleanup import CleanupService  # noqa: E402
 from .scanner import TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
+from .services.alert_service import detect_and_persist_alerts  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
@@ -115,6 +116,55 @@ async def calculate_time_since_batch_start(
 
     # Absolute fallback: return 0.0 for very first reading
     return 0.0
+
+
+async def get_alert_context(
+    session,
+    batch_id: int,
+    current_sg: Optional[float],
+) -> dict:
+    """Get context needed for alert detection (yeast temp range, progress)."""
+    from sqlalchemy.orm import selectinload
+
+    context = {
+        "yeast_temp_min": None,
+        "yeast_temp_max": None,
+        "progress_percent": None,
+    }
+
+    # Fetch batch with recipe and yeast eagerly loaded
+    stmt = (
+        select(models.Batch)
+        .where(models.Batch.id == batch_id)
+        .options(
+            selectinload(models.Batch.recipe).selectinload(models.Recipe.yeast),
+            selectinload(models.Batch.yeast_strain),
+        )
+    )
+    result = await session.execute(stmt)
+    batch = result.scalar_one_or_none()
+
+    if not batch:
+        return context
+
+    # Get yeast temperature range (prefer batch override, then recipe yeast)
+    yeast = batch.yeast_strain or (batch.recipe.yeast if batch.recipe else None)
+    if yeast:
+        context["yeast_temp_min"] = yeast.temp_low
+        context["yeast_temp_max"] = yeast.temp_high
+
+    # Calculate progress if we have OG and current SG
+    og = batch.og or (batch.recipe.og if batch.recipe else None)
+    fg = batch.fg or (batch.recipe.fg if batch.recipe else None)
+
+    if og and fg and current_sg:
+        expected_drop = og - fg
+        if expected_drop > 0:
+            actual_drop = og - current_sg
+            progress = (actual_drop / expected_drop) * 100
+            context["progress_percent"] = min(max(progress, 0), 100)
+
+    return context
 
 
 async def handle_tilt_reading(reading: TiltReading):
@@ -208,6 +258,40 @@ async def handle_tilt_reading(reading: TiltReading):
                 anomaly_reasons=json.dumps(ml_outputs.get("anomaly_reasons", [])) if ml_outputs.get("anomaly_reasons") else None,
             )
             session.add(db_reading)
+            await session.flush()  # Flush to get reading ID for alerts
+
+            # Detect and persist alerts
+            try:
+                # Build live_reading dict for alert detection
+                live_reading = {
+                    "temp": temp_calibrated_c,
+                    "sg": sg_calibrated,
+                    "sg_rate": ml_outputs.get("sg_rate"),
+                    "is_anomaly": ml_outputs.get("is_anomaly", False),
+                    "anomaly_score": ml_outputs.get("anomaly_score"),
+                    "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
+                }
+
+                # Get alert context (yeast temp range, progress)
+                alert_context = await get_alert_context(
+                    session, batch_id, sg_calibrated
+                )
+
+                # Detect and persist alerts
+                await detect_and_persist_alerts(
+                    db=session,
+                    batch_id=batch_id,
+                    device_id=reading.id,
+                    reading=db_reading,
+                    live_reading=live_reading,
+                    yeast_temp_min=alert_context.get("yeast_temp_min"),
+                    yeast_temp_max=alert_context.get("yeast_temp_max"),
+                    progress_percent=alert_context.get("progress_percent"),
+                )
+            except Exception as e:
+                logging.warning("Alert detection failed: %s", e)
+                # Alert detection failure is non-fatal
+
             await session.commit()
 
         # Only broadcast/cache readings for paired devices (prevent pollution from nearby Tilts)

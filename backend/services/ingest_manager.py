@@ -24,12 +24,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..ingest import AdapterRouter, HydrometerReading, ReadingStatus
-from ..models import Batch, Device, Reading, serialize_datetime_to_utc
+from ..models import Batch, Device, Reading, Recipe, serialize_datetime_to_utc
 from ..state import update_reading
 from ..websocket import manager as ws_manager
 from .calibration import calibration_service
 from .batch_linker import link_reading_to_batch
+from .alert_service import detect_and_persist_alerts
 from ..routers.config import get_config_value
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,53 @@ class IngestManager:
             self._min_rssi_cache = await get_config_value(db, "min_rssi")
             self._min_rssi_cache_time = now
         return self._min_rssi_cache
+
+    async def _get_alert_context(
+        self,
+        db: AsyncSession,
+        batch_id: int,
+        current_sg: Optional[float],
+    ) -> dict:
+        """Get context needed for alert detection (yeast temp range, progress)."""
+        context = {
+            "yeast_temp_min": None,
+            "yeast_temp_max": None,
+            "progress_percent": None,
+        }
+
+        # Fetch batch with recipe and yeast eagerly loaded
+        stmt = (
+            select(Batch)
+            .where(Batch.id == batch_id)
+            .options(
+                selectinload(Batch.recipe).selectinload(Recipe.yeast),
+                selectinload(Batch.yeast_strain),
+            )
+        )
+        result = await db.execute(stmt)
+        batch = result.scalar_one_or_none()
+
+        if not batch:
+            return context
+
+        # Get yeast temperature range (prefer batch override, then recipe yeast)
+        yeast = batch.yeast_strain or (batch.recipe.yeast if batch.recipe else None)
+        if yeast:
+            context["yeast_temp_min"] = yeast.temp_low
+            context["yeast_temp_max"] = yeast.temp_high
+
+        # Calculate progress if we have OG and current SG
+        og = batch.og or (batch.recipe.og if batch.recipe else None)
+        fg = batch.fg or (batch.recipe.fg if batch.recipe else None)
+
+        if og and fg and current_sg:
+            expected_drop = og - fg
+            if expected_drop > 0:
+                actual_drop = og - current_sg
+                progress = (actual_drop / expected_drop) * 100
+                context["progress_percent"] = min(max(progress, 0), 100)
+
+        return context
 
     async def ingest(
         self,
@@ -195,6 +244,38 @@ class IngestManager:
         db_reading = None
         if device.paired and batch_id is not None:
             db_reading = await self._store_reading(db, device, reading, batch_id, ml_outputs)
+
+            # Step 10a: Detect and persist alerts
+            try:
+                # Build live_reading dict for alert detection
+                live_reading = {
+                    "temp": reading.temperature,
+                    "sg": reading.gravity,
+                    "sg_rate": ml_outputs.get("sg_rate"),
+                    "is_anomaly": ml_outputs.get("is_anomaly", False),
+                    "anomaly_score": ml_outputs.get("anomaly_score"),
+                    "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
+                }
+
+                # Get alert context (yeast temp range, progress)
+                alert_context = await self._get_alert_context(
+                    db, batch_id, reading.gravity
+                )
+
+                # Detect and persist alerts
+                await detect_and_persist_alerts(
+                    db=db,
+                    batch_id=batch_id,
+                    device_id=device.id,
+                    reading=db_reading,
+                    live_reading=live_reading,
+                    yeast_temp_min=alert_context.get("yeast_temp_min"),
+                    yeast_temp_max=alert_context.get("yeast_temp_max"),
+                    progress_percent=alert_context.get("progress_percent"),
+                )
+            except Exception as e:
+                logger.warning("Alert detection failed: %s", e)
+                # Alert detection failure is non-fatal
 
         await db.commit()
 

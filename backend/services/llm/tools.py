@@ -11,6 +11,7 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timedelta, timezone
+from backend.services.alert_service import get_active_alerts
 from backend.models import (
     YeastStrain, Style, HopInventory, YeastInventory, Equipment,
     Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture,
@@ -1555,40 +1556,45 @@ async def _get_fermentation_status(
         except Exception as e:
             logger.warning(f"Failed to get ML predictions: {e}")
 
-    # Build alerts (include timestamp so AI can tell user when alert was triggered)
+    # Fetch persistent alerts from database
+    # These alerts track first_detected_at and last_seen_at properly
     alerts = []
-    if temp_info.get("status") == "too_cold":
-        alerts.append({
-            "type": "temperature",
-            "severity": "warning",
-            "message": temp_info["message"],
-            "detected_at": reading_time,
-        })
-    elif temp_info.get("status") == "too_warm":
-        alerts.append({
-            "type": "temperature",
-            "severity": "warning",
-            "message": temp_info["message"],
-            "detected_at": reading_time,
-        })
-
-    if live_reading and live_reading.get("is_anomaly"):
-        alerts.append({
-            "type": "anomaly",
-            "severity": "info",
-            "message": f"Anomaly detected: {live_reading.get('anomaly_reasons', 'unknown reason')}",
-            "detected_at": reading_time,
-        })
-
-    # Stalled fermentation check
-    if progress_info.get("available") and current_reading:
-        sg_rate = current_reading.get("sg_rate")
-        if sg_rate is not None and abs(sg_rate) < 0.0001 and progress_info.get("percent_complete", 0) < 90:
+    try:
+        active_alerts = await get_active_alerts(db, batch.id)
+        for alert in active_alerts:
             alerts.append({
-                "type": "stalled",
+                "type": alert.alert_type,
+                "severity": alert.severity,
+                "message": alert.message,
+                "first_detected_at": alert.first_detected_at.isoformat() if alert.first_detected_at else None,
+                "last_seen_at": alert.last_seen_at.isoformat() if alert.last_seen_at else None,
+            })
+    except Exception as e:
+        logger.warning(f"Failed to fetch alerts from database: {e}")
+        # Fallback to ephemeral alerts if database fetch fails
+        if temp_info.get("status") == "too_cold":
+            alerts.append({
+                "type": "temperature_low",
                 "severity": "warning",
-                "message": "Fermentation appears stalled - gravity not changing",
-                "detected_at": reading_time,
+                "message": temp_info["message"],
+                "first_detected_at": reading_time,
+                "last_seen_at": reading_time,
+            })
+        elif temp_info.get("status") == "too_warm":
+            alerts.append({
+                "type": "temperature_high",
+                "severity": "warning",
+                "message": temp_info["message"],
+                "first_detected_at": reading_time,
+                "last_seen_at": reading_time,
+            })
+        if live_reading and live_reading.get("is_anomaly"):
+            alerts.append({
+                "type": "anomaly",
+                "severity": "info",
+                "message": f"Anomaly detected: {live_reading.get('anomaly_reasons', 'unknown reason')}",
+                "first_detected_at": reading_time,
+                "last_seen_at": reading_time,
             })
 
     return {

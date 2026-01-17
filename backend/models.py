@@ -209,6 +209,39 @@ class ControlEvent(Base):
     target_temp: Mapped[Optional[float]] = mapped_column()  # Temperature in Celsius
 
 
+class FermentationAlert(Base):
+    """Fermentation alerts tracked over time with first detection and resolution."""
+    __tablename__ = "fermentation_alerts"
+    __table_args__ = (
+        Index("ix_alert_batch_active", "batch_id", "cleared_at"),
+        Index("ix_alert_type_batch", "alert_type", "batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id"), nullable=False, index=True)
+    device_id: Mapped[Optional[str]] = mapped_column(String(100), ForeignKey("devices.id"))
+
+    # Alert classification
+    alert_type: Mapped[str] = mapped_column(String(30), nullable=False)  # stall, temperature_high, temperature_low, anomaly
+    severity: Mapped[str] = mapped_column(String(20), default="warning")  # info, warning, critical
+
+    # Alert message and context
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[Optional[str]] = mapped_column(Text)  # JSON with additional data (sg_rate, temp, etc.)
+
+    # Reading that triggered the alert
+    trigger_reading_id: Mapped[Optional[int]] = mapped_column(ForeignKey("readings.id"))
+
+    # Lifecycle timestamps
+    first_detected_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    cleared_at: Mapped[Optional[datetime]] = mapped_column()  # null = still active
+
+    # Relationships
+    batch: Mapped["Batch"] = relationship(back_populates="alerts")
+    trigger_reading: Mapped[Optional["Reading"]] = relationship()
+
+
 class Config(Base):
     __tablename__ = "config"
 
@@ -505,6 +538,10 @@ class Batch(Base):
     device: Mapped[Optional["Device"]] = relationship()
     yeast_strain: Mapped[Optional["YeastStrain"]] = relationship()
     readings: Mapped[list["Reading"]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan"
+    )
+    alerts: Mapped[list["FermentationAlert"]] = relationship(
         back_populates="batch",
         cascade="all, delete-orphan"
     )
@@ -1051,6 +1088,27 @@ class ControlEventResponse(BaseModel):
 
     @field_serializer('timestamp')
     def serialize_dt(self, dt: datetime) -> str:
+        return serialize_datetime_to_utc(dt)
+
+
+class FermentationAlertResponse(BaseModel):
+    """Pydantic response model for fermentation alerts."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    batch_id: int
+    device_id: Optional[str] = None
+    alert_type: str
+    severity: str
+    message: str
+    context: Optional[str] = None  # JSON string with additional data
+    trigger_reading_id: Optional[int] = None
+    first_detected_at: datetime
+    last_seen_at: datetime
+    cleared_at: Optional[datetime] = None
+
+    @field_serializer('first_detected_at', 'last_seen_at', 'cleared_at')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 
 

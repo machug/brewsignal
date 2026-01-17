@@ -900,7 +900,7 @@ async def _check_recipe_ingredients(
                     "product_id": y.yeast_strain.product_id if y.yeast_strain else None,
                     "quantity": y.quantity,
                     "form": y.form,
-                    "days_until_expiry": (y.expiry_date - now).days if y.expiry_date else None,
+                    "days_until_expiry": (y.expiry_date.replace(tzinfo=timezone.utc) - now).days if y.expiry_date else None,
                 })
 
     return result
@@ -1069,7 +1069,8 @@ async def _list_fermentations(
         # Calculate days fermenting
         days_fermenting = None
         if batch.start_time:
-            delta = now - batch.start_time
+            start = batch.start_time.replace(tzinfo=timezone.utc) if batch.start_time.tzinfo is None else batch.start_time
+            delta = now - start
             days_fermenting = round(delta.total_seconds() / 86400, 1)
 
         # Calculate progress
@@ -1228,7 +1229,8 @@ async def _get_fermentation_status(
 
     # Days fermenting
     if batch.start_time:
-        delta = now - batch.start_time
+        start = batch.start_time.replace(tzinfo=timezone.utc) if batch.start_time.tzinfo is None else batch.start_time
+        delta = now - start
         progress_info["days_fermenting"] = round(delta.total_seconds() / 86400, 1)
 
     # Temperature analysis

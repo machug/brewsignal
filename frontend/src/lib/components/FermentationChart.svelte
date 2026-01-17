@@ -1045,7 +1045,7 @@ onMount(async () => {
 					onclick={toggleChamber}
 					title={showChamber ? 'Hide chamber temp' : 'Show chamber temp'}
 				>
-					<span class="legend-line legend-line-dashed" style="background: {PURPLE};"></span>
+					<span class="legend-line legend-line-chamber"></span>
 					<span>Chamber</span>
 				</button>
 				<button
@@ -1234,6 +1234,11 @@ onMount(async () => {
 		background-size: 10px 2px !important;
 	}
 
+	.legend-line-chamber {
+		background: linear-gradient(90deg, #a78bfa 4px, transparent 4px) !important;
+		background-size: 6px 2px !important;
+	}
+
 	.legend-toggle {
 		background: none;
 		border: none;
@@ -1254,6 +1259,10 @@ onMount(async () => {
 
 	.legend-disabled .legend-line-dashed {
 		background: linear-gradient(90deg, var(--text-muted) 6px, transparent 6px) !important;
+	}
+
+	.legend-disabled .legend-line-chamber {
+		background: linear-gradient(90deg, var(--text-muted) 4px, transparent 4px) !important;
 	}
 
 	.anomaly-toggle {

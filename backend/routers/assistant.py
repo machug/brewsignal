@@ -341,36 +341,27 @@ async def _get_style_guidelines(db: AsyncSession, style_name: str) -> tuple[bool
     guidelines = []
     guidelines.append(f"**{style.name}** (BJCP {style.category_number}{style.style_letter})")
 
-    if style.overall_impression:
-        guidelines.append(f"\n**Overall Impression:** {style.overall_impression}")
+    if style.description:
+        guidelines.append(f"\n**Description:** {style.description}")
 
     # Vital statistics
     stats = []
-    if style.og_low and style.og_high:
-        stats.append(f"OG: {style.og_low:.3f}-{style.og_high:.3f}")
-    if style.fg_low and style.fg_high:
-        stats.append(f"FG: {style.fg_low:.3f}-{style.fg_high:.3f}")
-    if style.abv_low and style.abv_high:
-        stats.append(f"ABV: {style.abv_low:.1f}-{style.abv_high:.1f}%")
-    if style.ibu_low and style.ibu_high:
-        stats.append(f"IBU: {style.ibu_low}-{style.ibu_high}")
-    if style.srm_low and style.srm_high:
-        stats.append(f"SRM: {style.srm_low}-{style.srm_high}")
+    if style.og_min and style.og_max:
+        stats.append(f"OG: {style.og_min:.3f}-{style.og_max:.3f}")
+    if style.fg_min and style.fg_max:
+        stats.append(f"FG: {style.fg_min:.3f}-{style.fg_max:.3f}")
+    if style.abv_min and style.abv_max:
+        stats.append(f"ABV: {style.abv_min:.1f}-{style.abv_max:.1f}%")
+    if style.ibu_min and style.ibu_max:
+        stats.append(f"IBU: {int(style.ibu_min)}-{int(style.ibu_max)}")
+    if style.srm_min and style.srm_max:
+        stats.append(f"SRM: {style.srm_min:.0f}-{style.srm_max:.0f}")
 
     if stats:
         guidelines.append(f"\n**Vital Statistics:** {', '.join(stats)}")
 
-    if style.ingredients:
-        guidelines.append(f"\n**Ingredients:** {style.ingredients}")
-
-    if style.aroma:
-        guidelines.append(f"\n**Aroma:** {style.aroma}")
-
-    if style.appearance:
-        guidelines.append(f"\n**Appearance:** {style.appearance}")
-
-    if style.flavor:
-        guidelines.append(f"\n**Flavor:** {style.flavor}")
+    if style.comments:
+        guidelines.append(f"\n**Comments:** {style.comments}")
 
     return True, style.name, "\n".join(guidelines)
 

@@ -1692,3 +1692,61 @@ export async function deleteYeastInventory(id: number): Promise<void> {
 		throw new Error(`Failed to delete yeast: ${response.statusText}`);
 	}
 }
+
+// ============================================================================
+// AI Recipe Review
+// ============================================================================
+
+export interface RecipeReviewFermentable {
+	name: string;
+	amount_kg: number;
+	color_srm?: number;
+	type?: string;
+}
+
+export interface RecipeReviewHop {
+	name: string;
+	amount_grams: number;
+	boil_time_minutes: number;
+	alpha_acid_percent?: number;
+	use?: string;
+}
+
+export interface RecipeReviewYeast {
+	name: string;
+	producer?: string;
+	attenuation?: number;
+}
+
+export interface RecipeReviewRequest {
+	name: string;
+	style: string;
+	og: number;
+	fg: number;
+	abv: number;
+	ibu: number;
+	color_srm: number;
+	fermentables: RecipeReviewFermentable[];
+	hops: RecipeReviewHop[];
+	yeast?: RecipeReviewYeast;
+}
+
+export interface RecipeReviewResponse {
+	review: string;
+	style_found: boolean;
+	style_name?: string;
+	model: string;
+}
+
+export async function reviewRecipe(request: RecipeReviewRequest): Promise<RecipeReviewResponse> {
+	const response = await fetch(`${BASE_URL}/assistant/review-recipe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(request)
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || 'Failed to review recipe');
+	}
+	return response.json();
+}

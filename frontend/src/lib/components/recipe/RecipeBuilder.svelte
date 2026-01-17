@@ -37,7 +37,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchYeastStrains } from '$lib/api';
+	import { fetchYeastStrains, reviewRecipe, type RecipeReviewResponse } from '$lib/api';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
 	import YeastSelector from '$lib/components/batch/YeastSelector.svelte';
@@ -76,6 +76,12 @@
 	let fermentables = $state<RecipeFermentable[]>([]);
 	let hops = $state<RecipeHop[]>([]);
 	let selectedYeast = $state<YeastStrainResponse | null>(null);
+
+	// AI Review state
+	let showReviewModal = $state(false);
+	let reviewResult = $state<RecipeReviewResponse | null>(null);
+	let reviewLoading = $state(false);
+	let reviewError = $state<string | null>(null);
 
 	// Calculate recipe stats in real-time
 	let recipeStats = $derived(() => {
@@ -178,6 +184,67 @@
 		};
 
 		onSave?.(recipe);
+	}
+
+	async function handleReview() {
+		if (!type.trim()) {
+			reviewError = 'Please enter a beer style to get an AI review';
+			showReviewModal = true;
+			return;
+		}
+
+		if (fermentables.length === 0) {
+			reviewError = 'Please add at least one fermentable to get an AI review';
+			showReviewModal = true;
+			return;
+		}
+
+		reviewLoading = true;
+		reviewError = null;
+		showReviewModal = true;
+
+		try {
+			const stats = recipeStats();
+			reviewResult = await reviewRecipe({
+				name: name || 'Untitled Recipe',
+				style: type,
+				og: stats.og,
+				fg: stats.fg,
+				abv: stats.abv,
+				ibu: stats.ibu,
+				color_srm: stats.srm,
+				fermentables: fermentables.map((f) => ({
+					name: f.name,
+					amount_kg: f.amount_kg,
+					color_srm: f.color_srm,
+					type: f.category
+				})),
+				hops: hops.map((h) => ({
+					name: h.name,
+					amount_grams: h.amount_grams,
+					boil_time_minutes: h.boil_time_minutes,
+					alpha_acid_percent: h.alpha_acid_percent,
+					use: h.use
+				})),
+				yeast: selectedYeast
+					? {
+							name: selectedYeast.name,
+							producer: selectedYeast.producer,
+							attenuation: selectedYeast.attenuation
+						}
+					: undefined
+			});
+		} catch (err) {
+			reviewError = err instanceof Error ? err.message : 'Failed to get AI review';
+		} finally {
+			reviewLoading = false;
+		}
+	}
+
+	function closeReviewModal() {
+		showReviewModal = false;
+		reviewResult = null;
+		reviewError = null;
 	}
 </script>
 
@@ -359,9 +426,54 @@
 		{#if onCancel}
 			<button type="button" class="btn-secondary" onclick={onCancel}>Cancel</button>
 		{/if}
+		<button type="button" class="btn-ai" onclick={handleReview} disabled={reviewLoading}>
+			{#if reviewLoading}
+				Analyzing...
+			{:else}
+				AI Review
+			{/if}
+		</button>
 		<button type="button" class="btn-primary" onclick={handleSave}>Save Recipe</button>
 	</div>
 </div>
+
+<!-- AI Review Modal -->
+{#if showReviewModal}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="modal-overlay" onclick={closeReviewModal} role="presentation">
+		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" tabindex="-1">
+			<div class="modal-header">
+				<h2 id="review-modal-title">AI Recipe Review</h2>
+				<button class="modal-close" onclick={closeReviewModal} aria-label="Close">&times;</button>
+			</div>
+			<div class="modal-body">
+				{#if reviewLoading}
+					<div class="review-loading">
+						<div class="spinner"></div>
+						<p>Analyzing your recipe against {type || 'style guidelines'}...</p>
+					</div>
+				{:else if reviewError}
+					<div class="review-error">
+						<p>{reviewError}</p>
+					</div>
+				{:else if reviewResult}
+					<div class="review-meta">
+						{#if reviewResult.style_found}
+							<span class="style-badge found">BJCP Style: {reviewResult.style_name}</span>
+						{:else}
+							<span class="style-badge not-found">Style not in BJCP database</span>
+						{/if}
+						<span class="model-badge">Model: {reviewResult.model}</span>
+					</div>
+					<div class="review-content">
+						{@html reviewResult.review.replace(/\n/g, '<br>')}
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.recipe-builder {
@@ -599,6 +711,186 @@
 
 	.btn-primary:hover {
 		background: var(--accent-secondary);
+	}
+
+	.btn-ai {
+		padding: var(--space-3) var(--space-6);
+		border-radius: 6px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all var(--transition);
+		border: 1px solid var(--positive);
+		background: transparent;
+		color: var(--positive);
+	}
+
+	.btn-ai:hover:not(:disabled) {
+		background: var(--positive);
+		color: var(--bg-surface);
+	}
+
+	.btn-ai:disabled {
+		opacity: 0.6;
+		cursor: wait;
+	}
+
+	/* Modal Overlay */
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: var(--space-4);
+	}
+
+	.modal-content {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-default);
+		border-radius: 12px;
+		max-width: 700px;
+		width: 100%;
+		max-height: 80vh;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+	}
+
+	.modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--space-4) var(--space-5);
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.modal-header h2 {
+		margin: 0;
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.modal-close {
+		background: none;
+		border: none;
+		font-size: 24px;
+		color: var(--text-secondary);
+		cursor: pointer;
+		padding: 0;
+		line-height: 1;
+	}
+
+	.modal-close:hover {
+		color: var(--text-primary);
+	}
+
+	.modal-body {
+		padding: var(--space-5);
+		overflow-y: auto;
+	}
+
+	.review-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-4);
+		padding: var(--space-8) 0;
+	}
+
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid var(--border-default);
+		border-top-color: var(--positive);
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.review-loading p {
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	.review-error {
+		padding: var(--space-4);
+		background: var(--negative-bg);
+		border: 1px solid var(--negative);
+		border-radius: 8px;
+		color: var(--negative);
+	}
+
+	.review-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin-bottom: var(--space-4);
+	}
+
+	.style-badge,
+	.model-badge {
+		display: inline-block;
+		padding: var(--space-1) var(--space-3);
+		border-radius: 20px;
+		font-size: 12px;
+		font-weight: 500;
+	}
+
+	.style-badge.found {
+		background: var(--positive-bg);
+		color: var(--positive);
+		border: 1px solid var(--positive);
+	}
+
+	.style-badge.not-found {
+		background: var(--warning-bg);
+		color: var(--warning);
+		border: 1px solid var(--warning);
+	}
+
+	.model-badge {
+		background: var(--bg-elevated);
+		color: var(--text-secondary);
+		border: 1px solid var(--border-default);
+	}
+
+	.review-content {
+		line-height: 1.7;
+		color: var(--text-primary);
+	}
+
+	.review-content :global(h3) {
+		margin-top: var(--space-5);
+		margin-bottom: var(--space-2);
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.review-content :global(h3:first-child) {
+		margin-top: 0;
+	}
+
+	.review-content :global(ul) {
+		margin: var(--space-2) 0;
+		padding-left: var(--space-5);
+	}
+
+	.review-content :global(li) {
+		margin-bottom: var(--space-2);
 	}
 
 	/* Responsive */

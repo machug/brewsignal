@@ -2,16 +2,21 @@
 
 import json
 import logging
+from pathlib import Path
 from typing import Optional
 
+import prompty
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
-from backend.models import Config
+from backend.models import Config, Style
 from backend.services.llm import LLMConfig, LLMProvider, LLMService
+
+# Prompts directory
+PROMPTS_DIR = Path(__file__).parent.parent / "services" / "llm" / "prompts"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -255,3 +260,235 @@ async def get_providers() -> list[dict]:
             "setup_url": "https://openrouter.ai/keys",
         },
     ]
+
+
+# =============================================================================
+# Recipe Review Endpoint
+# =============================================================================
+
+
+class RecipeFermentableInput(BaseModel):
+    """Fermentable in a recipe for review."""
+    name: str
+    amount_kg: float
+    color_srm: Optional[float] = None
+    type: Optional[str] = None
+
+
+class RecipeHopInput(BaseModel):
+    """Hop in a recipe for review."""
+    name: str
+    amount_grams: float
+    boil_time_minutes: int
+    alpha_acid_percent: Optional[float] = None
+    use: Optional[str] = None  # boil, whirlpool, dry_hop
+
+
+class RecipeYeastInput(BaseModel):
+    """Yeast info for recipe review."""
+    name: str
+    producer: Optional[str] = None
+    attenuation: Optional[float] = None
+
+
+class RecipeReviewRequest(BaseModel):
+    """Request body for recipe review."""
+    name: str
+    style: str  # The declared style (e.g., "American IPA")
+    og: float
+    fg: float
+    abv: float
+    ibu: float
+    color_srm: float
+    fermentables: list[RecipeFermentableInput]
+    hops: list[RecipeHopInput]
+    yeast: Optional[RecipeYeastInput] = None
+
+
+class RecipeReviewResponse(BaseModel):
+    """Response from recipe review."""
+    review: str
+    style_found: bool
+    style_name: Optional[str] = None
+    model: str
+
+
+async def _get_style_guidelines(db: AsyncSession, style_name: str) -> tuple[bool, str, str]:
+    """Look up BJCP style guidelines by name.
+
+    Returns: (found, style_name, guidelines_text)
+    """
+    if not style_name:
+        return False, "", ""
+
+    # Try exact match first
+    result = await db.execute(
+        select(Style).where(func.lower(Style.name) == style_name.lower())
+    )
+    style = result.scalar_one_or_none()
+
+    # Try fuzzy match if exact match fails
+    if not style:
+        result = await db.execute(
+            select(Style).where(Style.name.ilike(f"%{style_name}%")).limit(1)
+        )
+        style = result.scalar_one_or_none()
+
+    if not style:
+        return False, "", ""
+
+    # Build guidelines text
+    guidelines = []
+    guidelines.append(f"**{style.name}** (BJCP {style.category_number}{style.style_letter})")
+
+    if style.overall_impression:
+        guidelines.append(f"\n**Overall Impression:** {style.overall_impression}")
+
+    # Vital statistics
+    stats = []
+    if style.og_low and style.og_high:
+        stats.append(f"OG: {style.og_low:.3f}-{style.og_high:.3f}")
+    if style.fg_low and style.fg_high:
+        stats.append(f"FG: {style.fg_low:.3f}-{style.fg_high:.3f}")
+    if style.abv_low and style.abv_high:
+        stats.append(f"ABV: {style.abv_low:.1f}-{style.abv_high:.1f}%")
+    if style.ibu_low and style.ibu_high:
+        stats.append(f"IBU: {style.ibu_low}-{style.ibu_high}")
+    if style.srm_low and style.srm_high:
+        stats.append(f"SRM: {style.srm_low}-{style.srm_high}")
+
+    if stats:
+        guidelines.append(f"\n**Vital Statistics:** {', '.join(stats)}")
+
+    if style.ingredients:
+        guidelines.append(f"\n**Ingredients:** {style.ingredients}")
+
+    if style.aroma:
+        guidelines.append(f"\n**Aroma:** {style.aroma}")
+
+    if style.appearance:
+        guidelines.append(f"\n**Appearance:** {style.appearance}")
+
+    if style.flavor:
+        guidelines.append(f"\n**Flavor:** {style.flavor}")
+
+    return True, style.name, "\n".join(guidelines)
+
+
+def _format_fermentables(fermentables: list[RecipeFermentableInput]) -> str:
+    """Format fermentables list for prompt."""
+    if not fermentables:
+        return "No fermentables specified"
+
+    lines = []
+    total_kg = sum(f.amount_kg for f in fermentables)
+
+    for f in sorted(fermentables, key=lambda x: x.amount_kg, reverse=True):
+        pct = (f.amount_kg / total_kg * 100) if total_kg > 0 else 0
+        color_str = f" ({f.color_srm:.0f} SRM)" if f.color_srm else ""
+        lines.append(f"- {f.name}: {f.amount_kg:.2f} kg ({pct:.0f}%){color_str}")
+
+    return "\n".join(lines)
+
+
+def _format_hops(hops: list[RecipeHopInput]) -> str:
+    """Format hops list for prompt."""
+    if not hops:
+        return "No hops specified"
+
+    lines = []
+    for h in sorted(hops, key=lambda x: x.boil_time_minutes, reverse=True):
+        use = h.use or "boil"
+        aa_str = f" ({h.alpha_acid_percent:.1f}% AA)" if h.alpha_acid_percent else ""
+
+        if use == "dry_hop":
+            timing = "dry hop"
+        elif use == "whirlpool":
+            timing = "whirlpool"
+        elif h.boil_time_minutes == 0:
+            timing = "flameout"
+        else:
+            timing = f"{h.boil_time_minutes} min"
+
+        lines.append(f"- {h.name}: {h.amount_grams:.0f}g @ {timing}{aa_str}")
+
+    return "\n".join(lines)
+
+
+def _format_yeast(yeast: Optional[RecipeYeastInput]) -> str:
+    """Format yeast info for prompt."""
+    if not yeast:
+        return "No yeast specified"
+
+    parts = [yeast.name]
+    if yeast.producer:
+        parts.append(f"by {yeast.producer}")
+    if yeast.attenuation:
+        parts.append(f"({yeast.attenuation:.0f}% attenuation)")
+
+    return " ".join(parts)
+
+
+@router.post("/review-recipe", response_model=RecipeReviewResponse)
+async def review_recipe(
+    request: RecipeReviewRequest,
+    service: LLMService = Depends(get_llm_service),
+    db: AsyncSession = Depends(get_db),
+) -> RecipeReviewResponse:
+    """
+    Review a recipe against its declared BJCP style guidelines.
+
+    Returns an AI-generated review analyzing how well the recipe
+    fits the declared style, with suggestions for improvement.
+    """
+    if not service.config.is_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="AI assistant is not configured. Enable it in Settings.",
+        )
+
+    try:
+        # Look up style guidelines
+        style_found, style_name, style_guidelines = await _get_style_guidelines(
+            db, request.style
+        )
+
+        # Format recipe data for prompt
+        fermentables_summary = _format_fermentables(request.fermentables)
+        hops_summary = _format_hops(request.hops)
+        yeast_info = _format_yeast(request.yeast)
+
+        # Load and prepare the review prompt using Prompty
+        prompt_path = PROMPTS_DIR / "recipe-review.prompty"
+        p = prompty.load(str(prompt_path))
+
+        rendered = prompty.prepare(p, inputs={
+            "recipe_name": request.name or "Untitled Recipe",
+            "style_name": style_name if style_found else request.style,
+            "og": request.og,
+            "fg": request.fg,
+            "abv": request.abv,
+            "ibu": request.ibu,
+            "color_srm": request.color_srm,
+            "fermentables_summary": fermentables_summary,
+            "hops_summary": hops_summary,
+            "yeast_info": yeast_info,
+            "style_guidelines": style_guidelines if style_found else "",
+        })
+
+        # Call LLM
+        response = await service.chat(
+            messages=rendered,
+            temperature=0.5,  # Lower temperature for more consistent reviews
+        )
+
+        return RecipeReviewResponse(
+            review=response,
+            style_found=style_found,
+            style_name=style_name if style_found else None,
+            model=service.config.effective_model,
+        )
+
+    except Exception as e:
+        logger.error(f"Recipe review error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

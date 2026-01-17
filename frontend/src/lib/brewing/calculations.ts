@@ -67,9 +67,9 @@ export function calculateOG(
   const totalPoints = fermentables.reduce((sum, f) => {
     // Convert potential SG to points (e.g., 1.037 -> 37)
     const potentialPoints = (f.potential_sg - 1) * 1000;
-    // Apply efficiency and scale to batch size
-    const points = (f.amount_kg * potentialPoints * batch.efficiency_percent) /
-                   (batch.batch_size_liters / 100);
+    // Apply efficiency (as decimal) and scale to batch size
+    const points = (f.amount_kg * potentialPoints * (batch.efficiency_percent / 100)) /
+                   batch.batch_size_liters;
     return sum + points;
   }, 0);
 

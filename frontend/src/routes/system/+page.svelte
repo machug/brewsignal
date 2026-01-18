@@ -1209,27 +1209,29 @@
 						{#if aiProvider === 'local'}
 							<!-- Ollama Setup Guide -->
 							<div class="ollama-setup-guide">
-								<h4 class="setup-guide-title">Setup Ollama (3 steps)</h4>
-								<ol class="setup-steps">
-									<li>
-										<strong>Install Ollama</strong>
-										<p>Download and install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai/download</a></p>
-										<code class="setup-code">curl -fsSL https://ollama.ai/install.sh | sh</code>
-									</li>
-									<li>
-										<strong>Pull a model</strong>
-										<p>Download a model (phi3:mini recommended for Pi)</p>
-										<code class="setup-code">ollama pull phi3:mini</code>
-									</li>
-									<li>
-										<strong>Verify it's running</strong>
-										<p>Ollama runs on port 11434 by default</p>
-										<code class="setup-code">ollama list</code>
-									</li>
-								</ol>
-								<p class="setup-note">
-									Running Ollama on a different machine? Update the URL below to point to that server (e.g., http://192.168.1.100:11434)
-								</p>
+								<h4 class="setup-guide-title">Ollama Setup Options</h4>
+
+								<div class="setup-option">
+									<strong class="option-title">Option 1: Remote Ollama (Recommended)</strong>
+									<p>Run Ollama on a PC/Mac with a GPU and connect over your network. Much faster and supports all features.</p>
+									<ol class="setup-steps">
+										<li>Install Ollama on your PC/Mac from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai/download</a></li>
+										<li>Set environment variable to allow network access:
+											<code class="setup-code">OLLAMA_HOST=0.0.0.0 ollama serve</code>
+										</li>
+										<li>Pull a model: <code class="setup-code-inline">ollama pull llama3:8b</code></li>
+										<li>Enter your PC's IP in the URL field below (e.g., http://192.168.1.100:11434)</li>
+									</ol>
+								</div>
+
+								<div class="setup-option">
+									<strong class="option-title">Option 2: Local on Pi (Limited)</strong>
+									<p>Running on Pi requires a <a href="https://www.raspberrypi.com/products/ai-hat-plus-2/" target="_blank" rel="noopener">Raspberry Pi 5 with AI HAT+</a> for acceptable performance. Without AI acceleration, responses will be very slow.</p>
+									<ol class="setup-steps">
+										<li>Install: <code class="setup-code-inline">curl -fsSL https://ollama.ai/install.sh | sh</code></li>
+										<li>Pull a small model: <code class="setup-code-inline">ollama pull smollm2:1.7b</code></li>
+									</ol>
+								</div>
 							</div>
 						{:else if aiProviders.find(p => p.id === aiProvider)}
 							{@const selectedProvider = aiProviders.find(p => p.id === aiProvider)}
@@ -2197,6 +2199,52 @@
 		border-radius: 0.25rem;
 		color: var(--accent);
 		user-select: all;
+	}
+
+	.setup-code-inline {
+		padding: 0.125rem 0.375rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.6875rem;
+		background: var(--bg-card);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.25rem;
+		color: var(--accent);
+		user-select: all;
+	}
+
+	.setup-option {
+		margin-bottom: 1rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.setup-option:last-child {
+		margin-bottom: 0;
+		padding-bottom: 0;
+		border-bottom: none;
+	}
+
+	.setup-option p {
+		margin: 0.5rem 0;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		line-height: 1.5;
+	}
+
+	.setup-option a {
+		color: var(--accent);
+	}
+
+	.setup-option a:hover {
+		text-decoration: underline;
+	}
+
+	.option-title {
+		display: block;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 0.25rem;
 	}
 
 	.setup-note {

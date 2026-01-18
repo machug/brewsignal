@@ -155,10 +155,12 @@ async def get_models(provider: str) -> ModelsResponse:
     # Define popular models per provider
     models_by_provider = {
         "local": [
-            {"id": "phi3:mini", "name": "Phi-3 Mini (3.8B)", "description": "Fast, good for RPi"},
-            {"id": "llama3:8b", "name": "Llama 3 8B", "description": "Good quality, balanced"},
-            {"id": "mistral:7b", "name": "Mistral 7B", "description": "Strong reasoning"},
-            {"id": "gemma2:2b", "name": "Gemma 2 2B", "description": "Very fast, compact"},
+            {"id": "smollm2:360m", "name": "SmolLM2 360M", "description": "Best for RPi - very fast"},
+            {"id": "smollm2:135m", "name": "SmolLM2 135M", "description": "Fastest, minimal resources"},
+            {"id": "smollm2:1.7b", "name": "SmolLM2 1.7B", "description": "Better quality, still fast"},
+            {"id": "gemma2:2b", "name": "Gemma 2 2B", "description": "Good quality, needs more RAM"},
+            {"id": "phi3:mini", "name": "Phi-3 Mini (3.8B)", "description": "High quality, slow on Pi"},
+            {"id": "llama3:8b", "name": "Llama 3 8B", "description": "Best quality, needs fast CPU"},
         ],
         "openai": [
             {"id": "gpt-4o", "name": "GPT-4o", "description": "Most capable, multimodal"},

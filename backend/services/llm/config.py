@@ -34,7 +34,7 @@ class LLMProvider(str, Enum):
 
 # Default models per provider
 DEFAULT_MODELS = {
-    LLMProvider.LOCAL: "phi3:mini",
+    LLMProvider.LOCAL: "smollm2:360m",
     LLMProvider.OPENAI: "gpt-4o-mini",
     LLMProvider.ANTHROPIC: "claude-haiku-4-5",
     LLMProvider.GOOGLE: "gemini-1.5-flash",

@@ -44,7 +44,7 @@ FAST_MODELS_BY_PROVIDER = {
     "google": "gemini/gemini-1.5-flash",
     "groq": "groq/llama-3.1-8b-instant",
     "deepseek": "deepseek/deepseek-chat",
-    "local": "ollama/phi3:mini",
+    "local": "ollama/smollm2:360m",
 }
 
 logger = logging.getLogger(__name__)

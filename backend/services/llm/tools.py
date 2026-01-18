@@ -17,7 +17,7 @@ from backend.services.alert_service import get_active_alerts
 from backend.models import (
     YeastStrain, Style, HopInventory, YeastInventory, Equipment,
     Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture,
-    HopVariety, Fermentable, AgUiThread
+    HopVariety, Fermentable, AgUiThread, AgUiMessage
 )
 from backend.state import latest_readings
 
@@ -556,6 +556,27 @@ TOOL_DEFINITIONS = [
                 "required": ["title"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_threads",
+            "description": "Search previous chat conversations for recipes, discussions, and brewing information. Use this to recall information from past conversations when the user references something discussed before. Searches thread titles and message content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term to find in previous conversations (e.g., 'green gage plum', 'saison recipe', 'fermentation temperature')"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of threads to return (default: 5)"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -624,6 +645,8 @@ async def execute_tool(
         return await _fetch_url(**arguments)
     elif tool_name == "rename_chat":
         return await _rename_chat(db, thread_id, **arguments)
+    elif tool_name == "search_threads":
+        return await _search_threads(db, current_thread_id=thread_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -2697,3 +2720,106 @@ async def _rename_chat(
     except Exception as e:
         logger.error(f"Error renaming thread {thread_id}: {e}")
         return {"error": f"Failed to rename chat: {str(e)}"}
+
+
+async def _search_threads(
+    db: AsyncSession,
+    query: str,
+    current_thread_id: Optional[str] = None,
+    limit: int = 5,
+) -> dict[str, Any]:
+    """Search previous chat threads for recipes, discussions, and brewing information."""
+    if not query or not query.strip():
+        return {"error": "Search query cannot be empty"}
+
+    query = query.strip().lower()
+    limit = min(max(1, limit), 10)  # Clamp between 1 and 10
+
+    try:
+        # Search in thread titles and message content
+        # Use LIKE for SQLite compatibility
+        search_pattern = f"%{query}%"
+
+        # Find threads with matching titles or message content
+        result = await db.execute(
+            select(AgUiThread)
+            .outerjoin(AgUiMessage, AgUiThread.id == AgUiMessage.thread_id)
+            .where(
+                or_(
+                    func.lower(AgUiThread.title).like(search_pattern),
+                    func.lower(AgUiMessage.content).like(search_pattern),
+                )
+            )
+            .distinct()
+            .order_by(AgUiThread.updated_at.desc())
+            .limit(limit)
+        )
+        threads = result.scalars().all()
+
+        if not threads:
+            return {
+                "results": [],
+                "message": f"No conversations found matching '{query}'",
+            }
+
+        # For each matching thread, get relevant message snippets
+        results = []
+        for thread in threads:
+            # Skip current thread
+            if current_thread_id and thread.id == current_thread_id:
+                continue
+
+            # Get messages that match the query
+            msg_result = await db.execute(
+                select(AgUiMessage)
+                .where(
+                    AgUiMessage.thread_id == thread.id,
+                    func.lower(AgUiMessage.content).like(search_pattern),
+                )
+                .order_by(AgUiMessage.created_at)
+                .limit(3)  # Get up to 3 matching messages
+            )
+            matching_messages = msg_result.scalars().all()
+
+            # Extract relevant snippets
+            snippets = []
+            for msg in matching_messages:
+                content = msg.content
+                # Find the query in the content and extract surrounding context
+                lower_content = content.lower()
+                idx = lower_content.find(query)
+                if idx != -1:
+                    # Extract ~150 chars around the match
+                    start = max(0, idx - 75)
+                    end = min(len(content), idx + len(query) + 75)
+                    snippet = content[start:end]
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(content):
+                        snippet = snippet + "..."
+                    snippets.append({
+                        "role": msg.role,
+                        "snippet": snippet,
+                    })
+
+            results.append({
+                "thread_id": thread.id,
+                "title": thread.title or "Untitled",
+                "updated_at": thread.updated_at.isoformat(),
+                "snippets": snippets[:2],  # Limit to 2 snippets per thread
+            })
+
+        if not results:
+            return {
+                "results": [],
+                "message": f"No conversations found matching '{query}' (excluding current thread)",
+            }
+
+        return {
+            "results": results,
+            "message": f"Found {len(results)} conversation(s) matching '{query}'",
+        }
+
+    except Exception as e:
+        logger.error(f"Error searching threads for '{query}': {e}")
+        return {"error": f"Failed to search conversations: {str(e)}"}

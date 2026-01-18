@@ -370,19 +370,18 @@ BrewSignal includes an AI-powered brewing assistant that can help with recipe de
 
 ### Configuration
 
-The assistant requires an LLM provider API key. Configure in your environment:
+Configure the assistant in **System Settings** → **AI Assistant**:
 
-```bash
-# OpenAI (default)
-export OPENAI_API_KEY=sk-...
+1. **Provider** - Select your LLM provider (OpenAI, Anthropic, Ollama, etc.)
+2. **API Key** - Enter your API key (stored securely in the database)
+3. **Model** - Choose the model to use (e.g., gpt-4o, claude-sonnet-4-20250514)
 
-# Or Anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
+For **Ollama** (local/self-hosted):
+- Install Ollama on your system: https://ollama.ai
+- Pull a model: `ollama pull llama3.2`
+- Select "Ollama" as provider in settings (no API key required)
 
-# Configure provider in System settings
-```
-
-The assistant uses LiteLLM for provider abstraction, supporting OpenAI, Anthropic, Azure, and other backends.
+The assistant uses LiteLLM for provider abstraction, supporting OpenAI, Anthropic, Ollama, Azure, and other backends.
 
 ### Available Tools
 

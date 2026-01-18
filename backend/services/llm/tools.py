@@ -17,7 +17,7 @@ from backend.services.alert_service import get_active_alerts
 from backend.models import (
     YeastStrain, Style, HopInventory, YeastInventory, Equipment,
     Batch, Recipe, Reading, Device, AmbientReading, RecipeCulture,
-    HopVariety, Fermentable
+    HopVariety, Fermentable, AgUiThread
 )
 from backend.state import latest_readings
 
@@ -539,6 +539,23 @@ TOOL_DEFINITIONS = [
                 "required": ["url"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename_chat",
+            "description": "Rename the current chat thread to better reflect its content. Use this when the conversation has shifted to a new topic and the original title is no longer relevant. Choose a concise, descriptive title (max 60 chars).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "New title for the chat (e.g., 'Raspberry Sour Recipe Development')"
+                    }
+                },
+                "required": ["title"]
+            }
+        }
     }
 ]
 
@@ -546,7 +563,8 @@ TOOL_DEFINITIONS = [
 async def execute_tool(
     db: AsyncSession,
     tool_name: str,
-    arguments: dict[str, Any]
+    arguments: dict[str, Any],
+    thread_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute a tool and return the result.
 
@@ -554,6 +572,7 @@ async def execute_tool(
         db: Database session
         tool_name: Name of the tool to execute
         arguments: Tool arguments
+        thread_id: Current chat thread ID (for tools that need it)
 
     Returns:
         Tool result as a dictionary
@@ -603,6 +622,8 @@ async def execute_tool(
         return _get_current_datetime()
     elif tool_name == "fetch_url":
         return await _fetch_url(**arguments)
+    elif tool_name == "rename_chat":
+        return await _rename_chat(db, thread_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -2634,3 +2655,44 @@ async def _fetch_url(url: str) -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"Error fetching URL {url}: {e}")
         return {"error": f"Failed to fetch URL: {str(e)}"}
+
+
+async def _rename_chat(
+    db: AsyncSession,
+    thread_id: Optional[str],
+    title: str,
+) -> dict[str, Any]:
+    """Rename the current chat thread."""
+    if not thread_id:
+        return {"error": "No active thread to rename"}
+
+    # Clean and validate title
+    title = title.strip()
+    if not title:
+        return {"error": "Title cannot be empty"}
+    if len(title) > 60:
+        title = title[:57] + "..."
+
+    try:
+        result = await db.execute(
+            select(AgUiThread).where(AgUiThread.id == thread_id)
+        )
+        thread = result.scalar_one_or_none()
+
+        if not thread:
+            return {"error": f"Thread not found: {thread_id}"}
+
+        old_title = thread.title
+        thread.title = title
+        await db.commit()
+
+        logger.info(f"Renamed thread {thread_id}: '{old_title}' -> '{title}'")
+        return {
+            "success": True,
+            "thread_id": thread_id,
+            "old_title": old_title,
+            "new_title": title,
+        }
+    except Exception as e:
+        logger.error(f"Error renaming thread {thread_id}: {e}")
+        return {"error": f"Failed to rename chat: {str(e)}"}

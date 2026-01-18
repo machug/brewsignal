@@ -530,7 +530,7 @@ async def _run_agent_loop(
             # Parse arguments and execute
             try:
                 tool_args = json.loads(tool_args_str) if tool_args_str else {}
-                result = await execute_tool(db, tool_name, tool_args)
+                result = await execute_tool(db, tool_name, tool_args, thread_id=thread_id)
                 result_str = json.dumps(result)
             except json.JSONDecodeError as e:
                 result_str = json.dumps({"error": f"Invalid arguments: {e}"})

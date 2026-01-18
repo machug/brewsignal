@@ -1,33 +1,46 @@
 """Fermentation curve fitting for predictions.
 
-Fits exponential decay models to fermentation data to predict:
+Fits various models to fermentation data to predict:
 - Final gravity (FG)
 - Time to completion
 - Future SG values
 
-Uses scipy's curve_fit with exponential decay model:
-SG(t) = FG + (OG - FG) * exp(-k * t)
+Supported models:
+- Exponential decay: SG(t) = FG + (OG - FG) * exp(-k * t)
+- Gompertz: S-curve with lag phase, better for ferments with delayed start
+- Logistic: Symmetric S-curve, good for steady fermentation profiles
 
 Where:
 - OG: Original gravity (initial SG)
 - FG: Final gravity (terminal SG)
-- k: Decay rate constant
+- k: Decay/growth rate constant
 - t: Time in hours
 """
 
 import numpy as np
 from scipy.optimize import curve_fit
 from typing import Optional
+from enum import Enum
+
+
+class PredictionModel(str, Enum):
+    """Available prediction model types."""
+    EXPONENTIAL = "exponential"
+    GOMPERTZ = "gompertz"
+    LOGISTIC = "logistic"
+    AUTO = "auto"  # Pick best R²
 
 
 class FermentationCurveFitter:
-    """Fits exponential decay curves to fermentation gravity data.
+    """Fits various curve models to fermentation gravity data.
 
-    The fitter uses non-linear least squares to fit an exponential decay
-    model to the SG readings over time. This model is commonly used for
-    fermentation kinetics.
+    The fitter uses non-linear least squares to fit curves to SG readings
+    over time. Supports multiple models for different fermentation profiles.
 
-    The model: SG(t) = FG + (OG - FG) * exp(-k * t)
+    Supported models:
+    - Exponential: SG(t) = FG + (OG - FG) * exp(-k * t)
+    - Gompertz: S-curve with lag phase for ferments with delayed starts
+    - Logistic: Symmetric S-curve for steady fermentation profiles
 
     Predictions can be used for:
     - Estimating final gravity (FG)
@@ -54,84 +67,173 @@ class FermentationCurveFitter:
         self.fg: Optional[float] = None  # Final gravity
         self.k: Optional[float] = None   # Decay rate constant
         self.r_squared: Optional[float] = None  # Fit quality
+        self.model_type: Optional[str] = None  # Current model type
+
+    # =========================================================================
+    # Model Functions
+    # =========================================================================
+
+    @staticmethod
+    def _exp_decay(t, og, fg, k):
+        """Exponential decay model: SG(t) = FG + (OG - FG) * exp(-k * t)"""
+        return fg + (og - fg) * np.exp(-k * t)
+
+    @staticmethod
+    def _gompertz(t, og, fg, mu, lag):
+        """Gompertz model: S-curve with lag phase.
+
+        Better for ferments with an initial lag before active fermentation.
+        SG(t) = OG - A * exp(-exp((mu*e/A)*(lag-t) + 1))
+
+        Where A = OG - FG (total drop)
+        """
+        A = og - fg
+        # Avoid divide by zero
+        if A <= 0:
+            return np.full_like(t, og)
+        return og - A * np.exp(-np.exp((mu * np.e / A) * (lag - t) + 1))
+
+    @staticmethod
+    def _logistic(t, og, fg, k, t_half):
+        """Logistic model: Symmetric S-curve.
+
+        Good for steady, symmetric fermentation profiles.
+        SG(t) = FG + (OG - FG) / (1 + exp(k * (t - t_half)))
+
+        Where t_half = time to reach halfway point
+        """
+        return fg + (og - fg) / (1 + np.exp(k * (t - t_half)))
 
     def fit(
         self,
         times: list[float],
         sgs: list[float],
         expected_fg: Optional[float] = None,
+        model: str = "auto",
     ) -> dict:
-        """Fit exponential decay curve to fermentation data.
+        """Fit a curve model to fermentation data.
 
         Args:
             times: Time points in hours since fermentation start
             sgs: Specific gravity readings
             expected_fg: Expected final gravity from recipe (used as lower bound)
+            model: Model type to use: "exponential", "gompertz", "logistic", or "auto"
 
         Returns:
             Dictionary with fit results:
             - fitted: True if fit successful
-            - model_type: Type of model ("exponential" or None)
+            - model_type: Type of model used ("exponential", "gompertz", "logistic")
             - predicted_og: Fitted original gravity
             - predicted_fg: Fitted final gravity
-            - decay_rate: Fitted decay constant k
+            - decay_rate: Fitted decay constant k (or equivalent rate param)
             - r_squared: R² goodness of fit
             - hours_to_completion: Estimated hours until complete
             - reason: If not fitted, reason why
         """
         # Check minimum readings
         if len(times) < self.min_readings:
-            return {
-                "fitted": False,
-                "model_type": None,
-                "predicted_og": None,
-                "predicted_fg": None,
-                "decay_rate": None,
-                "r_squared": None,
-                "hours_to_completion": None,
-                "reason": "insufficient_data",
-            }
+            return self._failure_result("insufficient_data")
 
         # Convert to numpy arrays
         times_arr = np.array(times, dtype=float)
         sgs_arr = np.array(sgs, dtype=float)
 
-        # Exponential decay model: SG(t) = fg + (og - fg) * exp(-k * t)
-        def exp_decay(t, og, fg, k):
-            return fg + (og - fg) * np.exp(-k * t)
-
         # Initial parameter guesses
         og_guess = sgs_arr[0]  # First reading
         fg_guess = sgs_arr[-1]  # Last reading
-        k_guess = 0.02  # Typical fermentation rate
 
         # Check if we have enough SG drop to make a meaningful prediction
-        # Need at least 0.005 SG drop from OG to see fermentation curve shape
         sg_drop = og_guess - sgs_arr[-1]
         if sg_drop < 0.005:
-            return {
-                "fitted": False,
-                "model_type": None,
-                "predicted_og": None,
-                "predicted_fg": None,
-                "decay_rate": None,
-                "r_squared": None,
-                "hours_to_completion": None,
-                "reason": "insufficient_fermentation_progress",
-            }
+            return self._failure_result("insufficient_fermentation_progress")
+
+        # Calculate FG lower bound
+        if expected_fg is not None:
+            fg_lower = max(1.000, expected_fg - 0.003)
+        else:
+            fg_lower = 1.000
+
+        # Normalize model string
+        model = model.lower() if model else "auto"
+
+        # AUTO mode: try all models and pick the best R²
+        if model == "auto":
+            return self._fit_auto(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+
+        # Fit specific model
+        if model == "exponential":
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+        elif model == "gompertz":
+            return self._fit_gompertz(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+        elif model == "logistic":
+            return self._fit_logistic(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+        else:
+            # Unknown model, default to exponential
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+
+    def _failure_result(self, reason: str) -> dict:
+        """Return a standard failure result dictionary."""
+        return {
+            "fitted": False,
+            "model_type": None,
+            "predicted_og": None,
+            "predicted_fg": None,
+            "decay_rate": None,
+            "r_squared": None,
+            "hours_to_completion": None,
+            "reason": reason,
+        }
+
+    def _calculate_r_squared(self, y_actual: np.ndarray, y_predicted: np.ndarray) -> float:
+        """Calculate R² (coefficient of determination)."""
+        residuals = y_actual - y_predicted
+        ss_res = np.sum(residuals ** 2)
+        ss_tot = np.sum((y_actual - np.mean(y_actual)) ** 2)
+        return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+
+    def _fit_auto(
+        self,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+        og_guess: float,
+        fg_guess: float,
+        fg_lower: float,
+    ) -> dict:
+        """Try all models and return the one with best R²."""
+        results = []
+
+        # Try each model
+        for model_name, fit_func in [
+            ("exponential", self._fit_exponential),
+            ("gompertz", self._fit_gompertz),
+            ("logistic", self._fit_logistic),
+        ]:
+            result = fit_func(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            if result["fitted"] and result["r_squared"] is not None:
+                results.append(result)
+
+        if not results:
+            # All models failed, return exponential failure for consistent error
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+
+        # Return result with highest R²
+        best = max(results, key=lambda r: r["r_squared"])
+        return best
+
+    def _fit_exponential(
+        self,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+        og_guess: float,
+        fg_guess: float,
+        fg_lower: float,
+    ) -> dict:
+        """Fit exponential decay model."""
+        k_guess = 0.02  # Typical fermentation rate
 
         try:
-            # Fit the curve
-            # FG lower bound: use expected_fg from recipe if available, otherwise 1.000
-            # Allow prediction to go slightly below expected_fg (0.003) for margin
-            # but never below 1.000 as an absolute floor
-            if expected_fg is not None:
-                fg_lower = max(1.000, expected_fg - 0.003)
-            else:
-                fg_lower = 1.000
-
-            popt, pcov = curve_fit(
-                exp_decay,
+            popt, _ = curve_fit(
+                self._exp_decay,
                 times_arr,
                 sgs_arr,
                 p0=[og_guess, fg_guess, k_guess],
@@ -140,38 +242,25 @@ class FermentationCurveFitter:
             )
 
             og_fit, fg_fit, k_fit = popt
-
-            # Calculate R² (coefficient of determination)
-            residuals = sgs_arr - exp_decay(times_arr, *popt)
-            ss_res = np.sum(residuals ** 2)
-            ss_tot = np.sum((sgs_arr - np.mean(sgs_arr)) ** 2)
-            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+            r_squared = self._calculate_r_squared(
+                sgs_arr, self._exp_decay(times_arr, *popt)
+            )
 
             # Check if FG hit the lower bound - prediction may be unreliable
-            # This happens early in fermentation when curve shape isn't fully developed
             fg_hit_bound = fg_fit <= fg_lower + 0.001
+            if fg_hit_bound and r_squared < 0.85:
+                return self._failure_result("insufficient_curve_data")
 
             # Store fitted parameters
             self.og = float(og_fit)
             self.fg = float(fg_fit)
             self.k = float(k_fit)
             self.r_squared = float(r_squared)
+            self.model_type = "exponential"
 
-            # Calculate hours to completion
-            hours_to_completion = self._calculate_completion_time(times_arr[-1], sgs_arr[-1])
-
-            # If FG hit lower bound and R² is not great, mark as unreliable
-            if fg_hit_bound and r_squared < 0.85:
-                return {
-                    "fitted": False,
-                    "model_type": None,
-                    "predicted_og": None,
-                    "predicted_fg": None,
-                    "decay_rate": None,
-                    "r_squared": None,
-                    "hours_to_completion": None,
-                    "reason": "insufficient_curve_data",
-                }
+            hours_to_completion = self._calculate_completion_time(
+                times_arr[-1], sgs_arr[-1]
+            )
 
             return {
                 "fitted": True,
@@ -185,17 +274,129 @@ class FermentationCurveFitter:
             }
 
         except (RuntimeError, ValueError) as e:
-            # Fit failed
+            return self._failure_result(f"fit_failed: {str(e)}")
+
+    def _fit_gompertz(
+        self,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+        og_guess: float,
+        fg_guess: float,
+        fg_lower: float,
+    ) -> dict:
+        """Fit Gompertz S-curve model."""
+        # Initial guesses for Gompertz: mu (max rate), lag (lag time)
+        mu_guess = 0.01  # Max rate
+        lag_guess = times_arr[-1] * 0.1  # 10% of elapsed time as lag estimate
+
+        try:
+            popt, _ = curve_fit(
+                self._gompertz,
+                times_arr,
+                sgs_arr,
+                p0=[og_guess, fg_guess, mu_guess, lag_guess],
+                bounds=(
+                    [1.000, fg_lower, 0.0001, 0],  # lower bounds
+                    [1.200, 1.100, 0.5, times_arr[-1]]  # upper bounds
+                ),
+                maxfev=10000
+            )
+
+            og_fit, fg_fit, mu_fit, lag_fit = popt
+            r_squared = self._calculate_r_squared(
+                sgs_arr, self._gompertz(times_arr, *popt)
+            )
+
+            # Check if FG hit the lower bound
+            fg_hit_bound = fg_fit <= fg_lower + 0.001
+            if fg_hit_bound and r_squared < 0.85:
+                return self._failure_result("insufficient_curve_data")
+
+            # Store fitted parameters
+            self.og = float(og_fit)
+            self.fg = float(fg_fit)
+            self.k = float(mu_fit)  # Store mu as k for consistency
+            self.r_squared = float(r_squared)
+            self.model_type = "gompertz"
+
+            hours_to_completion = self._calculate_completion_time_gompertz(
+                times_arr[-1], sgs_arr[-1], og_fit, fg_fit, mu_fit, lag_fit
+            )
+
             return {
-                "fitted": False,
-                "model_type": None,
-                "predicted_og": None,
-                "predicted_fg": None,
-                "decay_rate": None,
-                "r_squared": None,
-                "hours_to_completion": None,
-                "reason": f"fit_failed: {str(e)}",
+                "fitted": True,
+                "model_type": "gompertz",
+                "predicted_og": self.og,
+                "predicted_fg": self.fg,
+                "decay_rate": self.k,
+                "r_squared": self.r_squared,
+                "hours_to_completion": hours_to_completion,
+                "reason": None,
             }
+
+        except (RuntimeError, ValueError) as e:
+            return self._failure_result(f"fit_failed: {str(e)}")
+
+    def _fit_logistic(
+        self,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+        og_guess: float,
+        fg_guess: float,
+        fg_lower: float,
+    ) -> dict:
+        """Fit Logistic S-curve model."""
+        # Initial guesses: k (rate), t_half (midpoint time)
+        k_guess = 0.05
+        t_half_guess = times_arr[-1] * 0.5  # Halfway point estimate
+
+        try:
+            popt, _ = curve_fit(
+                self._logistic,
+                times_arr,
+                sgs_arr,
+                p0=[og_guess, fg_guess, k_guess, t_half_guess],
+                bounds=(
+                    [1.000, fg_lower, 0.001, 0],  # lower bounds
+                    [1.200, 1.100, 1.0, times_arr[-1] * 2]  # upper bounds
+                ),
+                maxfev=10000
+            )
+
+            og_fit, fg_fit, k_fit, t_half_fit = popt
+            r_squared = self._calculate_r_squared(
+                sgs_arr, self._logistic(times_arr, *popt)
+            )
+
+            # Check if FG hit the lower bound
+            fg_hit_bound = fg_fit <= fg_lower + 0.001
+            if fg_hit_bound and r_squared < 0.85:
+                return self._failure_result("insufficient_curve_data")
+
+            # Store fitted parameters
+            self.og = float(og_fit)
+            self.fg = float(fg_fit)
+            self.k = float(k_fit)
+            self.r_squared = float(r_squared)
+            self.model_type = "logistic"
+
+            hours_to_completion = self._calculate_completion_time_logistic(
+                times_arr[-1], sgs_arr[-1], og_fit, fg_fit, k_fit, t_half_fit
+            )
+
+            return {
+                "fitted": True,
+                "model_type": "logistic",
+                "predicted_og": self.og,
+                "predicted_fg": self.fg,
+                "decay_rate": self.k,
+                "r_squared": self.r_squared,
+                "hours_to_completion": hours_to_completion,
+                "reason": None,
+            }
+
+        except (RuntimeError, ValueError) as e:
+            return self._failure_result(f"fit_failed: {str(e)}")
 
     def _calculate_completion_time(
         self,
@@ -241,6 +442,67 @@ class FermentationCurveFitter:
             return float(max(0, hours_remaining))
         except (ValueError, ZeroDivisionError):
             return 0
+
+    def _calculate_completion_time_gompertz(
+        self,
+        current_time: float,
+        current_sg: float,
+        og: float,
+        fg: float,
+        mu: float,
+        lag: float,
+    ) -> float:
+        """Calculate hours until fermentation completes for Gompertz model.
+
+        Uses numerical search to find when SG drops below threshold.
+        """
+        # Check if current SG is already at or below predicted FG
+        if current_sg <= fg + 0.001:
+            return 0  # Already at FG
+
+        # Calculate SG at completion (FG + small margin)
+        target_sg = fg + 0.002
+
+        # Search forward in time to find when we hit target
+        # Start from current time, step by 1 hour, max 30 days
+        for hours_ahead in range(1, 720):
+            t = current_time + hours_ahead
+            predicted_sg = self._gompertz(t, og, fg, mu, lag)
+            if predicted_sg <= target_sg:
+                return float(hours_ahead)
+
+        # If not found within 30 days, return large estimate
+        return 720.0
+
+    def _calculate_completion_time_logistic(
+        self,
+        current_time: float,
+        current_sg: float,
+        og: float,
+        fg: float,
+        k: float,
+        t_half: float,
+    ) -> float:
+        """Calculate hours until fermentation completes for Logistic model.
+
+        Uses numerical search to find when SG drops below threshold.
+        """
+        # Check if current SG is already at or below predicted FG
+        if current_sg <= fg + 0.001:
+            return 0  # Already at FG
+
+        # Calculate SG at completion (FG + small margin)
+        target_sg = fg + 0.002
+
+        # Search forward in time to find when we hit target
+        for hours_ahead in range(1, 720):
+            t = current_time + hours_ahead
+            predicted_sg = self._logistic(t, og, fg, k, t_half)
+            if predicted_sg <= target_sg:
+                return float(hours_ahead)
+
+        # If not found within 30 days, return large estimate
+        return 720.0
 
     def predict(self, future_times: list[float]) -> list[float]:
         """Predict SG at future time points.

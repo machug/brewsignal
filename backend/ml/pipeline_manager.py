@@ -143,12 +143,14 @@ class MLPipelineManager:
         self,
         device_id: str,
         expected_fg: Optional[float] = None,
+        model: str = "auto",
     ) -> Optional[dict]:
         """Get current ML state and predictions for a device.
 
         Args:
             device_id: Unique device identifier
             expected_fg: Expected final gravity from recipe (constrains predictions)
+            model: Prediction model to use: "exponential", "gompertz", "logistic", or "auto"
 
         Returns:
             Dictionary with device ML state including predictions, or None if no pipeline exists
@@ -164,6 +166,7 @@ class MLPipelineManager:
                 times=pipeline.time_history,
                 sgs=pipeline.sg_history,
                 expected_fg=expected_fg,
+                model=model,
             )
 
             return {

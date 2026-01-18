@@ -18,11 +18,20 @@
 	let reloading = $state(false);
 	let error = $state<string | null>(null);
 
+	// Model selection
+	let selectedModel = $state('auto');
+	const models = [
+		{ value: 'auto', label: 'Auto (Best Fit)' },
+		{ value: 'exponential', label: 'Exponential' },
+		{ value: 'gompertz', label: 'Gompertz (S-Curve)' },
+		{ value: 'logistic', label: 'Logistic' }
+	];
+
 	async function loadPredictions() {
 		loading = true;
 		error = null;
 		try {
-			predictions = await fetchBatchPredictions(batchId);
+			predictions = await fetchBatchPredictions(batchId, selectedModel);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load predictions';
 			console.error('Failed to load ML predictions:', e);
@@ -45,6 +54,11 @@
 		} finally {
 			reloading = false;
 		}
+	}
+
+	// Handle model change
+	function handleModelChange() {
+		loadPredictions();
 	}
 
 	// Always reload fresh predictions on mount
@@ -123,15 +137,28 @@
 	<div class="ml-panel" class:has-anomaly={hasAnomaly}>
 		<div class="panel-header">
 			<h3 class="panel-title">Fermentation Intelligence</h3>
-			<button
-				type="button"
-				class="reload-btn"
-				onclick={handleReload}
-				disabled={reloading || loading}
-				title="Recalculate predictions from database history"
-			>
-				{reloading ? 'Reloading...' : '↻ Reload'}
-			</button>
+			<div class="header-controls">
+				<select
+					class="model-select"
+					bind:value={selectedModel}
+					onchange={handleModelChange}
+					disabled={loading || reloading}
+					title="Select prediction model"
+				>
+					{#each models as m}
+						<option value={m.value}>{m.label}</option>
+					{/each}
+				</select>
+				<button
+					type="button"
+					class="reload-btn"
+					onclick={handleReload}
+					disabled={reloading || loading}
+					title="Recalculate predictions from database history"
+				>
+					{reloading ? 'Reloading...' : '↻'}
+				</button>
+			</div>
 		</div>
 
 		<!-- Anomaly Warning -->
@@ -206,15 +233,21 @@
 
 			<!-- Model confidence section -->
 			<div class="model-info">
+				{#if predictions.model_type}
+					<div class="model-metric">
+						<span class="model-label">Model:</span>
+						<span class="model-value model-type">{predictions.model_type}</span>
+					</div>
+				{/if}
 				{#if predictions.r_squared !== undefined}
 					<div class="model-metric">
-						<span class="model-label">Model fit:</span>
+						<span class="model-label">Fit:</span>
 						<span class="model-value">{(predictions.r_squared * 100).toFixed(0)}%</span>
 					</div>
 				{/if}
 				{#if predictions.num_readings}
 					<div class="model-metric">
-						<span class="model-label">Data points:</span>
+						<span class="model-label">Points:</span>
 						<span class="model-value">{predictions.num_readings}</span>
 					</div>
 				{/if}
@@ -296,6 +329,34 @@
 		font-weight: 600;
 		margin: 0;
 		color: var(--text-primary);
+	}
+
+	.header-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.model-select {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.6875rem;
+		color: var(--text-secondary);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-default);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		max-width: 120px;
+	}
+
+	.model-select:hover:not(:disabled) {
+		color: var(--text-primary);
+		border-color: var(--border-hover);
+	}
+
+	.model-select:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.reload-btn {
@@ -483,6 +544,11 @@
 		font-size: 0.6875rem;
 		font-family: var(--font-mono);
 		color: var(--text-secondary);
+	}
+
+	.model-value.model-type {
+		text-transform: capitalize;
+		color: #3b82f6;
 	}
 
 	/* Unavailable state */

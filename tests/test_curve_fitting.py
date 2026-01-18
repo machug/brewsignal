@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from backend.ml.predictions.curve_fitter import FermentationCurveFitter
+from backend.ml.predictions.curve_fitter import FermentationCurveFitter, PredictionModel
 
 
 class TestFermentationCurveFitter:
@@ -118,3 +118,188 @@ class TestFermentationCurveFitter:
         assert all(1.000 < sg < 1.100 for sg in predictions)
         # Predictions should decline over time
         assert predictions[0] > predictions[1] > predictions[2]
+
+
+class TestMultiModelPredictions:
+    """Tests for multi-model prediction system (Gompertz, Logistic, Auto)."""
+
+    def test_prediction_model_enum(self):
+        """PredictionModel enum has all expected values."""
+        assert PredictionModel.EXPONENTIAL.value == "exponential"
+        assert PredictionModel.GOMPERTZ.value == "gompertz"
+        assert PredictionModel.LOGISTIC.value == "logistic"
+        assert PredictionModel.AUTO.value == "auto"
+
+    def test_fits_gompertz_model(self, fermentation_data):
+        """Fitter fits Gompertz S-curve model to fermentation data."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="gompertz"
+        )
+
+        # Should successfully fit
+        assert result["fitted"] is True
+        assert result["model_type"] == "gompertz"
+
+        # Parameters should be reasonable
+        assert result["predicted_og"] == pytest.approx(fermentation_data["og"], abs=0.005)
+        assert result["predicted_fg"] is not None
+        assert result["r_squared"] > 0.85  # Reasonable fit
+
+    def test_fits_logistic_model(self, fermentation_data):
+        """Fitter fits Logistic S-curve model to fermentation data."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="logistic"
+        )
+
+        # Should successfully fit
+        assert result["fitted"] is True
+        assert result["model_type"] == "logistic"
+
+        # Parameters should be reasonable (logistic fits differently than exponential)
+        # The logistic model may estimate OG differently due to its symmetric nature
+        assert 1.050 < result["predicted_og"] < 1.100  # Reasonable OG range
+        assert result["predicted_fg"] is not None
+        assert result["r_squared"] > 0.85  # Reasonable fit
+
+    def test_auto_mode_selects_best_model(self, fermentation_data):
+        """Auto mode tries all models and returns best R²."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="auto"
+        )
+
+        # Should successfully fit
+        assert result["fitted"] is True
+        assert result["model_type"] in ["exponential", "gompertz", "logistic"]
+        assert result["r_squared"] > 0.85
+
+    def test_exponential_wins_for_exponential_data(self, fermentation_data):
+        """For pure exponential data, exponential or compatible model should fit best."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Fit explicitly with exponential
+        exp_result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="exponential"
+        )
+
+        # Fit with auto
+        auto_result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="auto"
+        )
+
+        # Both should fit well
+        assert exp_result["fitted"] is True
+        assert auto_result["fitted"] is True
+
+        # Auto should return a model with similar or better R²
+        assert auto_result["r_squared"] >= exp_result["r_squared"] - 0.01
+
+    def test_model_parameter_case_insensitive(self, fermentation_data):
+        """Model parameter should be case insensitive."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result_lower = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="exponential"
+        )
+
+        result_upper = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="EXPONENTIAL"
+        )
+
+        assert result_lower["model_type"] == result_upper["model_type"]
+        assert result_lower["predicted_fg"] == pytest.approx(result_upper["predicted_fg"], abs=0.001)
+
+    def test_unknown_model_defaults_to_exponential(self, fermentation_data):
+        """Unknown model name should default to exponential."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            model="unknown_model"
+        )
+
+        # Should fall back to exponential
+        assert result["fitted"] is True
+        assert result["model_type"] == "exponential"
+
+    def test_gompertz_handles_lag_phase_data(self):
+        """Gompertz model handles fermentation with lag phase."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Generate data with lag phase (flat start, then fermentation)
+        og = 1.055
+        fg = 1.012
+        lag = 12  # 12 hours lag
+        mu = 0.01  # growth rate
+
+        # Create data points: flat for lag period, then decay
+        hours = list(range(0, 120, 4))
+        sgs = []
+        for t in hours:
+            if t < lag:
+                sgs.append(og - 0.001 * (t / lag))  # Very slow initial drop
+            else:
+                # Exponential decay after lag
+                sgs.append(fg + (og - fg) * np.exp(-mu * (t - lag)))
+
+        result = fitter.fit(hours, sgs, model="gompertz")
+
+        # Should fit with reasonable parameters
+        assert result["fitted"] is True
+        assert result["model_type"] == "gompertz"
+        assert result["predicted_fg"] < 1.025  # Should predict reasonably low FG
+
+    def test_all_models_return_completion_time(self, fermentation_data):
+        """All models should return hours_to_completion."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Test partial fermentation data (first half)
+        midpoint = len(fermentation_data["hours"]) // 2
+
+        for model_type in ["exponential", "gompertz", "logistic"]:
+            result = fitter.fit(
+                fermentation_data["hours"][:midpoint],
+                fermentation_data["sg"][:midpoint],
+                model=model_type
+            )
+
+            if result["fitted"]:
+                assert result["hours_to_completion"] is not None
+                assert result["hours_to_completion"] >= 0
+
+    def test_expected_fg_constrains_all_models(self, fermentation_data):
+        """Expected FG constraint should apply to all model types."""
+        fitter = FermentationCurveFitter(min_readings=10)
+        expected_fg = 1.010
+
+        for model_type in ["exponential", "gompertz", "logistic"]:
+            result = fitter.fit(
+                fermentation_data["hours"],
+                fermentation_data["sg"],
+                expected_fg=expected_fg,
+                model=model_type
+            )
+
+            if result["fitted"]:
+                # Predicted FG should respect the constraint (with margin)
+                assert result["predicted_fg"] >= expected_fg - 0.003

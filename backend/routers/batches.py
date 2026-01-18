@@ -458,8 +458,20 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{batch_id}/predictions", response_model=BatchPredictionsResponse)
-async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db)):
+async def get_batch_predictions(
+    batch_id: int,
+    model: str = Query("auto", description="Prediction model: exponential, gompertz, logistic, or auto (best fit)"),
+    db: AsyncSession = Depends(get_db),
+):
     """Get ML predictions for a batch.
+
+    Args:
+        batch_id: The batch ID to get predictions for
+        model: Model type to use for predictions:
+            - "auto": Try all models, return best R² (default)
+            - "exponential": Simple exponential decay
+            - "gompertz": S-curve with lag phase
+            - "logistic": Symmetric S-curve
 
     Returns:
         Dictionary containing:
@@ -468,7 +480,7 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
         - predicted_og (float): Predicted original gravity
         - estimated_completion (str): ISO timestamp of predicted completion
         - hours_to_completion (float): Hours until fermentation completes
-        - model_type (str): Type of model used ("exponential")
+        - model_type (str): Type of model used ("exponential", "gompertz", "logistic")
         - r_squared (float): Model fit quality (0.0-1.0)
         - num_readings (int): Number of readings used for prediction
         - error (str): Error message if available=False
@@ -498,13 +510,13 @@ async def get_batch_predictions(batch_id: int, db: AsyncSession = Depends(get_db
     # Get expected FG from recipe to constrain predictions
     expected_fg = batch.recipe.fg if batch.recipe else None
 
-    # Get device state with expected FG for prediction bounds
-    device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
+    # Get device state with expected FG for prediction bounds and selected model
+    device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, model=model)
 
     # Auto-reload from database if pipeline is empty or has insufficient history
     if not device_state or device_state.get("history_count", 0) < 10:
         await ml_mgr.reload_from_database(batch.device_id, batch_id, db)
-        device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
+        device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, model=model)
 
     if not device_state or not device_state.get("predictions"):
         return {"available": False}

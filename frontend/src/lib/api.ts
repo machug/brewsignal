@@ -132,8 +132,20 @@ export interface MLPredictions {
 	reason?: string;
 }
 
-export async function fetchBatchPredictions(batchId: number): Promise<MLPredictions> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/predictions`);
+export async function fetchBatchPredictions(
+	batchId: number,
+	model: string = 'auto'
+): Promise<MLPredictions> {
+	const params = new URLSearchParams();
+	if (model && model !== 'auto') {
+		params.append('model', model);
+	}
+	const queryString = params.toString();
+	const url = queryString
+		? `${BASE_URL}/batches/${batchId}/predictions?${queryString}`
+		: `${BASE_URL}/batches/${batchId}/predictions`;
+
+	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch predictions: ${response.statusText}`);
 	}

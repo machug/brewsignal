@@ -1,6 +1,6 @@
 # BrewSignal
 
-![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.8.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.9.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
 A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. Supports Tilt, iSpindel, and GravityMon devices.
 
@@ -52,6 +52,13 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
   - Temperature ranges, attenuation, and alcohol tolerance for each strain
   - Batch yeast assignment with ability to override recipe yeast
   - Search and browse yeast strains with detailed property cards
+- **AI Brewing Assistant** (v2.9.0) - Conversational AI for brewing guidance
+  - AG-UI protocol-based streaming interface for real-time responses
+  - **Tool-Augmented** - Access to yeast library, style guides, inventory, fermentation data
+  - **Cross-Thread Memory** - Search and recall information from previous conversations
+  - **Web Access** - Fetch brewing resources and documentation from the web
+  - **Chat Management** - Rename threads, persistent conversation history
+  - Powered by configurable LLM backend (OpenAI, Anthropic, etc. via LiteLLM)
 - **Data Export** - Download all readings as CSV
 - **Dark Theme** - Easy on the eyes during late-night brew checks
 
@@ -332,6 +339,70 @@ The database includes strains from major yeast producers:
 - Escarpment Labs
 - Mangrove Jack's
 - And many more...
+
+## AI Brewing Assistant (v2.9.0)
+
+BrewSignal includes an AI-powered brewing assistant that can help with recipe development, fermentation monitoring, and brewing questions.
+
+### Features
+
+- **Tool-Augmented Responses** - The assistant has direct access to:
+  - Yeast strain database (449+ strains with fermentation characteristics)
+  - BJCP style guidelines (116 beer styles)
+  - Hop and fermentable reference libraries
+  - Your inventory (hops, yeast, equipment)
+  - Active fermentation data and ML predictions
+  - Ambient conditions and temperature control status
+
+- **Cross-Thread Memory** - Search and recall information from previous conversations
+  - Ask about recipes discussed in other chats
+  - Reference past fermentation advice
+  - The assistant can search thread titles and message content
+
+- **Web Access** - Fetch brewing resources from the web
+  - Look up specific brewing articles or documentation
+  - Access recipe information from URLs you provide
+
+- **Chat Management**
+  - Rename conversation threads when topics shift
+  - Persistent conversation history with sidebar navigation
+  - Create new chats without losing previous conversations
+
+### Configuration
+
+The assistant requires an LLM provider API key. Configure in your environment:
+
+```bash
+# OpenAI (default)
+export OPENAI_API_KEY=sk-...
+
+# Or Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Configure provider in System settings
+```
+
+The assistant uses LiteLLM for provider abstraction, supporting OpenAI, Anthropic, Azure, and other backends.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_yeast` | Search yeast strains by name, producer, type, attenuation range |
+| `search_styles` | Search BJCP beer styles with vital statistics |
+| `search_hop_varieties` | Search hop varieties by name, purpose, alpha acid |
+| `search_fermentables` | Search grains, sugars, and extracts |
+| `search_inventory_hops` | Check hop inventory levels |
+| `search_inventory_yeast` | Check yeast inventory with expiration |
+| `get_equipment` | Get your brewing equipment profiles |
+| `list_fermentations` | List active and recent fermentations |
+| `get_fermentation_status` | Get detailed status of a specific batch |
+| `get_fermentation_history` | Get historical readings and ML predictions |
+| `get_ambient_conditions` | Get current temperature and humidity |
+| `save_recipe` | Save a recipe to your library |
+| `fetch_url` | Fetch and read content from a URL |
+| `rename_chat` | Rename the current conversation thread |
+| `search_threads` | Search previous conversations for recipes and discussions |
 
 ## API Endpoints
 

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **AI Assistant Memory** - Cross-thread conversation search and recall
+  - New `search_threads` tool allows the assistant to search previous conversations
+  - Searches thread titles and message content with context snippets
+  - Enables recalling recipes, discussions, and brewing info from past chats
+- **AI Assistant Chat Management** - Enhanced conversation control
+  - New `rename_chat` tool allows the assistant to rename conversation threads
+  - Title locking prevents auto-summarization from overwriting manually set titles
+  - Dynamic sidebar updates when threads are renamed (real-time via STATE_DELTA)
+- **AI Assistant Web Access** - New `fetch_url` tool for retrieving web content
+  - Assistant can fetch and read content from URLs
+  - Useful for looking up brewing resources, recipes, and documentation
+
+### Fixed
+- **New Chat Thread Creation** - Fixed bug where starting a new chat reused old thread ID
+  - `useAgent.clear()` now properly resets `currentThreadId`
+  - New threads immediately appear in sidebar after first message
+  - Thread list auto-refreshes on conversation completion
+
 ## [2.9.0] - 2026-01-17
 
 ### Added

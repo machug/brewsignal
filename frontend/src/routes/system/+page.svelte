@@ -1192,13 +1192,38 @@
 							</select>
 						</div>
 
-						{#if aiProviders.find(p => p.id === aiProvider)}
+						{#if aiProvider === 'local'}
+							<!-- Ollama Setup Guide -->
+							<div class="ollama-setup-guide">
+								<h4 class="setup-guide-title">Setup Ollama (3 steps)</h4>
+								<ol class="setup-steps">
+									<li>
+										<strong>Install Ollama</strong>
+										<p>Download and install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai/download</a></p>
+										<code class="setup-code">curl -fsSL https://ollama.ai/install.sh | sh</code>
+									</li>
+									<li>
+										<strong>Pull a model</strong>
+										<p>Download a model (phi3:mini recommended for Pi)</p>
+										<code class="setup-code">ollama pull phi3:mini</code>
+									</li>
+									<li>
+										<strong>Verify it's running</strong>
+										<p>Ollama runs on port 11434 by default</p>
+										<code class="setup-code">ollama list</code>
+									</li>
+								</ol>
+								<p class="setup-note">
+									Running Ollama on a different machine? Update the URL below to point to that server (e.g., http://192.168.1.100:11434)
+								</p>
+							</div>
+						{:else if aiProviders.find(p => p.id === aiProvider)}
 							{@const selectedProvider = aiProviders.find(p => p.id === aiProvider)}
 							<p class="setting-hint mb-3">
 								{selectedProvider?.description}
 								{#if selectedProvider?.setup_url}
 									<a href={selectedProvider.setup_url} target="_blank" rel="noopener" class="text-amber-400 hover:underline ml-1">
-										Setup guide →
+										Get API key →
 									</a>
 								{/if}
 							</p>
@@ -2088,6 +2113,78 @@
 	.input-number {
 		width: 6rem;
 		text-align: right;
+	}
+
+	/* Ollama Setup Guide */
+	.ollama-setup-guide {
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		padding: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.setup-guide-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 0.75rem;
+	}
+
+	.setup-steps {
+		list-style: decimal;
+		padding-left: 1.25rem;
+		margin: 0;
+	}
+
+	.setup-steps li {
+		margin-bottom: 0.75rem;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.setup-steps li:last-child {
+		margin-bottom: 0;
+	}
+
+	.setup-steps strong {
+		color: var(--text-primary);
+		font-weight: 500;
+	}
+
+	.setup-steps p {
+		margin: 0.25rem 0;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.setup-steps a {
+		color: var(--accent);
+	}
+
+	.setup-steps a:hover {
+		text-decoration: underline;
+	}
+
+	.setup-code {
+		display: block;
+		margin-top: 0.375rem;
+		padding: 0.375rem 0.5rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.6875rem;
+		background: var(--bg-card);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.25rem;
+		color: var(--accent);
+		user-select: all;
+	}
+
+	.setup-note {
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--border-subtle);
+		font-size: 0.75rem;
+		color: var(--text-muted);
 	}
 
 	@media (max-width: 640px) {

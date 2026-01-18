@@ -84,6 +84,7 @@
 	let aiTestResult = $state<{ success: boolean; response?: string; error?: string } | null>(null);
 	let aiProviders = $state<Array<{ id: string; name: string; description: string; requires_api_key: boolean; setup_url: string }>>([]);
 	let aiModels = $state<Array<{ id: string; name: string; description: string }>>([]);
+	let aiHasEnvKey = $state(false);
 
 	// Derived unit helpers
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -203,6 +204,18 @@
 		} catch (e) {
 			console.error('Failed to load AI models:', e);
 			aiModels = [];
+		}
+	}
+
+	async function loadAiStatus() {
+		try {
+			const response = await fetch('/api/assistant/status');
+			if (response.ok) {
+				const data = await response.json();
+				aiHasEnvKey = data.has_env_api_key ?? false;
+			}
+		} catch (e) {
+			console.error('Failed to load AI status:', e);
 		}
 	}
 
@@ -521,7 +534,8 @@
 			loadStorageStats(),
 			loadTimezones(),
 			loadHAStatus(),
-			loadAiProviders()
+			loadAiProviders(),
+			loadAiStatus()
 		]);
 		syncConfigFromStore();
 		loading = false;
@@ -1239,10 +1253,16 @@
 								<input
 									type="password"
 									bind:value={aiApiKey}
-									placeholder="sk-..."
+									placeholder={aiHasEnvKey ? '(using environment variable)' : 'sk-...'}
 									class="input-field"
 								/>
 							</div>
+							{#if aiHasEnvKey && !aiApiKey}
+								<div class="env-key-notice">
+									<span class="env-key-icon">✓</span>
+									<span>API key detected from environment variable. You can override it by entering a key above.</span>
+								</div>
+							{/if}
 						{/if}
 
 						<!-- Base URL (for local/Ollama) -->
@@ -2185,6 +2205,23 @@
 		border-top: 1px solid var(--border-subtle);
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+
+	.env-key-notice {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		background: rgba(34, 197, 94, 0.1);
+		border: 1px solid rgba(34, 197, 94, 0.2);
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: rgb(34, 197, 94);
+	}
+
+	.env-key-icon {
+		font-weight: 600;
 	}
 
 	@media (max-width: 640px) {

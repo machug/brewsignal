@@ -376,6 +376,11 @@ Configure the assistant in **System Settings** → **AI Assistant**:
 2. **API Key** - Enter your API key (stored securely in the database)
 3. **Model** - Choose the model to use (e.g., gpt-4o, claude-sonnet-4-20250514)
 
+**Environment Variables** (alternative to UI configuration):
+- API keys can also be set via environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.)
+- The UI will detect and indicate when an env var key is being used
+- Keys entered in the UI override environment variables
+
 For **Ollama** (local/self-hosted):
 - Install Ollama on your system: https://ollama.ai
 - Pull a model: `ollama pull llama3.2`

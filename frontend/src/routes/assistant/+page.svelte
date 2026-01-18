@@ -31,6 +31,13 @@
 				);
 			}
 		},
+		onComplete: () => {
+			// If this is a new thread (not in list), refresh the thread list
+			const threadId = agent.threadId;
+			if (threadId && !threads.some(t => t.id === threadId)) {
+				fetchThreads();
+			}
+		},
 		onError: (error) => {
 			console.error('Agent error:', error);
 		}

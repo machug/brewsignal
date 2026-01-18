@@ -109,6 +109,7 @@ export function useAgent(config: UseAgentConfig) {
 	function clear(): void {
 		client.abort();
 		agentState.clear();
+		currentThreadId = undefined;  // Reset thread ID for new conversation
 	}
 
 	/**

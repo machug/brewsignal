@@ -554,6 +554,23 @@ async def _run_agent_loop(
                 result=result_str,
             ).to_sse()
 
+            # Emit STATE_DELTA for rename_chat success to update UI
+            if tool_name == "rename_chat" and "success" in result_str:
+                try:
+                    result_data = json.loads(result_str)
+                    if result_data.get("success"):
+                        yield AGUIEvent(
+                            "STATE_DELTA",
+                            delta=[
+                                {"op": "add", "path": "/renamedThread", "value": {
+                                    "id": result_data.get("thread_id"),
+                                    "title": result_data.get("new_title"),
+                                }},
+                            ],
+                        ).to_sse()
+                except json.JSONDecodeError:
+                    pass
+
             # Add tool result to messages for next iteration
             messages.append({
                 "role": "tool",

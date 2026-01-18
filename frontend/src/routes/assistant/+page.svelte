@@ -23,6 +23,13 @@
 			if (state.recipe) {
 				console.log('Recipe extracted:', state.recipe);
 			}
+			// Handle thread rename from agent
+			if (state.renamedThread) {
+				const renamed = state.renamedThread as { id: string; title: string };
+				threads = threads.map(t =>
+					t.id === renamed.id ? { ...t, title: renamed.title } : t
+				);
+			}
 		},
 		onError: (error) => {
 			console.error('Agent error:', error);

@@ -2684,6 +2684,7 @@ async def _rename_chat(
 
         old_title = thread.title
         thread.title = title
+        thread.title_locked = True  # Prevent auto-summarization from overwriting
         await db.commit()
 
         logger.info(f"Renamed thread {thread_id}: '{old_title}' -> '{title}'")

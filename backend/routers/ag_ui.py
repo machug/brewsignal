@@ -345,12 +345,15 @@ async def _summarize_thread_title(
         if len(title) > 60:
             title = title[:57] + "..."
 
-        # Update thread title
+        # Update thread title (only if not manually locked)
         result = await db.execute(
             select(AgUiThread).where(AgUiThread.id == thread_id)
         )
         thread = result.scalar_one_or_none()
         if thread:
+            if thread.title_locked:
+                logger.debug(f"Skipping auto-summarization for thread {thread_id} - title is locked")
+                return thread.title
             thread.title = title
             await db.commit()
             logger.info(f"Updated thread {thread_id} title to: {title}")

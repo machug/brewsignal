@@ -1814,6 +1814,7 @@ class AgUiThread(Base):
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     title: Mapped[Optional[str]] = mapped_column(String(200))
+    title_locked: Mapped[bool] = mapped_column(default=False)  # Prevents auto-summarization
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),

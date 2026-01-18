@@ -277,6 +277,8 @@ async def init_db():
         await conn.run_sync(_migrate_yeast_strains_alcohol_tolerance)
         # Add comments column to styles for alias searching (NEIPA -> Hazy IPA)
         reseed_styles = await conn.run_sync(_migrate_add_style_comments_column)
+        # Add title_locked column to ag_ui_threads
+        await conn.run_sync(_migrate_add_ag_ui_thread_title_locked)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
 
@@ -1433,6 +1435,20 @@ def _migrate_add_style_comments_column(conn):
         # Return True to signal that styles need re-seeding
         return True
     return False
+
+
+def _migrate_add_ag_ui_thread_title_locked(conn):
+    """Add title_locked column to ag_ui_threads table to prevent auto-summarization overwrites."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "ag_ui_threads" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("ag_ui_threads")]
+    if "title_locked" not in columns:
+        conn.execute(text("ALTER TABLE ag_ui_threads ADD COLUMN title_locked INTEGER DEFAULT 0"))
+        print("Migration: Added title_locked column to ag_ui_threads table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

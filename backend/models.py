@@ -533,6 +533,9 @@ class Batch(Base):
     # Soft delete timestamp
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
+    # Reading control - pause storage during manual gravity checks
+    readings_paused: Mapped[bool] = mapped_column(default=False)
+
     # Relationships
     recipe: Mapped[Optional["Recipe"]] = relationship(back_populates="batches")
     device: Mapped[Optional["Device"]] = relationship()
@@ -1709,6 +1712,8 @@ class BatchUpdate(BaseModel):
     cooler_entity_id: Optional[str] = None
     temp_target: Optional[float] = None
     temp_hysteresis: Optional[float] = None
+    # Reading control
+    readings_paused: Optional[bool] = None
 
     @field_validator("status")
     @classmethod
@@ -1771,6 +1776,8 @@ class BatchResponse(BaseModel):
     cooler_entity_id: Optional[str] = None
     temp_target: Optional[float] = None
     temp_hysteresis: Optional[float] = None
+    # Reading control
+    readings_paused: bool = False
 
     @field_serializer('brew_date', 'start_time', 'end_time', 'created_at', 'deleted_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:

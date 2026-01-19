@@ -418,6 +418,8 @@ export interface BatchResponse {
 	temp_hysteresis?: number;
 	// Soft delete
 	deleted_at?: string;
+	// Reading control
+	readings_paused: boolean;
 }
 
 export interface BatchCreate {
@@ -453,6 +455,8 @@ export interface BatchUpdate {
 	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
+	// Reading control
+	readings_paused?: boolean;
 }
 
 export interface BatchProgressResponse {

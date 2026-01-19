@@ -32,6 +32,7 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 	let tempControlCollapsed = $state(false);
+	let pauseUpdating = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
@@ -188,6 +189,19 @@
 			error = e instanceof Error ? e.message : 'Failed to delete batch';
 			deleting = false;
 			showDeleteConfirm = false;
+		}
+	}
+
+	async function handleTogglePause() {
+		if (!batch || pauseUpdating) return;
+
+		pauseUpdating = true;
+		try {
+			batch = await updateBatch(batch.id, { readings_paused: !batch.readings_paused });
+		} catch (e) {
+			console.error('Failed to toggle pause:', e);
+		} finally {
+			pauseUpdating = false;
 		}
 	}
 
@@ -415,6 +429,30 @@
 						{/each}
 					</select>
 				</div>
+				<!-- Pause readings button (only for fermenting/conditioning) -->
+				{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
+					<button
+						type="button"
+						class="pause-btn"
+						class:paused={batch.readings_paused}
+						onclick={handleTogglePause}
+						disabled={pauseUpdating}
+						title={batch.readings_paused ? 'Resume storing readings' : 'Pause storing readings'}
+					>
+						{#if batch.readings_paused}
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+								<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Resume
+						{:else}
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Pause
+						{/if}
+					</button>
+				{/if}
 				<button type="button" class="edit-btn" onclick={() => (isEditing = true)}>
 					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -476,6 +514,24 @@
 						{/if}
 					</div>
 				</div>
+			</div>
+		{/if}
+
+		<!-- Readings Paused Banner -->
+		{#if batch.readings_paused && (batch.status === 'fermenting' || batch.status === 'conditioning')}
+			<div class="paused-banner">
+				<div class="paused-header">
+					<svg class="paused-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<h3 class="paused-title">Readings Paused</h3>
+				</div>
+				<p class="paused-text">
+					Hydrometer readings are not being stored. Live readings still display but won't be saved to the fermentation history.
+				</p>
+				<button type="button" class="resume-btn" onclick={handleTogglePause} disabled={pauseUpdating}>
+					{pauseUpdating ? 'Resuming...' : 'Resume Readings'}
+				</button>
 			</div>
 		{/if}
 
@@ -844,6 +900,68 @@
 		font-weight: 500;
 	}
 
+	/* Readings Paused Banner */
+	.paused-banner {
+		margin-bottom: 1.5rem;
+		padding: 1.25rem;
+		background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(251, 191, 36, 0.05) 100%);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		border-radius: 0.75rem;
+		text-align: center;
+	}
+
+	.paused-header {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.paused-icon {
+		width: 1.5rem;
+		height: 1.5rem;
+		color: #f59e0b;
+	}
+
+	.paused-title {
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: #f59e0b;
+		margin: 0;
+	}
+
+	.paused-text {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		margin: 0 0 1rem 0;
+	}
+
+	.resume-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: #f59e0b;
+		background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: all var(--transition);
+	}
+
+	.resume-btn:hover:not(:disabled) {
+		background: rgba(245, 158, 11, 0.25);
+		border-color: rgba(245, 158, 11, 0.6);
+	}
+
+	.resume-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	.back-link {
 		margin-bottom: 1.5rem;
 	}
@@ -1039,6 +1157,44 @@
 
 	.delete-btn:hover {
 		color: var(--negative);
+	}
+
+	.pause-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: all var(--transition);
+		color: var(--text-secondary);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+	}
+
+	.pause-btn:hover:not(:disabled) {
+		color: #f59e0b;
+		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(245, 158, 11, 0.1);
+	}
+
+	.pause-btn.paused {
+		color: #f59e0b;
+		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(245, 158, 11, 0.15);
+	}
+
+	.pause-btn.paused:hover:not(:disabled) {
+		color: var(--positive);
+		border-color: rgba(34, 197, 94, 0.4);
+		background: rgba(34, 197, 94, 0.1);
+	}
+
+	.pause-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.btn-icon {

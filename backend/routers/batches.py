@@ -303,6 +303,9 @@ async def update_batch(
         batch.temp_target = update.temp_target
     if update.temp_hysteresis is not None:
         batch.temp_hysteresis = update.temp_hysteresis
+    # Reading control
+    if update.readings_paused is not None:
+        batch.readings_paused = update.readings_paused
 
     await db.commit()
     await db.refresh(batch)

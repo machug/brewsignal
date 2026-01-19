@@ -201,11 +201,14 @@ class CalibrationRequest(BaseModel):
             # Linear requires either points or temp_points (or both)
             if cal_data is None:
                 raise ValueError("calibration_type 'linear' requires calibration_data")
-            if "points" not in cal_data and "temp_points" not in cal_data:
+            # Check for actual data (not null) - use .get() to handle missing keys and None values
+            has_points = cal_data.get("points") is not None
+            has_temp_points = cal_data.get("temp_points") is not None
+            if not has_points and not has_temp_points:
                 raise ValueError("linear calibration requires 'points' and/or 'temp_points'")
 
-            # Validate SG points if present
-            if "points" in cal_data:
+            # Validate SG points if present and not null
+            if has_points:
                 points = cal_data["points"]
                 if not isinstance(points, list) or len(points) < 1:
                     raise ValueError("linear calibration requires at least 1 point")
@@ -219,8 +222,8 @@ class CalibrationRequest(BaseModel):
                     if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
                         raise ValueError("SG calibration points must be between 0.990 and 1.200")
 
-            # Validate temp_points if present
-            if "temp_points" in cal_data:
+            # Validate temp_points if present and not null
+            if has_temp_points:
                 temp_points = cal_data["temp_points"]
                 if not isinstance(temp_points, list) or len(temp_points) < 1:
                     raise ValueError("linear calibration requires at least 1 temp_point")

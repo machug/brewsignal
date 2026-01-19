@@ -451,7 +451,7 @@
 		top: 0;
 		left: 0;
 		height: 100%;
-		background: linear-gradient(90deg, #f59e0b, #84cc16);
+		background: linear-gradient(90deg, var(--recipe-accent), var(--activity-active));
 		border-radius: 3px;
 		transition: width 0.5s ease-out;
 	}

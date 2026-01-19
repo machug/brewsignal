@@ -816,7 +816,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #3b82f6, #60a5fa);
+		background: linear-gradient(90deg, var(--accent), var(--tilt-blue));
 		border-radius: 4px;
 		transition: width 0.5s ease;
 	}
@@ -832,7 +832,7 @@
 	}
 
 	.status-warning {
-		color: #f59e0b;
+		color: var(--recipe-accent);
 	}
 
 	.status-active {
@@ -1494,7 +1494,7 @@
 	}
 
 	.modal-btn.delete:hover {
-		background: #dc2626;
+		background: var(--negative);
 	}
 
 	.modal-btn:disabled {

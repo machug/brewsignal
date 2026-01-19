@@ -1300,7 +1300,7 @@
 		color: white;
 	}
 
-	.btn-delete:hover:not(:disabled) { background: #dc2626; }
+	.btn-delete:hover:not(:disabled) { background: var(--negative); }
 	.btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
 
 	@media (max-width: 640px) {

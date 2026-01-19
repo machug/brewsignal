@@ -256,6 +256,10 @@ async def init_db():
         await conn.run_sync(_migrate_create_yeast_strains_table)  # Create yeast strain reference table
         await conn.run_sync(_migrate_add_yeast_strain_to_batches)  # Add yeast override to batches
 
+        # Add readings_paused column to batches
+        from backend.migrations.add_readings_paused import migrate_add_readings_paused
+        await migrate_add_readings_paused(conn)
+
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
 

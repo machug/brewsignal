@@ -2,6 +2,8 @@
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
+	import StatusBadge from './StatusBadge.svelte';
+	import { statusConfig } from './status';
 
 	interface Props {
 		batch: BatchResponse;
@@ -14,15 +16,6 @@
 	}
 
 	let { batch, progress, liveReading = null, expanded = false, onToggleExpand, onStatusChange, onViewDetails }: Props = $props();
-
-	// Status configuration - colors reference app.css design tokens
-	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-		planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
-		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
-		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
-		completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
-		archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
-	};
 
 	// Temperature status indicators
 	const tempStatusConfig: Record<string, { icon: string; color: string }> = {
@@ -121,14 +114,10 @@
 				{/if}
 				<button
 					type="button"
-					class="status-pill"
-					style="color: {statusInfo.color}; background: {statusInfo.bg};"
+					class="status-btn"
 					onclick={() => onStatusChange?.(batch.status)}
 				>
-					{#if batch.status === 'fermenting'}
-						<span class="status-dot"></span>
-					{/if}
-					{statusInfo.label}
+					<StatusBadge status={batch.status} variant="badge" />
 				</button>
 			</div>
 		</div>
@@ -352,38 +341,18 @@
 		white-space: nowrap;
 	}
 
-	/* Status pill */
-	.status-pill {
+	/* Status button wrapper */
+	.status-btn {
 		flex-shrink: 0;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-		padding: 0.375rem 0.75rem;
-		border-radius: 9999px;
+		background: none;
 		border: none;
+		padding: 0;
 		cursor: pointer;
 		transition: opacity var(--transition);
 	}
 
-	.status-pill:hover {
+	.status-btn:hover {
 		opacity: 0.85;
-	}
-
-	.status-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: currentColor;
-		animation: pulse 2s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.4; }
 	}
 
 	/* Metrics */

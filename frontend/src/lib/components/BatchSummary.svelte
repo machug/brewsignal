@@ -1,21 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import type { BatchResponse } from '$lib/api';
+	import type { BatchResponse, BatchStatus } from '$lib/api';
+	import StatusBadge from './StatusBadge.svelte';
+	import { statusConfig } from './status';
 
 	interface Props {
 		batches: BatchResponse[];
 	}
 
 	let { batches }: Props = $props();
-
-	// Status configuration - colors reference app.css design tokens
-	const statusConfig: Record<string, { label: string; color: string }> = {
-		planning: { label: 'Planning', color: 'var(--status-planning)' },
-		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)' },
-		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)' },
-		completed: { label: 'Completed', color: 'var(--status-completed)' },
-		archived: { label: 'Archived', color: 'var(--status-archived)' }
-	};
 
 	// Count batches by status
 	let statusCounts = $derived(
@@ -73,12 +66,11 @@
 			{#each Object.entries(statusCounts) as [status, count]}
 				{#if count > 0}
 					<span
-						class="status-pill"
+						class="status-pill-wrapper"
 						class:active={status === 'fermenting' || status === 'conditioning'}
-						style="--status-color: {statusConfig[status]?.color || 'var(--text-muted)'}"
 					>
 						<span class="pill-count">{count}</span>
-						{statusConfig[status]?.label || status}
+						<StatusBadge status={status as BatchStatus} variant="text" size="sm" />
 					</span>
 				{/if}
 			{/each}
@@ -95,12 +87,7 @@
 					<span class="batch-number">#{featuredBatch.batch_number || '?'}</span>
 					<div class="batch-info">
 						<span class="batch-name">{featuredBatch.name || featuredBatch.recipe?.name || 'Unnamed'}</span>
-						<span class="batch-status" style="color: {statusConfig[featuredBatch.status]?.color}">
-							{#if featuredBatch.status === 'fermenting'}
-								<span class="status-dot"></span>
-							{/if}
-							{statusConfig[featuredBatch.status]?.label}
-						</span>
+						<StatusBadge status={featuredBatch.status} variant="text" size="sm" />
 					</div>
 				</div>
 				<div class="featured-right">
@@ -210,24 +197,23 @@
 		margin-bottom: 0.75rem;
 	}
 
-	.status-pill {
+	.status-pill-wrapper {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
 		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--status-color);
 		background: var(--bg-elevated);
 		padding: 0.25rem 0.5rem;
 		border-radius: 9999px;
 	}
 
-	.status-pill.active {
-		background: color-mix(in srgb, var(--status-color) 12%, transparent);
+	.status-pill-wrapper.active {
+		background: rgba(245, 158, 11, 0.12);
 	}
 
 	.pill-count {
 		font-weight: 700;
+		color: var(--text-secondary);
 	}
 
 	/* Featured batch */
@@ -278,29 +264,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.batch-status {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.02em;
-	}
-
-	.status-dot {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: currentColor;
-		animation: pulse 2s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.4; }
 	}
 
 	.featured-right {

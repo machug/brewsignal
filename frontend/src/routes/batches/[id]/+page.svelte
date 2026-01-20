@@ -14,6 +14,7 @@
 	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
 	import BatchAlertsCard from '$lib/components/batch/BatchAlertsCard.svelte';
 	import FermentationChart from '$lib/components/FermentationChart.svelte';
+	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
 	let controlWs: WebSocket | null = null;
@@ -35,15 +36,6 @@
 	let pauseUpdating = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
-
-	// Status configuration - colors reference app.css design tokens
-	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-		planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
-		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
-		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
-		completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
-		archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
-	};
 
 	const statusOptions: BatchStatus[] = ['planning', 'fermenting', 'conditioning', 'completed', 'archived'];
 

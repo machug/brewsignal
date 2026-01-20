@@ -598,7 +598,7 @@
 	}
 
 	.modal-btn.delete:hover {
-		background: #dc2626;
+		background: var(--negative);
 	}
 
 	.modal-btn:disabled {

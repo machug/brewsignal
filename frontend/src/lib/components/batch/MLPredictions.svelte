@@ -114,10 +114,10 @@
 		// sg_rate is in points per hour (e.g., -0.001 means dropping 0.001 SG per hour)
 		const absRate = Math.abs(sgRate);
 
-		if (absRate > 0.002) return { label: 'Very Active', color: '#22c55e', emoji: '🔥' };
-		if (absRate > 0.0005) return { label: 'Active', color: '#84cc16', emoji: '✨' };
-		if (absRate > 0.0001) return { label: 'Slowing', color: '#eab308', emoji: '🐢' };
-		return { label: 'Complete', color: '#6b7280', emoji: '✓' };
+		if (absRate > 0.002) return { label: 'Very Active', color: 'var(--activity-very-active)', emoji: '🔥' };
+		if (absRate > 0.0005) return { label: 'Active', color: 'var(--activity-active)', emoji: '✨' };
+		if (absRate > 0.0001) return { label: 'Slowing', color: 'var(--activity-slowing)', emoji: '🐢' };
+		return { label: 'Complete', color: 'var(--activity-complete)', emoji: '✓' };
 	});
 
 	// Check for anomalies

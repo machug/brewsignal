@@ -858,10 +858,10 @@
 		align-items: center;
 		gap: var(--space-3);
 		padding: var(--space-3) var(--space-4);
-		background: var(--error-bg, rgba(239, 68, 68, 0.1));
-		border: 1px solid var(--negative, #ef4444);
+		background: var(--error-bg);
+		border: 1px solid var(--negative);
 		border-radius: 6px;
-		color: var(--negative, #ef4444);
+		color: var(--negative);
 		font-size: 14px;
 	}
 
@@ -885,7 +885,7 @@
 		background: transparent;
 		border: none;
 		border-radius: 4px;
-		color: var(--negative, #ef4444);
+		color: var(--negative);
 		cursor: pointer;
 		opacity: 0.7;
 		transition: opacity 0.15s ease, background 0.15s ease;
@@ -894,7 +894,7 @@
 
 	.validation-error .error-dismiss:hover {
 		opacity: 1;
-		background: rgba(239, 68, 68, 0.15);
+		background: var(--negative-muted);
 	}
 
 	.validation-error .error-dismiss svg {
@@ -1912,14 +1912,14 @@
 		flex-shrink: 0;
 		width: 20px;
 		height: 20px;
-		color: var(--warning, #f59e0b);
+		color: var(--warning);
 	}
 
 	.warnings-label {
 		flex-shrink: 0;
 		font-size: 11px;
 		font-weight: 700;
-		color: var(--warning, #f59e0b);
+		color: var(--warning);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		padding-top: 2px;
@@ -1977,20 +1977,20 @@
 	}
 
 	.warning-badge.warning {
-		border-left: 3px solid var(--warning, #f59e0b);
+		border-left: 3px solid var(--warning);
 	}
 
 	.warning-badge.warning .badge-icon {
-		color: var(--warning, #f59e0b);
+		color: var(--warning);
 	}
 
 	.warning-badge.error {
-		border-left: 3px solid var(--negative, #ef4444);
-		background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, var(--bg-elevated) 50%);
+		border-left: 3px solid var(--negative);
+		background: linear-gradient(135deg, var(--negative-muted) 0%, var(--bg-elevated) 50%);
 	}
 
 	.warning-badge.error .badge-icon {
-		color: var(--negative, #ef4444);
+		color: var(--negative);
 	}
 
 	/* Top Actions */

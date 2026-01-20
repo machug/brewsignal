@@ -8,13 +8,13 @@
 
 	let { batches }: Props = $props();
 
-	// Status configuration
+	// Status configuration - colors reference app.css design tokens
 	const statusConfig: Record<string, { label: string; color: string }> = {
-		planning: { label: 'Planning', color: 'var(--text-muted)' },
-		fermenting: { label: 'Fermenting', color: '#f59e0b' },
-		conditioning: { label: 'Conditioning', color: '#8b5cf6' },
-		completed: { label: 'Completed', color: 'var(--positive)' },
-		archived: { label: 'Archived', color: 'var(--text-muted)' }
+		planning: { label: 'Planning', color: 'var(--status-planning)' },
+		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)' },
+		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)' },
+		completed: { label: 'Completed', color: 'var(--status-completed)' },
+		archived: { label: 'Archived', color: 'var(--status-archived)' }
 	};
 
 	// Count batches by status

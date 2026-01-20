@@ -25,7 +25,7 @@
 	let batteryColor = $derived.by(() => {
 		if (!batteryPercent) return 'var(--text-muted)';
 		if (batteryPercent > 50) return 'var(--positive)';
-		if (batteryPercent > 20) return '#f59e0b';
+		if (batteryPercent > 20) return 'var(--warning)';
 		return 'var(--negative)';
 	});
 

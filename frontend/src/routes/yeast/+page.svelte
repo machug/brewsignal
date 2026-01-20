@@ -884,7 +884,7 @@
 	}
 
 	.btn-delete:hover:not(:disabled) {
-		background: #dc2626;
+		background: var(--negative);
 	}
 
 	.btn-delete:disabled {

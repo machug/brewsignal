@@ -476,13 +476,13 @@
 	}
 
 	.stat-value.prediction {
-		color: var(--tilt-yellow, #facc15);
+		color: var(--tilt-yellow);
 	}
 
 	.prediction-badge {
 		font-size: 0.5rem;
 		text-transform: uppercase;
-		color: var(--tilt-yellow, #facc15);
+		color: var(--tilt-yellow);
 		background: rgba(250, 204, 21, 0.15);
 		padding: 0.0625rem 0.1875rem;
 		border-radius: 0.1875rem;

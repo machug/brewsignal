@@ -58,7 +58,7 @@
 	function getSeverityColor(severity: string): string {
 		switch (severity) {
 			case 'critical': return 'var(--negative)';
-			case 'warning': return '#f59e0b';
+			case 'warning': return 'var(--warning)';
 			case 'info': return 'var(--accent)';
 			default: return 'var(--text-muted)';
 		}

@@ -37,7 +37,7 @@
 {:else if variant === 'dot'}
 	<span class="status-dot-only status-{status}" style="--status-color: {config.color};"></span>
 {:else}
-	<span class="status-text status-{status}" style="color: {config.color};">
+	<span class="status-text status-{status}" style="--status-color: {config.color};">
 		{#if showDot || status === 'fermenting'}
 			<span class="status-dot"></span>
 		{/if}
@@ -91,6 +91,7 @@
 		gap: 0.25rem;
 		font-size: 0.8125rem;
 		font-weight: 500;
+		color: var(--status-color);
 		white-space: nowrap;
 	}
 

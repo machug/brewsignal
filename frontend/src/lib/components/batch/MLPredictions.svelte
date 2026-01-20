@@ -114,10 +114,10 @@
 		// sg_rate is in points per hour (e.g., -0.001 means dropping 0.001 SG per hour)
 		const absRate = Math.abs(sgRate);
 
-		if (absRate > 0.002) return { label: 'Very Active', color: '#22c55e', emoji: '🔥' };
-		if (absRate > 0.0005) return { label: 'Active', color: '#84cc16', emoji: '✨' };
-		if (absRate > 0.0001) return { label: 'Slowing', color: '#eab308', emoji: '🐢' };
-		return { label: 'Complete', color: '#6b7280', emoji: '✓' };
+		if (absRate > 0.002) return { label: 'Very Active', color: 'var(--activity-very-active)', emoji: '🔥' };
+		if (absRate > 0.0005) return { label: 'Active', color: 'var(--activity-active)', emoji: '✨' };
+		if (absRate > 0.0001) return { label: 'Slowing', color: 'var(--activity-slowing)', emoji: '🐢' };
+		return { label: 'Complete', color: 'var(--activity-complete)', emoji: '✓' };
 	});
 
 	// Check for anomalies
@@ -292,8 +292,8 @@
 	}
 
 	.ml-panel.has-anomaly {
-		border-color: #f59e0b;
-		background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(245, 158, 11, 0.05) 100%);
+		border-color: var(--recipe-accent);
+		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--recipe-accent-muted) 100%);
 	}
 
 	.ml-panel.loading,
@@ -407,7 +407,7 @@
 	.anomaly-label {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #d97706;
+		color: var(--recipe-accent-hover);
 	}
 
 	.anomaly-reasons {
@@ -455,7 +455,7 @@
 
 	.fermentation-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #3b82f6 0%, #22c55e 100%);
+		background: linear-gradient(90deg, var(--accent) 0%, var(--positive) 100%);
 		border-radius: 6px;
 		transition: width 0.5s ease;
 	}
@@ -507,7 +507,7 @@
 	}
 
 	.attenuation {
-		color: #8b5cf6;
+		color: var(--tilt-purple);
 	}
 
 	.days {
@@ -516,7 +516,7 @@
 	}
 
 	.complete-now {
-		color: #22c55e;
+		color: var(--positive);
 		font-weight: 600;
 	}
 
@@ -548,7 +548,7 @@
 
 	.model-value.model-type {
 		text-transform: capitalize;
-		color: #3b82f6;
+		color: var(--accent);
 	}
 
 	/* Unavailable state */

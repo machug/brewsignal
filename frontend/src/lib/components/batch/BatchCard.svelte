@@ -77,12 +77,12 @@
 	}
 
 	.batch-card.highlight {
-		border-color: rgba(245, 158, 11, 0.3);
+		border-color: var(--recipe-accent-border);
 	}
 
 	.accent-bar {
 		height: 2px;
-		background: linear-gradient(90deg, #f59e0b, #f97316);
+		background: linear-gradient(90deg, var(--recipe-accent), var(--recipe-accent-hover));
 	}
 
 	.card-header {

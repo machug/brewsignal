@@ -36,13 +36,13 @@
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
-	// Status configuration
+	// Status configuration - colors reference app.css design tokens
 	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-		planning: { label: 'Planning', color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' },
-		fermenting: { label: 'Fermenting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
-		conditioning: { label: 'Conditioning', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
-		completed: { label: 'Completed', color: 'var(--positive)', bg: 'rgba(34, 197, 94, 0.12)' },
-		archived: { label: 'Archived', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' }
+		planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
+		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
+		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
+		completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
+		archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
 	};
 
 	const statusOptions: BatchStatus[] = ['planning', 'fermenting', 'conditioning', 'completed', 'archived'];
@@ -872,7 +872,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #3b82f6, #60a5fa);
+		background: linear-gradient(90deg, var(--accent), var(--tilt-blue));
 		border-radius: 4px;
 		transition: width 0.5s ease;
 	}
@@ -888,7 +888,7 @@
 	}
 
 	.status-warning {
-		color: #f59e0b;
+		color: var(--recipe-accent);
 	}
 
 	.status-active {
@@ -921,13 +921,13 @@
 	.paused-icon {
 		width: 1.5rem;
 		height: 1.5rem;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 	}
 
 	.paused-title {
 		font-size: 1.125rem;
 		font-weight: 600;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 		margin: 0;
 	}
 
@@ -944,9 +944,9 @@
 		padding: 0.5rem 1rem;
 		font-size: 0.875rem;
 		font-weight: 500;
-		color: #f59e0b;
-		background: rgba(245, 158, 11, 0.15);
-		border: 1px solid rgba(245, 158, 11, 0.4);
+		color: var(--recipe-accent);
+		background: var(--recipe-accent-muted);
+		border: 1px solid var(--recipe-accent-border);
 		border-radius: 0.375rem;
 		cursor: pointer;
 		transition: all var(--transition);
@@ -1175,21 +1175,21 @@
 	}
 
 	.pause-btn:hover:not(:disabled) {
-		color: #f59e0b;
-		border-color: rgba(245, 158, 11, 0.4);
-		background: rgba(245, 158, 11, 0.1);
+		color: var(--recipe-accent);
+		border-color: var(--recipe-accent-border);
+		background: var(--recipe-accent-muted);
 	}
 
 	.pause-btn.paused {
-		color: #f59e0b;
-		border-color: rgba(245, 158, 11, 0.4);
-		background: rgba(245, 158, 11, 0.15);
+		color: var(--recipe-accent);
+		border-color: var(--recipe-accent-border);
+		background: var(--recipe-accent-muted);
 	}
 
 	.pause-btn.paused:hover:not(:disabled) {
 		color: var(--positive);
 		border-color: rgba(34, 197, 94, 0.4);
-		background: rgba(34, 197, 94, 0.1);
+		background: var(--positive-muted);
 	}
 
 	.pause-btn:disabled {
@@ -1650,7 +1650,7 @@
 	}
 
 	.modal-btn.delete:hover {
-		background: #dc2626;
+		background: var(--negative);
 	}
 
 	.modal-btn:disabled {

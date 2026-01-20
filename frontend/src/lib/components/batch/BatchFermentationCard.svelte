@@ -200,7 +200,7 @@
 		border-radius: 9999px;
 		font-size: 0.625rem;
 		font-weight: 700;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -208,7 +208,7 @@
 	.pulse-dot {
 		width: 6px;
 		height: 6px;
-		background: #f59e0b;
+		background: var(--recipe-accent);
 		border-radius: 50%;
 		animation: pulse 2s ease-in-out infinite;
 	}
@@ -252,7 +252,7 @@
 
 	.hero-metric.temperature .hero-value {
 		font-size: 2rem;
-		color: #22d3ee;
+		color: var(--temp-ambient);
 	}
 
 	.hero-unit {
@@ -326,7 +326,7 @@
 		font-family: 'JetBrains Mono', monospace;
 		font-size: 1.25rem;
 		font-weight: 700;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 	}
 
 	.progress-track {
@@ -342,7 +342,7 @@
 		top: 0;
 		left: 0;
 		height: 100%;
-		background: linear-gradient(90deg, #84cc16, #f59e0b);
+		background: linear-gradient(90deg, var(--activity-active), var(--recipe-accent));
 		border-radius: 4px;
 		transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 	}
@@ -369,16 +369,16 @@
 	.marker-dot {
 		width: 16px;
 		height: 16px;
-		background: #fef3c7;
-		border: 3px solid #f59e0b;
+		background: var(--recipe-accent-muted);
+		border: 3px solid var(--recipe-accent);
 		border-radius: 50%;
-		box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 8px rgba(245, 158, 11, 0.4);
+		box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 8px var(--recipe-accent-border);
 		animation: markerPulse 2.5s ease-in-out infinite;
 	}
 
 	@keyframes markerPulse {
-		0%, 100% { box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 8px rgba(245, 158, 11, 0.4); }
-		50% { box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 16px rgba(245, 158, 11, 0.6); }
+		0%, 100% { box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 8px var(--recipe-accent-border); }
+		50% { box-shadow: 0 0 0 3px var(--bg-surface), 0 2px 16px var(--recipe-accent-border); }
 	}
 
 	.marker-value {
@@ -389,7 +389,7 @@
 		font-family: 'JetBrains Mono', monospace;
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: #f59e0b;
+		color: var(--recipe-accent);
 		white-space: nowrap;
 		background: var(--bg-surface);
 		padding: 0.125rem 0.375rem;

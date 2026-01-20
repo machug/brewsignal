@@ -15,19 +15,19 @@
 
 	let { batch, progress, liveReading = null, expanded = false, onToggleExpand, onStatusChange, onViewDetails }: Props = $props();
 
-	// Status configuration
+	// Status configuration - colors reference app.css design tokens
 	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-		planning: { label: 'Planning', color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' },
-		fermenting: { label: 'Fermenting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
-		conditioning: { label: 'Conditioning', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
-		completed: { label: 'Completed', color: 'var(--positive)', bg: 'rgba(34, 197, 94, 0.12)' },
-		archived: { label: 'Archived', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' }
+		planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
+		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
+		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
+		completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
+		archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
 	};
 
 	// Temperature status indicators
 	const tempStatusConfig: Record<string, { icon: string; color: string }> = {
 		in_range: { icon: '✓', color: 'var(--positive)' },
-		too_cold: { icon: '↓', color: '#3b82f6' },
+		too_cold: { icon: '↓', color: 'var(--accent)' },
 		too_hot: { icon: '↑', color: 'var(--negative)' },
 		unknown: { icon: '?', color: 'var(--text-muted)' }
 	};
@@ -47,10 +47,10 @@
 		// sg_rate is in points per hour (e.g., -0.001 means dropping 0.001 SG per hour)
 		const absRate = Math.abs(sgRate);
 
-		if (absRate > 0.002) return { label: 'Very Active', color: '#22c55e', emoji: '🔥' };
-		if (absRate > 0.0005) return { label: 'Active', color: '#84cc16', emoji: '✨' };
-		if (absRate > 0.0001) return { label: 'Slowing', color: '#eab308', emoji: '🐢' };
-		return { label: 'Complete', color: '#6b7280', emoji: '✓' };
+		if (absRate > 0.002) return { label: 'Very Active', color: 'var(--activity-very-active)', emoji: '🔥' };
+		if (absRate > 0.0005) return { label: 'Active', color: 'var(--activity-active)', emoji: '✨' };
+		if (absRate > 0.0001) return { label: 'Slowing', color: 'var(--activity-slowing)', emoji: '🐢' };
+		return { label: 'Complete', color: 'var(--activity-complete)', emoji: '✓' };
 	});
 
 	// Check for anomalies in live reading
@@ -99,7 +99,7 @@
 	class:has-anomaly={hasAnomaly}
 >
 	<!-- Status accent stripe -->
-	<div class="accent-stripe" style="background: {hasAnomaly ? '#f59e0b' : statusInfo.color};"></div>
+	<div class="accent-stripe" style="background: {hasAnomaly ? 'var(--recipe-accent)' : statusInfo.color};"></div>
 
 	<div class="card-content">
 		<!-- Header -->
@@ -451,7 +451,7 @@
 		top: 0;
 		left: 0;
 		height: 100%;
-		background: linear-gradient(90deg, #f59e0b, #84cc16);
+		background: linear-gradient(90deg, var(--recipe-accent), var(--activity-active));
 		border-radius: 3px;
 		transition: width 0.5s ease-out;
 	}

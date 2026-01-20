@@ -58,29 +58,29 @@
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 	let isHistoricalBatch = $state(false); // Track if batch is completed/conditioning
 
-	// Color mapping for tilt accent in chart
+	// Color mapping for tilt accent in chart (matches --tilt-* tokens in app.css)
 	const tiltColorMap: Record<string, string> = {
-		RED: '#f43f5e',
-		GREEN: '#10b981',
-		BLACK: '#6b7280',
-		PURPLE: '#a78bfa',
-		ORANGE: '#fb923c',
-		BLUE: '#60a5fa',
-		YELLOW: '#facc15',
-		PINK: '#f472b6'
+		RED: '#f87171',     // --tilt-red
+		GREEN: '#4ade80',   // --tilt-green
+		BLACK: '#71717a',   // --tilt-black (--gray-500)
+		PURPLE: '#a78bfa',  // --tilt-purple
+		ORANGE: '#fb923c',  // --tilt-orange
+		BLUE: '#60a5fa',    // --tilt-blue
+		YELLOW: '#facc15',  // --tilt-yellow
+		PINK: '#f472b6'     // --tilt-pink
 	};
 
-	// Theme colors - using tilt-yellow instead of amber
-	const SG_COLOR = '#facc15'; // tilt-yellow
-	const SG_GLOW = 'rgba(250, 204, 21, 0.3)'; // tilt-yellow with transparency
-	const TEXT_MUTED = '#71717a';
-	const TEXT_SECONDARY = '#a1a1aa';
-	const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';
-	const CYAN = '#22d3ee'; // Ambient temp color
-	const PURPLE = '#a78bfa'; // Chamber temp color
-	const TREND_COLOR = 'rgba(250, 204, 21, 0.5)'; // Semi-transparent yellow for trend line
-	const ANOMALY_COLOR = '#ef4444'; // Red for anomaly markers
-	const BATTERY_COLOR = '#22c55e'; // Green for battery level
+	// Theme colors aligned with app.css design tokens
+	const SG_COLOR = '#f59e0b';  // --recipe-accent (amber for SG)
+	const SG_GLOW = 'rgba(245, 158, 11, 0.3)';  // --recipe-accent with transparency
+	const TEXT_MUTED = '#71717a';  // --gray-500 / --text-muted
+	const TEXT_SECONDARY = '#a1a1aa';  // --gray-400 / --text-secondary
+	const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';  // subtle grid
+	const CYAN = '#22d3ee';  // --temp-ambient
+	const PURPLE = '#a78bfa';  // --tilt-purple / --chart-ambient
+	const TREND_COLOR = 'rgba(245, 158, 11, 0.5)';  // --recipe-accent semi-transparent
+	const ANOMALY_COLOR = '#ef4444';  // --negative
+	const BATTERY_COLOR = '#22c55e';  // --positive
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
@@ -1216,7 +1216,7 @@ onMount(async () => {
 	}
 
 	.legend-line-dotted {
-		background: linear-gradient(90deg, #22d3ee 2px, transparent 2px) !important;
+		background: linear-gradient(90deg, var(--temp-ambient) 2px, transparent 2px) !important;
 		background-size: 4px 2px !important;
 	}
 
@@ -1226,7 +1226,7 @@ onMount(async () => {
 	}
 
 	.legend-line-chamber {
-		background: linear-gradient(90deg, #a78bfa 4px, transparent 4px) !important;
+		background: linear-gradient(90deg, var(--tilt-purple) 4px, transparent 4px) !important;
 		background-size: 6px 2px !important;
 	}
 
@@ -1261,7 +1261,7 @@ onMount(async () => {
 	}
 
 	.anomaly-toggle:not(.legend-disabled) {
-		color: #ef4444;
+		color: var(--negative);
 	}
 
 	.anomaly-dot {

@@ -284,7 +284,7 @@
 		font-size: 13px;
 		background: transparent;
 		border: 1px solid transparent;
-		color: var(--text-tertiary, #6b7280);
+		color: var(--text-muted);
 	}
 
 	.btn-ghost:hover {
@@ -298,7 +298,7 @@
 		font-size: 13px;
 		background: rgba(16, 185, 129, 0.08);
 		border: 1px solid rgba(16, 185, 129, 0.3);
-		color: var(--positive, #10b981);
+		color: var(--positive);
 	}
 
 	.btn-review:hover:not(:disabled) {
@@ -317,20 +317,20 @@
 		padding: 10px 22px;
 		font-size: 14px;
 		font-weight: 600;
-		background: linear-gradient(135deg, var(--recipe-accent, #f59e0b) 0%, #d97706 100%);
+		background: linear-gradient(135deg, var(--recipe-accent) 0%, var(--recipe-accent-hover) 100%);
 		border: none;
-		color: #1a1a1a;
+		color: var(--gray-950);
 		box-shadow:
-			0 2px 8px rgba(245, 158, 11, 0.3),
+			0 2px 8px var(--recipe-accent-border),
 			0 1px 2px rgba(0, 0, 0, 0.2),
 			inset 0 1px 0 rgba(255, 255, 255, 0.15);
 		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
 	.btn-save:hover:not(:disabled) {
-		background: linear-gradient(135deg, #fbbf24 0%, var(--recipe-accent, #f59e0b) 100%);
+		background: linear-gradient(135deg, var(--tilt-yellow) 0%, var(--recipe-accent) 100%);
 		box-shadow:
-			0 4px 12px rgba(245, 158, 11, 0.4),
+			0 4px 12px var(--recipe-accent-border),
 			0 2px 4px rgba(0, 0, 0, 0.2),
 			inset 0 1px 0 rgba(255, 255, 255, 0.2);
 		transform: translateY(-1px);

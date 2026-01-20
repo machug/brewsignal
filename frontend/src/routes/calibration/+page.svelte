@@ -99,9 +99,14 @@
 		if (!selectedDeviceId) return;
 		saving = true;
 		try {
+			// Determine calibration type based on whether any points exist
+			const hasPoints = (data.points?.length ?? 0) > 0;
+			const hasTempPoints = (data.temp_points?.length ?? 0) > 0;
+			const calType = (hasPoints || hasTempPoints) ? 'linear' : 'none';
+
 			const payload: CalibrationRequest = {
-				calibration_type: 'linear',
-				calibration_data: data
+				calibration_type: calType,
+				calibration_data: calType === 'none' ? null : data
 			};
 			const response = await fetch(`/api/devices/${selectedDeviceId}/calibration`, {
 				method: 'PUT',

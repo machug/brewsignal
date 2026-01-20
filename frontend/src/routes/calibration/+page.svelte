@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import { convertTempPointToCelsius, convertTempPointFromCelsius } from '$lib/utils/temperature';
 
@@ -243,19 +243,22 @@
 	// Load calibration when device changes
 	$effect(() => {
 		if (selectedDeviceId) {
-			// Clear form state to prevent accidentally adding points from one device to another
-			sgRawValue = '';
-			sgActualValue = '';
-			tempRawValue = '';
-			tempActualValue = '';
-
-			// Load calibration for the new device
 			const deviceId = selectedDeviceId;
-			loadCalibration().catch((error) => {
-				// Only log error if still on same device (avoid stale errors)
-				if (deviceId === selectedDeviceId) {
-					console.error('Failed to load calibration:', error);
-				}
+			// Use untrack to avoid Svelte 5 state_unsafe_mutation error
+			untrack(() => {
+				// Clear form state to prevent accidentally adding points from one device to another
+				sgRawValue = '';
+				sgActualValue = '';
+				tempRawValue = '';
+				tempActualValue = '';
+
+				// Load calibration for the new device
+				loadCalibration().catch((error) => {
+					// Only log error if still on same device (avoid stale errors)
+					if (deviceId === selectedDeviceId) {
+						console.error('Failed to load calibration:', error);
+					}
+				});
 			});
 		}
 	});

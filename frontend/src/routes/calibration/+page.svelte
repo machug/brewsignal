@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { configState, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import { convertTempPointToCelsius, convertTempPointFromCelsius } from '$lib/utils/temperature';
 
@@ -43,9 +43,9 @@
 	let tempUnit = $derived(getTempUnit());
 	let useCelsius = $derived(configState.config.temp_units === 'C');
 
-	// Filter points by type
-	let sgPoints = $derived((calibrationData?.points || []).sort((a, b) => a[0] - b[0]));
-	let tempPoints = $derived((calibrationData?.temp_points || []).sort((a, b) => a[0] - b[0]));
+	// Filter points by type (use toSorted to avoid mutating state)
+	let sgPoints = $derived((calibrationData?.points || []).toSorted((a, b) => a[0] - b[0]));
+	let tempPoints = $derived((calibrationData?.temp_points || []).toSorted((a, b) => a[0] - b[0]));
 
 	// Selected device object
 	let selectedDevice = $derived(devices.find((d) => d.id === selectedDeviceId));
@@ -57,6 +57,8 @@
 				devices = await response.json();
 				if (devices.length > 0 && !selectedDeviceId) {
 					selectedDeviceId = devices[0].id;
+					// Load calibration for initial device
+					await loadCalibration();
 				}
 			}
 		} catch (e) {
@@ -64,6 +66,16 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	function handleDeviceChange() {
+		// Clear form state when switching devices
+		sgRawValue = '';
+		sgActualValue = '';
+		tempRawValue = '';
+		tempActualValue = '';
+		// Load calibration for new device
+		loadCalibration();
 	}
 
 	async function loadCalibration() {
@@ -239,29 +251,6 @@
 	onMount(() => {
 		loadDevices();
 	});
-
-	// Load calibration when device changes
-	$effect(() => {
-		if (selectedDeviceId) {
-			const deviceId = selectedDeviceId;
-			// Use untrack to avoid Svelte 5 state_unsafe_mutation error
-			untrack(() => {
-				// Clear form state to prevent accidentally adding points from one device to another
-				sgRawValue = '';
-				sgActualValue = '';
-				tempRawValue = '';
-				tempActualValue = '';
-
-				// Load calibration for the new device
-				loadCalibration().catch((error) => {
-					// Only log error if still on same device (avoid stale errors)
-					if (deviceId === selectedDeviceId) {
-						console.error('Failed to load calibration:', error);
-					}
-				});
-			});
-		}
-	});
 </script>
 
 <svelte:head>
@@ -299,6 +288,7 @@
 				<div class="tilt-selector">
 					<select
 						bind:value={selectedDeviceId}
+						onchange={handleDeviceChange}
 						class="select-input"
 					>
 						{#each devices as device}

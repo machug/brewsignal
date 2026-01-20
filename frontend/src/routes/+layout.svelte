@@ -82,24 +82,18 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
-<div class="min-h-screen" style="background: var(--bg-deep);">
+<div class="layout-container">
 	<!-- Navigation -->
-	<nav
-		class="sticky top-0 z-50 backdrop-blur-md"
-		style="background: rgba(15, 17, 21, 0.85); border-bottom: 1px solid var(--bg-hover);"
-	>
+	<nav class="main-nav">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex items-center justify-between h-16">
 				<!-- Logo -->
 				<a href="/" class="flex items-center gap-3 group">
-					<div
-						class="w-9 h-9 rounded-lg flex items-center justify-center transition-all group-hover:scale-105"
-						style="background: var(--accent);"
-					>
+					<div class="logo-icon">
 						<span class="text-lg">🍺</span>
 					</div>
-					<span class="text-lg font-semibold tracking-tight" style="color: var(--text-primary);">
-						Brew<span style="color: var(--accent);">Signal</span>
+					<span class="logo-text">
+						Brew<span class="logo-accent">Signal</span>
 					</span>
 				</a>
 
@@ -129,7 +123,7 @@
 								aria-expanded={weatherDropdownOpen}
 							>
 								<span class="text-sm">{getWeatherIcon(todayForecast.condition)}</span>
-								<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+								<span class="indicator-text">
 									{formatForecastTemp(todayForecast.temperature)}°
 								</span>
 							</button>
@@ -161,14 +155,11 @@
 
 					<!-- Ambient temperature/humidity -->
 					{#if tiltsState.ambient && (tiltsState.ambient.temperature !== null || tiltsState.ambient.humidity !== null)}
-						<div
-							class="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full"
-							style="background: var(--bg-elevated);"
-						>
+						<div class="ambient-indicator">
 							{#if tiltsState.ambient.temperature !== null}
 								<div class="flex items-center gap-1.5">
 									<span class="text-sm opacity-60">🌡️</span>
-									<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+									<span class="indicator-text">
 										{formatAmbientTemp(tiltsState.ambient.temperature)}{getTempUnit()}
 									</span>
 								</div>
@@ -176,7 +167,7 @@
 							{#if tiltsState.ambient.humidity !== null}
 								<div class="flex items-center gap-1.5">
 									<span class="text-sm opacity-60">💧</span>
-									<span class="text-xs font-medium font-mono" style="color: var(--text-secondary);">
+									<span class="indicator-text">
 										{tiltsState.ambient.humidity.toFixed(0)}%
 									</span>
 								</div>
@@ -186,30 +177,18 @@
 
 					<!-- Heater indicator -->
 					{#if showHeaterIndicator && tiltsState.heater.available}
-						<div
-							class="flex items-center gap-2 px-3 py-1.5 rounded-full"
-							style="background: {tiltsState.heater.state === 'on' ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-elevated)'};"
-						>
-							<span class="text-sm" style="opacity: {tiltsState.heater.state === 'on' ? 1 : 0.4};">🔥</span>
-							<span
-								class="text-xs font-medium uppercase tracking-wide hidden sm:inline"
-								style="color: {tiltsState.heater.state === 'on' ? 'var(--negative)' : 'var(--text-muted)'};"
-							>
+						<div class="heater-indicator" class:heater-on={tiltsState.heater.state === 'on'}>
+							<span class="heater-icon">🔥</span>
+							<span class="heater-text">
 								{tiltsState.heater.state === 'on' ? 'Heating' : 'Off'}
 							</span>
 						</div>
 					{/if}
 
 					<!-- Connection status -->
-					<div
-						class="flex items-center gap-2 px-3 py-1.5 rounded-full"
-						style="background: var(--bg-elevated);"
-					>
-						<span
-							class="w-2 h-2 rounded-full"
-							style="background: {tiltsState.connected ? 'var(--positive)' : 'var(--text-muted)'};"
-						></span>
-						<span class="text-xs font-medium hidden sm:inline" style="color: var(--text-muted);">
+					<div class="connection-indicator">
+						<span class="connection-dot" class:connected={tiltsState.connected}></span>
+						<span class="connection-text">
 							{tiltsState.connected ? 'Live' : 'Offline'}
 						</span>
 					</div>
@@ -217,8 +196,7 @@
 					<!-- Mobile menu button -->
 					<button
 						type="button"
-						class="md:hidden p-2 rounded-lg transition-colors"
-						style="color: var(--text-secondary);"
+						class="mobile-menu-btn"
 						onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
 						aria-label="Toggle menu"
 					>
@@ -238,15 +216,15 @@
 
 		<!-- Mobile menu -->
 		{#if mobileMenuOpen}
-			<div class="md:hidden" style="background: var(--bg-primary); border-top: 1px solid var(--bg-hover);" transition:slide={{ duration: 150 }}>
+			<div class="mobile-menu" transition:slide={{ duration: 150 }}>
 				<div class="px-3 py-3 space-y-1">
 					{#each navLinks as link}
 						{@const active = isActive(link.href, $page.url.pathname)}
 						<a
 							href={link.href}
 							onclick={closeMobileMenu}
-							class="block px-4 py-3 rounded-lg text-base font-medium transition-colors"
-							style="color: {active ? 'var(--text-primary)' : 'var(--text-secondary)'}; background: {active ? 'var(--bg-elevated)' : 'transparent'};"
+							class="mobile-nav-link"
+							class:active
 						>
 							{link.label}
 						</a>
@@ -263,6 +241,206 @@
 </div>
 
 <style>
+	/* Layout container */
+	.layout-container {
+		min-height: 100vh;
+		background: var(--bg-deep);
+	}
+
+	/* Main navigation */
+	.main-nav {
+		position: sticky;
+		top: 0;
+		z-index: 50;
+		backdrop-filter: blur(12px);
+		background: rgba(15, 17, 21, 0.85);
+		border-bottom: 1px solid var(--bg-hover);
+	}
+
+	/* Logo */
+	.logo-icon {
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--accent);
+		transition: transform var(--transition);
+	}
+
+	.group:hover .logo-icon {
+		transform: scale(1.05);
+	}
+
+	.logo-text {
+		font-size: 1.125rem;
+		font-weight: 600;
+		letter-spacing: -0.025em;
+		color: var(--text-primary);
+	}
+
+	.logo-accent {
+		color: var(--accent);
+	}
+
+	/* Shared indicator text style */
+	.indicator-text {
+		font-size: 0.75rem;
+		font-weight: 500;
+		font-family: var(--font-mono);
+		color: var(--text-secondary);
+	}
+
+	/* Ambient indicator */
+	.ambient-indicator {
+		display: none;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.375rem 0.75rem;
+		border-radius: 9999px;
+		background: var(--bg-elevated);
+	}
+
+	@media (min-width: 640px) {
+		.ambient-indicator {
+			display: flex;
+		}
+	}
+
+	/* Heater indicator */
+	.heater-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		border-radius: 9999px;
+		background: var(--bg-elevated);
+	}
+
+	.heater-indicator.heater-on {
+		background: rgba(239, 68, 68, 0.1);
+	}
+
+	.heater-icon {
+		font-size: 0.875rem;
+		opacity: 0.4;
+	}
+
+	.heater-indicator.heater-on .heater-icon {
+		opacity: 1;
+	}
+
+	.heater-text {
+		font-size: 0.75rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+		display: none;
+	}
+
+	@media (min-width: 640px) {
+		.heater-text {
+			display: inline;
+		}
+	}
+
+	.heater-indicator.heater-on .heater-text {
+		color: var(--negative);
+	}
+
+	/* Connection indicator */
+	.connection-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		border-radius: 9999px;
+		background: var(--bg-elevated);
+	}
+
+	.connection-dot {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		background: var(--text-muted);
+	}
+
+	.connection-dot.connected {
+		background: var(--positive);
+	}
+
+	.connection-text {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		display: none;
+	}
+
+	@media (min-width: 640px) {
+		.connection-text {
+			display: inline;
+		}
+	}
+
+	/* Mobile menu button */
+	.mobile-menu-btn {
+		display: none;
+		padding: 0.5rem;
+		border-radius: 0.5rem;
+		color: var(--text-secondary);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: color var(--transition);
+	}
+
+	.mobile-menu-btn:hover {
+		color: var(--text-primary);
+	}
+
+	@media (max-width: 767px) {
+		.mobile-menu-btn {
+			display: flex;
+		}
+	}
+
+	/* Mobile menu */
+	.mobile-menu {
+		display: none;
+		background: var(--bg-primary);
+		border-top: 1px solid var(--bg-hover);
+	}
+
+	@media (max-width: 767px) {
+		.mobile-menu {
+			display: block;
+		}
+	}
+
+	/* Mobile nav link */
+	.mobile-nav-link {
+		display: block;
+		padding: 0.75rem 1rem;
+		border-radius: 0.5rem;
+		font-size: 1rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+		background: transparent;
+		transition: color var(--transition), background var(--transition);
+	}
+
+	.mobile-nav-link:hover {
+		color: var(--text-primary);
+	}
+
+	.mobile-nav-link.active {
+		color: var(--text-primary);
+		background: var(--bg-elevated);
+	}
+
+	/* Desktop nav link */
 	.nav-link {
 		position: relative;
 		padding: 0.5rem 1rem;

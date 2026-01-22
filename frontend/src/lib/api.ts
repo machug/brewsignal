@@ -403,10 +403,25 @@ export interface BatchResponse {
 	brew_date?: string;
 	start_time?: string;
 	end_time?: string;
+	// Phase timestamps
+	brewing_started_at?: string;
+	fermenting_started_at?: string;
+	conditioning_started_at?: string;
+	completed_at?: string;
+	// Measured values
 	measured_og?: number;
 	measured_fg?: number;
 	measured_abv?: number;
 	measured_attenuation?: number;
+	// Brew day observations
+	actual_mash_temp?: number;
+	actual_mash_ph?: number;
+	strike_water_volume?: number;
+	pre_boil_gravity?: number;
+	pre_boil_volume?: number;
+	post_boil_volume?: number;
+	actual_efficiency?: number;
+	brew_day_notes?: string;
 	notes?: string;
 	created_at: string;
 	recipe?: RecipeResponse;
@@ -449,6 +464,15 @@ export interface BatchUpdate {
 	end_time?: string;
 	measured_og?: number;
 	measured_fg?: number;
+	// Brew day observations
+	actual_mash_temp?: number;
+	actual_mash_ph?: number;
+	strike_water_volume?: number;
+	pre_boil_gravity?: number;
+	pre_boil_volume?: number;
+	post_boil_volume?: number;
+	actual_efficiency?: number;
+	brew_day_notes?: string;
 	notes?: string;
 	// Temperature control
 	heater_entity_id?: string;

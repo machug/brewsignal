@@ -256,6 +256,7 @@ async def init_db():
         await conn.run_sync(_migrate_create_yeast_strains_table)  # Create yeast strain reference table
         await conn.run_sync(_migrate_add_yeast_strain_to_batches)  # Add yeast override to batches
         await conn.run_sync(_migrate_add_batch_phase_timestamps)  # Add phase lifecycle timestamps
+        await conn.run_sync(_migrate_add_brew_day_observations)  # Add brew day observation columns
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -1491,6 +1492,51 @@ def _migrate_add_batch_phase_timestamps(conn):
 
     if added:
         print(f"Migration: Added batch phase columns: {', '.join(added)}")
+
+
+def _migrate_add_brew_day_observations(conn):
+    """Add brew day observation columns to batches table.
+
+    These columns track actual measurements during brew day:
+    - actual_mash_temp: Actual mash temperature achieved (Celsius)
+    - actual_mash_ph: Mash pH reading
+    - strike_water_volume: Strike water volume (Liters)
+    - pre_boil_gravity: Gravity before boil (SG)
+    - pre_boil_volume: Volume before boil (Liters)
+    - post_boil_volume: Volume after boil (Liters)
+    - actual_efficiency: Calculated brewhouse efficiency (%)
+    - brew_day_notes: Specific brew day notes
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "batches" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("batches")]
+
+    new_columns = [
+        ("actual_mash_temp", "REAL"),
+        ("actual_mash_ph", "REAL"),
+        ("strike_water_volume", "REAL"),
+        ("pre_boil_gravity", "REAL"),
+        ("pre_boil_volume", "REAL"),
+        ("post_boil_volume", "REAL"),
+        ("actual_efficiency", "REAL"),
+        ("brew_day_notes", "TEXT"),
+    ]
+
+    added = []
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE batches ADD COLUMN {col_name} {col_def}"))
+                added.append(col_name)
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} - {e}")
+
+    if added:
+        print(f"Migration: Added brew day observation columns: {', '.join(added)}")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

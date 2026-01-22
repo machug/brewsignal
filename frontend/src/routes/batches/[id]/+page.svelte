@@ -16,6 +16,7 @@
 	import FermentationChart from '$lib/components/FermentationChart.svelte';
 	import BrewDayTimer from '$lib/components/batch/BrewDayTimer.svelte';
 	import BrewDayChecklist from '$lib/components/batch/BrewDayChecklist.svelte';
+	import BrewDayObservations from '$lib/components/batch/BrewDayObservations.svelte';
 	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
@@ -627,6 +628,15 @@
 						<BrewDayChecklist recipe={batch.recipe} batchId={batch.id} />
 					{/if}
 				</div>
+
+				<!-- Observations Log -->
+				{#if batch.recipe}
+					<BrewDayObservations
+						{batch}
+						recipe={batch.recipe}
+						onUpdate={(updated) => batch = updated}
+					/>
+				{/if}
 
 				<!-- Device Card for chilling monitoring -->
 				{#if batch.device_id}

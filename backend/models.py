@@ -525,6 +525,16 @@ class Batch(Base):
     measured_abv: Mapped[Optional[float]] = mapped_column()
     measured_attenuation: Mapped[Optional[float]] = mapped_column()
 
+    # Brew day observations
+    actual_mash_temp: Mapped[Optional[float]] = mapped_column()  # Celsius
+    actual_mash_ph: Mapped[Optional[float]] = mapped_column()
+    strike_water_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    pre_boil_gravity: Mapped[Optional[float]] = mapped_column()  # SG
+    pre_boil_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    post_boil_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    actual_efficiency: Mapped[Optional[float]] = mapped_column()  # Percentage
+    brew_day_notes: Mapped[Optional[str]] = mapped_column(Text)
+
     # Temperature control - per-batch heater assignment
     heater_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
     cooler_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
@@ -1712,6 +1722,15 @@ class BatchUpdate(BaseModel):
     end_time: Optional[datetime] = None
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
+    # Brew day observations
+    actual_mash_temp: Optional[float] = None
+    actual_mash_ph: Optional[float] = None
+    strike_water_volume: Optional[float] = None
+    pre_boil_gravity: Optional[float] = None
+    pre_boil_volume: Optional[float] = None
+    post_boil_volume: Optional[float] = None
+    actual_efficiency: Optional[float] = None
+    brew_day_notes: Optional[str] = None
     notes: Optional[str] = None
     # Temperature control
     heater_entity_id: Optional[str] = None
@@ -1777,6 +1796,15 @@ class BatchResponse(BaseModel):
     measured_fg: Optional[float] = None
     measured_abv: Optional[float] = None
     measured_attenuation: Optional[float] = None
+    # Brew day observations
+    actual_mash_temp: Optional[float] = None
+    actual_mash_ph: Optional[float] = None
+    strike_water_volume: Optional[float] = None
+    pre_boil_gravity: Optional[float] = None
+    pre_boil_volume: Optional[float] = None
+    post_boil_volume: Optional[float] = None
+    actual_efficiency: Optional[float] = None
+    brew_day_notes: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     deleted_at: Optional[datetime] = None

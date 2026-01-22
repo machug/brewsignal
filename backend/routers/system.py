@@ -17,6 +17,10 @@ from pydantic import BaseModel
 
 from ..cleanup import cleanup_old_readings, get_reading_stats
 
+# Hailo detection paths
+HAILORTCLI_PATH = "/usr/bin/hailortcli"
+HAILO_DEVICE_PATH = "/dev/hailo0"
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -232,6 +236,18 @@ class CleanupRequest(BaseModel):
     confirm: bool = False
 
 
+class AIAcceleratorDevice(BaseModel):
+    path: str
+    architecture: str
+    firmware_version: str
+    tops: int
+
+
+class AIAcceleratorStatus(BaseModel):
+    available: bool
+    device: Optional[AIAcceleratorDevice] = None
+
+
 @router.post("/cleanup")
 async def trigger_cleanup(cleanup: CleanupRequest, request: Request):
     """Manually trigger data cleanup. Requires confirmation."""
@@ -267,3 +283,92 @@ async def trigger_cleanup(cleanup: CleanupRequest, request: Request):
         "retention_days": cleanup.retention_days,
         "deleted_readings": deleted,
     }
+
+
+def detect_ai_accelerator() -> AIAcceleratorStatus:
+    """Detect Hailo AI accelerator (AI HAT+ 2)."""
+    # Quick check: does the device node exist?
+    if not Path(HAILO_DEVICE_PATH).exists():
+        return AIAcceleratorStatus(available=False)
+
+    # Try to get detailed info via hailortcli
+    if not Path(HAILORTCLI_PATH).exists():
+        # Device exists but CLI not installed - assume available
+        return AIAcceleratorStatus(
+            available=True,
+            device=AIAcceleratorDevice(
+                path=HAILO_DEVICE_PATH,
+                architecture="unknown",
+                firmware_version="unknown",
+                tops=0,
+            ),
+        )
+
+    try:
+        result = subprocess.run(
+            [HAILORTCLI_PATH, "fw-control", "identify"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            # CLI failed but device exists
+            return AIAcceleratorStatus(
+                available=True,
+                device=AIAcceleratorDevice(
+                    path=HAILO_DEVICE_PATH,
+                    architecture="unknown",
+                    firmware_version="unknown",
+                    tops=0,
+                ),
+            )
+
+        # Parse output for device info
+        output = result.stdout
+        architecture = "unknown"
+        firmware_version = "unknown"
+        tops = 0
+
+        for line in output.splitlines():
+            line_lower = line.lower()
+            if "device architecture:" in line_lower:
+                architecture = line.split(":")[-1].strip()
+            elif "firmware version:" in line_lower:
+                firmware_version = line.split(":")[-1].strip().split()[0]
+
+        # Map architecture to TOPS
+        if "hailo10h" in architecture.lower():
+            tops = 40
+        elif "hailo8" in architecture.lower():
+            tops = 26 if "8l" not in architecture.lower() else 13
+
+        return AIAcceleratorStatus(
+            available=True,
+            device=AIAcceleratorDevice(
+                path=HAILO_DEVICE_PATH,
+                architecture=architecture,
+                firmware_version=firmware_version,
+                tops=tops,
+            ),
+        )
+
+    except subprocess.TimeoutExpired:
+        logger.warning("hailortcli timed out")
+        return AIAcceleratorStatus(
+            available=True,
+            device=AIAcceleratorDevice(
+                path=HAILO_DEVICE_PATH,
+                architecture="unknown",
+                firmware_version="unknown",
+                tops=0,
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error detecting AI accelerator: {e}")
+        return AIAcceleratorStatus(available=False)
+
+
+@router.get("/ai-accelerator", response_model=AIAcceleratorStatus)
+async def get_ai_accelerator_status():
+    """Check if AI accelerator (Hailo) is available."""
+    return detect_ai_accelerator()

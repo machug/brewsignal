@@ -16,8 +16,21 @@
 		estimated_size_bytes: number;
 	}
 
+	interface AIAcceleratorDevice {
+		path: string;
+		architecture: string;
+		firmware_version: string;
+		tops: number;
+	}
+
+	interface AIAcceleratorStatus {
+		available: boolean;
+		device: AIAcceleratorDevice | null;
+	}
+
 	let systemInfo = $state<SystemInfo | null>(null);
 	let storageStats = $state<StorageStats | null>(null);
+	let aiAccelerator = $state<AIAcceleratorStatus | null>(null);
 	let timezones = $state<string[]>([]);
 	let currentTimezone = $state('');
 	let loading = $state(true);
@@ -125,6 +138,17 @@
 			}
 		} catch (e) {
 			console.error('Failed to load storage stats:', e);
+		}
+	}
+
+	async function loadAiAccelerator() {
+		try {
+			const response = await fetch('/api/system/ai-accelerator');
+			if (response.ok) {
+				aiAccelerator = await response.json();
+			}
+		} catch (e) {
+			console.error('Failed to load AI accelerator status:', e);
 		}
 	}
 
@@ -532,6 +556,7 @@
 		await Promise.all([
 			loadSystemInfo(),
 			loadStorageStats(),
+			loadAiAccelerator(),
 			loadTimezones(),
 			loadHAStatus(),
 			loadAiProviders(),
@@ -617,6 +642,22 @@
 								<span class="info-label">IP Address</span>
 								<span class="info-value font-mono">
 									{systemInfo.ip_addresses.length > 0 ? systemInfo.ip_addresses[0] : 'Unknown'}
+								</span>
+							</div>
+							<div class="info-item">
+								<span class="info-label">AI Accelerator</span>
+								<span class="info-value font-mono">
+									{#if aiAccelerator?.available && aiAccelerator.device}
+										<span class="flex items-center gap-2">
+											<span class="status-dot status-dot-active"></span>
+											{aiAccelerator.device.architecture}
+											{#if aiAccelerator.device.tops > 0}
+												<span class="text-muted">({aiAccelerator.device.tops} TOPS)</span>
+											{/if}
+										</span>
+									{:else}
+										<span class="text-muted">Not detected</span>
+									{/if}
 								</span>
 							</div>
 						</div>

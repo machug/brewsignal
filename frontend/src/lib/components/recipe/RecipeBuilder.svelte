@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { FermentableResponse, HopVarietyResponse, YeastStrainResponse } from '$lib/api';
+	import type { FermentableResponse, HopVarietyResponse, YeastStrainResponse, RecipeResponse } from '$lib/api';
 
 	export type HopUse = 'boil' | 'whirlpool' | 'dry_hop' | 'first_wort' | 'mash';
 	export type HopForm = 'pellet' | 'whole' | 'plug';
@@ -56,11 +56,12 @@
 	} from '$lib/brewing';
 
 	interface Props {
+		initialData?: RecipeResponse;
 		onSave?: (recipe: RecipeData) => void;
 		onCancel?: () => void;
 	}
 
-	let { onSave, onCancel }: Props = $props();
+	let { initialData, onSave, onCancel }: Props = $props();
 
 	// Expose methods and state for parent to render actions
 	export function save() {
@@ -112,6 +113,48 @@
 
 	// Validation error state
 	let validationError = $state<string | null>(null);
+
+	// Initialize from existing recipe data (edit mode)
+	$effect(() => {
+		if (initialData) {
+			name = initialData.name || '';
+			author = initialData.author || '';
+			styleInput = initialData.type || '';
+			notes = initialData.notes || '';
+			batchSizeLiters = initialData.batch_size_liters || 20;
+			efficiencyPercent = initialData.efficiency_percent || 72;
+			boilTimeMinutes = initialData.boil_time_minutes || 60;
+
+			// Load fermentables from format_extensions
+			const ext = initialData.format_extensions as { fermentables?: RecipeFermentable[]; hops?: RecipeHop[] } | undefined;
+			if (ext?.fermentables) {
+				fermentables = ext.fermentables;
+			}
+
+			// Load hops from format_extensions
+			if (ext?.hops) {
+				hops = ext.hops;
+			}
+
+			// Load yeast info (construct a YeastStrainResponse from recipe data)
+			if (initialData.yeast_name) {
+				selectedYeast = {
+					id: 0,
+					name: initialData.yeast_name,
+					producer: initialData.yeast_lab || undefined,
+					product_id: initialData.yeast_product_id || undefined,
+					temp_low: initialData.yeast_temp_min || undefined,
+					temp_high: initialData.yeast_temp_max || undefined,
+					attenuation_low: initialData.yeast_attenuation ? initialData.yeast_attenuation - 2 : undefined,
+					attenuation_high: initialData.yeast_attenuation ? initialData.yeast_attenuation + 2 : undefined,
+					source: 'recipe',
+					is_custom: false,
+					created_at: new Date().toISOString(),
+					updated_at: new Date().toISOString()
+				};
+			}
+		}
+	});
 
 	// Calculate recipe stats in real-time
 	let recipeStats = $derived(() => {
@@ -413,7 +456,7 @@
 					name: f.name,
 					amount_kg: f.amount_kg,
 					color_srm: f.color_srm,
-					type: f.category
+					type: f.type
 				})),
 				hops: hops.map((h) => ({
 					name: h.name,
@@ -426,7 +469,9 @@
 					? {
 							name: selectedYeast.name,
 							producer: selectedYeast.producer,
-							attenuation: selectedYeast.attenuation
+							attenuation: selectedYeast.attenuation_low && selectedYeast.attenuation_high
+								? (selectedYeast.attenuation_low + selectedYeast.attenuation_high) / 2
+								: undefined
 						}
 					: undefined
 			});

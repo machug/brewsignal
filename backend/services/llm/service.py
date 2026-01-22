@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-from backend.services.llm.config import LLMConfig, LLMProvider
+from backend.services.llm.config import DEFAULT_BASE_URLS, LLMConfig, LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,13 @@ class LLMService:
         if api_key:
             kwargs["api_key"] = api_key
 
-        # Add base URL for Ollama
-        if self.config._provider_str() == "local":
-            kwargs["api_base"] = self.config.base_url or "http://localhost:11434"
+        # Add base URL for local providers (Ollama and Hailo)
+        provider_str = self.config._provider_str()
+        if provider_str in ("local", "hailo"):
+            default_url = DEFAULT_BASE_URLS.get(
+                LLMProvider(provider_str), "http://localhost:11434"
+            )
+            kwargs["api_base"] = self.config.base_url or default_url
 
         try:
             logger.info(f"Sending chat request to {self.config.effective_model}")
@@ -170,9 +174,13 @@ class LLMService:
         if api_key:
             kwargs["api_key"] = api_key
 
-        # Add base URL for Ollama
-        if self.config._provider_str() == "local":
-            kwargs["api_base"] = self.config.base_url or "http://localhost:11434"
+        # Add base URL for local providers (Ollama and Hailo)
+        provider_str = self.config._provider_str()
+        if provider_str in ("local", "hailo"):
+            default_url = DEFAULT_BASE_URLS.get(
+                LLMProvider(provider_str), "http://localhost:11434"
+            )
+            kwargs["api_base"] = self.config.base_url or default_url
 
         try:
             logger.info(f"Starting streaming chat to {self.config.effective_model}")

@@ -22,7 +22,8 @@ ENV_VAR_NAMES = {
 class LLMProvider(str, Enum):
     """Supported LLM providers."""
 
-    LOCAL = "local"  # Ollama
+    LOCAL = "local"  # Ollama (remote or on powerful desktop)
+    HAILO = "hailo"  # Hailo AI HAT+ with hailo-ollama
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
@@ -35,6 +36,7 @@ class LLMProvider(str, Enum):
 # Default models per provider
 DEFAULT_MODELS = {
     LLMProvider.LOCAL: "smollm2:360m",
+    LLMProvider.HAILO: "qwen2:1.5b",  # Optimized for Hailo-10H
     LLMProvider.OPENAI: "gpt-4o-mini",
     LLMProvider.ANTHROPIC: "claude-haiku-4-5",
     LLMProvider.GOOGLE: "gemini-1.5-flash",
@@ -47,6 +49,7 @@ DEFAULT_MODELS = {
 # Model prefixes for LiteLLM
 MODEL_PREFIXES = {
     LLMProvider.LOCAL: "ollama/",
+    LLMProvider.HAILO: "ollama/",  # hailo-ollama is Ollama-compatible
     LLMProvider.OPENAI: "",  # No prefix needed
     LLMProvider.ANTHROPIC: "",  # No prefix needed
     LLMProvider.GOOGLE: "gemini/",
@@ -54,6 +57,12 @@ MODEL_PREFIXES = {
     LLMProvider.DEEPSEEK: "deepseek/",
     LLMProvider.HUGGINGFACE: "huggingface/",
     LLMProvider.OPENROUTER: "openrouter/",
+}
+
+# Default base URLs for providers that need them
+DEFAULT_BASE_URLS = {
+    LLMProvider.LOCAL: "http://localhost:11434",  # Standard Ollama
+    LLMProvider.HAILO: "http://localhost:8000",   # hailo-ollama
 }
 
 
@@ -118,7 +127,8 @@ class LLMConfig(BaseModel):
     @property
     def requires_api_key(self) -> bool:
         """Check if this provider requires an API key."""
-        return self._provider_str() != "local"
+        provider = self._provider_str()
+        return provider not in ("local", "hailo")
 
     @property
     def has_env_api_key(self) -> bool:

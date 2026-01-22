@@ -154,13 +154,20 @@ async def get_models(provider: str) -> ModelsResponse:
     """Get available models for a provider."""
     # Define popular models per provider
     models_by_provider = {
+        "hailo": [
+            {"id": "qwen2:1.5b", "name": "Qwen2 1.5B", "description": "Best balance for AI HAT+"},
+            {"id": "qwen2:0.5b", "name": "Qwen2 0.5B", "description": "Fastest responses"},
+            {"id": "llama3.2:1b", "name": "Llama 3.2 1B", "description": "Meta's compact model"},
+            {"id": "llama3.2:3b", "name": "Llama 3.2 3B", "description": "Higher quality, slower"},
+            {"id": "gemma2:2b", "name": "Gemma 2 2B", "description": "Google's efficient model"},
+        ],
         "local": [
-            {"id": "smollm2:360m", "name": "SmolLM2 360M", "description": "Best for RPi - very fast"},
-            {"id": "smollm2:135m", "name": "SmolLM2 135M", "description": "Fastest, minimal resources"},
+            {"id": "smollm2:360m", "name": "SmolLM2 360M", "description": "Very fast, minimal resources"},
+            {"id": "smollm2:135m", "name": "SmolLM2 135M", "description": "Fastest, tiny model"},
             {"id": "smollm2:1.7b", "name": "SmolLM2 1.7B", "description": "Better quality, still fast"},
-            {"id": "gemma2:2b", "name": "Gemma 2 2B", "description": "Good quality, needs more RAM"},
-            {"id": "phi3:mini", "name": "Phi-3 Mini (3.8B)", "description": "High quality, slow on Pi"},
-            {"id": "llama3:8b", "name": "Llama 3 8B", "description": "Best quality, needs fast CPU"},
+            {"id": "gemma2:2b", "name": "Gemma 2 2B", "description": "Good quality"},
+            {"id": "phi3:mini", "name": "Phi-3 Mini (3.8B)", "description": "High quality"},
+            {"id": "llama3:8b", "name": "Llama 3 8B", "description": "Best quality, needs GPU"},
         ],
         "openai": [
             {"id": "gpt-4o", "name": "GPT-4o", "description": "Most capable, multimodal"},
@@ -213,9 +220,16 @@ async def get_providers() -> list[dict]:
     """Get available LLM providers."""
     return [
         {
+            "id": "hailo",
+            "name": "Hailo AI HAT+",
+            "description": "Hardware-accelerated inference on Raspberry Pi AI HAT+ 2",
+            "requires_api_key": False,
+            "setup_url": "https://www.raspberrypi.com/documentation/computers/ai.html",
+        },
+        {
             "id": "local",
-            "name": "Local (Ollama)",
-            "description": "Run models locally on your device. Free and private.",
+            "name": "Ollama",
+            "description": "Run models via Ollama (remote server or local with GPU)",
             "requires_api_key": False,
             "setup_url": "https://ollama.ai/download",
         },

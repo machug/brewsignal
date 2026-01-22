@@ -1020,23 +1020,42 @@
 								</div>
 							</div>
 
-							{#if aiProvider === 'local'}
+							{#if aiProvider === 'hailo'}
+								<div class="info-box hailo">
+									<h4>Hailo AI HAT+ Setup</h4>
+									{#if aiAccelerator?.available}
+										<p class="ai-detected">✓ AI HAT+ 2 detected ({aiAccelerator.device?.tops} TOPS)</p>
+									{:else}
+										<p class="warning">AI HAT+ not detected. Ensure hardware is installed and drivers loaded.</p>
+									{/if}
+									<p>Uses <a href="https://www.raspberrypi.com/documentation/computers/ai.html" target="_blank" rel="noopener">hailo-ollama</a> for hardware-accelerated inference.</p>
+									<ol>
+										<li>Install Hailo drivers: <code>sudo apt install hailo-all</code></li>
+										<li>Install AI packages: <code>sudo apt install hailo-ai-sw-suite</code></li>
+										<li>Download model zoo from <a href="https://www.raspberrypi.com/documentation/computers/ai.html#model-zoo" target="_blank" rel="noopener">RPi docs</a></li>
+										<li>Start server: <code>hailo-ollama</code> (runs on port 8000)</li>
+									</ol>
+									<p class="hint">Models like Qwen2 1.5B and Llama 3.2 1B are optimized for Hailo-10H.</p>
+								</div>
+								<div class="form-field full">
+									<label for="ai-url">Hailo-Ollama URL</label>
+									<input id="ai-url" type="text" bind:value={aiBaseUrl} placeholder="http://localhost:8000" />
+								</div>
+							{:else if aiProvider === 'local'}
 								<div class="info-box">
 									<h4>Ollama Setup</h4>
 									{#if systemInfo?.platform?.is_raspberry_pi}
-										<!-- Running on Raspberry Pi -->
-										<p><strong>Option 1: Remote (Recommended)</strong> — Run Ollama on a PC/Mac with GPU for fast responses.</p>
+										<!-- Running on Raspberry Pi - suggest remote Ollama -->
+										<p><strong>Remote Ollama (Recommended)</strong> — Run Ollama on a PC/Mac with GPU for fast responses.</p>
 										<ol>
 											<li>Install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai</a></li>
 											<li>Run: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code></li>
 											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
 											<li>Enter the remote machine's IP below</li>
 										</ol>
-										<p><strong>Option 2: Local on Pi</strong> — Requires <a href="https://www.raspberrypi.com/products/ai-hat-plus-2/" target="_blank" rel="noopener">AI HAT+</a> for acceptable speed.
-											{#if aiAccelerator?.available}
-												<span class="ai-detected">✓ AI HAT+ detected ({aiAccelerator.device?.tops} TOPS)</span>
-											{/if}
-										</p>
+										{#if aiAccelerator?.available}
+											<p class="hint">For local AI on Pi, select <strong>Hailo AI HAT+</strong> provider instead.</p>
+										{/if}
 									{:else if systemInfo?.platform?.gpu?.vendor === 'nvidia' || systemInfo?.platform?.gpu?.vendor === 'amd' || systemInfo?.platform?.gpu?.vendor === 'apple'}
 										<!-- Running on desktop/server with GPU -->
 										<p class="gpu-detected">
@@ -1839,6 +1858,16 @@
 		color: var(--recipe-accent);
 		font-size: 0.75rem;
 		margin-left: 0.5rem;
+	}
+
+	.info-box .warning {
+		color: var(--error);
+		font-size: 0.85rem;
+		font-weight: 500;
+	}
+
+	.info-box.hailo {
+		border-left: 3px solid var(--recipe-accent);
 	}
 
 	.info-box .hint {

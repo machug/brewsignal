@@ -403,14 +403,14 @@ async def lifespan(app: FastAPI):
     print("Temperature controller started")
 
     # Start MQTT manager for Home Assistant batch data publishing
-    await start_mqtt_manager()
+    start_mqtt_manager()
     print("MQTT manager started")
 
     yield
 
     # Shutdown
     print("Shutting down BrewSignal...")
-    await stop_mqtt_manager()
+    stop_mqtt_manager()
     stop_temp_controller()
     stop_chamber_poller()
     stop_ambient_poller()

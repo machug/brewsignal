@@ -141,7 +141,7 @@ async def mqtt_connection_loop() -> None:
     logger.info("MQTT manager stopped")
 
 
-async def start_mqtt_manager() -> None:
+def start_mqtt_manager() -> None:
     """Start the MQTT manager background task."""
     global _mqtt_task, _shutdown_event
 
@@ -152,7 +152,7 @@ async def start_mqtt_manager() -> None:
         logger.info("MQTT manager task started")
 
 
-async def stop_mqtt_manager() -> None:
+def stop_mqtt_manager() -> None:
     """Stop the MQTT manager background task."""
     global _mqtt_task, _shutdown_event
 
@@ -160,10 +160,6 @@ async def stop_mqtt_manager() -> None:
 
     if _mqtt_task and not _mqtt_task.done():
         _mqtt_task.cancel()
-        try:
-            await _mqtt_task
-        except asyncio.CancelledError:
-            pass
         logger.info("MQTT manager task stopped")
 
 

@@ -58,29 +58,56 @@
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 	let isHistoricalBatch = $state(false); // Track if batch is completed/conditioning
 
-	// Color mapping for tilt accent in chart (matches --tilt-* tokens in app.css)
-	const tiltColorMap: Record<string, string> = {
-		RED: '#f87171',     // --tilt-red
-		GREEN: '#4ade80',   // --tilt-green
-		BLACK: '#71717a',   // --tilt-black (--gray-500)
-		PURPLE: '#a78bfa',  // --tilt-purple
-		ORANGE: '#fb923c',  // --tilt-orange
-		BLUE: '#60a5fa',    // --tilt-blue
-		YELLOW: '#facc15',  // --tilt-yellow
-		PINK: '#f472b6'     // --tilt-pink
-	};
+	// Helper to read CSS variable values at runtime (for uPlot which needs actual color values)
+	function getCssVar(name: string, fallback: string = ''): string {
+		if (typeof document === 'undefined') return fallback;
+		return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+	}
 
-	// Theme colors aligned with app.css design tokens
-	const SG_COLOR = '#f59e0b';  // --recipe-accent (amber for SG)
-	const SG_GLOW = 'rgba(245, 158, 11, 0.3)';  // --recipe-accent with transparency
-	const TEXT_MUTED = '#71717a';  // --gray-500 / --text-muted
-	const TEXT_SECONDARY = '#a1a1aa';  // --gray-400 / --text-secondary
-	const GRID_COLOR = 'rgba(255, 255, 255, 0.04)';  // subtle grid
-	const CYAN = '#22d3ee';  // --temp-ambient
-	const PURPLE = '#a78bfa';  // --tilt-purple / --chart-ambient
-	const TREND_COLOR = 'rgba(245, 158, 11, 0.5)';  // --recipe-accent semi-transparent
-	const ANOMALY_COLOR = '#ef4444';  // --negative
-	const BATTERY_COLOR = '#22c55e';  // --positive
+	// Chart colors - read from CSS tokens at runtime
+	// These are initialized with fallbacks and updated on mount
+	let chartColors = $state({
+		sg: '#f59e0b',
+		sgGlow: 'rgba(245, 158, 11, 0.3)',
+		textMuted: '#71717a',
+		textSecondary: '#a1a1aa',
+		grid: 'rgba(255, 255, 255, 0.04)',
+		ambient: '#22d3ee',
+		chamber: '#a78bfa',
+		trend: 'rgba(245, 158, 11, 0.5)',
+		anomaly: '#ef4444',
+		battery: '#22c55e'
+	});
+
+	// Color mapping for tilt accent in chart (reads --tilt-* tokens)
+	function getTiltColorMap(): Record<string, string> {
+		return {
+			RED: getCssVar('--tilt-red', '#f87171'),
+			GREEN: getCssVar('--tilt-green', '#4ade80'),
+			BLACK: getCssVar('--tilt-black', '#71717a'),
+			PURPLE: getCssVar('--tilt-purple', '#a78bfa'),
+			ORANGE: getCssVar('--tilt-orange', '#fb923c'),
+			BLUE: getCssVar('--tilt-blue', '#60a5fa'),
+			YELLOW: getCssVar('--tilt-yellow', '#facc15'),
+			PINK: getCssVar('--tilt-pink', '#f472b6')
+		};
+	}
+
+	// Initialize chart colors from CSS tokens
+	function initChartColors() {
+		chartColors = {
+			sg: getCssVar('--chart-sg', '#f59e0b'),
+			sgGlow: getCssVar('--chart-sg-glow', 'rgba(245, 158, 11, 0.3)'),
+			textMuted: getCssVar('--text-muted', '#71717a'),
+			textSecondary: getCssVar('--text-secondary', '#a1a1aa'),
+			grid: getCssVar('--chart-grid', 'rgba(255, 255, 255, 0.04)'),
+			ambient: getCssVar('--chart-ambient', '#22d3ee'),
+			chamber: getCssVar('--chart-chamber', '#a78bfa'),
+			trend: getCssVar('--chart-trend', 'rgba(245, 158, 11, 0.5)'),
+			anomaly: getCssVar('--chart-anomaly', '#ef4444'),
+			battery: getCssVar('--chart-battery', '#22c55e')
+		};
+	}
 
 	// Trend line visibility state
 	const TREND_STORAGE_KEY = 'brewsignal_chart_trend_enabled';
@@ -287,8 +314,9 @@
 	}
 
 	function getChartOptions(width: number, celsius: boolean, tz: string): uPlot.Options {
-		const sgColor = SG_COLOR;
-		const tempColor = tiltColorMap[deviceColor] || TEXT_SECONDARY;
+		const tiltColors = getTiltColorMap();
+		const sgColor = chartColors.sg;
+		const tempColor = tiltColors[deviceColor] || chartColors.textSecondary;
 
 		return {
 			width,
@@ -368,9 +396,9 @@
 			axes: [
 				{
 					// X axis (time)
-					stroke: TEXT_MUTED,
-					grid: { stroke: GRID_COLOR, width: 1 },
-					ticks: { stroke: GRID_COLOR, width: 1, size: 4 },
+					stroke: chartColors.textMuted,
+					grid: { stroke: chartColors.grid, width: 1 },
+					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
 					font: '11px "JetBrains Mono", monospace',
 					labelFont: '11px "JetBrains Mono", monospace',
 					values: (u, vals) =>
@@ -380,8 +408,8 @@
 					// Y axis left (SG/Plato/Brix)
 					scale: 'sg',
 					stroke: sgColor,
-					grid: { stroke: GRID_COLOR, width: 1 },
-					ticks: { stroke: GRID_COLOR, width: 1, size: 4 },
+					grid: { stroke: chartColors.grid, width: 1 },
+					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
 					font: '11px "JetBrains Mono", monospace',
 					labelFont: '11px "JetBrains Mono", monospace',
 					values: (u, vals) => vals.map((v) => formatGravity(v)),
@@ -392,7 +420,7 @@
 					scale: 'temp',
 					stroke: tempColor,
 					grid: { show: false },
-					ticks: { stroke: GRID_COLOR, width: 1, size: 4 },
+					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
 					font: '11px "JetBrains Mono", monospace',
 					labelFont: '11px "JetBrains Mono", monospace',
 					values: (u, vals) => vals.map((v) => v.toFixed(0) + '°'),
@@ -413,7 +441,7 @@
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
 					fill: (u: uPlot, idx: number) => {
 						const gradient = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
-						gradient.addColorStop(0, SG_GLOW);
+						gradient.addColorStop(0, chartColors.sgGlow);
 						gradient.addColorStop(1, 'transparent');
 						return gradient;
 					},
@@ -435,7 +463,7 @@
 					// Ambient Temp series
 					label: 'Ambient',
 					scale: 'temp',
-					stroke: CYAN,
+					stroke: chartColors.ambient,
 					width: 1.5,
 					dash: [2, 4],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
@@ -447,7 +475,7 @@
 					// Chamber Temp series
 					label: 'Chamber',
 					scale: 'temp',
-					stroke: PURPLE,
+					stroke: chartColors.chamber,
 					width: 1.5,
 					dash: [4, 2],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
@@ -459,7 +487,7 @@
 					// SG Trend line series
 					label: 'Trend',
 					scale: 'sg',
-					stroke: TREND_COLOR,
+					stroke: chartColors.trend,
 					width: 2,
 					dash: [8, 4],
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
@@ -471,13 +499,13 @@
 					// Anomaly markers series - show points only, no line
 					label: 'Anomaly',
 					scale: 'sg',
-					stroke: ANOMALY_COLOR,
+					stroke: chartColors.anomaly,
 					width: 2, // Non-zero width required for point rendering
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) + ' ⚠️' : '--',
 					points: {
 						show: true,
 						size: 10,
-						fill: ANOMALY_COLOR,
+						fill: chartColors.anomaly,
 						stroke: '#ffffff',
 						width: 2
 					},
@@ -488,7 +516,7 @@
 					// Battery level series
 					label: 'Battery',
 					scale: 'battery',
-					stroke: BATTERY_COLOR,
+					stroke: chartColors.battery,
 					width: 1.5,
 					dash: [2, 2],
 					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(0) + '%' : '--',
@@ -842,6 +870,9 @@ function resetRefreshInterval() {
 }
 
 onMount(async () => {
+	// Initialize chart colors from CSS tokens
+	initChartColors();
+
 	// Load preferred refresh interval from localStorage
 	const storedRefresh = localStorage.getItem(REFRESH_STORAGE_KEY);
 	if (storedRefresh !== null) {
@@ -978,7 +1009,7 @@ onMount(async () => {
 	}
 </script>
 
-<div class="chart-wrapper">
+<div class="chart-wrapper" role="region" aria-label="Fermentation Chart">
 	<!-- Time range selector -->
 	<div class="chart-controls">
 		<div class="flex items-center gap-1.5">
@@ -1009,13 +1040,13 @@ onMount(async () => {
 			</div>
 			<div class="chart-legend">
 				<span class="legend-item">
-					<span class="legend-dot" style="background: var(--tilt-yellow);"></span>
+					<span class="legend-dot legend-dot-sg"></span>
 					<span>SG</span>
 				</span>
 				<span class="legend-item">
 					<span
 						class="legend-line"
-						style="background: {tiltColorMap[deviceColor] || 'var(--text-secondary)'};"
+						style="background: {chartColors.textSecondary}; background: var(--tilt-{deviceColor.toLowerCase()}, {chartColors.textSecondary});"
 					></span>
 					<span>Wort</span>
 				</span>
@@ -1026,7 +1057,7 @@ onMount(async () => {
 					onclick={toggleAmbient}
 					title={showAmbient ? 'Hide ambient temp' : 'Show ambient temp'}
 				>
-					<span class="legend-line legend-line-dotted" style="background: {CYAN};"></span>
+					<span class="legend-line legend-line-ambient"></span>
 					<span>Ambient</span>
 				</button>
 				<button
@@ -1046,7 +1077,7 @@ onMount(async () => {
 					onclick={toggleTrendLine}
 					title={showTrendLine ? 'Hide trend line' : 'Show trend line'}
 				>
-					<span class="legend-line legend-line-dashed" style="background: {TREND_COLOR};"></span>
+					<span class="legend-line legend-line-trend"></span>
 					<span>Trend</span>
 				</button>
 				{#if anomalyData.length > 0}
@@ -1057,7 +1088,7 @@ onMount(async () => {
 						onclick={toggleAnomalies}
 						title={showAnomalies ? 'Hide anomaly markers' : 'Show anomaly markers'}
 					>
-						<span class="legend-dot anomaly-dot" style="background: {ANOMALY_COLOR};"></span>
+						<span class="legend-dot legend-dot-anomaly"></span>
 						<span>Anomalies ({anomalyData.length})</span>
 					</button>
 				{/if}
@@ -1069,7 +1100,7 @@ onMount(async () => {
 						onclick={toggleBattery}
 						title={showBattery ? 'Hide battery level' : 'Show battery level'}
 					>
-						<span class="legend-line legend-line-dotted" style="background: {BATTERY_COLOR};"></span>
+						<span class="legend-line legend-line-battery"></span>
 						<span>Battery</span>
 					</button>
 				{/if}
@@ -1078,7 +1109,20 @@ onMount(async () => {
 	</div>
 
 	<!-- Chart container -->
-	<div class="chart-container" bind:this={chartContainer}>
+	<div
+		class="chart-container"
+		bind:this={chartContainer}
+		role="img"
+		aria-label="Fermentation progress chart showing gravity and temperature over time"
+	>
+		<span class="sr-only">
+			Interactive chart displaying fermentation data.
+			{#if readings.length > 0}
+				Showing {readings.length} data points.
+			{:else}
+				No data available yet.
+			{/if}
+		</span>
 		{#if loading}
 			<div class="loading-overlay">
 				<div class="loading-spinner"></div>
@@ -1209,25 +1253,39 @@ onMount(async () => {
 		border-radius: 50%;
 	}
 
+	.legend-dot-sg {
+		background: var(--chart-sg);
+	}
+
+	.legend-dot-anomaly {
+		background: var(--chart-anomaly);
+		box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+	}
+
 	.legend-line {
 		width: 0.75rem;
 		height: 2px;
 		border-radius: 1px;
 	}
 
-	.legend-line-dotted {
-		background: linear-gradient(90deg, var(--temp-ambient) 2px, transparent 2px) !important;
-		background-size: 4px 2px !important;
-	}
-
-	.legend-line-dashed {
-		background: linear-gradient(90deg, rgba(250, 204, 21, 0.5) 6px, transparent 6px) !important;
-		background-size: 10px 2px !important;
+	.legend-line-ambient {
+		background: linear-gradient(90deg, var(--chart-ambient) 2px, transparent 2px);
+		background-size: 4px 2px;
 	}
 
 	.legend-line-chamber {
-		background: linear-gradient(90deg, var(--tilt-purple) 4px, transparent 4px) !important;
-		background-size: 6px 2px !important;
+		background: linear-gradient(90deg, var(--chart-chamber) 4px, transparent 4px);
+		background-size: 6px 2px;
+	}
+
+	.legend-line-trend {
+		background: linear-gradient(90deg, var(--chart-trend) 6px, transparent 6px);
+		background-size: 10px 2px;
+	}
+
+	.legend-line-battery {
+		background: linear-gradient(90deg, var(--chart-battery) 2px, transparent 2px);
+		background-size: 4px 2px;
 	}
 
 	.legend-toggle {
@@ -1248,12 +1306,16 @@ onMount(async () => {
 		opacity: 0.4;
 	}
 
-	.legend-disabled .legend-line-dashed {
-		background: linear-gradient(90deg, var(--text-muted) 6px, transparent 6px) !important;
+	.legend-disabled .legend-line-ambient,
+	.legend-disabled .legend-line-chamber,
+	.legend-disabled .legend-line-trend,
+	.legend-disabled .legend-line-battery {
+		background: linear-gradient(90deg, var(--text-muted) 4px, transparent 4px);
 	}
 
-	.legend-disabled .legend-line-chamber {
-		background: linear-gradient(90deg, var(--text-muted) 4px, transparent 4px) !important;
+	.legend-disabled .legend-dot-anomaly {
+		background: var(--text-muted);
+		box-shadow: none;
 	}
 
 	.anomaly-toggle {
@@ -1261,16 +1323,7 @@ onMount(async () => {
 	}
 
 	.anomaly-toggle:not(.legend-disabled) {
-		color: var(--negative);
-	}
-
-	.anomaly-dot {
-		box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
-	}
-
-	.legend-disabled .anomaly-dot {
-		background: var(--text-muted) !important;
-		box-shadow: none;
+		color: var(--chart-anomaly);
 	}
 
 	.chart-container {
@@ -1366,5 +1419,18 @@ onMount(async () => {
 
 	.chart-empty {
 		text-align: center;
+	}
+
+	/* Screen reader only - visually hidden but accessible */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 </style>

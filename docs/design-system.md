@@ -38,12 +38,29 @@ All colors use CSS custom properties defined in `app.css`. Never use hardcoded h
   --activity-slowing: #eab308;
   --activity-complete: #6b7280;
 
-  /* Chart Colors */
-  --chart-fermenting: var(--recipe-accent);
-  --chart-conditioning: var(--recipe-secondary);
-  --chart-completed: var(--positive);
-  --chart-background: var(--surface);
-  --chart-grid: var(--border);
+  /* Chart Colors (updated Phase 4) */
+  --chart-sg: var(--recipe-accent);
+  --chart-sg-glow: rgba(245, 158, 11, 0.3);
+  --chart-sg-fill: rgba(245, 158, 11, 0.1);
+  --chart-temp: var(--tilt-blue);
+  --chart-ambient: #22d3ee;
+  --chart-chamber: var(--tilt-purple);
+  --chart-trend: rgba(245, 158, 11, 0.5);
+  --chart-anomaly: var(--negative);
+  --chart-battery: var(--positive);
+  --chart-grid: rgba(255, 255, 255, 0.04);
+  --chart-axis: var(--gray-600);
+  --chart-text: var(--text-muted);
+
+  /* Tilt Device Colors */
+  --tilt-red: #f87171;
+  --tilt-green: #4ade80;
+  --tilt-black: #71717a;
+  --tilt-purple: #a78bfa;
+  --tilt-orange: #fb923c;
+  --tilt-blue: #60a5fa;
+  --tilt-yellow: #facc15;
+  --tilt-pink: #f472b6;
 
   /* Base Colors */
   --surface: #ffffff;
@@ -269,11 +286,52 @@ Consistent metric formatting.
 - All interactive elements focusable
 - Logical tab order
 - Escape to close modals
+- Use `tabindex="-1"` for programmatically focused elements
 
 ### Screen Readers
 - Use semantic HTML
-- Add `aria-label` for icons
+- Add `aria-label` for icon-only buttons
+- Add `aria-hidden="true"` for decorative icons
 - `role` attributes where needed
+
+### Modal Pattern (Phase 5)
+```svelte
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="modal-overlay"
+  onclick={() => (showModal = false)}
+  onkeydown={(e) => e.key === 'Escape' && (showModal = false)}
+  role="presentation"
+>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="modal"
+    onclick={(e) => e.stopPropagation()}
+    onkeydown={(e) => e.stopPropagation()}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modal-title"
+    tabindex="-1"
+  >
+    <h2 id="modal-title">Modal Title</h2>
+    <!-- content -->
+  </div>
+</div>
+```
+
+### Chart Accessibility
+For charts using uPlot:
+```svelte
+<div
+  class="chart-container"
+  role="img"
+  aria-label="Chart description"
+>
+  <span class="sr-only">
+    Descriptive text for screen readers
+  </span>
+</div>
+```
 
 ## Usage in Code
 

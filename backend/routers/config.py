@@ -51,6 +51,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ai_base_url": "",
     "ai_temperature": 0.7,
     "ai_max_tokens": 2000,
+    # MQTT settings for Home Assistant
+    "mqtt_enabled": False,
+    "mqtt_host": "",
+    "mqtt_port": 1883,
+    "mqtt_username": "",
+    "mqtt_password": "",
+    "mqtt_topic_prefix": "brewsignal",
 }
 
 

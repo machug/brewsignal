@@ -25,6 +25,7 @@ from ..models import (
     Recipe,
 )
 from ..state import latest_readings
+from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
 
 router = APIRouter(prefix="/api/batches", tags=["batches"])
 
@@ -184,6 +185,14 @@ async def create_batch(
     await db.commit()
     await db.refresh(db_batch)
 
+    # Publish MQTT discovery if batch starts in fermenting status
+    if batch.status == "fermenting":
+        await publish_batch_discovery(
+            batch_id=db_batch.id,
+            batch_name=db_batch.name or f"Batch #{db_batch.batch_number}",
+            device_id=db_batch.device_id,
+        )
+
     # Load recipe relationship with nested style for response
     if db_batch.recipe_id:
         query = (
@@ -271,6 +280,17 @@ async def update_batch(
             from ..temp_controller import cleanup_batch_state
             cleanup_batch_state(batch_id)
 
+        # MQTT: Publish discovery when entering fermenting status
+        if update.status == "fermenting" and old_status != "fermenting":
+            await publish_batch_discovery(
+                batch_id=batch_id,
+                batch_name=batch.name or f"Batch #{batch.batch_number}",
+                device_id=batch.device_id,
+            )
+        # MQTT: Remove discovery when completing/archiving batch
+        elif update.status in ["completed", "archived"]:
+            await remove_batch_discovery(batch_id)
+
         # Release device when batch is completed or archived
         if update.status in ["completed", "archived"]:
             batch.device_id = None
@@ -336,6 +356,9 @@ async def soft_delete_batch(
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Remove MQTT discovery before deleting
+    await remove_batch_discovery(batch_id)
 
     if hard_delete:
         # Hard delete: cascade removes readings via relationship

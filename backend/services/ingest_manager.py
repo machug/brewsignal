@@ -32,6 +32,7 @@ from .batch_linker import link_reading_to_batch
 from .alert_service import detect_and_persist_alerts
 from ..routers.config import get_config_value
 from sqlalchemy.orm import selectinload
+from ..mqtt_manager import publish_batch_reading
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +277,23 @@ class IngestManager:
             except Exception as e:
                 logger.warning("Alert detection failed: %s", e)
                 # Alert detection failure is non-fatal
+
+            # Step 10b: Publish to MQTT for Home Assistant (fire-and-forget)
+            try:
+                # Get batch info for MQTT context
+                batch = await db.get(Batch, batch_id)
+                if batch:
+                    await publish_batch_reading(
+                        batch_id=batch_id,
+                        gravity=reading.gravity,
+                        temperature=reading.temperature,
+                        og=batch.measured_og,
+                        start_time=batch.start_time,
+                        status=batch.status,
+                    )
+            except Exception as e:
+                logger.warning("MQTT publish failed: %s", e)
+                # MQTT failure is non-fatal
 
         await db.commit()
 

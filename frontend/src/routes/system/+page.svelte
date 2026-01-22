@@ -113,6 +113,19 @@
 	let aiModels = $state<Array<{ id: string; name: string; description: string }>>([]);
 	let aiHasEnvKey = $state(false);
 
+	// MQTT state
+	let mqttEnabled = $state(false);
+	let mqttHost = $state('');
+	let mqttPort = $state(1883);
+	let mqttUsername = $state('');
+	let mqttPassword = $state('');
+	let mqttTopicPrefix = $state('brewsignal');
+	let mqttSaving = $state(false);
+	let mqttError = $state<string | null>(null);
+	let mqttSuccess = $state(false);
+	let mqttTesting = $state(false);
+	let mqttTestResult = $state<{ success: boolean; message: string } | null>(null);
+
 	// Section expansion state
 	let expandedSection = $state<string | null>('display');
 
@@ -226,6 +239,13 @@
 		aiBaseUrl = configState.config.ai_base_url ?? '';
 		aiTemperature = configState.config.ai_temperature ?? 0.7;
 		aiMaxTokens = configState.config.ai_max_tokens ?? 2000;
+		// MQTT
+		mqttEnabled = configState.config.mqtt_enabled ?? false;
+		mqttHost = configState.config.mqtt_host ?? '';
+		mqttPort = configState.config.mqtt_port ?? 1883;
+		mqttUsername = configState.config.mqtt_username ?? '';
+		mqttPassword = configState.config.mqtt_password ?? '';
+		mqttTopicPrefix = configState.config.mqtt_topic_prefix ?? 'brewsignal';
 	}
 
 	async function loadAiProviders() {
@@ -312,6 +332,60 @@
 			aiTestResult = { success: false, error: e instanceof Error ? e.message : 'Connection test failed' };
 		} finally {
 			aiTesting = false;
+		}
+	}
+
+	async function saveMqttConfig() {
+		mqttSaving = true;
+		mqttError = null;
+		mqttSuccess = false;
+
+		try {
+			const result = await updateConfig({
+				mqtt_enabled: mqttEnabled,
+				mqtt_host: mqttHost,
+				mqtt_port: mqttPort,
+				mqtt_username: mqttUsername,
+				mqtt_password: mqttPassword,
+				mqtt_topic_prefix: mqttTopicPrefix
+			});
+			if (result.success) {
+				mqttSuccess = true;
+				setTimeout(() => (mqttSuccess = false), 3000);
+			} else {
+				mqttError = result.error || 'Failed to save settings';
+			}
+		} finally {
+			mqttSaving = false;
+		}
+	}
+
+	async function testMqttConnection() {
+		mqttTesting = true;
+		mqttTestResult = null;
+
+		try {
+			// First save the current config
+			await updateConfig({
+				mqtt_enabled: mqttEnabled,
+				mqtt_host: mqttHost,
+				mqtt_port: mqttPort,
+				mqtt_username: mqttUsername,
+				mqtt_password: mqttPassword,
+				mqtt_topic_prefix: mqttTopicPrefix
+			});
+
+			// Then test the connection
+			const response = await fetch('/api/mqtt/test', { method: 'POST' });
+			if (response.ok) {
+				mqttTestResult = await response.json();
+			} else {
+				mqttTestResult = { success: false, message: 'Request failed' };
+			}
+		} catch (e) {
+			mqttTestResult = { success: false, message: 'Network error' };
+		} finally {
+			mqttTesting = false;
 		}
 	}
 
@@ -1128,6 +1202,103 @@
 							</button>
 							{#if aiError}<span class="error-msg">{aiError}</span>{/if}
 							{#if aiSuccess}<span class="success-msg">Saved</span>{/if}
+						</div>
+					</div>
+				{/if}
+			</section>
+
+			<!-- MQTT Section -->
+			<section class="settings-section">
+				<button
+					type="button"
+					class="section-header"
+					onclick={() => toggleSection('mqtt')}
+					aria-expanded={expandedSection === 'mqtt'}
+				>
+					<div class="section-title-group">
+						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
+						</svg>
+						<h2>MQTT Publishing</h2>
+						{#if mqttEnabled}
+							<span class="status-pill enabled">Enabled</span>
+						{/if}
+					</div>
+					<svg class="chevron" class:rotated={expandedSection === 'mqtt'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				{#if expandedSection === 'mqtt'}
+					<div class="section-content">
+						<p class="section-intro">
+							Publish batch fermentation data to an MQTT broker for Home Assistant auto-discovery.
+							Sensors are created automatically when batches start fermenting.
+						</p>
+
+						<div class="toggle-setting prominent">
+							<div class="toggle-info">
+								<span class="toggle-label">Enable MQTT Publishing</span>
+								<span class="toggle-desc">Send batch data to MQTT broker</span>
+							</div>
+							<button
+								type="button"
+								class="switch"
+								class:on={mqttEnabled}
+								onclick={() => (mqttEnabled = !mqttEnabled)}
+								aria-pressed={mqttEnabled}
+							>
+								<span class="switch-thumb"></span>
+							</button>
+						</div>
+
+						{#if mqttEnabled}
+							<div class="form-grid">
+								<div class="form-field">
+									<label for="mqtt-host">Broker Host</label>
+									<input id="mqtt-host" type="text" bind:value={mqttHost} placeholder="192.168.1.100 or localhost" />
+								</div>
+								<div class="form-field">
+									<label for="mqtt-port">Port</label>
+									<input id="mqtt-port" type="number" bind:value={mqttPort} min="1" max="65535" placeholder="1883" />
+								</div>
+								<div class="form-field">
+									<label for="mqtt-username">Username</label>
+									<input id="mqtt-username" type="text" bind:value={mqttUsername} placeholder="Optional" />
+								</div>
+								<div class="form-field">
+									<label for="mqtt-password">Password</label>
+									<input id="mqtt-password" type="password" bind:value={mqttPassword} placeholder="Optional" />
+								</div>
+								<div class="form-field full">
+									<label for="mqtt-prefix">Topic Prefix</label>
+									<input id="mqtt-prefix" type="text" bind:value={mqttTopicPrefix} placeholder="brewsignal" />
+									<span class="field-hint">Topics: {mqttTopicPrefix || 'brewsignal'}/batch/&lt;id&gt;/gravity, temperature, etc.</span>
+								</div>
+							</div>
+
+							<div class="info-box">
+								<h4>Home Assistant Setup</h4>
+								<p>Ensure your Home Assistant has MQTT integration configured (typically via Mosquitto add-on).</p>
+								<p>BrewSignal publishes discovery messages to <code>homeassistant/sensor/...</code> so entities appear automatically.</p>
+								<p class="hint">Sensors: gravity, temperature, ABV, status, days fermenting. Binary sensors: heater/cooler active.</p>
+							</div>
+
+							<div class="inline-actions">
+								<button type="button" class="test-btn" onclick={testMqttConnection} disabled={mqttTesting || !mqttHost}>
+									{mqttTesting ? 'Testing...' : 'Test Connection'}
+								</button>
+								{#if mqttTestResult}
+									<span class="test-result" class:success={mqttTestResult.success}>{mqttTestResult.message}</span>
+								{/if}
+							</div>
+						{/if}
+
+						<div class="section-actions">
+							<button type="button" class="save-btn" onclick={saveMqttConfig} disabled={mqttSaving}>
+								{mqttSaving ? 'Saving...' : 'Save MQTT Settings'}
+							</button>
+							{#if mqttError}<span class="error-msg">{mqttError}</span>{/if}
+							{#if mqttSuccess}<span class="success-msg">Saved</span>{/if}
 						</div>
 					</div>
 				{/if}

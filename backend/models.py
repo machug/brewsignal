@@ -1166,6 +1166,13 @@ class ConfigUpdate(BaseModel):
     ai_base_url: Optional[str] = None  # For Ollama: http://localhost:11434
     ai_temperature: Optional[float] = None
     ai_max_tokens: Optional[int] = None
+    # MQTT settings for Home Assistant
+    mqtt_enabled: Optional[bool] = None
+    mqtt_host: Optional[str] = None
+    mqtt_port: Optional[int] = None
+    mqtt_username: Optional[str] = None
+    mqtt_password: Optional[str] = None
+    mqtt_topic_prefix: Optional[str] = None
 
     @field_validator("temp_units")
     @classmethod
@@ -1252,6 +1259,13 @@ class ConfigUpdate(BaseModel):
             raise ValueError("ai_max_tokens must be between 100 and 8000")
         return v
 
+    @field_validator("mqtt_port")
+    @classmethod
+    def validate_mqtt_port(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 1 or v > 65535):
+            raise ValueError("mqtt_port must be between 1 and 65535")
+        return v
+
 
 class ConfigResponse(BaseModel):
     temp_units: str = "C"
@@ -1289,6 +1303,13 @@ class ConfigResponse(BaseModel):
     ai_base_url: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
+    # MQTT settings for Home Assistant
+    mqtt_enabled: bool = False
+    mqtt_host: str = ""
+    mqtt_port: int = 1883
+    mqtt_username: str = ""
+    mqtt_password: str = ""
+    mqtt_topic_prefix: str = "brewsignal"
 
 
 # Recipe & Batch Pydantic Schemas

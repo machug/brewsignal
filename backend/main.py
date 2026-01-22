@@ -18,11 +18,12 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, recipes, system, yeast_strains  # noqa: E402
+from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, mqtt, recipes, system, yeast_strains  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
 from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
+from .mqtt_manager import start_mqtt_manager, stop_mqtt_manager, publish_batch_reading  # noqa: E402
 from .cleanup import CleanupService  # noqa: E402
 from .scanner import TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
@@ -313,6 +314,19 @@ async def handle_tilt_reading(reading: TiltReading):
 
             await session.commit()
 
+            # Publish reading to MQTT for Home Assistant (fire-and-forget)
+            # Get batch info for MQTT context
+            batch = await session.get(models.Batch, batch_id)
+            if batch:
+                await publish_batch_reading(
+                    batch_id=batch_id,
+                    gravity=sg_calibrated,
+                    temperature=temp_calibrated_c,
+                    og=batch.measured_og or (batch.recipe.og if batch.recipe else None) if hasattr(batch, 'recipe') else batch.measured_og,
+                    start_time=batch.start_time,
+                    status=batch.status,
+                )
+
             # Update rate limit cache after successful storage
             _last_tilt_storage[reading.id] = timestamp
 
@@ -388,10 +402,15 @@ async def lifespan(app: FastAPI):
     start_temp_controller()
     print("Temperature controller started")
 
+    # Start MQTT manager for Home Assistant batch data publishing
+    await start_mqtt_manager()
+    print("MQTT manager started")
+
     yield
 
     # Shutdown
     print("Shutting down BrewSignal...")
+    await stop_mqtt_manager()
     stop_temp_controller()
     stop_chamber_poller()
     stop_ambient_poller()
@@ -419,6 +438,7 @@ app.include_router(system.router)
 app.include_router(ambient.router)
 app.include_router(chamber.router)
 app.include_router(ha.router)
+app.include_router(mqtt.router)
 app.include_router(control.router)
 app.include_router(alerts.router)
 app.include_router(ingest.router)

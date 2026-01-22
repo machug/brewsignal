@@ -2,11 +2,25 @@
 	import { onMount } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 
+	interface GPUInfo {
+		vendor: string;  // "nvidia", "amd", "intel", "apple", "none"
+		name: string | null;
+		vram_mb: number | null;
+	}
+
+	interface PlatformInfo {
+		is_raspberry_pi: boolean;
+		model: string | null;
+		architecture: string;
+		gpu: GPUInfo;
+	}
+
 	interface SystemInfo {
 		hostname: string;
 		ip_addresses: string[];
 		uptime_seconds: number | null;
 		version: string;
+		platform: PlatformInfo | null;
 	}
 
 	interface StorageStats {
@@ -1009,13 +1023,42 @@
 							{#if aiProvider === 'local'}
 								<div class="info-box">
 									<h4>Ollama Setup</h4>
-									<p><strong>Option 1: Remote (Recommended)</strong> — Run Ollama on a PC/Mac with GPU for fast responses.</p>
-									<ol>
-										<li>Install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai</a></li>
-										<li>Run: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code></li>
-										<li>Pull a model: <code>ollama pull llama3:8b</code></li>
-									</ol>
-									<p><strong>Option 2: Local on Pi</strong> — Requires <a href="https://www.raspberrypi.com/products/ai-hat-plus-2/" target="_blank" rel="noopener">AI HAT+</a> for acceptable speed.</p>
+									{#if systemInfo?.platform?.is_raspberry_pi}
+										<!-- Running on Raspberry Pi -->
+										<p><strong>Option 1: Remote (Recommended)</strong> — Run Ollama on a PC/Mac with GPU for fast responses.</p>
+										<ol>
+											<li>Install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai</a></li>
+											<li>Run: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code></li>
+											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
+											<li>Enter the remote machine's IP below</li>
+										</ol>
+										<p><strong>Option 2: Local on Pi</strong> — Requires <a href="https://www.raspberrypi.com/products/ai-hat-plus-2/" target="_blank" rel="noopener">AI HAT+</a> for acceptable speed.
+											{#if aiAccelerator?.available}
+												<span class="ai-detected">✓ AI HAT+ detected ({aiAccelerator.device?.tops} TOPS)</span>
+											{/if}
+										</p>
+									{:else if systemInfo?.platform?.gpu?.vendor === 'nvidia' || systemInfo?.platform?.gpu?.vendor === 'amd' || systemInfo?.platform?.gpu?.vendor === 'apple'}
+										<!-- Running on desktop/server with GPU -->
+										<p class="gpu-detected">
+											<strong>GPU detected:</strong> {systemInfo.platform.gpu.name ?? systemInfo.platform.gpu.vendor.toUpperCase()}
+											{#if systemInfo.platform.gpu.vram_mb}
+												({(systemInfo.platform.gpu.vram_mb / 1024).toFixed(0)} GB VRAM)
+											{/if}
+										</p>
+										<p>Local Ollama is recommended for this system.</p>
+										<ol>
+											<li>Install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai</a></li>
+											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
+											<li>Keep the default URL (localhost)</li>
+										</ol>
+									{:else}
+										<!-- Generic/unknown platform -->
+										<ol>
+											<li>Install from <a href="https://ollama.ai/download" target="_blank" rel="noopener">ollama.ai</a></li>
+											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
+										</ol>
+										<p class="hint">For remote Ollama, run: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code></p>
+									{/if}
 								</div>
 								<div class="form-field full">
 									<label for="ai-url">Ollama URL</label>
@@ -1784,6 +1827,24 @@
 
 	.info-box a:hover {
 		text-decoration: underline;
+	}
+
+	.info-box .gpu-detected {
+		color: var(--positive);
+		font-size: 0.8125rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.info-box .ai-detected {
+		color: var(--recipe-accent);
+		font-size: 0.75rem;
+		margin-left: 0.5rem;
+	}
+
+	.info-box .hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin-top: 0.5rem;
 	}
 
 	/* Advanced Settings */

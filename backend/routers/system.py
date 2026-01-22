@@ -33,11 +33,27 @@ _version_file = Path(__file__).parent.parent.parent / "VERSION"
 VERSION = _version_file.read_text().strip() if _version_file.exists() else "0.0.0"
 
 
+class GPUInfo(BaseModel):
+    """GPU information for inference capability assessment."""
+    vendor: str  # "nvidia", "amd", "intel", "apple", "none"
+    name: Optional[str] = None
+    vram_mb: Optional[int] = None
+
+
+class PlatformInfo(BaseModel):
+    """Platform detection for contextual recommendations."""
+    is_raspberry_pi: bool
+    model: Optional[str] = None  # e.g., "Raspberry Pi 5 Model B Rev 1.0"
+    architecture: str  # e.g., "aarch64", "x86_64"
+    gpu: GPUInfo
+
+
 class SystemInfo(BaseModel):
     hostname: str
     ip_addresses: list[str]
     uptime_seconds: Optional[float]
     version: str = VERSION
+    platform: Optional[PlatformInfo] = None
 
 
 class SystemAction(BaseModel):
@@ -74,6 +90,136 @@ def get_uptime() -> Optional[float]:
         return None
 
 
+def detect_platform() -> PlatformInfo:
+    """Detect platform type (Pi vs desktop) and GPU availability."""
+    import platform as plat
+
+    is_pi = False
+    model = None
+    architecture = plat.machine()
+
+    # Check for Raspberry Pi
+    try:
+        model_path = Path("/sys/firmware/devicetree/base/model")
+        if model_path.exists():
+            model = model_path.read_text().strip('\x00').strip()
+            is_pi = "raspberry pi" in model.lower()
+    except Exception:
+        pass
+
+    # Fallback: check /proc/cpuinfo for Pi
+    if not is_pi:
+        try:
+            cpuinfo = Path("/proc/cpuinfo").read_text()
+            if "raspberry" in cpuinfo.lower() or "BCM" in cpuinfo:
+                is_pi = True
+        except Exception:
+            pass
+
+    # Detect GPU
+    gpu = detect_gpu()
+
+    return PlatformInfo(
+        is_raspberry_pi=is_pi,
+        model=model,
+        architecture=architecture,
+        gpu=gpu,
+    )
+
+
+def detect_gpu() -> GPUInfo:
+    """Detect GPU vendor and capabilities."""
+    # Try NVIDIA first (nvidia-smi)
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split(",")
+            name = parts[0].strip() if parts else None
+            vram = int(float(parts[1].strip())) if len(parts) > 1 else None
+            return GPUInfo(vendor="nvidia", name=name, vram_mb=vram)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    except Exception as e:
+        logger.debug(f"nvidia-smi error: {e}")
+
+    # Try AMD (rocm-smi or check sysfs)
+    try:
+        result = subprocess.run(
+            ["rocm-smi", "--showproductname"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Parse AMD GPU name from output
+            for line in result.stdout.splitlines():
+                if "GPU" in line and ":" in line:
+                    name = line.split(":")[-1].strip()
+                    return GPUInfo(vendor="amd", name=name)
+            return GPUInfo(vendor="amd", name="AMD GPU")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    except Exception as e:
+        logger.debug(f"rocm-smi error: {e}")
+
+    # Check for AMD via sysfs
+    try:
+        drm_path = Path("/sys/class/drm")
+        if drm_path.exists():
+            for card in drm_path.iterdir():
+                vendor_path = card / "device" / "vendor"
+                if vendor_path.exists():
+                    vendor_id = vendor_path.read_text().strip()
+                    if vendor_id == "0x1002":  # AMD vendor ID
+                        return GPUInfo(vendor="amd", name="AMD GPU")
+    except Exception:
+        pass
+
+    # Check for Intel integrated
+    try:
+        result = subprocess.run(
+            ["lspci"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "VGA" in line or "3D" in line:
+                    if "NVIDIA" in line.upper():
+                        return GPUInfo(vendor="nvidia", name=line.split(":")[-1].strip())
+                    elif "AMD" in line.upper() or "ATI" in line.upper():
+                        return GPUInfo(vendor="amd", name=line.split(":")[-1].strip())
+                    elif "Intel" in line:
+                        return GPUInfo(vendor="intel", name=line.split(":")[-1].strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    except Exception:
+        pass
+
+    # macOS: Check for Apple Silicon
+    import sys
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if "Apple" in result.stdout:
+                return GPUInfo(vendor="apple", name="Apple Silicon")
+        except Exception:
+            pass
+
+    return GPUInfo(vendor="none")
+
+
 def is_local_request(request: Request) -> bool:
     """Check if request is from localhost or local network."""
     client_ip = request.client.host if request.client else ""
@@ -92,11 +238,12 @@ def is_local_request(request: Request) -> bool:
 
 @router.get("/info", response_model=SystemInfo)
 async def get_system_info():
-    """Get system information."""
+    """Get system information including platform detection."""
     return SystemInfo(
         hostname=socket.gethostname(),
         ip_addresses=get_ip_addresses(),
         uptime_seconds=get_uptime(),
+        platform=detect_platform(),
     )
 
 

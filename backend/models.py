@@ -505,13 +505,19 @@ class Batch(Base):
     batch_number: Mapped[Optional[int]] = mapped_column()
     name: Mapped[Optional[str]] = mapped_column(String(200))  # Optional override
 
-    # Status tracking
-    status: Mapped[str] = mapped_column(String(20), default="planning")  # planning, fermenting, conditioning, completed, archived
+    # Status tracking - full lifecycle: planning → brewing → fermenting → conditioning → completed
+    status: Mapped[str] = mapped_column(String(20), default="planning")
 
-    # Timeline
+    # Timeline - legacy fields (kept for compatibility)
     brew_date: Mapped[Optional[datetime]] = mapped_column()
     start_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation start
     end_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation end
+
+    # Phase timestamps - track when each phase started
+    brewing_started_at: Mapped[Optional[datetime]] = mapped_column()
+    fermenting_started_at: Mapped[Optional[datetime]] = mapped_column()
+    conditioning_started_at: Mapped[Optional[datetime]] = mapped_column()
+    completed_at: Mapped[Optional[datetime]] = mapped_column()
 
     # Measured values
     measured_og: Mapped[Optional[float]] = mapped_column()
@@ -1666,7 +1672,7 @@ class BatchCreate(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: str) -> str:
-        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        valid = ["planning", "brewing", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
         return v
@@ -1720,7 +1726,7 @@ class BatchUpdate(BaseModel):
     def validate_status(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        valid = ["planning", "brewing", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
         return v
@@ -1762,6 +1768,11 @@ class BatchResponse(BaseModel):
     brew_date: Optional[datetime] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    # Phase timestamps
+    brewing_started_at: Optional[datetime] = None
+    fermenting_started_at: Optional[datetime] = None
+    conditioning_started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
     measured_abv: Optional[float] = None
@@ -1779,7 +1790,7 @@ class BatchResponse(BaseModel):
     # Reading control
     readings_paused: bool = False
 
-    @field_serializer('brew_date', 'start_time', 'end_time', 'created_at', 'deleted_at')
+    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 

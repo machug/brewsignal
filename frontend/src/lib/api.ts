@@ -166,7 +166,7 @@ export async function reloadBatchPredictions(batchId: number): Promise<{ success
 	return response.json();
 }
 
-export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
+export type BatchStatus = 'planning' | 'brewing' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
 export interface FermentableResponse {
 	id: number;

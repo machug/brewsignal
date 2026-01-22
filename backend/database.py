@@ -255,6 +255,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_deleted_at_index)  # Add index on deleted_at column
         await conn.run_sync(_migrate_create_yeast_strains_table)  # Create yeast strain reference table
         await conn.run_sync(_migrate_add_yeast_strain_to_batches)  # Add yeast override to batches
+        await conn.run_sync(_migrate_add_batch_phase_timestamps)  # Add phase lifecycle timestamps
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -1453,6 +1454,43 @@ def _migrate_add_ag_ui_thread_title_locked(conn):
     if "title_locked" not in columns:
         conn.execute(text("ALTER TABLE ag_ui_threads ADD COLUMN title_locked INTEGER DEFAULT 0"))
         print("Migration: Added title_locked column to ag_ui_threads table")
+
+
+def _migrate_add_batch_phase_timestamps(conn):
+    """Add phase timestamp columns to batches table for lifecycle tracking.
+
+    These columns track when each phase of the brewing lifecycle started:
+    - brewing_started_at: When brew day began
+    - fermenting_started_at: When fermentation started (distinct from legacy start_time)
+    - conditioning_started_at: When conditioning/aging began
+    - completed_at: When the batch was marked complete
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "batches" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("batches")]
+
+    new_columns = [
+        ("brewing_started_at", "TIMESTAMP"),
+        ("fermenting_started_at", "TIMESTAMP"),
+        ("conditioning_started_at", "TIMESTAMP"),
+        ("completed_at", "TIMESTAMP"),
+    ]
+
+    added = []
+    for col_name, col_def in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE batches ADD COLUMN {col_name} {col_def}"))
+                added.append(col_name)
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} - {e}")
+
+    if added:
+        print(f"Migration: Added batch phase columns: {', '.join(added)}")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

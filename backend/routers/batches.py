@@ -23,6 +23,10 @@ from ..models import (
     Reading,
     ReadingResponse,
     Recipe,
+    TastingNote,
+    TastingNoteCreate,
+    TastingNoteUpdate,
+    TastingNoteResponse,
 )
 from ..state import latest_readings
 
@@ -42,7 +46,7 @@ async def list_batches(
     """List batches with optional filters. By default excludes deleted batches."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .order_by(Batch.created_at.desc())
     )
 
@@ -67,7 +71,7 @@ async def list_active_batches(db: AsyncSession = Depends(get_db)):
     """Active batches: planning or fermenting status, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
             Batch.deleted_at.is_(None),
             Batch.status.in_(["planning", "fermenting"])
@@ -83,7 +87,7 @@ async def list_completed_batches(db: AsyncSession = Depends(get_db)):
     """Historical batches: completed or conditioning, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
             Batch.deleted_at.is_(None),
             Batch.status.in_(["completed", "conditioning"])
@@ -99,7 +103,7 @@ async def get_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific batch by ID."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(Batch.id == batch_id)
     )
     result = await db.execute(query)
@@ -188,7 +192,7 @@ async def create_batch(
     if db_batch.recipe_id:
         query = (
             select(Batch)
-            .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+            .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
             .where(Batch.id == db_batch.id)
         )
         result = await db.execute(query)
@@ -314,7 +318,8 @@ async def update_batch(
     # Load recipe relationship for response with eager loading of nested style
     stmt = select(Batch).where(Batch.id == batch_id).options(
         selectinload(Batch.recipe).selectinload(Recipe.style),
-        selectinload(Batch.yeast_strain)
+        selectinload(Batch.yeast_strain),
+        selectinload(Batch.tasting_notes)
     )
     result = await db.execute(stmt)
     batch = result.scalar_one()
@@ -369,7 +374,7 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
     # Get batch with recipe
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(Batch.id == batch_id)
     )
     result = await db.execute(query)
@@ -794,3 +799,120 @@ async def get_batch_readings(
     readings = result.scalars().all()
 
     return [ReadingResponse.model_validate(r) for r in readings]
+
+
+# ==============================================================================
+# Tasting Notes Endpoints
+# ==============================================================================
+
+
+@router.get("/{batch_id}/tasting-notes", response_model=list[TastingNoteResponse])
+async def list_tasting_notes(batch_id: int, db: AsyncSession = Depends(get_db)):
+    """Get all tasting notes for a batch, ordered by tasting date (newest first)."""
+    # Verify batch exists
+    batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    if not batch_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    query = (
+        select(TastingNote)
+        .where(TastingNote.batch_id == batch_id)
+        .order_by(TastingNote.tasted_at.desc())
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("/{batch_id}/tasting-notes", response_model=TastingNoteResponse, status_code=201)
+async def create_tasting_note(
+    batch_id: int,
+    note: TastingNoteCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new tasting note for a batch."""
+    # Verify batch exists
+    batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    if not batch_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Override batch_id from path
+    note_data = note.model_dump()
+    note_data["batch_id"] = batch_id
+
+    # Set tasted_at to now if not provided
+    if note_data.get("tasted_at") is None:
+        note_data["tasted_at"] = datetime.now(timezone.utc)
+
+    db_note = TastingNote(**note_data)
+    db.add(db_note)
+    await db.commit()
+    await db.refresh(db_note)
+    return db_note
+
+
+@router.get("/{batch_id}/tasting-notes/{note_id}", response_model=TastingNoteResponse)
+async def get_tasting_note(
+    batch_id: int,
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a specific tasting note."""
+    query = select(TastingNote).where(
+        TastingNote.id == note_id,
+        TastingNote.batch_id == batch_id
+    )
+    result = await db.execute(query)
+    note = result.scalar_one_or_none()
+
+    if not note:
+        raise HTTPException(status_code=404, detail="Tasting note not found")
+    return note
+
+
+@router.put("/{batch_id}/tasting-notes/{note_id}", response_model=TastingNoteResponse)
+async def update_tasting_note(
+    batch_id: int,
+    note_id: int,
+    update: TastingNoteUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a tasting note."""
+    query = select(TastingNote).where(
+        TastingNote.id == note_id,
+        TastingNote.batch_id == batch_id
+    )
+    result = await db.execute(query)
+    note = result.scalar_one_or_none()
+
+    if not note:
+        raise HTTPException(status_code=404, detail="Tasting note not found")
+
+    # Update fields
+    update_data = update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(note, key, value)
+
+    await db.commit()
+    await db.refresh(note)
+    return note
+
+
+@router.delete("/{batch_id}/tasting-notes/{note_id}", status_code=204)
+async def delete_tasting_note(
+    batch_id: int,
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a tasting note."""
+    query = select(TastingNote).where(
+        TastingNote.id == note_id,
+        TastingNote.batch_id == batch_id
+    )
+    result = await db.execute(query)
+    note = result.scalar_one_or_none()
+
+    if not note:
+        raise HTTPException(status_code=404, detail="Tasting note not found")
+
+    await db.delete(note)
+    await db.commit()

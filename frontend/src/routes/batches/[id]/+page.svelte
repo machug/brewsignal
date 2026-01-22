@@ -17,6 +17,8 @@
 	import BrewDayTimer from '$lib/components/batch/BrewDayTimer.svelte';
 	import BrewDayChecklist from '$lib/components/batch/BrewDayChecklist.svelte';
 	import BrewDayObservations from '$lib/components/batch/BrewDayObservations.svelte';
+	import PackagingInfo from '$lib/components/batch/PackagingInfo.svelte';
+	import TastingNotes from '$lib/components/batch/TastingNotes.svelte';
 	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
@@ -723,8 +725,29 @@
 								</div>
 							</div>
 						{/if}
+						{#if batch.packaged_at}
+							<div class="timeline-item">
+								<div class="timeline-dot packaged"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Packaged ({batch.packaging_type || 'kegged'})</span>
+									<span class="timeline-date">{formatDate(batch.packaged_at)}</span>
+								</div>
+							</div>
+						{/if}
 					</div>
 				</div>
+
+				<!-- Packaging Info -->
+				<PackagingInfo
+					{batch}
+					onUpdate={(updated) => batch = updated}
+				/>
+
+				<!-- Tasting Notes -->
+				<TastingNotes
+					{batch}
+					onUpdate={(updated) => batch = updated}
+				/>
 
 				{#if batch.notes}
 					<BatchNotesCard notes={batch.notes} />
@@ -2096,6 +2119,11 @@
 	.timeline-dot.completed {
 		background: var(--status-completed);
 		border-color: var(--status-completed);
+	}
+
+	.timeline-dot.packaged {
+		background: var(--amber);
+		border-color: var(--amber);
 	}
 
 	.timeline-content {

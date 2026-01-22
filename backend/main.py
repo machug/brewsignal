@@ -322,7 +322,7 @@ async def handle_tilt_reading(reading: TiltReading):
                     batch_id=batch_id,
                     gravity=sg_calibrated,
                     temperature=temp_calibrated_c,
-                    og=batch.measured_og or (batch.recipe.og if batch.recipe else None) if hasattr(batch, 'recipe') else batch.measured_og,
+                    og=batch.measured_og,  # Use measured OG only to avoid lazy load issues
                     start_time=batch.start_time,
                     status=batch.status,
                 )

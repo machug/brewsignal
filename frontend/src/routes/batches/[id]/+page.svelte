@@ -14,6 +14,8 @@
 	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
 	import BatchAlertsCard from '$lib/components/batch/BatchAlertsCard.svelte';
 	import FermentationChart from '$lib/components/FermentationChart.svelte';
+	import BrewDayTimer from '$lib/components/batch/BrewDayTimer.svelte';
+	import BrewDayChecklist from '$lib/components/batch/BrewDayChecklist.svelte';
 	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
@@ -587,7 +589,7 @@
 			</div>
 
 		{:else if batch.status === 'brewing'}
-			<!-- Brewing Phase: Brew day summary -->
+			<!-- Brewing Phase: Brew day tools and guidance -->
 			<div class="brewing-phase">
 				<div class="phase-action-card brewing">
 					<div class="phase-icon">🍺</div>
@@ -611,6 +613,19 @@
 							Yeast Pitched - Start Fermentation
 						{/if}
 					</button>
+				</div>
+
+				<!-- Brew Day Tools Grid -->
+				<div class="brewday-tools-grid">
+					<!-- Timer -->
+					{#if batch.recipe}
+						<BrewDayTimer recipe={batch.recipe} />
+					{/if}
+
+					<!-- Checklist -->
+					{#if batch.recipe}
+						<BrewDayChecklist recipe={batch.recipe} batchId={batch.id} />
+					{/if}
 				</div>
 
 				<!-- Device Card for chilling monitoring -->
@@ -1863,6 +1878,19 @@
 	.phase-action-card.brewing {
 		background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 146, 60, 0.03) 100%);
 		border-color: rgba(249, 115, 22, 0.25);
+	}
+
+	/* Brew Day Tools Grid */
+	.brewday-tools-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
+	@media (max-width: 900px) {
+		.brewday-tools-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.phase-icon {

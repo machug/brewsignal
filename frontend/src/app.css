@@ -105,15 +105,19 @@
 
   /* Chart colors */
   --chart-sg: var(--recipe-accent);
+  --chart-sg-glow: rgba(245, 158, 11, 0.3);
   --chart-sg-fill: rgba(245, 158, 11, 0.1);
   --chart-temp: var(--tilt-blue);
   --chart-temp-fill: rgba(96, 165, 250, 0.1);
-  --chart-ambient: var(--tilt-purple);
+  --chart-ambient: #22d3ee;
   --chart-ambient-fill: rgba(167, 139, 250, 0.1);
-  --chart-chamber: var(--tilt-pink);
-  --chart-trend: var(--gray-500);
-  --chart-grid: var(--gray-800);
+  --chart-chamber: var(--tilt-purple);
+  --chart-trend: rgba(245, 158, 11, 0.5);
+  --chart-anomaly: var(--negative);
+  --chart-battery: var(--positive);
+  --chart-grid: rgba(255, 255, 255, 0.04);
   --chart-axis: var(--gray-600);
+  --chart-text: var(--text-muted);
 
   /* Muted variants for backgrounds */
   --positive-muted: rgba(34, 197, 94, 0.15);

@@ -14,6 +14,7 @@
 	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
 	import BatchAlertsCard from '$lib/components/batch/BatchAlertsCard.svelte';
 	import FermentationChart from '$lib/components/FermentationChart.svelte';
+	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
 	let controlWs: WebSocket | null = null;
@@ -35,15 +36,6 @@
 	let pauseUpdating = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
-
-	// Status configuration - colors reference app.css design tokens
-	const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-		planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
-		fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
-		conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
-		completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
-		archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
-	};
 
 	const statusOptions: BatchStatus[] = ['planning', 'fermenting', 'conditioning', 'completed', 'archived'];
 
@@ -753,9 +745,16 @@
 </div>
 
 {#if showDeleteConfirm}
-	<div class="modal-overlay" onclick={() => (showDeleteConfirm = false)}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Delete Batch?</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showDeleteConfirm = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-modal-title" tabindex="-1">
+			<h2 id="delete-modal-title" class="modal-title">Delete Batch?</h2>
 			<p class="modal-text">
 				Are you sure you want to delete "{batch?.name || 'this batch'}"? This cannot be undone.
 			</p>

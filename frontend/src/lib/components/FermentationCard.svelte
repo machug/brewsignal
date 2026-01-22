@@ -176,10 +176,9 @@
 </script>
 
 <div
-	class="card rounded-lg overflow-hidden animate-fade-in"
+	class="card"
 	class:expanded
 	class:wide
-	style="background: var(--bg-surface); border: 1px solid var(--border-subtle);"
 >
 	<!-- Accent bar -->
 	<div
@@ -301,31 +300,25 @@
 		<!-- Main readings grid -->
 		<div class="grid grid-cols-2 gap-3 mb-4">
 			<!-- Specific Gravity -->
-			<div
-				class="rounded-md p-4 text-center"
-				style="background: var(--bg-elevated);"
-			>
-				<p class="text-3xl font-medium font-mono tracking-tight" style="color: var(--text-primary);">
-					{formatSG(currentSg)}<span class="text-lg text-[var(--text-secondary)]">{gravityUnit !== 'SG' ? gravityUnit : ''}</span>
+			<div class="reading-box">
+				<p class="reading-value">
+					{formatSG(currentSg)}<span class="reading-unit">{gravityUnit !== 'SG' ? gravityUnit : ''}</span>
 				</p>
-				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
+				<p class="reading-label">
 					{gravityUnit === 'SG' ? 'Gravity' : gravityUnit === '°P' ? 'Plato' : 'Brix'}
 				</p>
 			</div>
 
 			<!-- Temperature -->
-			<div
-				class="rounded-md p-4 text-center"
-				style="background: var(--bg-elevated);"
-			>
-				<p class="text-3xl font-medium font-mono tracking-tight text-[var(--text-primary)]">
+			<div class="reading-box">
+				<p class="reading-value">
 					{#if currentTemp !== null}
-						{formatTempValue(currentTemp)}<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
+						{formatTempValue(currentTemp)}<span class="reading-unit">{tempUnit}</span>
 					{:else}
-						--<span class="text-lg text-[var(--text-secondary)]">{tempUnit}</span>
+						--<span class="reading-unit">{tempUnit}</span>
 					{/if}
 				</p>
-				<p class="text-[11px] text-[var(--text-muted)] uppercase tracking-wider mt-1 font-medium">
+				<p class="reading-label">
 					Temp
 				</p>
 			</div>
@@ -390,10 +383,7 @@
 						</svg>
 					</button>
 				{/if}
-				<div
-					class="w-1.5 h-1.5 rounded-full"
-					style="background: var(--positive);"
-				></div>
+				<div class="live-indicator"></div>
 			</div>
 		</div>
 	</div>
@@ -401,11 +391,59 @@
 
 <style>
 	.card {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		overflow: hidden;
 		transition: border-color var(--transition);
+		animation: fadeIn 0.2s ease-out;
+	}
+
+	@keyframes fadeIn {
+		from { opacity: 0; transform: translateY(4px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 
 	.card:hover {
 		border-color: var(--border-default);
+	}
+
+	/* Reading boxes */
+	.reading-box {
+		background: var(--bg-elevated);
+		border-radius: 0.375rem;
+		padding: 1rem;
+		text-align: center;
+	}
+
+	.reading-value {
+		font-size: 1.875rem;
+		font-weight: 500;
+		font-family: var(--font-mono);
+		letter-spacing: -0.025em;
+		color: var(--text-primary);
+	}
+
+	.reading-unit {
+		font-size: 1.125rem;
+		color: var(--text-secondary);
+	}
+
+	.reading-label {
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		margin-top: 0.25rem;
+		font-weight: 500;
+	}
+
+	/* Live indicator dot */
+	.live-indicator {
+		width: 0.375rem;
+		height: 0.375rem;
+		border-radius: 50%;
+		background: var(--positive);
 	}
 
 	.expanded {

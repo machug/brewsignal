@@ -652,9 +652,16 @@
 
 <!-- Add Yeast Modal -->
 {#if showAddYeastModal}
-	<div class="modal-overlay" onclick={() => (showAddYeastModal = false)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Add Custom Yeast</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showAddYeastModal = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showAddYeastModal = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-yeast-title" tabindex="-1">
+			<h2 id="add-yeast-title" class="modal-title">Add Custom Yeast</h2>
 			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleAddYeast(); }}>
 				<div class="form-group">
 					<label for="yeast-name">Name *</label>
@@ -702,9 +709,16 @@
 
 <!-- Add Hop Modal -->
 {#if showAddHopModal}
-	<div class="modal-overlay" onclick={() => (showAddHopModal = false)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Add Custom Hop</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showAddHopModal = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showAddHopModal = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-hop-title" tabindex="-1">
+			<h2 id="add-hop-title" class="modal-title">Add Custom Hop</h2>
 			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleAddHop(); }}>
 				<div class="form-group">
 					<label for="hop-name">Name *</label>
@@ -751,9 +765,16 @@
 
 <!-- Add Fermentable Modal -->
 {#if showAddFermentableModal}
-	<div class="modal-overlay" onclick={() => (showAddFermentableModal = false)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Add Custom Fermentable</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showAddFermentableModal = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showAddFermentableModal = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-fermentable-title" tabindex="-1">
+			<h2 id="add-fermentable-title" class="modal-title">Add Custom Fermentable</h2>
 			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleAddFermentable(); }}>
 				<div class="form-group">
 					<label for="ferm-name">Name *</label>
@@ -804,9 +825,16 @@
 
 <!-- Delete Confirmation Modal -->
 {#if deleteTarget}
-	<div class="modal-overlay" onclick={() => (deleteTarget = null)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Delete {deleteTarget.type === 'yeast' ? 'Yeast' : deleteTarget.type === 'hops' ? 'Hop' : 'Fermentable'}?</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (deleteTarget = null)}
+		onkeydown={(e) => e.key === 'Escape' && (deleteTarget = null)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-library-title" tabindex="-1">
+			<h2 id="delete-library-title" class="modal-title">Delete {deleteTarget.type === 'yeast' ? 'Yeast' : deleteTarget.type === 'hops' ? 'Hop' : 'Fermentable'}?</h2>
 			<p class="modal-text">Are you sure you want to delete "{deleteTarget.name}"? This cannot be undone.</p>
 			<div class="modal-actions">
 				<button type="button" class="btn-cancel" onclick={() => (deleteTarget = null)}>Cancel</button>

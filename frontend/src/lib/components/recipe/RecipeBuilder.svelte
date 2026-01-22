@@ -782,9 +782,9 @@
 <!-- Yeast Selection Modal -->
 {#if showYeastModal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div class="modal-overlay" onclick={() => (showYeastModal = false)} role="presentation">
-		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="yeast-modal-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+	<div class="modal-overlay" onclick={() => (showYeastModal = false)} onkeydown={(e) => e.key === 'Escape' && (showYeastModal = false)} role="presentation">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="yeast-modal-title" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h2 id="yeast-modal-title">Select Yeast</h2>
 				<button class="modal-close" onclick={() => (showYeastModal = false)} aria-label="Close">&times;</button>
@@ -806,9 +806,9 @@
 <!-- AI Review Modal -->
 {#if showReviewModal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div class="modal-overlay" onclick={closeReviewModal} role="presentation">
-		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" tabindex="-1">
+	<div class="modal-overlay" onclick={closeReviewModal} onkeydown={(e) => e.key === 'Escape' && closeReviewModal()} role="presentation">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" tabindex="-1" onkeydown={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h2 id="review-modal-title">AI Recipe Review</h2>
 				<button class="modal-close" onclick={closeReviewModal} aria-label="Close">&times;</button>

@@ -125,15 +125,55 @@
 			efficiencyPercent = initialData.efficiency_percent || 72;
 			boilTimeMinutes = initialData.boil_time_minutes || 60;
 
-			// Load fermentables from format_extensions
+			// Load fermentables - prefer format_extensions, fall back to API response
 			const ext = initialData.format_extensions as { fermentables?: RecipeFermentable[]; hops?: RecipeHop[] } | undefined;
-			if (ext?.fermentables) {
+			if (ext?.fermentables && ext.fermentables.length > 0) {
 				fermentables = ext.fermentables;
+			} else if (initialData.fermentables && initialData.fermentables.length > 0) {
+				// Map from API response format to RecipeFermentable format
+				fermentables = initialData.fermentables.map((f) => ({
+					id: f.id,
+					name: f.name,
+					type: f.type,
+					amount_kg: f.amount_kg || 0,
+					potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined, // Convert yield% to potential SG
+					color_srm: f.color_srm,
+					origin: f.origin,
+					maltster: f.supplier,
+					source: 'recipe',
+					is_custom: false,
+					created_at: new Date().toISOString(),
+					updated_at: new Date().toISOString()
+				})) as RecipeFermentable[];
 			}
 
-			// Load hops from format_extensions
-			if (ext?.hops) {
+			// Load hops - prefer format_extensions, fall back to API response
+			if (ext?.hops && ext.hops.length > 0) {
 				hops = ext.hops;
+			} else if (initialData.hops && initialData.hops.length > 0) {
+				// Map from API response format to RecipeHop format
+				hops = initialData.hops.map((h) => {
+					const timing = h.timing || {};
+					const timeValue = timing.time?.value || 0;
+					const timeUnit = timing.time?.unit || 'min';
+					// Convert to minutes for boil_time_minutes
+					const boilMinutes = timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
+
+					return {
+						id: h.id,
+						name: h.name,
+						origin: h.origin,
+						amount_grams: h.amount_grams || 0,
+						alpha_acid_percent: h.alpha_acid_percent || 0,
+						boil_time_minutes: boilMinutes,
+						use: (timing.use?.replace(' ', '_') || 'boil') as HopUse,
+						form: (h.form || 'pellet') as HopForm,
+						source: 'recipe',
+						is_custom: false,
+						created_at: new Date().toISOString(),
+						updated_at: new Date().toISOString()
+					};
+				}) as RecipeHop[];
 			}
 
 			// Load yeast info (construct a YeastStrainResponse from recipe data)

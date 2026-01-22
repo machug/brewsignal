@@ -302,9 +302,16 @@
 
 <!-- Add Custom Yeast Modal -->
 {#if showAddModal}
-	<div class="modal-overlay" onclick={() => (showAddModal = false)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Add Custom Yeast</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showAddModal = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showAddModal = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-yeast-modal-title" tabindex="-1">
+			<h2 id="add-yeast-modal-title" class="modal-title">Add Custom Yeast</h2>
 			<form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleAddYeast(); }}>
 				<div class="form-group">
 					<label for="yeast-name">Name *</label>
@@ -381,9 +388,16 @@
 
 <!-- Delete Confirmation Modal -->
 {#if deleteTarget}
-	<div class="modal-overlay" onclick={() => (deleteTarget = null)} role="dialog" aria-modal="true">
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Delete Yeast?</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (deleteTarget = null)}
+		onkeydown={(e) => e.key === 'Escape' && (deleteTarget = null)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-yeast-title" tabindex="-1">
+			<h2 id="delete-yeast-title" class="modal-title">Delete Yeast?</h2>
 			<p class="modal-text">
 				Are you sure you want to delete "{deleteTarget.name}"? This cannot be undone.
 			</p>

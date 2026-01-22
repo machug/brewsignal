@@ -368,7 +368,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="browser-overlay" onclick={() => (showBrowser = false)} role="presentation">
-			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="hop-browser-title" onclick={(e) => e.stopPropagation()}>
+			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="hop-browser-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
 				<div class="browser-header">
 					<h4 id="hop-browser-title">Add Hop</h4>
 					<button type="button" class="close-btn" onclick={() => (showBrowser = false)}>×</button>

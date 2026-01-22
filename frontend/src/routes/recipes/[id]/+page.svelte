@@ -222,9 +222,16 @@
 </div>
 
 {#if showDeleteConfirm}
-	<div class="modal-overlay" onclick={() => (showDeleteConfirm = false)}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2 class="modal-title">Delete Recipe?</h2>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={() => (showDeleteConfirm = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-recipe-title" tabindex="-1">
+			<h2 id="delete-recipe-title" class="modal-title">Delete Recipe?</h2>
 			<p class="modal-text">
 				Are you sure you want to delete "{recipe?.name}"? This cannot be undone.
 			</p>

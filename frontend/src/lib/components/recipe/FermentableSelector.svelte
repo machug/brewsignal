@@ -254,7 +254,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="browser-overlay" onclick={() => (showBrowser = false)} role="presentation">
-			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="fermentable-browser-title" onclick={(e) => e.stopPropagation()}>
+			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="fermentable-browser-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
 				<div class="browser-header">
 					<h4 id="fermentable-browser-title">Add Fermentable</h4>
 					<button type="button" class="close-btn" onclick={() => (showBrowser = false)}>×</button>

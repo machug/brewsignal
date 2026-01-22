@@ -29,7 +29,7 @@
 				<span class="recipe-type">{recipe.type}</span>
 			{/if}
 			{#if recipe.abv}
-				<span class="recipe-abv">{(recipe.abv * 100).toFixed(1)}% ABV</span>
+				<span class="recipe-abv">{recipe.abv.toFixed(1)}% ABV</span>
 			{/if}
 		</div>
 	</div>

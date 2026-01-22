@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .database import get_engine
+from .database import async_session_factory
 from .models import Batch
 from .services.mqtt_client import get_mqtt_client, init_mqtt_client
 from .routers.config import get_config_value
@@ -78,8 +78,7 @@ async def mqtt_connection_loop() -> None:
     while not _shutdown_event.is_set():
         try:
             # Create a new session for config check
-            engine = get_engine()
-            async with AsyncSession(engine) as db:
+            async with async_session_factory() as db:
                 config = await _load_mqtt_config(db)
 
             _mqtt_enabled = config["enabled"]
@@ -110,14 +109,14 @@ async def mqtt_connection_loop() -> None:
                 backoff = 1  # Reset backoff on success
 
                 # Publish discovery for all active batches
-                async with AsyncSession(engine) as db:
+                async with async_session_factory() as db:
                     await _publish_active_batches_discovery(db)
 
                 # Stay connected, periodically check config
                 while not _shutdown_event.is_set() and _mqtt_enabled:
                     await asyncio.sleep(30)
                     # Reload config to detect changes
-                    async with AsyncSession(engine) as db:
+                    async with async_session_factory() as db:
                         config = await _load_mqtt_config(db)
                     _mqtt_enabled = config["enabled"]
 

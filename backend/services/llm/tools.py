@@ -404,13 +404,68 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_recipe",
-            "description": "Save a BeerJSON recipe to the user's recipe library. Use this when you've helped the user create or design a recipe and they want to save it. The recipe data should be in BeerJSON format with name, ingredients (fermentables, hops, cultures), and vitals (OG, FG, IBU, etc.).",
+            "description": "Save a recipe to the user's recipe library. IMPORTANT: You MUST include ingredients as structured arrays - do NOT put grain/hop info only in notes. Each fermentable needs name and amount_kg. Each hop needs name, amount_g, and time_minutes. Each culture/yeast needs name.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "recipe": {
                         "type": "object",
-                        "description": "BeerJSON recipe object containing name, type, batch_size, original_gravity, final_gravity, ingredients (with fermentable_additions, hop_additions, culture_additions), and other recipe data"
+                        "description": "Recipe object with structured ingredient arrays",
+                        "properties": {
+                            "name": {"type": "string", "description": "Recipe name"},
+                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
+                            "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
+                            "og": {"type": "number", "description": "Original gravity (e.g. 1.055)"},
+                            "fg": {"type": "number", "description": "Final gravity (e.g. 1.012)"},
+                            "abv": {"type": "number", "description": "ABV percentage (e.g. 5.8)"},
+                            "ibu": {"type": "number", "description": "IBU (e.g. 40)"},
+                            "color_srm": {"type": "number", "description": "Color in SRM"},
+                            "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
+                            "fermentables": {
+                                "type": "array",
+                                "description": "REQUIRED: Array of grains/malts/sugars",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string", "description": "Grain name (e.g. 'Pale Malt', 'Crystal 40L')"},
+                                        "amount_kg": {"type": "number", "description": "Amount in kg (e.g. 4.1)"},
+                                        "color_srm": {"type": "number", "description": "Color in SRM/Lovibond"}
+                                    },
+                                    "required": ["name", "amount_kg"]
+                                }
+                            },
+                            "hops": {
+                                "type": "array",
+                                "description": "REQUIRED: Array of hop additions",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string", "description": "Hop name (e.g. 'Centennial', 'Cascade')"},
+                                        "amount_g": {"type": "number", "description": "Amount in grams"},
+                                        "time_minutes": {"type": "number", "description": "Boil time in minutes (0 for flameout, -1 for dry hop)"},
+                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool"], "description": "When hop is added"},
+                                        "alpha_acid": {"type": "number", "description": "Alpha acid percentage"}
+                                    },
+                                    "required": ["name", "amount_g", "time_minutes"]
+                                }
+                            },
+                            "cultures": {
+                                "type": "array",
+                                "description": "Array of yeast/bacteria",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string", "description": "Yeast name (e.g. 'US-05', 'Safale S-04')"},
+                                        "producer": {"type": "string", "description": "Yeast lab (e.g. 'Fermentis', 'White Labs')"},
+                                        "product_id": {"type": "string", "description": "Product code (e.g. 'WLP001')"}
+                                    },
+                                    "required": ["name"]
+                                }
+                            },
+                            "mash_temp": {"type": "number", "description": "Mash temperature in Celsius"},
+                            "mash_time": {"type": "number", "description": "Mash time in minutes"}
+                        },
+                        "required": ["name", "fermentables", "hops"]
                     },
                     "name_override": {
                         "type": "string",

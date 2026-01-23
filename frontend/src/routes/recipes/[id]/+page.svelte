@@ -6,7 +6,7 @@
 	import { fetchRecipe, deleteRecipe } from '$lib/api';
 	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
 	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
-	import { srmToHex, srmToDescription, calculateBUGU } from '$lib/brewing';
+	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -18,11 +18,6 @@
 		const id = parseInt($page.params.id || '', 10);
 		return isNaN(id) || id <= 0 ? null : id;
 	});
-
-	// Derived stats
-	let srmColor = $derived(recipe?.color_srm ? srmToHex(recipe.color_srm) : null);
-	let srmDesc = $derived(recipe?.color_srm ? srmToDescription(recipe.color_srm) : null);
-	let bugu = $derived(recipe?.ibu && recipe?.og ? calculateBUGU(recipe.ibu, recipe.og) : null);
 
 	onMount(async () => {
 		if (!recipeId) {
@@ -118,58 +113,17 @@
 					</button>
 				</div>
 			</div>
-
-			<!-- Stats Bar -->
-			<div class="stats-bar">
-				{#if recipe.og}
-					<div class="stat-item">
-						<span class="stat-label">OG</span>
-						<span class="stat-value">{recipe.og.toFixed(3)}</span>
-					</div>
-				{/if}
-				{#if recipe.fg}
-					<div class="stat-item">
-						<span class="stat-label">FG</span>
-						<span class="stat-value">{recipe.fg.toFixed(3)}</span>
-					</div>
-				{/if}
-				{#if recipe.abv}
-					<div class="stat-item highlight">
-						<span class="stat-label">ABV</span>
-						<span class="stat-value">{recipe.abv.toFixed(1)}%</span>
-					</div>
-				{/if}
-				{#if recipe.ibu}
-					<div class="stat-item">
-						<span class="stat-label">IBU</span>
-						<span class="stat-value">{recipe.ibu.toFixed(0)}</span>
-					</div>
-				{/if}
-				{#if recipe.color_srm && srmColor}
-					<div class="stat-item srm-stat">
-						<span class="stat-label">Color</span>
-						<div class="stat-value-with-swatch">
-							<span class="srm-swatch" style="background: {srmColor}"></span>
-							<span class="stat-value">{recipe.color_srm.toFixed(0)} SRM</span>
-						</div>
-						{#if srmDesc}
-							<span class="srm-desc">{srmDesc}</span>
-						{/if}
-					</div>
-				{/if}
-				{#if bugu}
-					<div class="stat-item">
-						<span class="stat-label">BU:GU</span>
-						<span class="stat-value">{bugu.toFixed(2)}</span>
-					</div>
-				{/if}
-			</div>
-
-			<!-- SRM Color Bar -->
-			{#if recipe.color_srm && srmColor}
-				<div class="srm-bar" style="background: linear-gradient(90deg, {srmColor} 0%, {srmColor}dd 100%)"></div>
-			{/if}
 		</div>
+
+		<!-- Stats Panel with Beer Glass -->
+		<RecipeStatsPanel
+			og={recipe.og ?? 1.050}
+			fg={recipe.fg ?? 1.010}
+			abv={recipe.abv ?? 5.0}
+			ibu={recipe.ibu ?? 30}
+			colorSrm={recipe.color_srm ?? 8}
+			batchSizeLiters={recipe.batch_size_liters ?? 20}
+		/>
 
 		<div class="recipe-content">
 			<!-- Yeast Section -->
@@ -535,82 +489,6 @@
 		background: rgba(239, 68, 68, 0.08);
 	}
 
-	/* Stats Bar */
-	.stats-bar {
-		display: flex;
-		gap: var(--space-1);
-		padding: var(--space-4) var(--space-6);
-		background: var(--bg-base);
-		border-top: 1px solid var(--border-subtle);
-		overflow-x: auto;
-	}
-
-	.stat-item {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-1);
-		padding: var(--space-3) var(--space-4);
-		min-width: 80px;
-		border-radius: 8px;
-		transition: background 0.15s ease;
-	}
-
-	.stat-item:hover {
-		background: rgba(255, 255, 255, 0.03);
-	}
-
-	.stat-item.highlight {
-		background: rgba(245, 158, 11, 0.08);
-	}
-
-	.stat-item.highlight .stat-value {
-		color: var(--recipe-accent);
-	}
-
-	.stat-label {
-		font-size: 11px;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.stat-value {
-		font-family: var(--font-measurement);
-		font-size: 18px;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.stat-value-with-swatch {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-	}
-
-	.srm-swatch {
-		width: 16px;
-		height: 16px;
-		border-radius: 4px;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-	}
-
-	.srm-stat {
-		min-width: 100px;
-	}
-
-	.srm-desc {
-		font-size: 11px;
-		color: var(--text-muted);
-		margin-top: 2px;
-	}
-
-	/* SRM Bar */
-	.srm-bar {
-		height: 4px;
-	}
-
 	/* Content Area */
 	.recipe-content {
 		display: flex;
@@ -876,20 +754,6 @@
 
 		.recipe-title {
 			font-size: 24px;
-		}
-
-		.stats-bar {
-			padding: var(--space-3) var(--space-4);
-			gap: 0;
-		}
-
-		.stat-item {
-			min-width: 60px;
-			padding: var(--space-2) var(--space-3);
-		}
-
-		.stat-value {
-			font-size: 16px;
 		}
 
 		.yeast-card {

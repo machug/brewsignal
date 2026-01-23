@@ -6,6 +6,7 @@
 	import { fetchRecipe, updateRecipe } from '$lib/api';
 	import RecipeBuilder from '$lib/components/recipe/RecipeBuilder.svelte';
 	import type { RecipeData } from '$lib/components/recipe/RecipeBuilder.svelte';
+	import { srmToHex, srmToDescription, calculateBUGU } from '$lib/brewing';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -18,6 +19,11 @@
 		const id = parseInt($page.params.id || '', 10);
 		return isNaN(id) || id <= 0 ? null : id;
 	});
+
+	// Derived stats (matching detail page)
+	let srmColor = $derived(recipe?.color_srm ? srmToHex(recipe.color_srm) : null);
+	let srmDesc = $derived(recipe?.color_srm ? srmToDescription(recipe.color_srm) : null);
+	let bugu = $derived(recipe?.ibu && recipe?.og ? calculateBUGU(recipe.ibu, recipe.og) : null);
 
 	// Poll review loading state from component
 	$effect(() => {

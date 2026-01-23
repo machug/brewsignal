@@ -1,6 +1,6 @@
 # BrewSignal
 
-![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.9.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+![CI](https://github.com/machug/brewsignal/actions/workflows/ci.yml/badge.svg) ![Version](https://img.shields.io/badge/version-2.10.0-blue) ![Python](https://img.shields.io/badge/python-3.11+-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
 A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. Supports Tilt, iSpindel, and GravityMon devices.
 
@@ -33,6 +33,11 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
   - **Model Predictive Control** - Intelligent heater control with overshoot prevention
   - **Per-Device State Isolation** - Separate ML pipelines prevent cross-contamination
 - **Home Assistant Integration** - Display ambient temperature/humidity from HA sensors
+- **MQTT Publishing** (v2.10.0) - Publish fermentation data to Home Assistant via MQTT auto-discovery
+  - Automatic sensor creation in Home Assistant when batches start fermenting
+  - Sensors: gravity, temperature, ABV, status, days fermenting, heater/cooler state
+  - Compatible with voice assistants (Alexa, Google Home) via Home Assistant
+  - Fire-and-forget publishing - MQTT failures don't block reading storage
 - **Dual-Mode Temperature Control** (v2.4.0) - Independent heater AND cooler control per batch
   - Heating-only, cooling-only, or full dual-mode operation
   - Batch-specific temperature targets and hysteresis settings

@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-01-23
+
 ### Added
+- **MQTT Publishing for Home Assistant** - Publish fermentation data to Home Assistant via MQTT auto-discovery
+  - Automatic sensor creation when batches start fermenting
+  - Sensors: gravity, temperature, ABV, status, days fermenting
+  - Binary sensors: heater active, cooler active
+  - Device grouping: All sensors for a batch grouped under single HA device
+  - Auto-cleanup: Entities removed when batch completes or is deleted
+  - Fire-and-forget publishing: MQTT failures don't block reading storage
+  - Compatible with voice assistants (Alexa, Google Home, Siri) via Home Assistant
+- **MQTT Configuration UI** - New System settings section for MQTT broker configuration
+  - Enable/disable toggle
+  - Broker host, port, username, password fields
+  - Configurable topic prefix (default: `brewsignal`)
+  - Test connection button with status feedback
+  - Home Assistant setup instructions
+- **MQTT Status API** - New endpoints for MQTT monitoring
+  - `GET /api/mqtt/status` - Check MQTT connection status and configuration
+  - `POST /api/mqtt/test` - Test MQTT broker connection
 - **AI Assistant Memory** - Cross-thread conversation search and recall
   - New `search_threads` tool allows the assistant to search previous conversations
   - Searches thread titles and message content with context snippets
@@ -25,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `useAgent.clear()` now properly resets `currentThreadId`
   - New threads immediately appear in sidebar after first message
   - Thread list auto-refreshes on conversation completion
+
+### Technical
+- New `backend/services/mqtt_client.py` - MQTT client service with aiomqtt
+- New `backend/mqtt_manager.py` - Background connection manager with auto-reconnect
+- New `backend/routers/mqtt.py` - MQTT status and test endpoints
+- MQTT discovery publishes to `homeassistant/sensor/brewsignal_{batch_id}_*/config`
+- State updates publish to `brewsignal/batch/{batch_id}/*` topics
+- Added `aiomqtt>=2.0.0` dependency
 
 ## [2.9.0] - 2026-01-17
 

@@ -11,6 +11,7 @@ from typing import Any, Optional
 from ..database import get_db
 from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
+from ..services.brewing import calculate_recipe_stats
 from ..services.recipe_validation import validate_recipe_constraints
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
@@ -412,10 +413,15 @@ async def update_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing recipe."""
-    # Fetch existing recipe first
+    # Fetch existing recipe with ingredients for stat recalculation
     result = await db.execute(
         select(Recipe)
-        .options(selectinload(Recipe.style))
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        )
         .where(Recipe.id == recipe_id)
     )
     existing_recipe = result.scalar_one_or_none()
@@ -423,32 +429,74 @@ async def update_recipe(
     if not existing_recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    # Merge update values with existing values for validation
-    og_to_validate = recipe_update.og if recipe_update.og is not None else existing_recipe.og
-    fg_to_validate = recipe_update.fg if recipe_update.fg is not None else existing_recipe.fg
-    batch_size_to_validate = (
-        recipe_update.batch_size_liters
-        if recipe_update.batch_size_liters is not None
-        else existing_recipe.batch_size_liters
-    )
-    abv_to_validate = recipe_update.abv if recipe_update.abv is not None else existing_recipe.abv
-
-    # Validate with merged values
-    validate_recipe_constraints(
-        og=og_to_validate,
-        fg=fg_to_validate,
-        batch_size_liters=batch_size_to_validate,
-        abv=abv_to_validate,
-    )
-
-    # Apply updates
+    # Apply updates from request
     for field, value in recipe_update.model_dump(exclude_unset=True).items():
         setattr(existing_recipe, field, value)
+
+    # Recalculate stats from ingredients if we have any
+    if existing_recipe.fermentables or existing_recipe.hops:
+        stats = calculate_recipe_stats(existing_recipe)
+        existing_recipe.og = stats["og"]
+        existing_recipe.fg = stats["fg"]
+        existing_recipe.abv = stats["abv"]
+        existing_recipe.ibu = stats["ibu"]
+        existing_recipe.color_srm = stats["color_srm"]
+
+    # Validate the final values
+    validate_recipe_constraints(
+        og=existing_recipe.og,
+        fg=existing_recipe.fg,
+        batch_size_liters=existing_recipe.batch_size_liters,
+        abv=existing_recipe.abv,
+    )
 
     await db.commit()
     await db.refresh(existing_recipe)
 
     return existing_recipe
+
+
+@router.post("/{recipe_id}/recalculate", response_model=RecipeResponse)
+async def recalculate_recipe_stats(
+    recipe_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Recalculate a recipe's OG, FG, ABV, IBU, and color from its ingredients.
+
+    Use this to update existing recipes with server-side calculated statistics.
+    """
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        )
+        .where(Recipe.id == recipe_id)
+    )
+    recipe = result.scalar_one_or_none()
+
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    if not recipe.fermentables and not recipe.hops:
+        raise HTTPException(
+            status_code=400,
+            detail="Recipe has no ingredients to calculate from"
+        )
+
+    stats = calculate_recipe_stats(recipe)
+    recipe.og = stats["og"]
+    recipe.fg = stats["fg"]
+    recipe.abv = stats["abv"]
+    recipe.ibu = stats["ibu"]
+    recipe.color_srm = stats["color_srm"]
+
+    await db.commit()
+    await db.refresh(recipe)
+
+    return recipe
 
 
 @router.delete("/{recipe_id}")

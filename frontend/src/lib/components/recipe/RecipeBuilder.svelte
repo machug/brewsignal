@@ -152,10 +152,11 @@
 				hops = ext.hops;
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
+				// BeerJSON uses 'duration', some sources use 'time' - check both
 				hops = initialData.hops.map((h) => {
 					const timing = h.timing || {};
-					const timeValue = timing.time?.value || 0;
-					const timeUnit = timing.time?.unit || 'min';
+					const timeValue = timing.duration?.value ?? timing.time?.value ?? 0;
+					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
 					// Convert to minutes for boil_time_minutes
 					const boilMinutes = timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
 

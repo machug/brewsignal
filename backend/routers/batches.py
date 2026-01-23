@@ -430,9 +430,22 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         current_sg = reading.get("sg")
         current_temp = reading.get("temp")
 
-    # For completed batches, use measured_fg as the final gravity
-    if batch.status == "completed" and batch.measured_fg:
-        current_sg = batch.measured_fg
+    # For completed batches, use measured_fg or last reading as the final gravity
+    if batch.status == "completed":
+        if batch.measured_fg:
+            current_sg = batch.measured_fg
+        elif current_sg is None:
+            # Get last reading from database if measured_fg not set
+            last_reading_query = (
+                select(Reading)
+                .where(Reading.batch_id == batch_id)
+                .order_by(Reading.timestamp.desc())
+                .limit(1)
+            )
+            last_reading_result = await db.execute(last_reading_query)
+            last_reading = last_reading_result.scalar_one_or_none()
+            if last_reading:
+                current_sg = last_reading.sg_filtered or last_reading.sg_calibrated
 
     # Calculate targets from recipe
     targets = {}
@@ -454,7 +467,8 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         "current_sg": current_sg,
         "attenuation": None,
         "abv": None,
-        "fg": batch.measured_fg,  # Include measured FG for completed batches
+        # For completed batches, use measured_fg if available, otherwise current_sg (last reading)
+        "fg": batch.measured_fg if batch.measured_fg else (current_sg if batch.status == "completed" else None),
     }
     # For completed batches with stored values, use those
     if batch.status == "completed" and batch.measured_abv is not None:

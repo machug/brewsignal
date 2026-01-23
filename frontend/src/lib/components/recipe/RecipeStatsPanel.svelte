@@ -99,10 +99,10 @@
 <style>
 	.stats-panel {
 		display: grid;
-		grid-template-columns: minmax(180px, 240px) 1fr;
+		grid-template-columns: auto 1fr;
 		align-items: center;
-		gap: var(--space-5);
-		padding: var(--space-5);
+		gap: var(--space-4);
+		padding: var(--space-4) var(--space-5);
 		background: var(--bg-elevated);
 		background-image:
 			linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(24, 24, 27, 0) 65%),
@@ -116,15 +116,15 @@
 
 	.stats-grid {
 		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-4);
+		flex-wrap: nowrap;
+		gap: var(--space-2);
 		align-items: center;
 	}
 
 	.beer-hero {
 		display: flex;
 		align-items: center;
-		gap: var(--space-5);
+		gap: var(--space-3);
 	}
 
 	.beer-preview {
@@ -132,8 +132,8 @@
 		display: flex;
 		align-items: flex-end;
 		justify-content: center;
-		min-width: 100px;
-		padding: 12px;
+		min-width: 80px;
+		padding: 8px;
 	}
 
 	.beer-glow {
@@ -148,9 +148,9 @@
 
 	.beer-glass {
 		position: relative;
-		width: 72px;
-		height: 108px;
-		border-radius: 14px 14px 10px 10px;
+		width: 60px;
+		height: 90px;
+		border-radius: 12px 12px 8px 8px;
 		border: 1.5px solid var(--recipe-glass-border);
 		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, var(--recipe-glass) 50%, rgba(0, 0, 0, 0.15) 100%);
 		box-shadow:
@@ -220,7 +220,7 @@
 			opacity: 0.3;
 		}
 		100% {
-			transform: translateY(-85px) scale(0.5);
+			transform: translateY(-70px) scale(0.5);
 			opacity: 0;
 		}
 	}
@@ -301,8 +301,8 @@
 
 	.stat-group {
 		display: flex;
-		gap: var(--space-4);
-		padding: 0 var(--space-3);
+		gap: var(--space-3);
+		padding: 0 var(--space-2);
 		border-right: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
@@ -314,8 +314,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		min-width: 60px;
-		padding: var(--space-2);
+		min-width: 48px;
+		padding: var(--space-1) var(--space-2);
 		border-radius: 8px;
 		transition: background 0.2s ease;
 	}
@@ -334,7 +334,7 @@
 	}
 
 	.stat-value {
-		font-size: 20px;
+		font-size: 18px;
 		font-weight: 700;
 		color: var(--text-primary);
 		font-family: var(--font-mono);
@@ -356,8 +356,8 @@
 	@media (max-width: 768px) {
 		.stats-panel {
 			grid-template-columns: 1fr;
-			gap: var(--space-4);
-			padding: var(--space-4);
+			gap: var(--space-3);
+			padding: var(--space-3);
 		}
 
 		.beer-hero {
@@ -365,30 +365,31 @@
 		}
 
 		.beer-preview {
-			min-width: 80px;
-			padding: 8px;
+			min-width: 70px;
+			padding: 6px;
 		}
 
 		.beer-glass {
-			width: 56px;
-			height: 84px;
+			width: 50px;
+			height: 75px;
 		}
 
 		.stats-grid {
 			justify-content: center;
+			flex-wrap: wrap;
 		}
 
 		.stat-group {
 			padding: 0 var(--space-2);
-			gap: var(--space-3);
+			gap: var(--space-2);
 		}
 
 		.stat {
-			min-width: 50px;
+			min-width: 42px;
 		}
 
 		.stat-value {
-			font-size: 16px;
+			font-size: 14px;
 		}
 	}
 </style>

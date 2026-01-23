@@ -371,7 +371,7 @@ async def _run_agent_loop(
     messages: list[dict],
     thread_id: str,
     run_id: str,
-    max_iterations: int = 5
+    max_iterations: int = 15
 ) -> AsyncGenerator[str, None]:
     """Run the agent loop, handling tool calls.
 

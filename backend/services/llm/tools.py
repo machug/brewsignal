@@ -404,22 +404,17 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_recipe",
-            "description": "Save a recipe to the user's recipe library. CRITICAL REQUIREMENTS: 1) Include ALL ingredients as structured arrays (fermentables, hops, AND cultures/yeast). 2) Calculate OG/FG/ABV based on the grain bill - do NOT use placeholder values. For all-grain at 72% efficiency: OG ≈ 1 + (total_grain_kg × 36 × 0.72) / batch_liters / 1000. ABV = (OG - FG) × 131.25. 3) Always include the yeast in the cultures array.",
+            "description": "Save a recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "recipe": {
                         "type": "object",
-                        "description": "Recipe object with structured ingredient arrays. OG/FG/ABV must be calculated from the grain bill, not guessed.",
+                        "description": "Recipe object with structured ingredient arrays. Stats (OG/FG/ABV/IBU/SRM) are auto-calculated from ingredients.",
                         "properties": {
                             "name": {"type": "string", "description": "Recipe name"},
                             "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
                             "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
-                            "og": {"type": "number", "description": "Original gravity CALCULATED from grain bill (e.g. 1.053 for 5kg grain in 23L)"},
-                            "fg": {"type": "number", "description": "Final gravity based on yeast attenuation (e.g. 1.012)"},
-                            "abv": {"type": "number", "description": "ABV = (OG - FG) × 131.25 (e.g. 5.4 for OG 1.053, FG 1.012)"},
-                            "ibu": {"type": "number", "description": "IBU calculated from hop additions"},
-                            "color_srm": {"type": "number", "description": "Color in SRM from grain colors"},
                             "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
                             "fermentables": {
                                 "type": "array",
@@ -2548,6 +2543,202 @@ def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+# =============================================================================
+# Brewing Calculations - Server-side calculation of OG, FG, ABV, IBU, SRM
+# =============================================================================
+
+def _calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Calculate OG, FG, ABV, IBU, and color from recipe ingredients.
+
+    This ensures consistent, accurate calculations rather than relying on LLM math.
+    """
+    import math
+
+    # Extract batch size in liters
+    batch_size = normalized.get("batch_size", {})
+    if isinstance(batch_size, dict):
+        batch_liters = batch_size.get("value", 20)
+    else:
+        batch_liters = float(batch_size) if batch_size else 20
+
+    # Default efficiency (72% brewhouse)
+    efficiency = normalized.get("efficiency", {})
+    if isinstance(efficiency, dict):
+        brewhouse = efficiency.get("brewhouse", {})
+        if isinstance(brewhouse, dict):
+            eff_val = brewhouse.get("value", 0.72)
+        else:
+            eff_val = float(brewhouse) if brewhouse else 0.72
+    else:
+        eff_val = 0.72
+    # Ensure efficiency is a decimal
+    if eff_val > 1:
+        eff_val = eff_val / 100
+
+    ingredients = normalized.get("ingredients", {})
+
+    # -------------------------------------------------------------------------
+    # Calculate OG from fermentables
+    # -------------------------------------------------------------------------
+    fermentables = ingredients.get("fermentable_additions", [])
+    total_gravity_points = 0
+    total_mcu = 0  # Malt Color Units for SRM calculation
+
+    # Default extract potentials (points per kg per liter, roughly)
+    # These are simplified - real values depend on specific grain
+    default_potentials = {
+        # Base malts - high potential (~36-38 PPG = ~300-315 points/kg/L at 100% eff)
+        "pale": 37, "pilsner": 37, "maris otter": 38, "golden promise": 37,
+        "2-row": 37, "pale ale": 37, "vienna": 35, "munich": 34,
+        # Wheat/adjuncts
+        "wheat": 36, "rye": 29, "oat": 33, "flaked": 32, "rice": 32, "corn": 36,
+        # Crystal/caramel (lower potential, mostly unfermentable)
+        "crystal": 33, "caramel": 33, "cara": 33,
+        # Roasted (very low potential)
+        "chocolate": 28, "black": 25, "roast": 25,
+        # Sugars (high potential, 100% fermentable)
+        "sugar": 46, "dextrose": 46, "honey": 35, "candi": 38,
+    }
+
+    for ferm in fermentables:
+        name = ferm.get("name", "").lower()
+        amount = ferm.get("amount", {})
+        if isinstance(amount, dict):
+            amount_kg = amount.get("value", 0)
+        else:
+            amount_kg = float(amount) if amount else 0
+
+        # Determine potential based on grain type
+        potential = 36  # Default for unknown grains
+        for key, val in default_potentials.items():
+            if key in name:
+                potential = val
+                break
+
+        # Gravity points contribution: (kg * potential * efficiency) / liters
+        # This gives points above 1.000 (e.g., 50 = 1.050)
+        points = (amount_kg * potential * eff_val * 1000) / batch_liters
+        total_gravity_points += points
+
+        # Color contribution (MCU)
+        color = ferm.get("color", {})
+        if isinstance(color, dict):
+            color_lov = color.get("value", 3)  # Default to pale malt color
+        else:
+            color_lov = float(color) if color else 3
+
+        # MCU = (grain_lbs * color_lovibond) / batch_gallons
+        grain_lbs = amount_kg * 2.205
+        batch_gal = batch_liters * 0.264172
+        if batch_gal > 0:
+            total_mcu += (grain_lbs * color_lov) / batch_gal
+
+    # Calculate OG
+    calculated_og = 1.0 + (total_gravity_points / 1000)
+
+    # Calculate SRM using Morey equation: SRM = 1.4922 * MCU^0.6859
+    if total_mcu > 0:
+        calculated_srm = 1.4922 * (total_mcu ** 0.6859)
+    else:
+        calculated_srm = 3  # Default pale color
+
+    # -------------------------------------------------------------------------
+    # Calculate IBU from hops (Tinseth formula)
+    # -------------------------------------------------------------------------
+    hops = ingredients.get("hop_additions", [])
+    total_ibu = 0
+
+    for hop in hops:
+        amount = hop.get("amount", {})
+        if isinstance(amount, dict):
+            amount_g = amount.get("value", 0)
+        else:
+            amount_g = float(amount) if amount else 0
+
+        alpha = hop.get("alpha_acid", {})
+        if isinstance(alpha, dict):
+            alpha_pct = alpha.get("value", 0.05)
+            if alpha_pct > 1:
+                alpha_pct = alpha_pct / 100
+        else:
+            alpha_pct = float(alpha) if alpha else 0.05
+            if alpha_pct > 1:
+                alpha_pct = alpha_pct / 100
+
+        # Get boil time from timing
+        timing = hop.get("timing", {})
+        use = timing.get("use", "boil")
+        duration = timing.get("duration", {})
+        if isinstance(duration, dict):
+            boil_min = duration.get("value", 0)
+        else:
+            boil_min = float(duration) if duration else 0
+
+        # Only calculate IBU for boil additions
+        if use in ["boil", "first_wort"]:
+            # Tinseth utilization formula
+            # Bigness factor = 1.65 * 0.000125^(OG - 1)
+            bigness = 1.65 * (0.000125 ** (calculated_og - 1))
+            # Boil time factor = (1 - e^(-0.04 * time)) / 4.15
+            if boil_min > 0:
+                boil_factor = (1 - math.exp(-0.04 * boil_min)) / 4.15
+            else:
+                boil_factor = 0
+            utilization = bigness * boil_factor
+
+            # IBU = (grams * alpha * utilization * 1000) / liters
+            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
+            total_ibu += ibu_contribution
+        elif use == "whirlpool":
+            # Whirlpool hops contribute ~10-20% of boil utilization
+            utilization = 0.05  # Rough estimate
+            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
+            total_ibu += ibu_contribution
+        # Dry hops don't contribute significant IBUs
+
+    # -------------------------------------------------------------------------
+    # Calculate FG and ABV from yeast attenuation
+    # -------------------------------------------------------------------------
+    cultures = ingredients.get("culture_additions", [])
+    attenuation = 0.75  # Default 75% if no yeast specified
+
+    for culture in cultures:
+        atten = culture.get("attenuation", {})
+        if isinstance(atten, dict):
+            # Could be {"minimum": {"value": 0.73}} or {"value": 0.75}
+            if "minimum" in atten:
+                min_atten = atten["minimum"]
+                if isinstance(min_atten, dict):
+                    attenuation = min_atten.get("value", 0.75)
+                else:
+                    attenuation = float(min_atten)
+            elif "value" in atten:
+                attenuation = atten.get("value", 0.75)
+            else:
+                attenuation = 0.75
+        else:
+            attenuation = float(atten) if atten else 0.75
+
+        # Ensure attenuation is decimal
+        if attenuation > 1:
+            attenuation = attenuation / 100
+        break  # Use first yeast's attenuation
+
+    # FG = OG - (OG - 1) * attenuation
+    calculated_fg = calculated_og - (calculated_og - 1) * attenuation
+
+    # ABV = (OG - FG) * 131.25
+    calculated_abv = (calculated_og - calculated_fg) * 131.25
+
+    return {
+        "og": round(calculated_og, 3),
+        "fg": round(calculated_fg, 3),
+        "abv": round(calculated_abv, 1),
+        "ibu": round(total_ibu, 0),
+        "color_srm": round(calculated_srm, 1),
+    }
+
+
 async def _save_recipe(
     db: AsyncSession,
     recipe: dict[str, Any],
@@ -2571,6 +2762,19 @@ async def _save_recipe(
         # Normalize the recipe to BeerJSON format
         normalized = _normalize_recipe_to_beerjson(recipe)
         logger.info(f"Normalized recipe: {normalized.get('name')}")
+
+        # Calculate OG, FG, ABV, IBU, and color from ingredients
+        # This ensures accurate values regardless of what the LLM provided
+        calculated = _calculate_recipe_stats(normalized)
+        logger.info(f"Calculated stats: OG={calculated['og']}, FG={calculated['fg']}, "
+                    f"ABV={calculated['abv']}%, IBU={calculated['ibu']}, SRM={calculated['color_srm']}")
+
+        # Override normalized values with calculated values
+        normalized["original_gravity"] = {"value": calculated["og"], "unit": "sg"}
+        normalized["final_gravity"] = {"value": calculated["fg"], "unit": "sg"}
+        normalized["alcohol_by_volume"] = {"value": calculated["abv"] / 100, "unit": "%"}
+        normalized["ibu_estimate"] = {"value": calculated["ibu"], "unit": "IBUs"}
+        normalized["color_estimate"] = {"value": calculated["color_srm"], "unit": "SRM"}
 
         # Use the RecipeSerializer to convert BeerJSON to SQLAlchemy model
         serializer = RecipeSerializer()

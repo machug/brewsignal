@@ -472,6 +472,32 @@ TOOL_DEFINITIONS = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "review_recipe_style",
+            "description": "Review a recipe against BJCP style guidelines. Returns detailed compliance analysis showing which stats are in/out of range, suggestions for fixes, and optionally applies automatic corrections. Use this when checking if a recipe fits its target style or when the user wants style compliance verification.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {
+                        "type": "integer",
+                        "description": "ID of the recipe to review"
+                    },
+                    "style_id": {
+                        "type": "string",
+                        "description": "Optional BJCP style ID to review against (e.g., 'bjcp-2021-18b'). If not provided, uses the recipe's assigned style."
+                    },
+                    "auto_fix": {
+                        "type": "boolean",
+                        "description": "If true, automatically adjust recipe to fit within style guidelines where possible (adjusts grain bill, hops, etc.)",
+                        "default": False
+                    }
+                },
+                "required": ["recipe_id"]
+            }
+        }
+    },
     # =============================================================================
     # Ingredient Reference Library Tools
     # =============================================================================
@@ -684,6 +710,8 @@ async def execute_tool(
         return await _get_yeast_fermentation_advice(db, **arguments)
     elif tool_name == "save_recipe":
         return await _save_recipe(db, **arguments)
+    elif tool_name == "review_recipe_style":
+        return await _review_recipe_style(db, **arguments)
     # Ingredient reference library tools
     elif tool_name == "search_hop_varieties":
         return await _search_hop_varieties(db, **arguments)
@@ -2824,6 +2852,186 @@ async def _save_recipe(
         return {
             "error": f"Failed to save recipe: {str(e)}"
         }
+
+
+async def _review_recipe_style(
+    db: AsyncSession,
+    recipe_id: int,
+    style_id: Optional[str] = None,
+    auto_fix: bool = False,
+) -> dict[str, Any]:
+    """Review a recipe against BJCP style guidelines.
+
+    Compares the recipe's stats (OG, FG, ABV, IBU, SRM) against the target style's
+    ranges and returns a detailed compliance analysis with suggestions.
+    """
+    from sqlalchemy.orm import selectinload
+    from backend.services.brewing import calculate_recipe_stats
+
+    # Fetch recipe with all ingredients
+    stmt = select(Recipe).options(
+        selectinload(Recipe.style),
+        selectinload(Recipe.fermentables),
+        selectinload(Recipe.hops),
+        selectinload(Recipe.cultures),
+    ).where(Recipe.id == recipe_id)
+    result = await db.execute(stmt)
+    recipe = result.scalar_one_or_none()
+
+    if not recipe:
+        return {"error": f"Recipe with ID {recipe_id} not found"}
+
+    # Determine target style
+    target_style = None
+    if style_id:
+        style_result = await db.execute(select(Style).where(Style.id == style_id))
+        target_style = style_result.scalar_one_or_none()
+        if not target_style:
+            return {"error": f"Style '{style_id}' not found"}
+    elif recipe.style_id:
+        style_result = await db.execute(select(Style).where(Style.id == recipe.style_id))
+        target_style = style_result.scalar_one_or_none()
+
+    if not target_style:
+        return {
+            "error": "No target style specified. Either set a style on the recipe or provide a style_id parameter.",
+            "hint": "Use search_styles to find available BJCP styles."
+        }
+
+    # Recalculate current stats from ingredients
+    current_stats = calculate_recipe_stats(recipe)
+
+    # Compare against style guidelines
+    compliance = {}
+    issues = []
+    suggestions = []
+
+    def check_range(stat_name: str, value: float, min_val: Optional[float], max_val: Optional[float], unit: str = ""):
+        """Check if a value is within range and return compliance info."""
+        result = {
+            "value": value,
+            "min": min_val,
+            "max": max_val,
+            "unit": unit,
+            "status": "unknown"
+        }
+
+        if min_val is None or max_val is None:
+            result["status"] = "no_guideline"
+            return result
+
+        if value < min_val:
+            result["status"] = "below"
+            result["deviation"] = round(min_val - value, 3)
+            issues.append(f"{stat_name} ({value}{unit}) is below style minimum ({min_val}{unit})")
+        elif value > max_val:
+            result["status"] = "above"
+            result["deviation"] = round(value - max_val, 3)
+            issues.append(f"{stat_name} ({value}{unit}) is above style maximum ({max_val}{unit})")
+        else:
+            result["status"] = "in_range"
+
+        return result
+
+    # Check each stat
+    compliance["og"] = check_range("OG", current_stats["og"], target_style.og_min, target_style.og_max)
+    compliance["fg"] = check_range("FG", current_stats["fg"], target_style.fg_min, target_style.fg_max)
+    compliance["abv"] = check_range("ABV", current_stats["abv"], target_style.abv_min, target_style.abv_max, "%")
+    compliance["ibu"] = check_range("IBU", current_stats["ibu"], target_style.ibu_min, target_style.ibu_max)
+    compliance["srm"] = check_range("SRM", current_stats["color_srm"], target_style.srm_min, target_style.srm_max)
+
+    # Calculate compliance score
+    stats_checked = [c for c in compliance.values() if c["status"] != "no_guideline"]
+    in_range_count = sum(1 for c in stats_checked if c["status"] == "in_range")
+    score = round((in_range_count / len(stats_checked)) * 10, 1) if stats_checked else 0
+
+    # Generate suggestions based on issues
+    if compliance["og"]["status"] == "below":
+        suggestions.append("Increase grain bill to raise OG, or reduce batch size")
+    elif compliance["og"]["status"] == "above":
+        suggestions.append("Reduce grain bill to lower OG, or increase batch size")
+
+    if compliance["ibu"]["status"] == "below":
+        suggestions.append("Add more bittering hops or increase boil time to raise IBU")
+    elif compliance["ibu"]["status"] == "above":
+        suggestions.append("Reduce hop amounts or boil times to lower IBU")
+
+    if compliance["srm"]["status"] == "below":
+        suggestions.append("Add specialty malts (crystal, caramel) to increase color")
+    elif compliance["srm"]["status"] == "above":
+        suggestions.append("Reduce colored malts or substitute lighter base malts")
+
+    if compliance["abv"]["status"] != "in_range" and compliance["og"]["status"] != "in_range":
+        # ABV follows OG, so the OG suggestion applies
+        pass
+    elif compliance["abv"]["status"] == "below" and compliance["og"]["status"] == "in_range":
+        suggestions.append("Use a higher-attenuating yeast to increase ABV")
+    elif compliance["abv"]["status"] == "above" and compliance["og"]["status"] == "in_range":
+        suggestions.append("Use a lower-attenuating yeast to reduce ABV")
+
+    # Build response
+    response = {
+        "recipe_id": recipe.id,
+        "recipe_name": recipe.name,
+        "target_style": {
+            "id": target_style.id,
+            "name": target_style.name,
+            "category": target_style.category,
+            "guide": target_style.guide,
+        },
+        "style_fit_score": score,
+        "compliance": compliance,
+        "issues": issues,
+        "suggestions": suggestions,
+        "overall_status": "in_style" if not issues else "needs_adjustment",
+        "current_stats": current_stats,
+    }
+
+    # Auto-fix if requested (limited scope - just update batch size for OG issues)
+    if auto_fix and issues:
+        fixes_applied = []
+
+        # Fix OG by adjusting batch size (simplest fix)
+        if compliance["og"]["status"] == "below" and target_style.og_min:
+            # Calculate required batch size reduction
+            target_og = (target_style.og_min + target_style.og_max) / 2
+            current_og = current_stats["og"]
+            if current_og > 1.0:
+                # ratio of gravity points
+                ratio = (target_og - 1) / (current_og - 1)
+                new_batch_size = round(recipe.batch_size_liters / ratio, 1)
+                if 10 <= new_batch_size <= 50:  # Reasonable range
+                    recipe.batch_size_liters = new_batch_size
+                    fixes_applied.append(f"Reduced batch size to {new_batch_size}L to target OG {target_og:.3f}")
+
+        elif compliance["og"]["status"] == "above" and target_style.og_max:
+            target_og = (target_style.og_min + target_style.og_max) / 2
+            current_og = current_stats["og"]
+            if current_og > 1.0:
+                ratio = (target_og - 1) / (current_og - 1)
+                new_batch_size = round(recipe.batch_size_liters / ratio, 1)
+                if 10 <= new_batch_size <= 50:
+                    recipe.batch_size_liters = new_batch_size
+                    fixes_applied.append(f"Increased batch size to {new_batch_size}L to target OG {target_og:.3f}")
+
+        if fixes_applied:
+            # Recalculate stats after fixes
+            new_stats = calculate_recipe_stats(recipe)
+            recipe.og = new_stats["og"]
+            recipe.fg = new_stats["fg"]
+            recipe.abv = new_stats["abv"]
+            recipe.ibu = new_stats["ibu"]
+            recipe.color_srm = new_stats["color_srm"]
+            await db.commit()
+
+            response["auto_fix_applied"] = True
+            response["fixes_applied"] = fixes_applied
+            response["updated_stats"] = new_stats
+        else:
+            response["auto_fix_applied"] = False
+            response["auto_fix_note"] = "Auto-fix could not resolve issues automatically. Manual adjustment recommended."
+
+    return response
 
 
 # =============================================================================

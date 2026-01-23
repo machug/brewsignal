@@ -104,7 +104,8 @@
 		error = null;
 		try {
 			batch = await fetchBatch(batchId);
-			if (batch.status === 'fermenting' || batch.status === 'conditioning') {
+			// Load progress for active batches AND completed batches (for historical stats)
+			if (batch.status === 'fermenting' || batch.status === 'conditioning' || batch.status === 'completed') {
 				try {
 					progress = await fetchBatchProgress(batchId);
 				} catch {
@@ -730,12 +731,14 @@
 			</div>
 		</div>
 
-		<!-- Fermentation Chart (shows historical data for all batches with a device) -->
-		{#if batch.device_id}
+		<!-- Fermentation Chart (shows historical data for all batches with readings) -->
+		<!-- For active batches: show if device_id exists -->
+		<!-- For completed/archived batches: always show (they have historical data) -->
+		{#if batch.device_id || batch.status === 'completed' || batch.status === 'archived'}
 			<div class="chart-section">
 				<FermentationChart
 					batchId={batch.id}
-					deviceColor={batch.device_id}
+					deviceColor={batch.device_id || 'historical'}
 					originalGravity={batch.measured_og}
 					{controlEvents}
 				/>

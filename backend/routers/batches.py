@@ -291,6 +291,25 @@ async def update_batch(
         elif update.status in ["completed", "archived"]:
             await remove_batch_discovery(batch_id)
 
+        # Auto-populate measured_fg from last reading when completing (if not already set)
+        if update.status == "completed" and batch.measured_fg is None and batch.measured_og:
+            # Get the last reading for this batch to capture final gravity
+            last_reading_query = (
+                select(Reading)
+                .where(Reading.batch_id == batch_id)
+                .order_by(Reading.timestamp.desc())
+                .limit(1)
+            )
+            last_reading_result = await db.execute(last_reading_query)
+            last_reading = last_reading_result.scalar_one_or_none()
+            if last_reading:
+                # Use filtered SG if available, otherwise calibrated
+                final_sg = last_reading.sg_filtered or last_reading.sg_calibrated
+                if final_sg:
+                    batch.measured_fg = final_sg
+                    batch.measured_abv = (batch.measured_og - final_sg) * 131.25
+                    batch.measured_attenuation = ((batch.measured_og - final_sg) / (batch.measured_og - 1.0)) * 100
+
         # Release device when batch is completed or archived
         if update.status in ["completed", "archived"]:
             batch.device_id = None
@@ -411,6 +430,10 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         current_sg = reading.get("sg")
         current_temp = reading.get("temp")
 
+    # For completed batches, use measured_fg as the final gravity
+    if batch.status == "completed" and batch.measured_fg:
+        current_sg = batch.measured_fg
+
     # Calculate targets from recipe
     targets = {}
     if batch.recipe:
@@ -431,8 +454,13 @@ async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
         "current_sg": current_sg,
         "attenuation": None,
         "abv": None,
+        "fg": batch.measured_fg,  # Include measured FG for completed batches
     }
-    if batch.measured_og and current_sg:
+    # For completed batches with stored values, use those
+    if batch.status == "completed" and batch.measured_abv is not None:
+        measured["abv"] = round(batch.measured_abv, 1)
+        measured["attenuation"] = round(batch.measured_attenuation, 1) if batch.measured_attenuation else None
+    elif batch.measured_og and current_sg:
         measured["attenuation"] = round(
             ((batch.measured_og - current_sg) / (batch.measured_og - 1.0)) * 100, 1
         )
@@ -525,8 +553,14 @@ async def get_batch_predictions(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    if not batch.device_id:
-        return {"available": False, "error": "No device linked"}
+    # For completed/archived batches without device_id, use a synthetic ID based on batch
+    # This allows viewing historical predictions even after device is released
+    device_id = batch.device_id
+    if not device_id:
+        if batch.status in ["completed", "archived"]:
+            device_id = f"batch-{batch_id}"  # Synthetic ID for historical batches
+        else:
+            return {"available": False, "error": "No device linked"}
 
     # Query ML manager for predictions
     ml_mgr = get_ml_manager()
@@ -537,12 +571,12 @@ async def get_batch_predictions(
     expected_fg = batch.recipe.fg if batch.recipe else None
 
     # Get device state with expected FG for prediction bounds and selected model
-    device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, model=model)
+    device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model)
 
     # Auto-reload from database if pipeline is empty or has insufficient history
     if not device_state or device_state.get("history_count", 0) < 10:
-        await ml_mgr.reload_from_database(batch.device_id, batch_id, db)
-        device_state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, model=model)
+        await ml_mgr.reload_from_database(device_id, batch_id, db)
+        device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model)
 
     if not device_state or not device_state.get("predictions"):
         return {"available": False}

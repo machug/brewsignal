@@ -245,7 +245,7 @@ def calculate_recipe_stats(recipe: "Recipe") -> dict[str, float]:
         Dict with og, fg, abv, ibu, color_srm
     """
     batch_liters = recipe.batch_size_liters or 20
-    efficiency = recipe.efficiency_percent or 72
+    efficiency = recipe.efficiency_percent or 75  # Default 75% efficiency
     if efficiency > 1:
         efficiency = efficiency / 100
 

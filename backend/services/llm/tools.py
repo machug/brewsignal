@@ -404,22 +404,22 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_recipe",
-            "description": "Save a recipe to the user's recipe library. IMPORTANT: You MUST include ingredients as structured arrays - do NOT put grain/hop info only in notes. Each fermentable needs name and amount_kg. Each hop needs name, amount_g, and time_minutes. Each culture/yeast needs name.",
+            "description": "Save a recipe to the user's recipe library. CRITICAL REQUIREMENTS: 1) Include ALL ingredients as structured arrays (fermentables, hops, AND cultures/yeast). 2) Calculate OG/FG/ABV based on the grain bill - do NOT use placeholder values. For all-grain at 72% efficiency: OG ≈ 1 + (total_grain_kg × 36 × 0.72) / batch_liters / 1000. ABV = (OG - FG) × 131.25. 3) Always include the yeast in the cultures array.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "recipe": {
                         "type": "object",
-                        "description": "Recipe object with structured ingredient arrays",
+                        "description": "Recipe object with structured ingredient arrays. OG/FG/ABV must be calculated from the grain bill, not guessed.",
                         "properties": {
                             "name": {"type": "string", "description": "Recipe name"},
                             "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
                             "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
-                            "og": {"type": "number", "description": "Original gravity (e.g. 1.055)"},
-                            "fg": {"type": "number", "description": "Final gravity (e.g. 1.012)"},
-                            "abv": {"type": "number", "description": "ABV percentage (e.g. 5.8)"},
-                            "ibu": {"type": "number", "description": "IBU (e.g. 40)"},
-                            "color_srm": {"type": "number", "description": "Color in SRM"},
+                            "og": {"type": "number", "description": "Original gravity CALCULATED from grain bill (e.g. 1.053 for 5kg grain in 23L)"},
+                            "fg": {"type": "number", "description": "Final gravity based on yeast attenuation (e.g. 1.012)"},
+                            "abv": {"type": "number", "description": "ABV = (OG - FG) × 131.25 (e.g. 5.4 for OG 1.053, FG 1.012)"},
+                            "ibu": {"type": "number", "description": "IBU calculated from hop additions"},
+                            "color_srm": {"type": "number", "description": "Color in SRM from grain colors"},
                             "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
                             "fermentables": {
                                 "type": "array",
@@ -451,13 +451,14 @@ TOOL_DEFINITIONS = [
                             },
                             "cultures": {
                                 "type": "array",
-                                "description": "Array of yeast/bacteria",
+                                "description": "REQUIRED: Array of yeast - ALWAYS include the yeast for the recipe",
                                 "items": {
                                     "type": "object",
                                     "properties": {
                                         "name": {"type": "string", "description": "Yeast name (e.g. 'US-05', 'Safale S-04')"},
                                         "producer": {"type": "string", "description": "Yeast lab (e.g. 'Fermentis', 'White Labs')"},
-                                        "product_id": {"type": "string", "description": "Product code (e.g. 'WLP001')"}
+                                        "product_id": {"type": "string", "description": "Product code (e.g. 'WLP001')"},
+                                        "attenuation": {"type": "number", "description": "Expected attenuation % (e.g. 77)"}
                                     },
                                     "required": ["name"]
                                 }
@@ -465,7 +466,7 @@ TOOL_DEFINITIONS = [
                             "mash_temp": {"type": "number", "description": "Mash temperature in Celsius"},
                             "mash_time": {"type": "number", "description": "Mash time in minutes"}
                         },
-                        "required": ["name", "fermentables", "hops"]
+                        "required": ["name", "fermentables", "hops", "cultures"]
                     },
                     "name_override": {
                         "type": "string",

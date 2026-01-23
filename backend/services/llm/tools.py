@@ -2643,9 +2643,12 @@ def _calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
                 potential = val
                 break
 
-        # Gravity points contribution: (kg * potential * efficiency) / liters
-        # This gives points above 1.000 (e.g., 50 = 1.050)
-        points = (amount_kg * potential * eff_val * 1000) / batch_liters
+        # Gravity points contribution using PPG (points per pound per gallon)
+        # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
+        # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
+        grain_lbs = amount_kg * 2.205
+        batch_gal = batch_liters / 3.785
+        points = (grain_lbs * potential * eff_val) / batch_gal
         total_gravity_points += points
 
         # Color contribution (MCU)

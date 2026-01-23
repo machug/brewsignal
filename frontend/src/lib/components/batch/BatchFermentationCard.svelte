@@ -154,21 +154,25 @@
 
 	{:else if batch.measured_og}
 		<!-- Completed or no live readings -->
+		<!-- Use batch values if available, otherwise fall back to progress data -->
+		{@const finalGravity = batch.measured_fg ?? progress?.measured?.fg ?? progress?.measured?.current_sg}
+		{@const abv = batch.measured_abv ?? progress?.measured?.abv}
+		{@const attenuation = batch.measured_attenuation ?? progress?.measured?.attenuation}
 		<div class="completed-grid">
 			<div class="completed-metric">
 				<span class="completed-value">{formatSG(batch.measured_og)}</span>
 				<span class="completed-label">Original Gravity</span>
 			</div>
 			<div class="completed-metric">
-				<span class="completed-value">{formatSG(batch.measured_fg)}</span>
+				<span class="completed-value">{formatSG(finalGravity)}</span>
 				<span class="completed-label">Final Gravity</span>
 			</div>
 			<div class="completed-metric">
-				<span class="completed-value">{batch.measured_abv != null ? formatPercent(batch.measured_abv) : '--'}</span>
+				<span class="completed-value">{abv != null ? formatPercent(abv) : '--'}</span>
 				<span class="completed-label">ABV</span>
 			</div>
 			<div class="completed-metric">
-				<span class="completed-value">{batch.measured_attenuation != null ? formatPercent(batch.measured_attenuation) : '--'}</span>
+				<span class="completed-value">{attenuation != null ? formatPercent(attenuation) : '--'}</span>
 				<span class="completed-label">Attenuation</span>
 			</div>
 		</div>

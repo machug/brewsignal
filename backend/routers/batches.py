@@ -630,8 +630,13 @@ async def reload_batch_predictions(batch_id: int, db: AsyncSession = Depends(get
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    if not batch.device_id:
-        raise HTTPException(status_code=400, detail="Batch has no device linked")
+    # For completed/archived batches without device_id, use a synthetic ID
+    device_id = batch.device_id
+    if not device_id:
+        if batch.status in ["completed", "archived"]:
+            device_id = f"batch-{batch_id}"
+        else:
+            raise HTTPException(status_code=400, detail="Batch has no device linked")
 
     # Get ML manager
     ml_mgr = get_ml_manager()
@@ -640,7 +645,7 @@ async def reload_batch_predictions(batch_id: int, db: AsyncSession = Depends(get
 
     # Reload from database
     reload_result = await ml_mgr.reload_from_database(
-        device_id=batch.device_id,
+        device_id=device_id,
         batch_id=batch_id,
         db_session=db
     )

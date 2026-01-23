@@ -82,13 +82,14 @@ def calculate_og_from_fermentables(
         if amount_kg <= 0:
             continue
 
-        # Get extract potential
+        # Get extract potential (PPG = points per pound per gallon)
         potential = get_extract_potential(ferm.name, ferm.yield_percent)
 
-        # Gravity points contribution: (kg * potential * efficiency) / liters
-        # Convert from PPG to metric: PPG * kg * 2.205 / (liters * 0.264172)
-        # Simplified: points = (amount_kg * potential * efficiency * 1000) / batch_liters
-        points = (amount_kg * potential * efficiency * 1000) / batch_liters
+        # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
+        # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
+        grain_lbs = amount_kg * 2.205
+        batch_gal = batch_liters / 3.785
+        points = (grain_lbs * potential * efficiency) / batch_gal
         total_gravity_points += points
 
         # Color contribution (MCU)

@@ -2472,6 +2472,26 @@ def _normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
         # Convert single yeast object to culture_additions array
         cultures = [yeast] if isinstance(yeast, dict) else []
 
+    # Handle flat yeast fields (from prompty format: yeast_name, yeast_lab, yeast_attenuation, etc.)
+    if not cultures:
+        yeast_name = recipe.get("yeast_name")
+        if yeast_name:
+            flat_yeast = {"name": yeast_name}
+            if recipe.get("yeast_lab"):
+                flat_yeast["producer"] = recipe.get("yeast_lab")
+            if recipe.get("yeast_product_id"):
+                flat_yeast["product_id"] = recipe.get("yeast_product_id")
+            if recipe.get("yeast_attenuation"):
+                flat_yeast["attenuation"] = recipe.get("yeast_attenuation")
+            if recipe.get("yeast_temp_min") or recipe.get("yeast_temp_max"):
+                flat_yeast["temperature_range"] = {}
+                if recipe.get("yeast_temp_min"):
+                    flat_yeast["temperature_range"]["minimum"] = {"value": recipe.get("yeast_temp_min"), "unit": "C"}
+                if recipe.get("yeast_temp_max"):
+                    flat_yeast["temperature_range"]["maximum"] = {"value": recipe.get("yeast_temp_max"), "unit": "C"}
+            cultures = [flat_yeast]
+            logger.info(f"Converted flat yeast fields to culture: {flat_yeast}")
+
     if cultures:
         normalized_cultures = []
         for c in cultures:

@@ -145,7 +145,7 @@ def calculate_ibu_from_hops(
 
         # Get timing info
         timing = hop.timing or {}
-        use = timing.get("use", "add_to_boil")
+        use = timing.get("use", "boil").lower()
 
         # Get boil time
         duration = timing.get("duration", {})
@@ -155,7 +155,8 @@ def calculate_ibu_from_hops(
             boil_min = float(duration) if duration else 0
 
         # Only calculate IBU for boil additions
-        if use in ["add_to_boil", "add_to_mash"]:
+        # Handle both naming conventions: "boil" vs "add_to_boil"
+        if use in ["boil", "add_to_boil", "mash", "add_to_mash", "first_wort"]:
             # Tinseth utilization formula
             # Bigness factor = 1.65 * 0.000125^(OG - 1)
             bigness = 1.65 * (0.000125 ** (og - 1))
@@ -171,12 +172,12 @@ def calculate_ibu_from_hops(
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
 
-        elif use == "add_to_whirlpool":
+        elif use in ["whirlpool", "add_to_whirlpool"]:
             # Whirlpool hops contribute ~10-20% of boil utilization
             utilization = 0.05
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
-        # Dry hops (add_to_fermentation) don't contribute significant IBUs
+        # Dry hops (dry_hop, add_to_fermentation) don't contribute significant IBUs
 
     return total_ibu
 

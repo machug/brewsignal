@@ -2810,18 +2810,9 @@ async def _save_recipe(
         recipe["name"] = name_override
 
     try:
-        # Debug: Log what LLM sent for cultures
-        logger.info(f"save_recipe input - cultures: {recipe.get('cultures')}")
-        logger.info(f"save_recipe input - ingredients.cultures: {recipe.get('ingredients', {}).get('cultures')}")
-        logger.info(f"save_recipe input - ingredients.culture_additions: {recipe.get('ingredients', {}).get('culture_additions')}")
-
         # Normalize the recipe to BeerJSON format
         normalized = _normalize_recipe_to_beerjson(recipe)
         logger.info(f"Normalized recipe: {normalized.get('name')}")
-
-        # Debug: Log normalized culture_additions
-        norm_cultures = normalized.get('ingredients', {}).get('culture_additions', [])
-        logger.info(f"Normalized culture_additions: {norm_cultures}")
 
         # Calculate OG, FG, ABV, IBU, and color from ingredients
         # This ensures accurate values regardless of what the LLM provided

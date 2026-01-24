@@ -39,6 +39,13 @@ class RecipeToBrewfatherConverter:
             bf_recipe["boilTime"] = recipe.boil_time_minutes
         if recipe.efficiency_percent is not None:
             bf_recipe["efficiency"] = recipe.efficiency_percent
+
+        # Equipment object required by Brewfather import
+        bf_recipe["equipment"] = {
+            "efficiency": recipe.efficiency_percent or 75,
+            "boilTime": recipe.boil_time_minutes or 60,
+            "batchSize": recipe.batch_size_liters or 20,
+        }
         if recipe.og is not None:
             bf_recipe["og"] = recipe.og
         if recipe.fg is not None:

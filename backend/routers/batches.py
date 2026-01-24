@@ -69,13 +69,13 @@ async def list_batches(
 
 @router.get("/active", response_model=list[BatchResponse])
 async def list_active_batches(db: AsyncSession = Depends(get_db)):
-    """Active batches: planning or fermenting status, not deleted."""
+    """Active batches: planning, brewing, or fermenting status, not deleted."""
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
             Batch.deleted_at.is_(None),
-            Batch.status.in_(["planning", "fermenting"])
+            Batch.status.in_(["planning", "brewing", "fermenting"])
         )
         .order_by(Batch.created_at.desc())
     )

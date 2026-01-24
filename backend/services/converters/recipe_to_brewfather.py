@@ -25,6 +25,7 @@ class RecipeToBrewfatherConverter:
             Brewfather-compatible JSON dict
         """
         bf_recipe: dict[str, Any] = {
+            "_type": "recipe",  # Required by Brewfather import
             "name": recipe.name or "",
             "type": self._map_recipe_type(recipe.type),
             "author": recipe.author or "",
@@ -122,14 +123,14 @@ class RecipeToBrewfatherConverter:
 
         if hop.origin:
             bf_hop["origin"] = hop.origin
-        if hop.form:
-            bf_hop["type"] = self._map_hop_form(hop.form)
+        # Brewfather uses 'type' for the hop form (Pellet, Leaf, etc.)
+        bf_hop["type"] = self._map_hop_form(hop.form) if hop.form else "Pellet"
         if hop.alpha_acid_percent is not None:
             bf_hop["alpha"] = hop.alpha_acid_percent
         if hop.beta_acid_percent is not None:
             bf_hop["beta"] = hop.beta_acid_percent
 
-        # Timing from JSON field
+        # Timing from JSON field - Brewfather uses 'use' for when (Boil, Dry Hop, etc.)
         use, time = self._extract_hop_timing(hop.timing)
         bf_hop["use"] = use
         if time is not None:
@@ -171,10 +172,9 @@ class RecipeToBrewfatherConverter:
             "name": culture.name or "",
         }
 
-        if culture.type:
-            bf_yeast["type"] = self._map_yeast_type(culture.type)
-        if culture.form:
-            bf_yeast["form"] = self._map_yeast_form(culture.form)
+        # Brewfather expects both type and form
+        bf_yeast["type"] = self._map_yeast_type(culture.type) if culture.type else "Ale"
+        bf_yeast["form"] = self._map_yeast_form(culture.form) if culture.form else "Dry"
         if culture.producer:
             bf_yeast["laboratory"] = culture.producer
         if culture.product_id:
@@ -203,6 +203,8 @@ class RecipeToBrewfatherConverter:
         """Convert legacy Recipe yeast fields to Brewfather yeast."""
         bf_yeast: dict[str, Any] = {
             "name": recipe.yeast_name or "",
+            "type": "Ale",  # Default, Brewfather requires this
+            "form": "Dry",  # Default, Brewfather requires this
             "amount": 1,
             "unit": "pkg",
         }

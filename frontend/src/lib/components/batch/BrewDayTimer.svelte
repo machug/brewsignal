@@ -1,20 +1,25 @@
 <script lang="ts">
-	import type { RecipeResponse, HopResponse } from '$lib/api';
+	import type { RecipeResponse, BatchResponse, BatchUpdate } from '$lib/api';
+	import { updateBatch } from '$lib/api';
 
 	interface Props {
+		batch: BatchResponse;
 		recipe: RecipeResponse;
 		onComplete?: () => void;
 	}
 
-	let { recipe, onComplete }: Props = $props();
+	let { batch, recipe, onComplete }: Props = $props();
 
-	// Timer state
-	let timerPhase = $state<'idle' | 'mash' | 'boil' | 'complete'>('idle');
+	// Timer state - synced with backend
+	let timerPhase = $state<'idle' | 'mash' | 'boil' | 'complete'>(
+		(batch.timer_phase as 'idle' | 'mash' | 'boil' | 'complete') || 'idle'
+	);
 	let secondsRemaining = $state(0);
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
-	let isPaused = $state(false);
+	let isPaused = $state(batch.timer_paused_at != null);
+	let saving = $state(false);
 
-	// Hop alerts that have fired
+	// Hop alerts that have fired (local only - resets on page refresh)
 	let firedAlerts = $state<Set<number>>(new Set());
 
 	// Default times (can be overridden)
@@ -62,23 +67,74 @@
 		}
 	});
 
-	function startMash() {
+	// Calculate remaining time from server state
+	function calculateRemainingFromServer(): number {
+		if (!batch.timer_started_at || !batch.timer_duration_seconds) return 0;
+
+		const startedAt = new Date(batch.timer_started_at).getTime();
+		const duration = batch.timer_duration_seconds * 1000;
+		const now = Date.now();
+
+		if (batch.timer_paused_at) {
+			// Timer is paused - calculate based on pause time
+			const pausedAt = new Date(batch.timer_paused_at).getTime();
+			const elapsed = pausedAt - startedAt;
+			return Math.max(0, Math.floor((duration - elapsed) / 1000));
+		} else {
+			// Timer is running
+			const elapsed = now - startedAt;
+			return Math.max(0, Math.floor((duration - elapsed) / 1000));
+		}
+	}
+
+	// Save timer state to backend
+	async function saveTimerState(phase: string, durationSeconds: number, paused: boolean = false) {
+		saving = true;
+		try {
+			const update: Record<string, unknown> = {
+				timer_phase: phase,
+				timer_duration_seconds: durationSeconds,
+			};
+
+			if (phase === 'idle' || phase === 'complete') {
+				update.timer_started_at = null;
+				update.timer_paused_at = null;
+			} else if (paused) {
+				update.timer_paused_at = new Date().toISOString();
+			} else {
+				// Starting or resuming - set start time
+				update.timer_started_at = new Date().toISOString();
+				update.timer_paused_at = null;
+			}
+
+			await updateBatch(batch.id, update as BatchUpdate);
+		} catch (e) {
+			console.error('Failed to save timer state:', e);
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function startMash() {
 		timerPhase = 'mash';
 		secondsRemaining = mashDuration * 60;
 		firedAlerts = new Set();
+		isPaused = false;
+		await saveTimerState('mash', mashDuration * 60);
 		startTimer();
 	}
 
-	function startBoil() {
+	async function startBoil() {
 		timerPhase = 'boil';
 		secondsRemaining = boilDuration * 60;
 		firedAlerts = new Set();
+		isPaused = false;
+		await saveTimerState('boil', boilDuration * 60);
 		startTimer();
 	}
 
 	function startTimer() {
 		if (timerInterval) clearInterval(timerInterval);
-		isPaused = false;
 
 		timerInterval = setInterval(() => {
 			if (!isPaused && secondsRemaining > 0) {
@@ -107,6 +163,7 @@
 						showNotification('Mash Complete', 'Time to sparge and start the boil!');
 					} else if (timerPhase === 'boil') {
 						timerPhase = 'complete';
+						saveTimerState('complete', 0);
 						showNotification('Boil Complete', 'Time to chill the wort!');
 						onComplete?.();
 					}
@@ -115,11 +172,19 @@
 		}, 1000);
 	}
 
-	function togglePause() {
+	async function togglePause() {
 		isPaused = !isPaused;
+
+		if (isPaused) {
+			// Pausing - save current state with pause timestamp
+			await saveTimerState(timerPhase, secondsRemaining, true);
+		} else {
+			// Resuming - update start time to resume from current remaining
+			await saveTimerState(timerPhase, secondsRemaining, false);
+		}
 	}
 
-	function resetTimer() {
+	async function resetTimer() {
 		if (timerInterval) {
 			clearInterval(timerInterval);
 			timerInterval = null;
@@ -128,6 +193,7 @@
 		secondsRemaining = 0;
 		isPaused = false;
 		firedAlerts = new Set();
+		await saveTimerState('idle', 0);
 	}
 
 	function addMinute() {
@@ -177,10 +243,22 @@
 		}
 	}
 
-	// Request notification permission on mount
+	// Initialize from server state on mount
 	$effect(() => {
+		// Request notification permission
 		if ('Notification' in window && Notification.permission === 'default') {
 			Notification.requestPermission();
+		}
+
+		// Restore timer state from batch
+		if (batch.timer_phase && batch.timer_phase !== 'idle' && batch.timer_phase !== 'complete') {
+			timerPhase = batch.timer_phase as 'mash' | 'boil';
+			secondsRemaining = calculateRemainingFromServer();
+			isPaused = batch.timer_paused_at != null;
+
+			if (!isPaused && secondsRemaining > 0) {
+				startTimer();
+			}
 		}
 
 		// Cleanup on unmount
@@ -195,7 +273,9 @@
 <div class="timer-card">
 	<div class="timer-header">
 		<h3 class="timer-title">Brew Day Timer</h3>
-		{#if timerPhase !== 'idle' && timerPhase !== 'complete'}
+		{#if saving}
+			<span class="saving-indicator">Syncing...</span>
+		{:else if timerPhase !== 'idle' && timerPhase !== 'complete'}
 			<span class="phase-badge" class:mash={timerPhase === 'mash'} class:boil={timerPhase === 'boil'}>
 				{phaseDisplay}
 			</span>
@@ -335,6 +415,12 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		margin: 0;
+	}
+
+	.saving-indicator {
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+		font-style: italic;
 	}
 
 	.phase-badge {

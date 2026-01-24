@@ -492,6 +492,11 @@ export interface BatchResponse {
 	deleted_at?: string;
 	// Reading control
 	readings_paused: boolean;
+	// Timer state
+	timer_phase?: string;
+	timer_started_at?: string;
+	timer_duration_seconds?: number;
+	timer_paused_at?: string;
 }
 
 export interface BatchCreate {
@@ -546,6 +551,11 @@ export interface BatchUpdate {
 	temp_hysteresis?: number;
 	// Reading control
 	readings_paused?: boolean;
+	// Timer state
+	timer_phase?: string;
+	timer_started_at?: string | null;
+	timer_duration_seconds?: number;
+	timer_paused_at?: string | null;
 }
 
 export interface BatchProgressResponse {

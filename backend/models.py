@@ -561,6 +561,12 @@ class Batch(Base):
     # Reading control - pause storage during manual gravity checks
     readings_paused: Mapped[bool] = mapped_column(default=False)
 
+    # Brew day timer state (persisted for multi-device sync)
+    timer_phase: Mapped[Optional[str]] = mapped_column(String(20))  # idle, mash, boil, complete
+    timer_started_at: Mapped[Optional[datetime]] = mapped_column()  # When current phase started
+    timer_duration_seconds: Mapped[Optional[int]] = mapped_column()  # Total duration for phase
+    timer_paused_at: Mapped[Optional[datetime]] = mapped_column()  # When paused (null if running)
+
     # Relationships
     recipe: Mapped[Optional["Recipe"]] = relationship(back_populates="batches")
     device: Mapped[Optional["Device"]] = relationship()
@@ -1819,6 +1825,11 @@ class BatchUpdate(BaseModel):
     temp_hysteresis: Optional[float] = None
     # Reading control
     readings_paused: Optional[bool] = None
+    # Timer control
+    timer_phase: Optional[str] = None
+    timer_started_at: Optional[datetime] = None
+    timer_duration_seconds: Optional[int] = None
+    timer_paused_at: Optional[datetime] = None
 
     @field_validator("status")
     @classmethod
@@ -1828,6 +1839,16 @@ class BatchUpdate(BaseModel):
         valid = ["planning", "brewing", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
+        return v
+
+    @field_validator("timer_phase")
+    @classmethod
+    def validate_timer_phase(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        valid = ["idle", "mash", "boil", "complete"]
+        if v not in valid:
+            raise ValueError(f"timer_phase must be one of: {', '.join(valid)}")
         return v
 
     @field_validator("heater_entity_id", "cooler_entity_id")
@@ -1906,8 +1927,13 @@ class BatchResponse(BaseModel):
     temp_hysteresis: Optional[float] = None
     # Reading control
     readings_paused: bool = False
+    # Timer state
+    timer_phase: Optional[str] = None
+    timer_started_at: Optional[datetime] = None
+    timer_duration_seconds: Optional[int] = None
+    timer_paused_at: Optional[datetime] = None
 
-    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at', 'packaged_at')
+    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at', 'packaged_at', 'timer_started_at', 'timer_paused_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 

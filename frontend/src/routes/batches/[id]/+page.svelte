@@ -623,7 +623,7 @@
 				<div class="brewday-tools-grid">
 					<!-- Timer -->
 					{#if batch.recipe}
-						<BrewDayTimer recipe={batch.recipe} />
+						<BrewDayTimer {batch} recipe={batch.recipe} />
 					{/if}
 
 					<!-- Checklist -->

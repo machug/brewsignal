@@ -349,6 +349,15 @@ async def update_batch(
     # Reading control
     if update.readings_paused is not None:
         batch.readings_paused = update.readings_paused
+    # Timer state
+    if update.timer_phase is not None:
+        batch.timer_phase = update.timer_phase
+    if update.timer_started_at is not None:
+        batch.timer_started_at = update.timer_started_at
+    if update.timer_duration_seconds is not None:
+        batch.timer_duration_seconds = update.timer_duration_seconds
+    if update.timer_paused_at is not None:
+        batch.timer_paused_at = update.timer_paused_at
 
     await db.commit()
     await db.refresh(batch)

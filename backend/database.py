@@ -259,6 +259,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_brew_day_observations)  # Add brew day observation columns
         await conn.run_sync(_migrate_add_packaging_columns)  # Add packaging info columns
         await conn.run_sync(_migrate_create_tasting_notes_table)  # Create tasting notes table
+        await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -1612,6 +1613,43 @@ def _migrate_create_tasting_notes_table(conn):
         )
     """))
     print("Migration: Created tasting_notes table")
+
+
+def _migrate_add_batch_timer_columns(conn):
+    """Add brew day timer state columns to batches table.
+
+    These columns persist timer state for multi-device sync:
+    - timer_phase: Current timer phase (idle, mash, boil, complete)
+    - timer_started_at: When the current timer was started
+    - timer_duration_seconds: Total duration for the current phase
+    - timer_paused_at: When the timer was paused (null if running)
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "batches" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("batches")]
+
+    new_columns = [
+        ("timer_phase", "VARCHAR(20)"),
+        ("timer_started_at", "TIMESTAMP"),
+        ("timer_duration_seconds", "INTEGER"),
+        ("timer_paused_at", "TIMESTAMP"),
+    ]
+
+    added = []
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE batches ADD COLUMN {col_name} {col_type}"))
+                added.append(col_name)
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} - {e}")
+
+    if added:
+        print(f"Migration: Added batch timer columns: {', '.join(added)}")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

@@ -1,7 +1,8 @@
 """Recipe API endpoints."""
 
-
+import json
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from ..database import get_db
 from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.brewing import calculate_recipe_stats
+from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_validation import validate_recipe_constraints
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
@@ -285,6 +287,59 @@ async def get_recipe(recipe_id: int, db: AsyncSession = Depends(get_db)):
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return recipe
+
+
+@router.get("/{recipe_id}/export/brewfather")
+async def export_recipe_brewfather(
+    recipe_id: int,
+    download: bool = Query(False, description="Return as downloadable file"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export a recipe in Brewfather JSON format.
+
+    Returns Brewfather-compatible JSON that can be imported directly into Brewfather.
+
+    Args:
+        recipe_id: The recipe ID to export
+        download: If True, returns as a downloadable .json file
+    """
+    # Load recipe with all relationships
+    query = (
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.fermentation_steps),
+        )
+        .where(Recipe.id == recipe_id)
+    )
+    result = await db.execute(query)
+    recipe = result.scalar_one_or_none()
+
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Convert to Brewfather format
+    converter = RecipeToBrewfatherConverter()
+    brewfather_json = converter.convert(recipe)
+
+    if download:
+        # Return as downloadable file
+        filename = f"{recipe.name or 'recipe'}.json".replace(" ", "_")
+        content = json.dumps(brewfather_json, indent=2)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            },
+        )
+
+    return brewfather_json
 
 
 @router.post("", response_model=RecipeResponse, status_code=201)

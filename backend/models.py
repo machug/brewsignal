@@ -505,19 +505,44 @@ class Batch(Base):
     batch_number: Mapped[Optional[int]] = mapped_column()
     name: Mapped[Optional[str]] = mapped_column(String(200))  # Optional override
 
-    # Status tracking
-    status: Mapped[str] = mapped_column(String(20), default="planning")  # planning, fermenting, conditioning, completed, archived
+    # Status tracking - full lifecycle: planning → brewing → fermenting → conditioning → completed
+    status: Mapped[str] = mapped_column(String(20), default="planning")
 
-    # Timeline
+    # Timeline - legacy fields (kept for compatibility)
     brew_date: Mapped[Optional[datetime]] = mapped_column()
     start_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation start
     end_time: Mapped[Optional[datetime]] = mapped_column()  # Fermentation end
+
+    # Phase timestamps - track when each phase started
+    brewing_started_at: Mapped[Optional[datetime]] = mapped_column()
+    fermenting_started_at: Mapped[Optional[datetime]] = mapped_column()
+    conditioning_started_at: Mapped[Optional[datetime]] = mapped_column()
+    completed_at: Mapped[Optional[datetime]] = mapped_column()
 
     # Measured values
     measured_og: Mapped[Optional[float]] = mapped_column()
     measured_fg: Mapped[Optional[float]] = mapped_column()
     measured_abv: Mapped[Optional[float]] = mapped_column()
     measured_attenuation: Mapped[Optional[float]] = mapped_column()
+
+    # Brew day observations
+    actual_mash_temp: Mapped[Optional[float]] = mapped_column()  # Celsius
+    actual_mash_ph: Mapped[Optional[float]] = mapped_column()
+    strike_water_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    pre_boil_gravity: Mapped[Optional[float]] = mapped_column()  # SG
+    pre_boil_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    post_boil_volume: Mapped[Optional[float]] = mapped_column()  # Liters
+    actual_efficiency: Mapped[Optional[float]] = mapped_column()  # Percentage
+    brew_day_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Packaging info
+    packaged_at: Mapped[Optional[datetime]] = mapped_column()
+    packaging_type: Mapped[Optional[str]] = mapped_column(String(20))  # bottles, keg, cans
+    packaging_volume: Mapped[Optional[float]] = mapped_column()  # Liters packaged
+    carbonation_method: Mapped[Optional[str]] = mapped_column(String(30))  # forced, bottle_conditioned, keg_conditioned
+    priming_sugar_type: Mapped[Optional[str]] = mapped_column(String(50))  # e.g., "table sugar", "corn sugar"
+    priming_sugar_amount: Mapped[Optional[float]] = mapped_column()  # Grams
+    packaging_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Temperature control - per-batch heater assignment
     heater_entity_id: Mapped[Optional[str]] = mapped_column(String(100))
@@ -545,6 +570,10 @@ class Batch(Base):
         cascade="all, delete-orphan"
     )
     alerts: Mapped[list["FermentationAlert"]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan"
+    )
+    tasting_notes: Mapped[list["TastingNote"]] = relationship(
         back_populates="batch",
         cascade="all, delete-orphan"
     )
@@ -1001,6 +1030,44 @@ class RecipeFermentationStep(Base):
 
     # Relationship
     recipe: Mapped["Recipe"] = relationship(back_populates="fermentation_steps")
+
+
+class TastingNote(Base):
+    """Tasting notes for a batch - can have multiple over time as beer conditions."""
+    __tablename__ = "tasting_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+
+    # When tasted
+    tasted_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    # Appearance (1-5 scale)
+    appearance_score: Mapped[Optional[int]] = mapped_column()  # 1-5
+    appearance_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Aroma (1-5 scale)
+    aroma_score: Mapped[Optional[int]] = mapped_column()  # 1-5
+    aroma_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Flavor (1-5 scale)
+    flavor_score: Mapped[Optional[int]] = mapped_column()  # 1-5
+    flavor_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Mouthfeel (1-5 scale)
+    mouthfeel_score: Mapped[Optional[int]] = mapped_column()  # 1-5
+    mouthfeel_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Overall impression
+    overall_score: Mapped[Optional[int]] = mapped_column()  # 1-5
+    overall_notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationship
+    batch: Mapped["Batch"] = relationship(back_populates="tasting_notes")
 
 
 # Pydantic Schemas
@@ -1687,7 +1754,7 @@ class BatchCreate(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: str) -> str:
-        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        valid = ["planning", "brewing", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
         return v
@@ -1727,6 +1794,23 @@ class BatchUpdate(BaseModel):
     end_time: Optional[datetime] = None
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
+    # Brew day observations
+    actual_mash_temp: Optional[float] = None
+    actual_mash_ph: Optional[float] = None
+    strike_water_volume: Optional[float] = None
+    pre_boil_gravity: Optional[float] = None
+    pre_boil_volume: Optional[float] = None
+    post_boil_volume: Optional[float] = None
+    actual_efficiency: Optional[float] = None
+    brew_day_notes: Optional[str] = None
+    # Packaging info
+    packaged_at: Optional[datetime] = None
+    packaging_type: Optional[str] = None
+    packaging_volume: Optional[float] = None
+    carbonation_method: Optional[str] = None
+    priming_sugar_type: Optional[str] = None
+    priming_sugar_amount: Optional[float] = None
+    packaging_notes: Optional[str] = None
     notes: Optional[str] = None
     # Temperature control
     heater_entity_id: Optional[str] = None
@@ -1741,7 +1825,7 @@ class BatchUpdate(BaseModel):
     def validate_status(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        valid = ["planning", "fermenting", "conditioning", "completed", "archived"]
+        valid = ["planning", "brewing", "fermenting", "conditioning", "completed", "archived"]
         if v not in valid:
             raise ValueError(f"status must be one of: {', '.join(valid)}")
         return v
@@ -1783,15 +1867,38 @@ class BatchResponse(BaseModel):
     brew_date: Optional[datetime] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    # Phase timestamps
+    brewing_started_at: Optional[datetime] = None
+    fermenting_started_at: Optional[datetime] = None
+    conditioning_started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     measured_og: Optional[float] = None
     measured_fg: Optional[float] = None
     measured_abv: Optional[float] = None
     measured_attenuation: Optional[float] = None
+    # Brew day observations
+    actual_mash_temp: Optional[float] = None
+    actual_mash_ph: Optional[float] = None
+    strike_water_volume: Optional[float] = None
+    pre_boil_gravity: Optional[float] = None
+    pre_boil_volume: Optional[float] = None
+    post_boil_volume: Optional[float] = None
+    actual_efficiency: Optional[float] = None
+    brew_day_notes: Optional[str] = None
+    # Packaging info
+    packaged_at: Optional[datetime] = None
+    packaging_type: Optional[str] = None
+    packaging_volume: Optional[float] = None
+    carbonation_method: Optional[str] = None
+    priming_sugar_type: Optional[str] = None
+    priming_sugar_amount: Optional[float] = None
+    packaging_notes: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     deleted_at: Optional[datetime] = None
     recipe: Optional[RecipeResponse] = None
     yeast_strain: Optional[YeastStrainResponse] = None
+    tasting_notes: list["TastingNoteResponse"] = []
     # Temperature control
     heater_entity_id: Optional[str] = None
     cooler_entity_id: Optional[str] = None
@@ -1800,7 +1907,7 @@ class BatchResponse(BaseModel):
     # Reading control
     readings_paused: bool = False
 
-    @field_serializer('brew_date', 'start_time', 'end_time', 'created_at', 'deleted_at')
+    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at', 'packaged_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 
@@ -1830,6 +1937,80 @@ class BatchPredictionsResponse(BaseModel):
     num_readings: int = 0
     error: Optional[str] = None
     reason: Optional[str] = None
+
+
+# =============================================================================
+# Tasting Note Models
+# =============================================================================
+
+class TastingNoteCreate(BaseModel):
+    """Create a new tasting note for a batch."""
+    batch_id: int
+    tasted_at: Optional[datetime] = None
+    appearance_score: Optional[int] = None
+    appearance_notes: Optional[str] = None
+    aroma_score: Optional[int] = None
+    aroma_notes: Optional[str] = None
+    flavor_score: Optional[int] = None
+    flavor_notes: Optional[str] = None
+    mouthfeel_score: Optional[int] = None
+    mouthfeel_notes: Optional[str] = None
+    overall_score: Optional[int] = None
+    overall_notes: Optional[str] = None
+
+    @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
+    @classmethod
+    def validate_score(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 1 or v > 5):
+            raise ValueError("Score must be between 1 and 5")
+        return v
+
+
+class TastingNoteUpdate(BaseModel):
+    """Update an existing tasting note."""
+    tasted_at: Optional[datetime] = None
+    appearance_score: Optional[int] = None
+    appearance_notes: Optional[str] = None
+    aroma_score: Optional[int] = None
+    aroma_notes: Optional[str] = None
+    flavor_score: Optional[int] = None
+    flavor_notes: Optional[str] = None
+    mouthfeel_score: Optional[int] = None
+    mouthfeel_notes: Optional[str] = None
+    overall_score: Optional[int] = None
+    overall_notes: Optional[str] = None
+
+    @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
+    @classmethod
+    def validate_score(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 1 or v > 5):
+            raise ValueError("Score must be between 1 and 5")
+        return v
+
+
+class TastingNoteResponse(BaseModel):
+    """Response schema for a tasting note."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    batch_id: int
+    tasted_at: datetime
+    appearance_score: Optional[int] = None
+    appearance_notes: Optional[str] = None
+    aroma_score: Optional[int] = None
+    aroma_notes: Optional[str] = None
+    flavor_score: Optional[int] = None
+    flavor_notes: Optional[str] = None
+    mouthfeel_score: Optional[int] = None
+    mouthfeel_notes: Optional[str] = None
+    overall_score: Optional[int] = None
+    overall_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('tasted_at', 'created_at', 'updated_at')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        return serialize_datetime_to_utc(dt)
 
 
 # =============================================================================

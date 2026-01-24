@@ -166,7 +166,7 @@ export async function reloadBatchPredictions(batchId: number): Promise<{ success
 	return response.json();
 }
 
-export type BatchStatus = 'planning' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
+export type BatchStatus = 'planning' | 'brewing' | 'fermenting' | 'conditioning' | 'completed' | 'archived';
 
 export interface FermentableResponse {
 	id: number;
@@ -392,6 +392,54 @@ export interface FermentableFilters {
 	offset?: number;
 }
 
+// Tasting Notes
+export interface TastingNoteResponse {
+	id: number;
+	batch_id: number;
+	tasted_at: string;
+	appearance_score?: number;
+	appearance_notes?: string;
+	aroma_score?: number;
+	aroma_notes?: string;
+	flavor_score?: number;
+	flavor_notes?: string;
+	mouthfeel_score?: number;
+	mouthfeel_notes?: string;
+	overall_score?: number;
+	overall_notes?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface TastingNoteCreate {
+	batch_id?: number; // Will be set from path
+	tasted_at?: string;
+	appearance_score?: number;
+	appearance_notes?: string;
+	aroma_score?: number;
+	aroma_notes?: string;
+	flavor_score?: number;
+	flavor_notes?: string;
+	mouthfeel_score?: number;
+	mouthfeel_notes?: string;
+	overall_score?: number;
+	overall_notes?: string;
+}
+
+export interface TastingNoteUpdate {
+	tasted_at?: string;
+	appearance_score?: number;
+	appearance_notes?: string;
+	aroma_score?: number;
+	aroma_notes?: string;
+	flavor_score?: number;
+	flavor_notes?: string;
+	mouthfeel_score?: number;
+	mouthfeel_notes?: string;
+	overall_score?: number;
+	overall_notes?: string;
+}
+
 export interface BatchResponse {
 	id: number;
 	recipe_id?: number;
@@ -403,14 +451,38 @@ export interface BatchResponse {
 	brew_date?: string;
 	start_time?: string;
 	end_time?: string;
+	// Phase timestamps
+	brewing_started_at?: string;
+	fermenting_started_at?: string;
+	conditioning_started_at?: string;
+	completed_at?: string;
+	// Measured values
 	measured_og?: number;
 	measured_fg?: number;
 	measured_abv?: number;
 	measured_attenuation?: number;
+	// Brew day observations
+	actual_mash_temp?: number;
+	actual_mash_ph?: number;
+	strike_water_volume?: number;
+	pre_boil_gravity?: number;
+	pre_boil_volume?: number;
+	post_boil_volume?: number;
+	actual_efficiency?: number;
+	brew_day_notes?: string;
+	// Packaging info
+	packaged_at?: string;
+	packaging_type?: string;
+	packaging_volume?: number;
+	carbonation_method?: string;
+	priming_sugar_type?: string;
+	priming_sugar_amount?: number;
+	packaging_notes?: string;
 	notes?: string;
 	created_at: string;
 	recipe?: RecipeResponse;
 	yeast_strain?: YeastStrainResponse;
+	tasting_notes?: TastingNoteResponse[];
 	// Temperature control
 	heater_entity_id?: string;
 	cooler_entity_id?: string;
@@ -449,6 +521,23 @@ export interface BatchUpdate {
 	end_time?: string;
 	measured_og?: number;
 	measured_fg?: number;
+	// Brew day observations
+	actual_mash_temp?: number;
+	actual_mash_ph?: number;
+	strike_water_volume?: number;
+	pre_boil_gravity?: number;
+	pre_boil_volume?: number;
+	post_boil_volume?: number;
+	actual_efficiency?: number;
+	brew_day_notes?: string;
+	// Packaging info
+	packaged_at?: string;
+	packaging_type?: string;
+	packaging_volume?: number;
+	carbonation_method?: string;
+	priming_sugar_type?: string;
+	priming_sugar_amount?: number;
+	packaging_notes?: string;
 	notes?: string;
 	// Temperature control
 	heater_entity_id?: string;
@@ -716,6 +805,63 @@ export async function restoreBatch(batchId: number): Promise<BatchResponse> {
 		throw new Error(`Failed to restore batch: ${response.statusText}`);
 	}
 	return response.json();
+}
+
+// ============================================================================
+// Tasting Notes API
+// ============================================================================
+
+/**
+ * Fetch all tasting notes for a batch
+ */
+export async function fetchTastingNotes(batchId: number): Promise<TastingNoteResponse[]> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch tasting notes: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Create a new tasting note for a batch
+ */
+export async function createTastingNote(batchId: number, note: TastingNoteCreate): Promise<TastingNoteResponse> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(note)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to create tasting note: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Update a tasting note
+ */
+export async function updateTastingNote(batchId: number, noteId: number, update: TastingNoteUpdate): Promise<TastingNoteResponse> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(update)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to update tasting note: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Delete a tasting note
+ */
+export async function deleteTastingNote(batchId: number, noteId: number): Promise<void> {
+	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete tasting note: ${response.statusText}`);
+	}
 }
 
 /**

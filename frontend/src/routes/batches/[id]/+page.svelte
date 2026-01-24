@@ -14,6 +14,11 @@
 	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
 	import BatchAlertsCard from '$lib/components/batch/BatchAlertsCard.svelte';
 	import FermentationChart from '$lib/components/FermentationChart.svelte';
+	import BrewDayTimer from '$lib/components/batch/BrewDayTimer.svelte';
+	import BrewDayChecklist from '$lib/components/batch/BrewDayChecklist.svelte';
+	import BrewDayObservations from '$lib/components/batch/BrewDayObservations.svelte';
+	import PackagingInfo from '$lib/components/batch/PackagingInfo.svelte';
+	import TastingNotes from '$lib/components/batch/TastingNotes.svelte';
 	import { statusConfig } from '$lib/components/status';
 
 	// WebSocket for live heater state updates
@@ -37,7 +42,7 @@
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
-	const statusOptions: BatchStatus[] = ['planning', 'fermenting', 'conditioning', 'completed', 'archived'];
+	const statusOptions: BatchStatus[] = ['planning', 'brewing', 'fermenting', 'conditioning', 'completed', 'archived'];
 
 	let statusInfo = $derived(batch ? statusConfig[batch.status] : statusConfig.planning);
 	let gravityUnit = $derived(getGravityUnit());
@@ -152,6 +157,31 @@
 			}
 		} catch (e) {
 			console.error('Failed to update status:', e);
+		} finally {
+			statusUpdating = false;
+		}
+	}
+
+	async function handleStartBrewDay() {
+		if (!batch || statusUpdating) return;
+		statusUpdating = true;
+		try {
+			batch = await updateBatch(batch.id, { status: 'brewing' });
+		} catch (e) {
+			console.error('Failed to start brew day:', e);
+		} finally {
+			statusUpdating = false;
+		}
+	}
+
+	async function handleStartFermentation() {
+		if (!batch || statusUpdating) return;
+		statusUpdating = true;
+		try {
+			batch = await updateBatch(batch.id, { status: 'fermenting' });
+			progress = await fetchBatchProgress(batch.id);
+		} catch (e) {
+			console.error('Failed to start fermentation:', e);
 		} finally {
 			statusUpdating = false;
 		}
@@ -528,23 +558,221 @@
 			</div>
 		{/if}
 
-		<!-- Main content grid -->
-		<div class="content-grid">
-			<!-- Left column -->
-			<div class="stats-section">
-				<!-- Fermentation Card (includes live readings) -->
-				<BatchFermentationCard
-					{batch}
-					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
-					{progress}
-					{liveReading}
-				/>
+		<!-- Phase-specific content -->
+		{#if batch.status === 'planning'}
+			<!-- Planning Phase: Recipe overview + Start Brew Day -->
+			<div class="planning-phase">
+				<div class="phase-action-card">
+					<div class="phase-icon">📋</div>
+					<h2 class="phase-title">Ready to Brew?</h2>
+					<p class="phase-description">
+						Review your recipe below, then start brew day when you're ready to begin.
+					</p>
+					<button
+						type="button"
+						class="start-brewday-btn"
+						onclick={handleStartBrewDay}
+						disabled={statusUpdating}
+					>
+						{#if statusUpdating}
+							<span class="btn-spinner"></span>
+							Starting...
+						{:else}
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+								<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Start Brew Day
+						{/if}
+					</button>
+				</div>
 
-				<!-- Recipe Targets Card (only if recipe exists) -->
 				{#if batch.recipe}
 					<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
 				{/if}
 			</div>
+
+		{:else if batch.status === 'brewing'}
+			<!-- Brewing Phase: Brew day tools and guidance -->
+			<div class="brewing-phase">
+				<div class="phase-action-card brewing">
+					<div class="phase-icon">🍺</div>
+					<h2 class="phase-title">Brew Day in Progress</h2>
+					<p class="phase-description">
+						Track your brew day activities. When you've pitched the yeast and fermentation begins, transition to the fermentation phase.
+					</p>
+					<button
+						type="button"
+						class="start-fermentation-btn"
+						onclick={handleStartFermentation}
+						disabled={statusUpdating}
+					>
+						{#if statusUpdating}
+							<span class="btn-spinner"></span>
+							Starting...
+						{:else}
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+							</svg>
+							Yeast Pitched - Start Fermentation
+						{/if}
+					</button>
+				</div>
+
+				<!-- Brew Day Tools Grid -->
+				<div class="brewday-tools-grid">
+					<!-- Timer -->
+					{#if batch.recipe}
+						<BrewDayTimer recipe={batch.recipe} />
+					{/if}
+
+					<!-- Checklist -->
+					{#if batch.recipe}
+						<BrewDayChecklist recipe={batch.recipe} batchId={batch.id} />
+					{/if}
+				</div>
+
+				<!-- Observations Log -->
+				{#if batch.recipe}
+					<BrewDayObservations
+						{batch}
+						recipe={batch.recipe}
+						onUpdate={(updated) => batch = updated}
+					/>
+				{/if}
+
+				<!-- Device Card for chilling monitoring -->
+				{#if batch.device_id}
+					<BatchDeviceCard
+						{batch}
+						{liveReading}
+						onEdit={() => (isEditing = true)}
+					/>
+				{/if}
+
+				{#if batch.recipe}
+					<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+				{/if}
+			</div>
+
+		{:else if batch.status === 'completed'}
+			<!-- Completed Phase: Final summary -->
+			<div class="completed-phase">
+				<div class="batch-summary-card">
+					<h2 class="summary-title">Batch Complete</h2>
+					<div class="summary-stats">
+						<div class="summary-stat">
+							<span class="stat-label">Original Gravity</span>
+							<span class="stat-value">{formatSG(batch.measured_og)}</span>
+						</div>
+						<div class="summary-stat">
+							<span class="stat-label">Final Gravity</span>
+							<span class="stat-value">{formatSG(batch.measured_fg)}</span>
+						</div>
+						<div class="summary-stat">
+							<span class="stat-label">ABV</span>
+							<span class="stat-value">{batch.measured_abv?.toFixed(1) ?? '--'}%</span>
+						</div>
+						<div class="summary-stat">
+							<span class="stat-label">Attenuation</span>
+							<span class="stat-value">
+								{#if batch.measured_og && batch.measured_fg}
+									{(((batch.measured_og - batch.measured_fg) / (batch.measured_og - 1)) * 100).toFixed(0)}%
+								{:else}
+									--
+								{/if}
+							</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Batch Timeline -->
+				<div class="timeline-card">
+					<h3 class="timeline-title">Batch Timeline</h3>
+					<div class="timeline">
+						{#if batch.brew_date || batch.brewing_started_at}
+							<div class="timeline-item">
+								<div class="timeline-dot brewing"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Brew Day</span>
+									<span class="timeline-date">{formatDate(batch.brewing_started_at || batch.brew_date)}</span>
+								</div>
+							</div>
+						{/if}
+						{#if batch.start_time || batch.fermenting_started_at}
+							<div class="timeline-item">
+								<div class="timeline-dot fermenting"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Fermentation Started</span>
+									<span class="timeline-date">{formatDate(batch.fermenting_started_at || batch.start_time)}</span>
+								</div>
+							</div>
+						{/if}
+						{#if batch.conditioning_started_at}
+							<div class="timeline-item">
+								<div class="timeline-dot conditioning"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Conditioning Started</span>
+									<span class="timeline-date">{formatDate(batch.conditioning_started_at)}</span>
+								</div>
+							</div>
+						{/if}
+						{#if batch.end_time || batch.completed_at}
+							<div class="timeline-item">
+								<div class="timeline-dot completed"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Completed</span>
+									<span class="timeline-date">{formatDate(batch.completed_at || batch.end_time)}</span>
+								</div>
+							</div>
+						{/if}
+						{#if batch.packaged_at}
+							<div class="timeline-item">
+								<div class="timeline-dot packaged"></div>
+								<div class="timeline-content">
+									<span class="timeline-label">Packaged ({batch.packaging_type || 'kegged'})</span>
+									<span class="timeline-date">{formatDate(batch.packaged_at)}</span>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+
+				<!-- Packaging Info -->
+				<PackagingInfo
+					{batch}
+					onUpdate={(updated) => batch = updated}
+				/>
+
+				<!-- Tasting Notes -->
+				<TastingNotes
+					{batch}
+					onUpdate={(updated) => batch = updated}
+				/>
+
+				{#if batch.notes}
+					<BatchNotesCard notes={batch.notes} />
+				{/if}
+			</div>
+
+		{:else}
+			<!-- Fermenting/Conditioning Phase: Current behavior -->
+			<div class="content-grid">
+				<!-- Left column -->
+				<div class="stats-section">
+					<!-- Fermentation Card (includes live readings) -->
+					<BatchFermentationCard
+						{batch}
+						currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
+						{progress}
+						{liveReading}
+					/>
+
+					<!-- Recipe Targets Card (only if recipe exists) -->
+					{#if batch.recipe}
+						<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+					{/if}
+				</div>
 
 			<!-- Right column -->
 			<div class="info-section">
@@ -733,18 +961,17 @@
 			</div>
 		</div>
 
-		<!-- Fermentation Chart (shows historical data for all batches with readings) -->
-		<!-- For active batches: show if device_id exists -->
-		<!-- For completed/archived batches: always show (they have historical data) -->
-		{#if batch.device_id || batch.status === 'completed' || batch.status === 'archived'}
-			<div class="chart-section">
-				<FermentationChart
-					batchId={batch.id}
-					deviceColor={batch.device_id || 'historical'}
-					originalGravity={batch.measured_og}
-					{controlEvents}
-				/>
-			</div>
+			<!-- Fermentation Chart (shows historical data for all batches with a device) -->
+			{#if batch.device_id}
+				<div class="chart-section">
+					<FermentationChart
+						batchId={batch.id}
+						deviceColor={batch.device_id}
+						originalGravity={batch.measured_og}
+						{controlEvents}
+					/>
+				</div>
+			{/if}
 		{/if}
 	{/if}
 </div>
@@ -1660,5 +1887,262 @@
 	.modal-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Phase-specific layouts */
+	.planning-phase,
+	.brewing-phase,
+	.completed-phase {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	/* Phase Action Card (Planning & Brewing) */
+	.phase-action-card {
+		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
+		border: 1px solid var(--border-subtle);
+		border-radius: 1rem;
+		padding: 2rem;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.phase-action-card.brewing {
+		background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 146, 60, 0.03) 100%);
+		border-color: rgba(249, 115, 22, 0.25);
+	}
+
+	/* Brew Day Tools Grid */
+	.brewday-tools-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
+	@media (max-width: 900px) {
+		.brewday-tools-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.phase-icon {
+		font-size: 3rem;
+		line-height: 1;
+	}
+
+	.phase-title {
+		font-size: 1.5rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.phase-description {
+		font-size: 0.9375rem;
+		color: var(--text-secondary);
+		max-width: 400px;
+		line-height: 1.5;
+		margin: 0;
+	}
+
+	.start-brewday-btn,
+	.start-fermentation-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.875rem 1.5rem;
+		font-size: 1rem;
+		font-weight: 600;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: all var(--transition);
+		margin-top: 0.5rem;
+	}
+
+	.start-brewday-btn {
+		color: white;
+		background: var(--accent);
+		border: none;
+	}
+
+	.start-brewday-btn:hover:not(:disabled) {
+		background: var(--accent-hover);
+		transform: translateY(-1px);
+	}
+
+	.start-fermentation-btn {
+		color: white;
+		background: linear-gradient(135deg, var(--status-fermenting) 0%, var(--recipe-accent) 100%);
+		border: none;
+	}
+
+	.start-fermentation-btn:hover:not(:disabled) {
+		filter: brightness(1.1);
+		transform: translateY(-1px);
+	}
+
+	.start-brewday-btn:disabled,
+	.start-fermentation-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		transform: none;
+	}
+
+	.btn-spinner {
+		width: 1rem;
+		height: 1rem;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-top-color: white;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	/* Completed Phase */
+	.batch-summary-card {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(74, 222, 128, 0.03) 100%);
+		border: 1px solid rgba(34, 197, 94, 0.25);
+		border-radius: 1rem;
+		padding: 1.5rem;
+	}
+
+	.summary-title {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--positive);
+		margin: 0 0 1.25rem 0;
+		text-align: center;
+	}
+
+	.summary-stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		gap: 1rem;
+	}
+
+	.summary-stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.75rem;
+		background: var(--bg-surface);
+		border-radius: 0.5rem;
+	}
+
+	.stat-label {
+		font-size: 0.6875rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-muted);
+	}
+
+	.stat-value {
+		font-size: 1.25rem;
+		font-weight: 600;
+		font-family: var(--font-mono);
+		color: var(--text-primary);
+	}
+
+	/* Timeline */
+	.timeline-card {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.75rem;
+		padding: 1.25rem;
+	}
+
+	.timeline-title {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0 0 1rem 0;
+	}
+
+	.timeline {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		position: relative;
+		padding-left: 1.5rem;
+	}
+
+	.timeline::before {
+		content: '';
+		position: absolute;
+		left: 0.4375rem;
+		top: 0.5rem;
+		bottom: 0.5rem;
+		width: 2px;
+		background: var(--border-subtle);
+	}
+
+	.timeline-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 1rem;
+		padding: 0.75rem 0;
+		position: relative;
+	}
+
+	.timeline-dot {
+		position: absolute;
+		left: -1.5rem;
+		top: 1rem;
+		width: 0.875rem;
+		height: 0.875rem;
+		border-radius: 50%;
+		background: var(--bg-elevated);
+		border: 2px solid var(--border-default);
+		z-index: 1;
+	}
+
+	.timeline-dot.brewing {
+		background: var(--status-brewing, #f97316);
+		border-color: var(--status-brewing, #f97316);
+	}
+
+	.timeline-dot.fermenting {
+		background: var(--status-fermenting);
+		border-color: var(--status-fermenting);
+	}
+
+	.timeline-dot.conditioning {
+		background: var(--status-conditioning);
+		border-color: var(--status-conditioning);
+	}
+
+	.timeline-dot.completed {
+		background: var(--status-completed);
+		border-color: var(--status-completed);
+	}
+
+	.timeline-dot.packaged {
+		background: var(--amber);
+		border-color: var(--amber);
+	}
+
+	.timeline-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.timeline-label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.timeline-date {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
 	}
 </style>

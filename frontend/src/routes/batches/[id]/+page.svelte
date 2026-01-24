@@ -563,8 +563,10 @@
 				<!-- ML Predictions Panel -->
 				<MLPredictions
 					batchId={batch.id}
+					batchStatus={batch.status}
 					measuredOg={batch.measured_og}
-					currentSg={liveReading?.sg}
+					measuredFg={batch.measured_fg ?? progress?.measured?.fg}
+					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
 					{liveReading}
 				/>
 

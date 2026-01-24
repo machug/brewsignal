@@ -6,12 +6,14 @@
 
 	interface Props {
 		batchId: number;
+		batchStatus?: string;
 		measuredOg?: number | null;
+		measuredFg?: number | null;  // Actual FG from batch
 		currentSg?: number | null;
 		liveReading?: TiltReading | null;
 	}
 
-	let { batchId, measuredOg = null, currentSg = null, liveReading = null }: Props = $props();
+	let { batchId, batchStatus = 'fermenting', measuredOg = null, measuredFg = null, currentSg = null, liveReading = null }: Props = $props();
 
 	let predictions = $state<MLPredictions>({ available: false });
 	let loading = $state(true);
@@ -26,6 +28,25 @@
 		{ value: 'gompertz', label: 'Gompertz (S-Curve)' },
 		{ value: 'logistic', label: 'Logistic' }
 	];
+
+	// Check if batch is completed
+	let isCompleted = $derived(batchStatus === 'completed' || batchStatus === 'archived');
+
+	// Get the actual final gravity (from batch or current reading)
+	let actualFg = $derived(measuredFg ?? currentSg);
+
+	// Calculate prediction accuracy for completed batches
+	let predictionAccuracy = $derived.by(() => {
+		if (!isCompleted || !predictions.predicted_fg || !actualFg) return null;
+		const diff = Math.abs(predictions.predicted_fg - actualFg);
+		const points = Math.round(diff * 1000); // Convert to gravity points
+		return {
+			diff: diff,
+			points: points,
+			isAccurate: points <= 2, // Within 2 points is accurate
+			isClose: points <= 5,    // Within 5 points is close
+		};
+	});
 
 	async function loadPredictions() {
 		loading = true;
@@ -127,137 +148,204 @@
 
 {#if loading}
 	<div class="ml-panel loading">
-		<p>Loading predictions...</p>
+		<p>Loading {isCompleted ? 'summary' : 'predictions'}...</p>
 	</div>
 {:else if error}
 	<div class="ml-panel error">
 		<p class="error-text">⚠️ {error}</p>
 	</div>
 {:else if predictions.available}
-	<div class="ml-panel" class:has-anomaly={hasAnomaly}>
+	<div class="ml-panel" class:has-anomaly={hasAnomaly} class:completed={isCompleted}>
 		<div class="panel-header">
-			<h3 class="panel-title">Fermentation Intelligence</h3>
-			<div class="header-controls">
-				<select
-					class="model-select"
-					bind:value={selectedModel}
-					onchange={handleModelChange}
-					disabled={loading || reloading}
-					title="Select prediction model"
-				>
-					{#each models as m}
-						<option value={m.value}>{m.label}</option>
-					{/each}
-				</select>
-				<button
-					type="button"
-					class="reload-btn"
-					onclick={handleReload}
-					disabled={reloading || loading}
-					title="Recalculate predictions from database history"
-				>
-					{reloading ? 'Reloading...' : '↻'}
-				</button>
-			</div>
+			<h3 class="panel-title">{isCompleted ? 'Fermentation Summary' : 'Fermentation Intelligence'}</h3>
+			{#if !isCompleted}
+				<div class="header-controls">
+					<select
+						class="model-select"
+						bind:value={selectedModel}
+						onchange={handleModelChange}
+						disabled={loading || reloading}
+						title="Select prediction model"
+					>
+						{#each models as m}
+							<option value={m.value}>{m.label}</option>
+						{/each}
+					</select>
+					<button
+						type="button"
+						class="reload-btn"
+						onclick={handleReload}
+						disabled={reloading || loading}
+						title="Recalculate predictions from database history"
+					>
+						{reloading ? 'Reloading...' : '↻'}
+					</button>
+				</div>
+			{/if}
 		</div>
 
-		<!-- Anomaly Warning -->
-		{#if hasAnomaly}
-			<div class="anomaly-banner">
-				<span class="anomaly-icon">⚠️</span>
-				<div class="anomaly-content">
-					<span class="anomaly-label">Anomaly Detected</span>
-					{#if anomalyReasons.length > 0}
-						<span class="anomaly-reasons">{anomalyReasons.join(', ')}</span>
-					{/if}
-				</div>
-			</div>
-		{/if}
-
-		<!-- Fermentation Progress Section -->
-		{#if fermentationProgress !== null}
-			<div class="progress-section">
-				<div class="progress-header">
-					<span class="progress-label">Fermentation Progress</span>
-					{#if activityStatus}
-						<span class="activity-badge" style="color: {activityStatus.color}">
-							{activityStatus.emoji} {activityStatus.label}
-						</span>
-					{/if}
-				</div>
-				<div class="fermentation-progress-bar">
-					<div class="fermentation-fill" style="width: {fermentationProgress}%"></div>
-				</div>
-				<div class="progress-labels">
-					<span class="og-label">OG: {formatGravity(measuredOg ?? predictions.predicted_og ?? 0)}</span>
-					<span class="progress-percent">{fermentationProgress.toFixed(0)}%</span>
-					<span class="fg-label">FG: {formatGravity(predictions.predicted_fg ?? 0)}</span>
-				</div>
-			</div>
-		{/if}
-
-		<div class="metrics">
-			<!-- Predicted FG -->
-			{#if predictions.predicted_fg}
-				<div class="metric">
-					<span class="label">Predicted FG:</span>
-					<span class="value">{formatGravity(predictions.predicted_fg)}</span>
-				</div>
-			{/if}
-
-			<!-- Attenuation -->
-			{#if apparentAttenuation !== null}
-				<div class="metric">
-					<span class="label">Attenuation:</span>
-					<span class="value attenuation">{apparentAttenuation.toFixed(1)}%</span>
-				</div>
-			{/if}
-
-			<!-- Estimated Completion -->
-			{#if predictions.estimated_completion}
-				{@const days = daysRemaining(predictions.estimated_completion)}
-				<div class="metric completion-metric">
-					<span class="label">Est. Completion:</span>
-					<span class="value">
-						{#if days !== null && days <= 0}
-							<span class="complete-now">Ready now!</span>
-						{:else}
-							{formatDate(predictions.estimated_completion)}
-							{#if days !== null}
-								<span class="days">({days} {days === 1 ? 'day' : 'days'})</span>
+		{#if isCompleted}
+			<!-- COMPLETED BATCH: Post-Mortem Summary -->
+			<div class="summary-section">
+				<!-- Prediction Accuracy -->
+				{#if predictionAccuracy && actualFg}
+					<div class="accuracy-banner" class:accurate={predictionAccuracy.isAccurate} class:close={predictionAccuracy.isClose && !predictionAccuracy.isAccurate}>
+						<div class="accuracy-header">
+							{#if predictionAccuracy.isAccurate}
+								<span class="accuracy-icon">✓</span>
+								<span class="accuracy-title">Excellent Prediction</span>
+							{:else if predictionAccuracy.isClose}
+								<span class="accuracy-icon">≈</span>
+								<span class="accuracy-title">Close Prediction</span>
+							{:else}
+								<span class="accuracy-icon">△</span>
+								<span class="accuracy-title">Prediction Variance</span>
 							{/if}
+						</div>
+						<p class="accuracy-detail">
+							Model predicted {formatGravity(predictions.predicted_fg ?? 0)}, actual was {formatGravity(actualFg)}
+							<span class="accuracy-diff">({predictionAccuracy.points} points {predictions.predicted_fg && predictions.predicted_fg > actualFg ? 'high' : 'low'})</span>
+						</p>
+					</div>
+				{/if}
+
+				<!-- Final Results Comparison -->
+				<div class="comparison-grid">
+					<div class="comparison-item">
+						<span class="comparison-label">Final Gravity</span>
+						<div class="comparison-values">
+							<span class="comparison-actual">{formatGravity(actualFg ?? 0)}</span>
+							{#if predictions.predicted_fg}
+								<span class="comparison-predicted">ML: {formatGravity(predictions.predicted_fg)}</span>
+							{/if}
+						</div>
+					</div>
+				</div>
+
+				<!-- Model Info for completed batch -->
+				<div class="model-info summary-model">
+					{#if predictions.model_type}
+						<div class="model-metric">
+							<span class="model-label">Model:</span>
+							<span class="model-value model-type">{predictions.model_type}</span>
+						</div>
+					{/if}
+					{#if predictions.r_squared !== undefined}
+						<div class="model-metric">
+							<span class="model-label">Fit:</span>
+							<span class="model-value">{(predictions.r_squared * 100).toFixed(0)}%</span>
+						</div>
+					{/if}
+					{#if predictions.num_readings}
+						<div class="model-metric">
+							<span class="model-label">Points:</span>
+							<span class="model-value">{predictions.num_readings}</span>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+		{:else}
+			<!-- ACTIVE BATCH: Live Predictions -->
+
+			<!-- Anomaly Warning -->
+			{#if hasAnomaly}
+				<div class="anomaly-banner">
+					<span class="anomaly-icon">⚠️</span>
+					<div class="anomaly-content">
+						<span class="anomaly-label">Anomaly Detected</span>
+						{#if anomalyReasons.length > 0}
+							<span class="anomaly-reasons">{anomalyReasons.join(', ')}</span>
 						{/if}
-					</span>
+					</div>
 				</div>
 			{/if}
 
-			<!-- Model confidence section -->
-			<div class="model-info">
-				{#if predictions.model_type}
-					<div class="model-metric">
-						<span class="model-label">Model:</span>
-						<span class="model-value model-type">{predictions.model_type}</span>
+			<!-- Fermentation Progress Section -->
+			{#if fermentationProgress !== null}
+				<div class="progress-section">
+					<div class="progress-header">
+						<span class="progress-label">Fermentation Progress</span>
+						{#if activityStatus}
+							<span class="activity-badge" style="color: {activityStatus.color}">
+								{activityStatus.emoji} {activityStatus.label}
+							</span>
+						{/if}
+					</div>
+					<div class="fermentation-progress-bar">
+						<div class="fermentation-fill" style="width: {fermentationProgress}%"></div>
+					</div>
+					<div class="progress-labels">
+						<span class="og-label">OG: {formatGravity(measuredOg ?? predictions.predicted_og ?? 0)}</span>
+						<span class="progress-percent">{fermentationProgress.toFixed(0)}%</span>
+						<span class="fg-label">FG: {formatGravity(predictions.predicted_fg ?? 0)}</span>
+					</div>
+				</div>
+			{/if}
+
+			<div class="metrics">
+				<!-- Predicted FG -->
+				{#if predictions.predicted_fg}
+					<div class="metric">
+						<span class="label">Predicted FG:</span>
+						<span class="value">{formatGravity(predictions.predicted_fg)}</span>
 					</div>
 				{/if}
-				{#if predictions.r_squared !== undefined}
-					<div class="model-metric">
-						<span class="model-label">Fit:</span>
-						<span class="model-value">{(predictions.r_squared * 100).toFixed(0)}%</span>
+
+				<!-- Attenuation -->
+				{#if apparentAttenuation !== null}
+					<div class="metric">
+						<span class="label">Attenuation:</span>
+						<span class="value attenuation">{apparentAttenuation.toFixed(1)}%</span>
 					</div>
 				{/if}
-				{#if predictions.num_readings}
-					<div class="model-metric">
-						<span class="model-label">Points:</span>
-						<span class="model-value">{predictions.num_readings}</span>
+
+				<!-- Estimated Completion -->
+				{#if predictions.estimated_completion}
+					{@const days = daysRemaining(predictions.estimated_completion)}
+					<div class="metric completion-metric">
+						<span class="label">Est. Completion:</span>
+						<span class="value">
+							{#if days !== null && days <= 0}
+								<span class="complete-now">Ready now!</span>
+							{:else}
+								{formatDate(predictions.estimated_completion)}
+								{#if days !== null}
+									<span class="days">({days} {days === 1 ? 'day' : 'days'})</span>
+								{/if}
+							{/if}
+						</span>
 					</div>
 				{/if}
+
+				<!-- Model confidence section -->
+				<div class="model-info">
+					{#if predictions.model_type}
+						<div class="model-metric">
+							<span class="model-label">Model:</span>
+							<span class="model-value model-type">{predictions.model_type}</span>
+						</div>
+					{/if}
+					{#if predictions.r_squared !== undefined}
+						<div class="model-metric">
+							<span class="model-label">Fit:</span>
+							<span class="model-value">{(predictions.r_squared * 100).toFixed(0)}%</span>
+						</div>
+					{/if}
+					{#if predictions.num_readings}
+						<div class="model-metric">
+							<span class="model-label">Points:</span>
+							<span class="model-value">{predictions.num_readings}</span>
+						</div>
+					{/if}
+				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 {:else}
 	<div class="ml-panel disabled">
 		<div class="disabled-header">
-			<p class="unavailable-text">ML predictions unavailable</p>
+			<p class="unavailable-text">{isCompleted ? 'Fermentation summary unavailable' : 'ML predictions unavailable'}</p>
 			<button
 				type="button"
 				class="reload-btn"
@@ -276,7 +364,7 @@
 			{:else if predictions.reason === 'insufficient_data'}
 				Need at least 10 readings to make predictions
 			{:else}
-				Predictions will appear once fermentation is underway
+				{isCompleted ? 'No fermentation data recorded' : 'Predictions will appear once fermentation is underway'}
 			{/if}
 		</p>
 	</div>
@@ -289,6 +377,11 @@
 		border-radius: 0.5rem;
 		padding: 1rem;
 		margin-bottom: 1rem;
+	}
+
+	.ml-panel.completed {
+		border-color: var(--positive);
+		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--positive-muted) 100%);
 	}
 
 	.ml-panel.has-anomaly {
@@ -380,6 +473,113 @@
 	.reload-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Summary Section (Completed Batches) */
+	.summary-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.accuracy-banner {
+		padding: 0.75rem;
+		border-radius: 0.375rem;
+		background: rgba(251, 191, 36, 0.1);
+		border: 1px solid rgba(251, 191, 36, 0.3);
+	}
+
+	.accuracy-banner.accurate {
+		background: rgba(34, 197, 94, 0.1);
+		border-color: rgba(34, 197, 94, 0.3);
+	}
+
+	.accuracy-banner.close {
+		background: rgba(59, 130, 246, 0.1);
+		border-color: rgba(59, 130, 246, 0.3);
+	}
+
+	.accuracy-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.375rem;
+	}
+
+	.accuracy-icon {
+		font-size: 1rem;
+	}
+
+	.accuracy-banner.accurate .accuracy-icon {
+		color: var(--positive);
+	}
+
+	.accuracy-banner.close .accuracy-icon {
+		color: var(--tilt-blue);
+	}
+
+	.accuracy-title {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.accuracy-detail {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	.accuracy-diff {
+		color: var(--text-muted);
+	}
+
+	.comparison-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.comparison-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem 0.75rem;
+		background: var(--bg-elevated);
+		border-radius: 0.375rem;
+	}
+
+	.comparison-label {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.comparison-values {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.comparison-actual {
+		font-family: var(--font-mono);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.comparison-predicted {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+		padding: 0.125rem 0.375rem;
+		background: var(--bg-surface);
+		border-radius: 0.25rem;
+	}
+
+	.summary-model {
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--border-default);
 	}
 
 	/* Anomaly Banner */

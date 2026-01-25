@@ -345,7 +345,7 @@ async def control_batch_temperature(
 ) -> None:
     """Control both heating and cooling for a single batch.
 
-    For "planning" status batches (pre-pitch chilling):
+    For "planning" or "brewing" status batches (pre-pitch chilling):
     - Only cooling is allowed to bring wort down to pitch temp
     - Heating is disabled to prevent accidentally warming the wort
     - A "pitch_ready" WebSocket notification is sent when target is reached
@@ -354,7 +354,7 @@ async def control_batch_temperature(
     device_id = batch.device_id
     heater_entity = batch.heater_entity_id
     cooler_entity = batch.cooler_entity_id
-    is_chilling_mode = batch.status == "planning"  # Pre-pitch chilling
+    is_chilling_mode = batch.status in ("planning", "brewing")  # Pre-pitch chilling
 
     # In chilling mode, only cooler is used
     if is_chilling_mode:

@@ -63,6 +63,7 @@
 
 	async function handleReload() {
 		reloading = true;
+		loading = true;
 		error = null;
 		try {
 			const result = await reloadBatchPredictions(batchId);
@@ -74,6 +75,7 @@
 			console.error('Failed to reload predictions:', e);
 		} finally {
 			reloading = false;
+			loading = false;
 		}
 	}
 

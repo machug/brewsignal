@@ -205,6 +205,66 @@ async def _migrate_temps_fahrenheit_to_celsius(engine):
         logging.info("Temperature conversion complete and tracked in config")
 
 
+async def _migrate_populate_recipe_cultures(engine):
+    """Populate recipe_cultures from recipe yeast fields for BeerJSON compliance.
+
+    This ensures all recipes have their yeast info in the cultures table,
+    not just stored in legacy fields on the Recipe model.
+    """
+    import logging
+    from sqlalchemy import text
+
+    async with engine.begin() as conn:
+        # Check if migration already ran
+        result = await conn.execute(text(
+            "SELECT value FROM config WHERE key = 'recipe_cultures_migration_complete'"
+        ))
+        row = result.fetchone()
+        if row and row[0] == 'true':
+            return  # Already migrated
+
+        # Find recipes with yeast info but no cultures
+        result = await conn.execute(text("""
+            SELECT r.id, r.yeast_name, r.yeast_lab, r.yeast_product_id,
+                   r.yeast_temp_min, r.yeast_temp_max, r.yeast_attenuation
+            FROM recipes r
+            LEFT JOIN recipe_cultures c ON r.id = c.recipe_id
+            WHERE r.yeast_name IS NOT NULL
+              AND c.id IS NULL
+        """))
+        recipes = result.fetchall()
+
+        if recipes:
+            logging.info(f"Migrating {len(recipes)} recipes to have cultures")
+            for recipe in recipes:
+                await conn.execute(text("""
+                    INSERT INTO recipe_cultures (
+                        recipe_id, name, producer, product_id,
+                        temp_min_c, temp_max_c,
+                        attenuation_min_percent, attenuation_max_percent
+                    ) VALUES (
+                        :recipe_id, :name, :producer, :product_id,
+                        :temp_min, :temp_max,
+                        :attenuation, :attenuation
+                    )
+                """), {
+                    "recipe_id": recipe[0],
+                    "name": recipe[1],
+                    "producer": recipe[2],
+                    "product_id": recipe[3],
+                    "temp_min": recipe[4],
+                    "temp_max": recipe[5],
+                    "attenuation": recipe[6],
+                })
+
+            logging.info(f"Created {len(recipes)} recipe_cultures records")
+
+        # Mark migration as complete
+        await conn.execute(text(
+            "INSERT OR REPLACE INTO config (key, value) VALUES ('recipe_cultures_migration_complete', 'true')"
+        ))
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -278,6 +338,9 @@ async def init_db():
 
     # Add cooler support (runs outside conn.begin() context since it has its own)
     await _migrate_add_cooler_entity()
+
+    # Populate recipe_cultures from recipe yeast fields (BeerJSON compliance)
+    await _migrate_populate_recipe_cultures(engine)
 
     # Migrate yeast_strains table for alcohol_tolerance type change (REAL -> TEXT)
     # Must run separately and then call create_all() again to recreate the table

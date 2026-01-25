@@ -193,6 +193,10 @@ export interface HopResponse {
 			value?: number;
 			unit?: string;
 		};
+		time?: {
+			value?: number;
+			unit?: string;
+		};
 	};
 	format_extensions?: Record<string, unknown>;
 }
@@ -252,6 +256,8 @@ export interface RecipeResponse {
 	batch_size_liters?: number;
 	boil_time_minutes?: number;
 	efficiency_percent?: number;
+	mash_temp?: number;
+	pre_boil_og?: number;
 	carbonation_vols?: number;
 	// Yeast info
 	yeast_name?: string;

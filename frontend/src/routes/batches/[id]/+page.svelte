@@ -810,7 +810,7 @@
 					batchId={batch.id}
 					batchStatus={batch.status}
 					measuredOg={batch.measured_og}
-					measuredFg={batch.measured_fg ?? progress?.measured?.fg}
+					measuredFg={batch.measured_fg ?? progress?.measured?.current_sg}
 					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
 					{liveReading}
 				/>

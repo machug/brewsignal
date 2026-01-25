@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-01-25
+
+### Added
+- **Brew Day Chilling Status** - Real-time chilling progress during brew day phase
+  - Progress bars showing current vs target temperature
+  - "Ready to Pitch!" indicator when target reached
+  - Chilling mode now works during both "planning" and "brewing" status
+- **Cross-Device Timer Sync** - Brew day timer persists to database for multi-device access
+- **Collapsible Brew Day Checklist** - Compact, expandable checklist UI
+- **Brewfather JSON Export** - Export recipes in Brewfather-compatible format
+- **BeerJSON Yeast Migration** - Auto-populates `recipe_cultures` from legacy yeast fields
+- **Yeast Auto-Matching** - Batch creation auto-links yeast strain from recipe name
+
+### Fixed
+- ML predictions card no longer stuck on "Loading..." for new batches with insufficient data
+- Removed duplicate chilling banner during brew day (consolidated into phase card)
+- Brew day observations (mash temp, pre-boil gravity, efficiency, notes) now persist correctly
+- Recipe yeast fields included in API responses for RecipeBuilder display
+- Yeast selector limit and hop form defaults fixed
+- "Brewing" status batches now appear in active batches list
+- Equipment object added for Brewfather import compatibility
+- Assistant now sees yeast info via fallback to recipe fields when batch.yeast_strain unavailable
+
+### Technical
+- Refactored `tools.py` (3326 lines) into modular `tools/` package with 7 focused modules:
+  - `__init__.py` - TOOL_DEFINITIONS and execute_tool dispatcher
+  - `yeast_style.py` - Yeast strain and style search tools
+  - `inventory.py` - Hop/yeast inventory and equipment tools
+  - `ingredients.py` - Hop variety and fermentable reference tools
+  - `fermentation.py` - Batch monitoring and fermentation history
+  - `recipe.py` - BeerJSON normalization and brewing calculations
+  - `utility.py` - Datetime, URL fetch, chat management tools
+
 ## [2.10.0] - 2026-01-23
 
 ### Added

@@ -1728,6 +1728,14 @@ class RecipeDetailResponse(BaseModel):
     abv: Optional[float] = None
     batch_size_liters: Optional[float] = None
     notes: Optional[str] = None
+    # Yeast info (stored on recipe for quick access)
+    yeast_name: Optional[str] = None
+    yeast_lab: Optional[str] = None
+    yeast_product_id: Optional[str] = None
+    yeast_temp_min: Optional[float] = None
+    yeast_temp_max: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    format_extensions: Optional[Dict[str, Any]] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
 

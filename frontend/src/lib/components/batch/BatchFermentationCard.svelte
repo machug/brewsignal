@@ -155,7 +155,7 @@
 	{:else if batch.measured_og}
 		<!-- Completed or no live readings -->
 		<!-- Use batch values if available, otherwise fall back to progress data -->
-		{@const finalGravity = batch.measured_fg ?? progress?.measured?.fg ?? progress?.measured?.current_sg}
+		{@const finalGravity = batch.measured_fg ?? progress?.measured?.current_sg}
 		{@const abv = batch.measured_abv ?? progress?.measured?.abv}
 		{@const attenuation = batch.measured_attenuation ?? progress?.measured?.attenuation}
 		<div class="completed-grid">

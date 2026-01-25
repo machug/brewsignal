@@ -205,12 +205,21 @@ export function createAgentState() {
 				break;
 
 			case 'TOOL_CALL_RESULT':
-			case 'TOOL_RESULT': // Backend variant
 				// Handle both content (spec) and result (backend variant)
 				updateToolCall(event.toolCallId, {
 					result: event.content || (event as any).result,
 					status: 'completed'
 				});
+				break;
+
+			default:
+				// Handle backend variant event types not in AG-UI spec
+				if ((event as any).type === 'TOOL_RESULT') {
+					updateToolCall((event as any).toolCallId, {
+						result: (event as any).content || (event as any).result,
+						status: 'completed'
+					});
+				}
 				break;
 
 			case 'STATE_SNAPSHOT':

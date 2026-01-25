@@ -57,7 +57,7 @@ export function useAgent(config: UseAgentConfig) {
 
 		// Build run config
 		const runConfig: RunConfig = {
-			threadId: effectiveThreadId,
+			threadId: effectiveThreadId || undefined,
 			messages: agentState.messages,
 			tools: tools.length > 0 ? tools : undefined,
 			state: Object.keys(sharedState).length > 0 ? sharedState : undefined

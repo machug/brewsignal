@@ -74,7 +74,7 @@
 			if (saved) {
 				const parsed = JSON.parse(saved);
 				const generated = generateFromRecipe();
-				const savedMap = new Map(parsed.map((item: ChecklistItem) => [item.id, item]));
+				const savedMap = new Map<string, ChecklistItem>(parsed.map((item: ChecklistItem) => [item.id, item]));
 
 				for (const item of generated) {
 					const savedItem = savedMap.get(item.id);

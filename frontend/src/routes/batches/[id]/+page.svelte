@@ -55,9 +55,9 @@
 		(batch?.heater_entity_id || batch?.cooler_entity_id)
 	);
 
-	// Pre-pitch chilling mode: planning status with target temp set
+	// Pre-pitch chilling mode: planning or brewing status with target temp set
 	let isPrePitchChilling = $derived(
-		batch?.status === 'planning' && batch?.temp_target != null
+		(batch?.status === 'planning' || batch?.status === 'brewing') && batch?.temp_target != null
 	);
 
 	// Check if wort has reached pitch temperature
@@ -595,29 +595,87 @@
 		{:else if batch.status === 'brewing'}
 			<!-- Brewing Phase: Brew day tools and guidance -->
 			<div class="brewing-phase">
-				<div class="phase-action-card brewing">
-					<div class="phase-icon">🍺</div>
-					<h2 class="phase-title">Brew Day in Progress</h2>
-					<p class="phase-description">
-						Track your brew day activities. When you've pitched the yeast and fermentation begins, transition to the fermentation phase.
-					</p>
-					<button
-						type="button"
-						class="start-fermentation-btn"
-						onclick={handleStartFermentation}
-						disabled={statusUpdating}
-					>
-						{#if statusUpdating}
-							<span class="btn-spinner"></span>
-							Starting...
-						{:else}
-							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-							</svg>
-							Yeast Pitched - Start Fermentation
+				{#if isPrePitchChilling && !pitchTempReached}
+					<!-- Chilling in progress -->
+					<div class="phase-action-card chilling">
+						<div class="phase-icon">❄️</div>
+						<h2 class="phase-title">Chilling to Pitch Temperature</h2>
+						<p class="phase-description">
+							Wort is being cooled to pitch temperature. The cooler will run automatically.
+							Once target is reached, you can pitch the yeast.
+						</p>
+						<div class="chilling-temp-display">
+							<div class="temp-current">
+								<span class="temp-label">Current</span>
+								<span class="temp-value">{liveReading?.temp != null ? formatTempValue(liveReading.temp) : '--'}</span>
+							</div>
+							<div class="temp-arrow">→</div>
+							<div class="temp-target">
+								<span class="temp-label">Target</span>
+								<span class="temp-value">{batch.temp_target != null ? formatTempValue(batch.temp_target) : '--'}</span>
+							</div>
+						</div>
+						{#if chillingProgress != null}
+							<div class="chilling-progress">
+								<div class="progress-bar">
+									<div class="progress-fill" style="width: {chillingProgress}%"></div>
+								</div>
+								<span class="progress-text">{Math.round(chillingProgress)}% to pitch temp</span>
+							</div>
 						{/if}
-					</button>
-				</div>
+					</div>
+				{:else if isPrePitchChilling && pitchTempReached}
+					<!-- Ready to pitch -->
+					<div class="phase-action-card ready-to-pitch">
+						<div class="phase-icon">🍺</div>
+						<h2 class="phase-title">Ready to Pitch!</h2>
+						<p class="phase-description">
+							Wort has reached pitch temperature ({formatTempValue(batch.temp_target)}{tempUnit}).
+							Pitch the yeast and start fermentation.
+						</p>
+						<button
+							type="button"
+							class="start-fermentation-btn"
+							onclick={handleStartFermentation}
+							disabled={statusUpdating}
+						>
+							{#if statusUpdating}
+								<span class="btn-spinner"></span>
+								Starting...
+							{:else}
+								<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+								</svg>
+								Yeast Pitched - Start Fermentation
+							{/if}
+						</button>
+					</div>
+				{:else}
+					<!-- Normal brewing mode (no device/target set) -->
+					<div class="phase-action-card brewing">
+						<div class="phase-icon">🍺</div>
+						<h2 class="phase-title">Brew Day in Progress</h2>
+						<p class="phase-description">
+							Track your brew day activities. When you've pitched the yeast and fermentation begins, transition to the fermentation phase.
+						</p>
+						<button
+							type="button"
+							class="start-fermentation-btn"
+							onclick={handleStartFermentation}
+							disabled={statusUpdating}
+						>
+							{#if statusUpdating}
+								<span class="btn-spinner"></span>
+								Starting...
+							{:else}
+								<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+								</svg>
+								Yeast Pitched - Start Fermentation
+							{/if}
+						</button>
+					</div>
+				{/if}
 
 				<!-- Brew Day Tools Grid -->
 				<div class="brewday-tools-grid">
@@ -1914,6 +1972,81 @@
 	.phase-action-card.brewing {
 		background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 146, 60, 0.03) 100%);
 		border-color: rgba(249, 115, 22, 0.25);
+	}
+
+	.phase-action-card.chilling {
+		background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.05) 100%);
+		border-color: rgba(59, 130, 246, 0.3);
+	}
+
+	.phase-action-card.ready-to-pitch {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(134, 239, 172, 0.05) 100%);
+		border-color: rgba(34, 197, 94, 0.35);
+	}
+
+	.chilling-temp-display {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1.5rem;
+		margin: 0.5rem 0;
+	}
+
+	.chilling-temp-display .temp-current,
+	.chilling-temp-display .temp-target {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.chilling-temp-display .temp-label {
+		font-size: 0.6875rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.chilling-temp-display .temp-value {
+		font-size: 1.75rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.chilling-temp-display .temp-arrow {
+		font-size: 1.5rem;
+		color: var(--text-muted);
+	}
+
+	.chilling-progress {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		max-width: 300px;
+	}
+
+	.chilling-progress .progress-bar {
+		width: 100%;
+		height: 8px;
+		background: var(--bg-elevated);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.chilling-progress .progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, var(--tilt-blue), var(--accent));
+		border-radius: 4px;
+		transition: width 0.5s ease;
+	}
+
+	.chilling-progress .progress-text {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
 	}
 
 	/* Brew Day Tools Grid */

@@ -490,56 +490,6 @@
 			</div>
 		</div>
 
-		<!-- Pre-Pitch Chilling Banner -->
-		{#if isPrePitchChilling}
-			<div class="chilling-banner" class:ready={pitchTempReached}>
-				<div class="chilling-header">
-					{#if pitchTempReached}
-						<span class="chilling-icon">🍺</span>
-						<h3 class="chilling-title">Ready to Pitch!</h3>
-					{:else}
-						<span class="chilling-icon">❄️</span>
-						<h3 class="chilling-title">Chilling to Pitch Temperature</h3>
-					{/if}
-				</div>
-
-				<div class="chilling-content">
-					<div class="temp-display">
-						<div class="temp-current">
-							<span class="temp-label">Current</span>
-							<span class="temp-value">{liveReading?.temp != null ? formatTempValue(liveReading.temp) : '--'}</span>
-						</div>
-						<div class="temp-arrow">→</div>
-						<div class="temp-target">
-							<span class="temp-label">Target</span>
-							<span class="temp-value">{batch.temp_target != null ? formatTempValue(batch.temp_target) : '--'}</span>
-						</div>
-					</div>
-
-					{#if chillingProgress != null && !pitchTempReached}
-						<div class="progress-section">
-							<div class="progress-bar">
-								<div class="progress-fill" style="width: {chillingProgress}%"></div>
-							</div>
-							<span class="progress-text">{Math.round(chillingProgress)}% to target</span>
-						</div>
-					{/if}
-
-					<div class="chilling-status">
-						{#if !batch.cooler_entity_id}
-							<span class="status-warning">⚠️ No cooler configured - set a cooler entity to enable automated chilling</span>
-						{:else if !configState.config.ha_enabled || !configState.config.temp_control_enabled}
-							<span class="status-warning">⚠️ Temperature control disabled in settings</span>
-						{:else if pitchTempReached}
-							<span class="status-ready">Wort has reached pitch temperature - ready to add yeast!</span>
-						{:else}
-							<span class="status-active">Cooler will run automatically when temp exceeds target + hysteresis</span>
-						{/if}
-					</div>
-				</div>
-			</div>
-		{/if}
-
 		<!-- Readings Paused Banner -->
 		{#if batch.readings_paused && (batch.status === 'fermenting' || batch.status === 'conditioning')}
 			<div class="paused-banner">
@@ -623,6 +573,15 @@
 								<span class="progress-text">{Math.round(chillingProgress)}% to pitch temp</span>
 							</div>
 						{/if}
+						<div class="chilling-status">
+							{#if !batch.cooler_entity_id}
+								<span class="status-warning">⚠️ No cooler configured - set in Edit to enable automated chilling</span>
+							{:else if !configState.config.ha_enabled || !configState.config.temp_control_enabled}
+								<span class="status-warning">⚠️ Temperature control disabled in settings</span>
+							{:else}
+								<span class="status-active">Cooler running automatically</span>
+							{/if}
+						</div>
 					</div>
 				{:else if isPrePitchChilling && pitchTempReached}
 					<!-- Ready to pitch -->
@@ -2047,6 +2006,19 @@
 	.chilling-progress .progress-text {
 		font-size: 0.8125rem;
 		color: var(--text-secondary);
+	}
+
+	.phase-action-card .chilling-status {
+		margin-top: 0.5rem;
+		font-size: 0.8125rem;
+	}
+
+	.phase-action-card .status-warning {
+		color: var(--recipe-accent);
+	}
+
+	.phase-action-card .status-active {
+		color: var(--tilt-blue);
 	}
 
 	/* Brew Day Tools Grid */

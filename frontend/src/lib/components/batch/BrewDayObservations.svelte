@@ -35,7 +35,7 @@
 	let targetOg = $derived(recipe.og);
 	let targetPreBoilGravity = $derived(recipe.pre_boil_og);
 	let targetBatchSize = $derived(recipe.batch_size_liters);
-	let targetEfficiency = $derived(recipe.efficiency);
+	let targetEfficiency = $derived(recipe.efficiency_percent);
 
 	// Calculate efficiency from actual vs expected
 	function calculateEfficiency(): number | null {

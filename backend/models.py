@@ -1727,6 +1727,10 @@ class RecipeDetailResponse(BaseModel):
     color_srm: Optional[float] = None
     abv: Optional[float] = None
     batch_size_liters: Optional[float] = None
+    boil_time_minutes: Optional[int] = None
+    efficiency_percent: Optional[float] = None
+    mash_temp: Optional[float] = None
+    pre_boil_og: Optional[float] = None
     notes: Optional[str] = None
     # Yeast info (stored on recipe for quick access)
     yeast_name: Optional[str] = None

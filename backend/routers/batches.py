@@ -27,6 +27,7 @@ from ..models import (
     TastingNoteCreate,
     TastingNoteUpdate,
     TastingNoteResponse,
+    YeastStrain,
 )
 from ..state import latest_readings
 from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
@@ -159,17 +160,31 @@ async def create_batch(
     result = await db.execute(select(func.max(Batch.batch_number)))
     max_num = result.scalar() or 0
 
-    # Get recipe name for batch name default
+    # Get recipe for batch name default and yeast info
     batch_name = batch.name
-    if batch.recipe_id and not batch_name:
+    yeast_strain_id = batch.yeast_strain_id
+    recipe = None
+    if batch.recipe_id:
         recipe = await db.get(Recipe, batch.recipe_id)
         if recipe:
-            batch_name = recipe.name
+            if not batch_name:
+                batch_name = recipe.name
+            # Auto-populate yeast_strain_id from recipe's yeast info if not provided
+            if not yeast_strain_id and recipe.yeast_name:
+                # Try to find matching yeast strain by name
+                yeast_result = await db.execute(
+                    select(YeastStrain).where(
+                        YeastStrain.name.ilike(f"%{recipe.yeast_name}%")
+                    ).limit(1)
+                )
+                yeast_strain = yeast_result.scalar_one_or_none()
+                if yeast_strain:
+                    yeast_strain_id = yeast_strain.id
 
     db_batch = Batch(
         recipe_id=batch.recipe_id,
         device_id=batch.device_id,
-        yeast_strain_id=batch.yeast_strain_id,
+        yeast_strain_id=yeast_strain_id,
         batch_number=max_num + 1,
         name=batch_name,
         status=batch.status,

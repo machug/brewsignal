@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from typing import Any, Optional
 
 from ..database import get_db
-from ..models import Recipe, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
+from ..models import Recipe, RecipeCulture, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.brewing import calculate_recipe_stats
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
@@ -380,6 +380,22 @@ async def create_recipe(
         format_extensions=recipe.format_extensions,
     )
     db.add(db_recipe)
+    await db.flush()  # Get recipe ID without committing
+
+    # Also create RecipeCulture record for BeerJSON compliance
+    if recipe.yeast_name:
+        culture = RecipeCulture(
+            recipe_id=db_recipe.id,
+            name=recipe.yeast_name,
+            producer=recipe.yeast_lab,
+            product_id=recipe.yeast_product_id,
+            temp_min_c=recipe.yeast_temp_min,
+            temp_max_c=recipe.yeast_temp_max,
+            attenuation_min_percent=recipe.yeast_attenuation,
+            attenuation_max_percent=recipe.yeast_attenuation,
+        )
+        db.add(culture)
+
     await db.commit()
     await db.refresh(db_recipe)
     return db_recipe

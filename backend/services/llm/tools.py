@@ -1500,6 +1500,11 @@ async def _list_fermentations(
             yeast_name = culture.name
             temp_min = culture.temp_min_c
             temp_max = culture.temp_max_c
+        elif batch.recipe and batch.recipe.yeast_name:
+            # Fallback to yeast fields stored directly on Recipe
+            yeast_name = batch.recipe.yeast_name
+            temp_min = batch.recipe.yeast_temp_min
+            temp_max = batch.recipe.yeast_temp_max
 
         # Temperature status
         current_temp = live_reading.get("temp") if live_reading else None
@@ -1653,6 +1658,11 @@ async def _get_fermentation_status(
         yeast_name = culture.name
         yeast_temp_min = culture.temp_min_c
         yeast_temp_max = culture.temp_max_c
+    elif batch.recipe and batch.recipe.yeast_name:
+        # Fallback to yeast fields stored directly on Recipe
+        yeast_name = batch.recipe.yeast_name
+        yeast_temp_min = batch.recipe.yeast_temp_min
+        yeast_temp_max = batch.recipe.yeast_temp_max
 
     if current_temp is not None:
         temp_info = {

@@ -358,6 +358,23 @@ async def update_batch(
         batch.timer_duration_seconds = update.timer_duration_seconds
     if update.timer_paused_at is not None:
         batch.timer_paused_at = update.timer_paused_at
+    # Brew day observation fields
+    if update.actual_mash_temp is not None:
+        batch.actual_mash_temp = update.actual_mash_temp
+    if update.actual_mash_ph is not None:
+        batch.actual_mash_ph = update.actual_mash_ph
+    if update.strike_water_volume is not None:
+        batch.strike_water_volume = update.strike_water_volume
+    if update.pre_boil_gravity is not None:
+        batch.pre_boil_gravity = update.pre_boil_gravity
+    if update.pre_boil_volume is not None:
+        batch.pre_boil_volume = update.pre_boil_volume
+    if update.post_boil_volume is not None:
+        batch.post_boil_volume = update.post_boil_volume
+    if update.actual_efficiency is not None:
+        batch.actual_efficiency = update.actual_efficiency
+    if update.brew_day_notes is not None:
+        batch.brew_day_notes = update.brew_day_notes
 
     await db.commit()
     await db.refresh(batch)

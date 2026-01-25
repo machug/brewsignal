@@ -129,7 +129,7 @@
 								<td>{formatAmount(hop.amount_grams)}</td>
 								<td>{formatAlpha(hop.alpha_acid_percent)}</td>
 								<td>{formatTime(hop.timing)}</td>
-								<td>{hop.form || '--'}</td>
+								<td>{hop.form || 'Pellet'}</td>
 							</tr>
 						{/each}
 					</tbody>

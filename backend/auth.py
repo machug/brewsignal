@@ -28,16 +28,19 @@ def get_settings() -> Settings:
 
 
 @lru_cache()
-def get_jwk_client() -> Optional[PyJWKClient]:
-    """Get JWK client for verifying Supabase JWTs.
+def get_jwt_secret() -> Optional[str]:
+    """Get JWT secret for HS256 verification."""
+    import os
+    return os.environ.get("SUPABASE_JWT_SECRET")
 
-    Supabase uses RS256 with JWKS for user session tokens.
-    """
+
+@lru_cache()
+def get_jwk_client() -> Optional[PyJWKClient]:
+    """Get JWK client for RS256 verification."""
     settings = get_settings()
     if not settings.is_cloud or not settings.supabase_url:
         return None
 
-    # Supabase JWKS endpoint for RS256 verification
     jwks_url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
     return PyJWKClient(jwks_url, cache_keys=True)
 
@@ -75,20 +78,34 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Authentication required")
 
     token = credentials.credentials
-    jwk_client = get_jwk_client()
-
-    if not jwk_client:
-        raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_URL required")
 
     try:
-        # Get the signing key from Supabase JWKS
-        signing_key = jwk_client.get_signing_key_from_jwt(token)
+        # Decode header to check algorithm
+        unverified_header = jwt.get_unverified_header(token)
+        alg = unverified_header.get("alg", "HS256")
+        logger.info(f"JWT algorithm: {alg}")
 
-        # Decode and verify the token using RS256
+        if alg == "RS256":
+            # Use JWKS for RS256
+            jwk_client = get_jwk_client()
+            if not jwk_client:
+                raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_URL required")
+            signing_key = jwk_client.get_signing_key_from_jwt(token)
+            key = signing_key.key
+            algorithms = ["RS256"]
+        else:
+            # Use JWT secret for HS256
+            jwt_secret = get_jwt_secret()
+            if not jwt_secret:
+                raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_JWT_SECRET required")
+            key = jwt_secret
+            algorithms = ["HS256"]
+
+        # Decode and verify the token
         payload = jwt.decode(
             token,
-            signing_key.key,
-            algorithms=["RS256"],
+            key,
+            algorithms=algorithms,
             audience="authenticated",
             options={"verify_exp": True},
         )

@@ -310,12 +310,13 @@ async def init_db():
 
     if is_postgres:
         # Cloud mode: PostgreSQL schema is managed by Supabase migrations
-        # Skip seeding - reference data will be managed separately
-        # (asyncpg has timezone-aware datetime issues with bulk inserts)
-        logger.info("Cloud mode detected - skipping migrations and seeding")
+        # Only run seeding - skip SQLite-specific migrations
+        logger.info("Cloud mode detected - running seeding only")
         async with engine.begin() as conn:
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
+        # Seed reference data (yeast strains, hop varieties, fermentables, styles)
+        await _seed_reference_data()
         return
 
     # Local mode: Run full SQLite migrations

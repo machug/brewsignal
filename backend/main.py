@@ -398,8 +398,12 @@ async def lifespan(app: FastAPI):
         print("Cloud mode: Scanner disabled (data comes from gateway)")
 
     # Start cleanup service (30-day retention, hourly check)
-    cleanup_service = CleanupService(retention_days=30, interval_hours=1)
-    await cleanup_service.start()
+    # Disabled in cloud mode until datetime timezone handling is fixed
+    if not is_cloud:
+        cleanup_service = CleanupService(retention_days=30, interval_hours=1)
+        await cleanup_service.start()
+    else:
+        print("Cloud mode: Cleanup service disabled (datetime tz fix pending)")
 
     # Local-only services (require Home Assistant access)
     if not is_cloud:

@@ -389,14 +389,13 @@ async def lifespan(app: FastAPI):
     ml_pipeline_manager = MLPipelineManager()
     logging.info("ML Pipeline Manager initialized")
 
-    # Start scanner - in cloud mode, auto-enable mock if no relay configured
-    if is_cloud and not os.environ.get("SCANNER_RELAY_HOST"):
-        os.environ["SCANNER_MOCK"] = "true"
-        print("Cloud mode: Scanner set to MOCK (no BLE hardware)")
-
-    scanner = TiltScanner(on_reading=handle_tilt_reading)
-    scanner_task = asyncio.create_task(scanner.start())
-    print("Scanner started")
+    # Start scanner - only in local mode (cloud gets data from gateway WebSocket)
+    if not is_cloud:
+        scanner = TiltScanner(on_reading=handle_tilt_reading)
+        scanner_task = asyncio.create_task(scanner.start())
+        print("Scanner started")
+    else:
+        print("Cloud mode: Scanner disabled (data comes from gateway)")
 
     # Start cleanup service (30-day retention, hourly check)
     cleanup_service = CleanupService(retention_days=30, interval_hours=1)

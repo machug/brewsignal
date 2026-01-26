@@ -56,6 +56,40 @@ export async function signUpWithEmail(email: string, password: string) {
 }
 
 /**
+ * Sign in with Google OAuth
+ */
+export async function signInWithGoogle() {
+	if (!supabase) throw new Error('Auth not available in local mode');
+
+	const { data, error } = await supabase.auth.signInWithOAuth({
+		provider: 'google',
+		options: {
+			redirectTo: `${window.location.origin}/auth/callback`,
+		},
+	});
+
+	if (error) throw error;
+	return data;
+}
+
+/**
+ * Sign in with Magic Link (passwordless email)
+ */
+export async function signInWithMagicLink(email: string) {
+	if (!supabase) throw new Error('Auth not available in local mode');
+
+	const { data, error } = await supabase.auth.signInWithOtp({
+		email,
+		options: {
+			emailRedirectTo: `${window.location.origin}/auth/callback`,
+		},
+	});
+
+	if (error) throw error;
+	return data;
+}
+
+/**
  * Sign out the current user
  */
 export async function signOut() {

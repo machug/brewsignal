@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "sveltekit",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.brewsignal.io/api/:path*"
+    }
+  ]
+}

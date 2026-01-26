@@ -9,7 +9,7 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Imports after logging configuration
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from sqlalchemy import select, desc  # noqa: E402
@@ -19,6 +19,7 @@ from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
 from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, mqtt, recipes, system, yeast_strains  # noqa: E402
+from .auth import require_auth  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
 from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
@@ -32,8 +33,10 @@ from .services.alert_service import detect_and_persist_alerts  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
+from .config import Settings  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
 
 # Global scanner instance
 scanner: Optional[TiltScanner] = None
@@ -368,20 +371,29 @@ async def handle_tilt_reading(reading: TiltReading):
 async def lifespan(app: FastAPI):
     global scanner, scanner_task, cleanup_service, ml_pipeline_manager
 
+    settings = Settings()
+    is_cloud = settings.is_cloud
+
     # Startup
-    print("Starting BrewSignal...")
+    mode_str = "CLOUD" if is_cloud else "LOCAL"
+    print(f"Starting BrewSignal ({mode_str} mode)...")
     await init_db()
     print("Database initialized")
 
-    # Load cached readings from disk (survives restarts)
-    load_readings_cache()
-    print(f"Loaded {len(latest_readings)} cached device readings")
+    # Load cached readings from disk (survives restarts) - only for local mode
+    if not is_cloud:
+        load_readings_cache()
+        print(f"Loaded {len(latest_readings)} cached device readings")
 
     # Initialize ML pipeline manager
     ml_pipeline_manager = MLPipelineManager()
     logging.info("ML Pipeline Manager initialized")
 
-    # Start scanner
+    # Start scanner - in cloud mode, auto-enable mock if no relay configured
+    if is_cloud and not os.environ.get("SCANNER_RELAY_HOST"):
+        os.environ["SCANNER_MOCK"] = "true"
+        print("Cloud mode: Scanner set to MOCK (no BLE hardware)")
+
     scanner = TiltScanner(on_reading=handle_tilt_reading)
     scanner_task = asyncio.create_task(scanner.start())
     print("Scanner started")
@@ -390,30 +402,35 @@ async def lifespan(app: FastAPI):
     cleanup_service = CleanupService(retention_days=30, interval_hours=1)
     await cleanup_service.start()
 
-    # Start ambient poller for Home Assistant integration
-    start_ambient_poller()
-    print("Ambient poller started")
+    # Local-only services (require Home Assistant access)
+    if not is_cloud:
+        # Start ambient poller for Home Assistant integration
+        start_ambient_poller()
+        print("Ambient poller started")
 
-    # Start chamber poller for fermentation chamber environment
-    await start_chamber_poller()
-    print("Chamber poller started")
+        # Start chamber poller for fermentation chamber environment
+        await start_chamber_poller()
+        print("Chamber poller started")
 
-    # Start temperature controller for HA-based temperature control
-    start_temp_controller()
-    print("Temperature controller started")
+        # Start temperature controller for HA-based temperature control
+        start_temp_controller()
+        print("Temperature controller started")
 
-    # Start MQTT manager for Home Assistant batch data publishing
-    start_mqtt_manager()
-    print("MQTT manager started")
+        # Start MQTT manager for Home Assistant batch data publishing
+        start_mqtt_manager()
+        print("MQTT manager started")
+    else:
+        print("Cloud mode: Skipping Home Assistant services (ambient, chamber, temp control, MQTT)")
 
     yield
 
     # Shutdown
     print("Shutting down BrewSignal...")
-    stop_mqtt_manager()
-    stop_temp_controller()
-    stop_chamber_poller()
-    stop_ambient_poller()
+    if not is_cloud:
+        stop_mqtt_manager()
+        stop_temp_controller()
+        stop_chamber_poller()
+        stop_ambient_poller()
     if cleanup_service:
         await cleanup_service.stop()
     if scanner:
@@ -429,30 +446,35 @@ async def lifespan(app: FastAPI):
 
 
 from .routers.system import VERSION  # noqa: E402
+
 app = FastAPI(title="BrewSignal", version=VERSION, lifespan=lifespan)
 
-# Register routers
-app.include_router(devices.router)
-app.include_router(config.router)
-app.include_router(system.router)
-app.include_router(ambient.router)
-app.include_router(chamber.router)
-app.include_router(ha.router)
-app.include_router(mqtt.router)
-app.include_router(control.router)
-app.include_router(alerts.router)
-app.include_router(ingest.router)
-app.include_router(recipes.router)
-app.include_router(batches.router)
-app.include_router(maintenance.router)
-app.include_router(yeast_strains.router)
-app.include_router(hop_varieties.router)
-app.include_router(fermentables.router)
-app.include_router(assistant.router)
-app.include_router(ag_ui.router)
-app.include_router(inventory_equipment.router)
-app.include_router(inventory_hops.router)
-app.include_router(inventory_yeast.router)
+# Auth dependencies for protected routes
+# In local mode, require_auth returns a dummy user; in cloud mode, validates JWT
+auth_deps = [Depends(require_auth)]
+
+# Register routers with auth protection
+app.include_router(devices.router, dependencies=auth_deps)
+app.include_router(config.router, dependencies=auth_deps)
+app.include_router(system.router, dependencies=auth_deps)
+app.include_router(ambient.router, dependencies=auth_deps)
+app.include_router(chamber.router, dependencies=auth_deps)
+app.include_router(ha.router, dependencies=auth_deps)
+app.include_router(mqtt.router, dependencies=auth_deps)
+app.include_router(control.router, dependencies=auth_deps)
+app.include_router(alerts.router, dependencies=auth_deps)
+app.include_router(ingest.router, dependencies=auth_deps)
+app.include_router(recipes.router, dependencies=auth_deps)
+app.include_router(batches.router, dependencies=auth_deps)
+app.include_router(maintenance.router, dependencies=auth_deps)
+app.include_router(yeast_strains.router, dependencies=auth_deps)
+app.include_router(hop_varieties.router, dependencies=auth_deps)
+app.include_router(fermentables.router, dependencies=auth_deps)
+app.include_router(assistant.router, dependencies=auth_deps)
+app.include_router(ag_ui.router, dependencies=auth_deps)
+app.include_router(inventory_equipment.router, dependencies=auth_deps)
+app.include_router(inventory_hops.router, dependencies=auth_deps)
+app.include_router(inventory_yeast.router, dependencies=auth_deps)
 
 
 @app.get("/api/health")
@@ -567,168 +589,128 @@ async def get_stats():
 
 
 # SPA page routes - serve pre-rendered HTML files
+# Only in local mode; cloud mode uses Vercel for frontend
 static_dir = Path(__file__).parent / "static"
+_settings = Settings()
+_serve_frontend = not _settings.is_cloud and static_dir.exists()
+
+if _serve_frontend:
+    @app.get("/", response_class=FileResponse)
+    async def serve_index():
+        """Serve the main dashboard page."""
+        return FileResponse(static_dir / "index.html")
 
 
-@app.get("/", response_class=FileResponse)
-async def serve_index():
-    """Serve the main dashboard page."""
-    return FileResponse(static_dir / "index.html")
+    @app.get("/logging", response_class=FileResponse)
+    async def serve_logging():
+        """Serve the logging page."""
+        return FileResponse(static_dir / "logging.html")
 
+    @app.get("/calibration", response_class=FileResponse)
+    async def serve_calibration():
+        """Serve the calibration page."""
+        return FileResponse(static_dir / "calibration.html")
 
-@app.get("/logging", response_class=FileResponse)
-async def serve_logging():
-    """Serve the logging page."""
-    return FileResponse(static_dir / "logging.html")
+    @app.get("/system", response_class=FileResponse)
+    async def serve_system():
+        """Serve the system page."""
+        return FileResponse(static_dir / "system.html")
 
+    @app.get("/system/{path:path}", response_class=FileResponse)
+    async def serve_system_subpages(path: str):
+        """Serve system subpages (maintenance, etc.) - SPA handles routing."""
+        html_path = static_dir / "system" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "system" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
-@app.get("/calibration", response_class=FileResponse)
-async def serve_calibration():
-    """Serve the calibration page."""
-    return FileResponse(static_dir / "calibration.html")
+    @app.get("/devices", response_class=FileResponse)
+    async def serve_devices():
+        """Serve the devices page."""
+        return FileResponse(static_dir / "devices.html")
 
+    @app.get("/yeast", response_class=FileResponse)
+    async def serve_yeast():
+        """Serve the yeast library page (legacy)."""
+        return FileResponse(static_dir / "yeast.html")
 
-@app.get("/system", response_class=FileResponse)
-async def serve_system():
-    """Serve the system page."""
-    return FileResponse(static_dir / "system.html")
+    @app.get("/library", response_class=FileResponse)
+    async def serve_library():
+        """Serve unified ingredient library page."""
+        return FileResponse(static_dir / "library.html")
 
+    @app.get("/batches", response_class=FileResponse)
+    async def serve_batches():
+        """Serve the batches page."""
+        return FileResponse(static_dir / "batches.html")
 
-@app.get("/system/{path:path}", response_class=FileResponse)
-async def serve_system_subpages(path: str):
-    """Serve system subpages (maintenance, etc.) - SPA handles routing."""
-    # Try to find a prerendered HTML file for this path
-    # e.g., /system/maintenance -> static/system/maintenance.html
-    html_path = static_dir / "system" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
+    @app.get("/recipes", response_class=FileResponse)
+    async def serve_recipes():
+        """Serve the recipes page."""
+        return FileResponse(static_dir / "recipes.html")
 
-    # Check if path is a directory with index.html
-    index_path = static_dir / "system" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    @app.get("/batches/{path:path}", response_class=FileResponse)
+    async def serve_batches_subpages(path: str):
+        """Serve batches subpages - SPA handles routing."""
+        html_path = static_dir / "batches" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "batches" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
-    # Fall back to index.html for dynamic routes
-    return FileResponse(static_dir / "index.html")
+    @app.get("/recipes/{path:path}", response_class=FileResponse)
+    async def serve_recipes_subpages(path: str):
+        """Serve recipes subpages - SPA handles routing."""
+        html_path = static_dir / "recipes" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "recipes" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
+    @app.get("/assistant", response_class=FileResponse)
+    async def serve_assistant():
+        """Serve the AI assistant page."""
+        return FileResponse(static_dir / "assistant.html")
 
-@app.get("/devices", response_class=FileResponse)
-async def serve_devices():
-    """Serve the devices page."""
-    return FileResponse(static_dir / "devices.html")
+    @app.get("/inventory", response_class=FileResponse)
+    async def serve_inventory():
+        """Serve the inventory page."""
+        return FileResponse(static_dir / "inventory.html")
 
+    @app.get("/favicon.png", response_class=FileResponse)
+    async def serve_favicon():
+        """Serve the favicon."""
+        return FileResponse(static_dir / "favicon.png")
 
-@app.get("/yeast", response_class=FileResponse)
-async def serve_yeast():
-    """Serve the yeast library page (legacy)."""
-    return FileResponse(static_dir / "yeast.html")
+    @app.get("/logo.svg", response_class=FileResponse)
+    async def serve_logo():
+        """Serve the logo SVG."""
+        return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
 
+    @app.get("/icon.svg", response_class=FileResponse)
+    async def serve_icon():
+        """Serve the icon SVG."""
+        return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
 
-@app.get("/library", response_class=FileResponse)
-async def serve_library():
-    """Serve unified ingredient library page."""
-    return FileResponse(static_dir / "library.html")
+    @app.get("/logo-preview.html", response_class=FileResponse)
+    async def serve_logo_preview():
+        """Serve the logo preview page."""
+        return FileResponse(static_dir / "logo-preview.html")
 
-
-@app.get("/batches", response_class=FileResponse)
-async def serve_batches():
-    """Serve the batches page."""
-    return FileResponse(static_dir / "batches.html")
-
-
-@app.get("/recipes", response_class=FileResponse)
-async def serve_recipes():
-    """Serve the recipes page."""
-    return FileResponse(static_dir / "recipes.html")
-
-
-@app.get("/batches/{path:path}", response_class=FileResponse)
-async def serve_batches_subpages(path: str):
-    """Serve batches subpages (detail, new, etc.) - SPA handles routing.
-
-    Tries to find the matching prerendered HTML file first,
-    falls back to index.html for dynamic routes (uses absolute paths).
-    """
-    # Try to find a prerendered HTML file for this path
-    # e.g., /batches/new -> static/batches/new.html
-    html_path = static_dir / "batches" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
-
-    # Check if path is a directory with index.html
-    # e.g., /batches/new/ -> static/batches/new/index.html
-    index_path = static_dir / "batches" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-
-    # Fall back to index.html for dynamic routes (e.g., /batches/123)
-    # index.html uses absolute paths which work for nested routes
-    return FileResponse(static_dir / "index.html")
-
-
-@app.get("/recipes/{path:path}", response_class=FileResponse)
-async def serve_recipes_subpages(path: str):
-    """Serve recipes subpages (detail, import, etc.) - SPA handles routing.
-
-    Tries to find the matching prerendered HTML file first,
-    falls back to index.html for dynamic routes (uses absolute paths).
-    """
-    # Try to find a prerendered HTML file for this path
-    # e.g., /recipes/import -> static/recipes/import.html
-    html_path = static_dir / "recipes" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
-
-    # Check if path is a directory with index.html
-    # e.g., /recipes/import/ -> static/recipes/import/index.html
-    index_path = static_dir / "recipes" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-
-    # Fall back to index.html for dynamic routes (e.g., /recipes/123)
-    # index.html uses absolute paths which work for nested routes
-    return FileResponse(static_dir / "index.html")
-
-
-@app.get("/assistant", response_class=FileResponse)
-async def serve_assistant():
-    """Serve the AI assistant page."""
-    return FileResponse(static_dir / "assistant.html")
-
-
-@app.get("/inventory", response_class=FileResponse)
-async def serve_inventory():
-    """Serve the inventory page."""
-    return FileResponse(static_dir / "inventory.html")
-
-
-@app.get("/favicon.png", response_class=FileResponse)
-async def serve_favicon():
-    """Serve the favicon."""
-    return FileResponse(static_dir / "favicon.png")
-
-
-@app.get("/logo.svg", response_class=FileResponse)
-async def serve_logo():
-    """Serve the logo SVG."""
-    return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
-
-
-@app.get("/icon.svg", response_class=FileResponse)
-async def serve_icon():
-    """Serve the icon SVG."""
-    return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
-
-
-@app.get("/logo-preview.html", response_class=FileResponse)
-async def serve_logo_preview():
-    """Serve the logo preview page."""
-    return FileResponse(static_dir / "logo-preview.html")
-
-
-# Mount static files (Svelte build output)
-# Mount _app separately for Svelte's hashed assets, keeping /docs and /redoc accessible
-if static_dir.exists():
+    # Mount static files (Svelte build output)
     app_assets = static_dir / "_app"
     if app_assets.exists():
         app.mount("/_app", StaticFiles(directory=app_assets), name="app_assets")
+else:
+    # Cloud mode: minimal root endpoint
+    @app.get("/")
+    async def api_root():
+        """API root - frontend served by Vercel."""
+        return {"message": "BrewSignal API", "docs": "/docs", "health": "/api/health"}

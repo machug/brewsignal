@@ -25,6 +25,15 @@ dependencies = [
     "filterpy>=1.4.5",
     "scipy>=1.10",
     "scikit-learn>=1.3",
+    "asyncpg>=0.31.0",
+    # Auth dependencies
+    "PyJWT>=2.8",
+    "cryptography>=41.0",
+    # AI assistant dependencies
+    "litellm>=1.0",
+    "tiktoken>=0.5",
+    "python-dotenv>=1.0",
+    "prompty>=0.1",
 ]
 
 [project.optional-dependencies]
@@ -33,11 +42,11 @@ dev = [
     "pytest-asyncio>=0.21",
     "httpx>=0.25",
 ]
-ai = [
-    "litellm>=1.0",
-    "tiktoken>=0.5",
-    "python-dotenv>=1.0",
-    "prompty>=0.1",
+cloud = [
+    # PostgreSQL async driver for cloud deployment
+    "asyncpg>=0.29",
+    # Supabase client for auth
+    "supabase>=2.0",
 ]
 
 [build-system]

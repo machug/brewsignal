@@ -23,7 +23,8 @@ if DATABASE_URL.startswith("postgresql"):
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
-    engine_kwargs["connect_args"] = {"ssl": ssl_context}
+    # Disable prepared statements for PgBouncer/Supabase pooler compatibility
+    engine_kwargs["connect_args"] = {"ssl": ssl_context, "statement_cache_size": 0}
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)

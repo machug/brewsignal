@@ -3,13 +3,22 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
-DATA_DIR = Path(__file__).parent.parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+from .config import settings
 
-DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/fermentation.db"
+# Get database URL from config (supports SQLite for local, PostgreSQL for cloud)
+DATABASE_URL = settings.get_database_url()
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Configure engine based on database type
+engine_kwargs = {"echo": False}
+
+# PostgreSQL needs connection pooling handled differently for async
+if DATABASE_URL.startswith("postgresql"):
+    # Use NullPool for serverless/cloud deployments to avoid connection issues
+    engine_kwargs["poolclass"] = NullPool
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 

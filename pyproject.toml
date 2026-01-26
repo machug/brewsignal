@@ -39,6 +39,12 @@ ai = [
     "python-dotenv>=1.0",
     "prompty>=0.1",
 ]
+cloud = [
+    # PostgreSQL async driver for cloud deployment
+    "asyncpg>=0.29",
+    # Supabase client for auth
+    "supabase>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]

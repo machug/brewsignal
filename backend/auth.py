@@ -85,16 +85,16 @@ async def get_current_user(
         alg = unverified_header.get("alg", "HS256")
         logger.info(f"JWT algorithm: {alg}")
 
-        if alg == "RS256":
-            # Use JWKS for RS256
+        if alg in ("RS256", "ES256"):
+            # Use JWKS for RS256 or ES256 (asymmetric algorithms)
             jwk_client = get_jwk_client()
             if not jwk_client:
                 raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_URL required")
             signing_key = jwk_client.get_signing_key_from_jwt(token)
             key = signing_key.key
-            algorithms = ["RS256"]
+            algorithms = [alg]
         else:
-            # Use JWT secret for HS256
+            # Use JWT secret for HS256 (symmetric algorithm)
             jwt_secret = get_jwt_secret()
             if not jwt_secret:
                 raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_JWT_SECRET required")

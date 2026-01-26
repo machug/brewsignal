@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
-from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
+from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -83,7 +83,7 @@ class Device(Base):
     color: Mapped[Optional[str]] = mapped_column(String(20))
     mac: Mapped[Optional[str]] = mapped_column(String(17))
 
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     paired: Mapped[bool] = mapped_column(default=False, server_default=false(), index=True)
     paired_at: Mapped[Optional[datetime]] = mapped_column()
 
@@ -272,7 +272,7 @@ class Style(Base):
     abv_max: Mapped[Optional[float]] = mapped_column()
     description: Mapped[Optional[str]] = mapped_column(Text)
     comments: Mapped[Optional[str]] = mapped_column(Text)  # Contains aliases like "NEIPA"
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     recipes: Mapped[list["Recipe"]] = relationship(back_populates="style")
@@ -314,8 +314,8 @@ class YeastStrain(Base):
     is_custom: Mapped[bool] = mapped_column(default=False)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class HopVariety(Base):
@@ -355,8 +355,8 @@ class HopVariety(Base):
     is_custom: Mapped[bool] = mapped_column(default=False)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Fermentable(Base):
@@ -395,8 +395,8 @@ class Fermentable(Base):
     is_custom: Mapped[bool] = mapped_column(default=False)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Recipe(Base):
@@ -476,8 +476,8 @@ class Recipe(Base):
     beerxml_content: Mapped[Optional[str]] = mapped_column(Text)  # Raw BeerXML for future re-parsing
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
@@ -552,8 +552,8 @@ class Batch(Base):
 
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Soft delete timestamp
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -1069,8 +1069,8 @@ class TastingNote(Base):
     overall_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship
     batch: Mapped["Batch"] = relationship(back_populates="tasting_notes")
@@ -2062,7 +2062,7 @@ class AgUiThread(Base):
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     title: Mapped[Optional[str]] = mapped_column(String(200))
     title_locked: Mapped[bool] = mapped_column(default=False)  # Prevents auto-summarization
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
@@ -2088,7 +2088,7 @@ class AgUiMessage(Base):
     role: Mapped[str] = mapped_column(String(20))  # user, assistant, tool
     content: Mapped[str] = mapped_column(Text)
     tool_calls: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of tool calls
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     thread: Mapped["AgUiThread"] = relationship(back_populates="messages")
@@ -2128,7 +2128,7 @@ class Equipment(Base):
     capacity_kg: Mapped[Optional[float]] = mapped_column()  # Weight capacity (for grain mills, etc.)
     is_active: Mapped[bool] = mapped_column(default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
@@ -2153,7 +2153,7 @@ class HopInventory(Base):
     supplier: Mapped[Optional[str]] = mapped_column(String(100))
     lot_number: Mapped[Optional[str]] = mapped_column(String(50))
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
@@ -2186,7 +2186,7 @@ class YeastInventory(Base):
     supplier: Mapped[Optional[str]] = mapped_column(String(100))
     lot_number: Mapped[Optional[str]] = mapped_column(String(50))
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)

@@ -19,6 +19,9 @@ node_modules/
 # Frontend build output (intermediate)
 frontend/.svelte-kit/
 
+# Backend static files (frontend build output - served by Vercel in cloud)
+backend/static/
+
 # Database & data
 data/
 *.db

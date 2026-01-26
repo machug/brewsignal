@@ -32,8 +32,10 @@ from .services.alert_service import detect_and_persist_alerts  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
+from .config import Settings  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
 
 # Global scanner instance
 scanner: Optional[TiltScanner] = None
@@ -368,20 +370,29 @@ async def handle_tilt_reading(reading: TiltReading):
 async def lifespan(app: FastAPI):
     global scanner, scanner_task, cleanup_service, ml_pipeline_manager
 
+    settings = Settings()
+    is_cloud = settings.is_cloud
+
     # Startup
-    print("Starting BrewSignal...")
+    mode_str = "CLOUD" if is_cloud else "LOCAL"
+    print(f"Starting BrewSignal ({mode_str} mode)...")
     await init_db()
     print("Database initialized")
 
-    # Load cached readings from disk (survives restarts)
-    load_readings_cache()
-    print(f"Loaded {len(latest_readings)} cached device readings")
+    # Load cached readings from disk (survives restarts) - only for local mode
+    if not is_cloud:
+        load_readings_cache()
+        print(f"Loaded {len(latest_readings)} cached device readings")
 
     # Initialize ML pipeline manager
     ml_pipeline_manager = MLPipelineManager()
     logging.info("ML Pipeline Manager initialized")
 
-    # Start scanner
+    # Start scanner - in cloud mode, auto-enable mock if no relay configured
+    if is_cloud and not os.environ.get("SCANNER_RELAY_HOST"):
+        os.environ["SCANNER_MOCK"] = "true"
+        print("Cloud mode: Scanner set to MOCK (no BLE hardware)")
+
     scanner = TiltScanner(on_reading=handle_tilt_reading)
     scanner_task = asyncio.create_task(scanner.start())
     print("Scanner started")
@@ -390,30 +401,35 @@ async def lifespan(app: FastAPI):
     cleanup_service = CleanupService(retention_days=30, interval_hours=1)
     await cleanup_service.start()
 
-    # Start ambient poller for Home Assistant integration
-    start_ambient_poller()
-    print("Ambient poller started")
+    # Local-only services (require Home Assistant access)
+    if not is_cloud:
+        # Start ambient poller for Home Assistant integration
+        start_ambient_poller()
+        print("Ambient poller started")
 
-    # Start chamber poller for fermentation chamber environment
-    await start_chamber_poller()
-    print("Chamber poller started")
+        # Start chamber poller for fermentation chamber environment
+        await start_chamber_poller()
+        print("Chamber poller started")
 
-    # Start temperature controller for HA-based temperature control
-    start_temp_controller()
-    print("Temperature controller started")
+        # Start temperature controller for HA-based temperature control
+        start_temp_controller()
+        print("Temperature controller started")
 
-    # Start MQTT manager for Home Assistant batch data publishing
-    start_mqtt_manager()
-    print("MQTT manager started")
+        # Start MQTT manager for Home Assistant batch data publishing
+        start_mqtt_manager()
+        print("MQTT manager started")
+    else:
+        print("Cloud mode: Skipping Home Assistant services (ambient, chamber, temp control, MQTT)")
 
     yield
 
     # Shutdown
     print("Shutting down BrewSignal...")
-    stop_mqtt_manager()
-    stop_temp_controller()
-    stop_chamber_poller()
-    stop_ambient_poller()
+    if not is_cloud:
+        stop_mqtt_manager()
+        stop_temp_controller()
+        stop_chamber_poller()
+        stop_ambient_poller()
     if cleanup_service:
         await cleanup_service.stop()
     if scanner:
@@ -567,168 +583,128 @@ async def get_stats():
 
 
 # SPA page routes - serve pre-rendered HTML files
+# Only in local mode; cloud mode uses Vercel for frontend
 static_dir = Path(__file__).parent / "static"
+_settings = Settings()
+_serve_frontend = not _settings.is_cloud and static_dir.exists()
+
+if _serve_frontend:
+    @app.get("/", response_class=FileResponse)
+    async def serve_index():
+        """Serve the main dashboard page."""
+        return FileResponse(static_dir / "index.html")
 
 
-@app.get("/", response_class=FileResponse)
-async def serve_index():
-    """Serve the main dashboard page."""
-    return FileResponse(static_dir / "index.html")
+    @app.get("/logging", response_class=FileResponse)
+    async def serve_logging():
+        """Serve the logging page."""
+        return FileResponse(static_dir / "logging.html")
 
+    @app.get("/calibration", response_class=FileResponse)
+    async def serve_calibration():
+        """Serve the calibration page."""
+        return FileResponse(static_dir / "calibration.html")
 
-@app.get("/logging", response_class=FileResponse)
-async def serve_logging():
-    """Serve the logging page."""
-    return FileResponse(static_dir / "logging.html")
+    @app.get("/system", response_class=FileResponse)
+    async def serve_system():
+        """Serve the system page."""
+        return FileResponse(static_dir / "system.html")
 
+    @app.get("/system/{path:path}", response_class=FileResponse)
+    async def serve_system_subpages(path: str):
+        """Serve system subpages (maintenance, etc.) - SPA handles routing."""
+        html_path = static_dir / "system" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "system" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
-@app.get("/calibration", response_class=FileResponse)
-async def serve_calibration():
-    """Serve the calibration page."""
-    return FileResponse(static_dir / "calibration.html")
+    @app.get("/devices", response_class=FileResponse)
+    async def serve_devices():
+        """Serve the devices page."""
+        return FileResponse(static_dir / "devices.html")
 
+    @app.get("/yeast", response_class=FileResponse)
+    async def serve_yeast():
+        """Serve the yeast library page (legacy)."""
+        return FileResponse(static_dir / "yeast.html")
 
-@app.get("/system", response_class=FileResponse)
-async def serve_system():
-    """Serve the system page."""
-    return FileResponse(static_dir / "system.html")
+    @app.get("/library", response_class=FileResponse)
+    async def serve_library():
+        """Serve unified ingredient library page."""
+        return FileResponse(static_dir / "library.html")
 
+    @app.get("/batches", response_class=FileResponse)
+    async def serve_batches():
+        """Serve the batches page."""
+        return FileResponse(static_dir / "batches.html")
 
-@app.get("/system/{path:path}", response_class=FileResponse)
-async def serve_system_subpages(path: str):
-    """Serve system subpages (maintenance, etc.) - SPA handles routing."""
-    # Try to find a prerendered HTML file for this path
-    # e.g., /system/maintenance -> static/system/maintenance.html
-    html_path = static_dir / "system" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
+    @app.get("/recipes", response_class=FileResponse)
+    async def serve_recipes():
+        """Serve the recipes page."""
+        return FileResponse(static_dir / "recipes.html")
 
-    # Check if path is a directory with index.html
-    index_path = static_dir / "system" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    @app.get("/batches/{path:path}", response_class=FileResponse)
+    async def serve_batches_subpages(path: str):
+        """Serve batches subpages - SPA handles routing."""
+        html_path = static_dir / "batches" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "batches" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
-    # Fall back to index.html for dynamic routes
-    return FileResponse(static_dir / "index.html")
+    @app.get("/recipes/{path:path}", response_class=FileResponse)
+    async def serve_recipes_subpages(path: str):
+        """Serve recipes subpages - SPA handles routing."""
+        html_path = static_dir / "recipes" / f"{path}.html"
+        if html_path.exists():
+            return FileResponse(html_path)
+        index_path = static_dir / "recipes" / path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return FileResponse(static_dir / "index.html")
 
+    @app.get("/assistant", response_class=FileResponse)
+    async def serve_assistant():
+        """Serve the AI assistant page."""
+        return FileResponse(static_dir / "assistant.html")
 
-@app.get("/devices", response_class=FileResponse)
-async def serve_devices():
-    """Serve the devices page."""
-    return FileResponse(static_dir / "devices.html")
+    @app.get("/inventory", response_class=FileResponse)
+    async def serve_inventory():
+        """Serve the inventory page."""
+        return FileResponse(static_dir / "inventory.html")
 
+    @app.get("/favicon.png", response_class=FileResponse)
+    async def serve_favicon():
+        """Serve the favicon."""
+        return FileResponse(static_dir / "favicon.png")
 
-@app.get("/yeast", response_class=FileResponse)
-async def serve_yeast():
-    """Serve the yeast library page (legacy)."""
-    return FileResponse(static_dir / "yeast.html")
+    @app.get("/logo.svg", response_class=FileResponse)
+    async def serve_logo():
+        """Serve the logo SVG."""
+        return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
 
+    @app.get("/icon.svg", response_class=FileResponse)
+    async def serve_icon():
+        """Serve the icon SVG."""
+        return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
 
-@app.get("/library", response_class=FileResponse)
-async def serve_library():
-    """Serve unified ingredient library page."""
-    return FileResponse(static_dir / "library.html")
+    @app.get("/logo-preview.html", response_class=FileResponse)
+    async def serve_logo_preview():
+        """Serve the logo preview page."""
+        return FileResponse(static_dir / "logo-preview.html")
 
-
-@app.get("/batches", response_class=FileResponse)
-async def serve_batches():
-    """Serve the batches page."""
-    return FileResponse(static_dir / "batches.html")
-
-
-@app.get("/recipes", response_class=FileResponse)
-async def serve_recipes():
-    """Serve the recipes page."""
-    return FileResponse(static_dir / "recipes.html")
-
-
-@app.get("/batches/{path:path}", response_class=FileResponse)
-async def serve_batches_subpages(path: str):
-    """Serve batches subpages (detail, new, etc.) - SPA handles routing.
-
-    Tries to find the matching prerendered HTML file first,
-    falls back to index.html for dynamic routes (uses absolute paths).
-    """
-    # Try to find a prerendered HTML file for this path
-    # e.g., /batches/new -> static/batches/new.html
-    html_path = static_dir / "batches" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
-
-    # Check if path is a directory with index.html
-    # e.g., /batches/new/ -> static/batches/new/index.html
-    index_path = static_dir / "batches" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-
-    # Fall back to index.html for dynamic routes (e.g., /batches/123)
-    # index.html uses absolute paths which work for nested routes
-    return FileResponse(static_dir / "index.html")
-
-
-@app.get("/recipes/{path:path}", response_class=FileResponse)
-async def serve_recipes_subpages(path: str):
-    """Serve recipes subpages (detail, import, etc.) - SPA handles routing.
-
-    Tries to find the matching prerendered HTML file first,
-    falls back to index.html for dynamic routes (uses absolute paths).
-    """
-    # Try to find a prerendered HTML file for this path
-    # e.g., /recipes/import -> static/recipes/import.html
-    html_path = static_dir / "recipes" / f"{path}.html"
-    if html_path.exists():
-        return FileResponse(html_path)
-
-    # Check if path is a directory with index.html
-    # e.g., /recipes/import/ -> static/recipes/import/index.html
-    index_path = static_dir / "recipes" / path / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-
-    # Fall back to index.html for dynamic routes (e.g., /recipes/123)
-    # index.html uses absolute paths which work for nested routes
-    return FileResponse(static_dir / "index.html")
-
-
-@app.get("/assistant", response_class=FileResponse)
-async def serve_assistant():
-    """Serve the AI assistant page."""
-    return FileResponse(static_dir / "assistant.html")
-
-
-@app.get("/inventory", response_class=FileResponse)
-async def serve_inventory():
-    """Serve the inventory page."""
-    return FileResponse(static_dir / "inventory.html")
-
-
-@app.get("/favicon.png", response_class=FileResponse)
-async def serve_favicon():
-    """Serve the favicon."""
-    return FileResponse(static_dir / "favicon.png")
-
-
-@app.get("/logo.svg", response_class=FileResponse)
-async def serve_logo():
-    """Serve the logo SVG."""
-    return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
-
-
-@app.get("/icon.svg", response_class=FileResponse)
-async def serve_icon():
-    """Serve the icon SVG."""
-    return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
-
-
-@app.get("/logo-preview.html", response_class=FileResponse)
-async def serve_logo_preview():
-    """Serve the logo preview page."""
-    return FileResponse(static_dir / "logo-preview.html")
-
-
-# Mount static files (Svelte build output)
-# Mount _app separately for Svelte's hashed assets, keeping /docs and /redoc accessible
-if static_dir.exists():
+    # Mount static files (Svelte build output)
     app_assets = static_dir / "_app"
     if app_assets.exists():
         app.mount("/_app", StaticFiles(directory=app_assets), name="app_assets")
+else:
+    # Cloud mode: minimal root endpoint
+    @app.get("/")
+    async def api_root():
+        """API root - frontend served by Vercel."""
+        return {"message": "BrewSignal API", "docs": "/docs", "health": "/api/health"}

@@ -1,3 +1,4 @@
+import ssl
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -17,6 +18,12 @@ engine_kwargs = {"echo": False}
 if DATABASE_URL.startswith("postgresql"):
     # Use NullPool for serverless/cloud deployments to avoid connection issues
     engine_kwargs["poolclass"] = NullPool
+    # asyncpg requires SSL via connect_args, not URL parameters
+    # Create SSL context that doesn't verify certificates (Supabase uses self-signed)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    engine_kwargs["connect_args"] = {"ssl": ssl_context}
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)

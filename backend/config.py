@@ -72,13 +72,8 @@ class Settings(BaseSettings):
     def get_database_url(self) -> str:
         """Get the database URL, with defaults based on deployment mode."""
         if self.database_url:
-            url = self.database_url
-            # Ensure SSL is set for PostgreSQL (required by Supabase)
-            # asyncpg uses 'ssl' parameter, not 'sslmode'
-            if url.startswith("postgresql") and "ssl=" not in url and "sslmode=" not in url:
-                separator = "&" if "?" in url else "?"
-                url = f"{url}{separator}ssl=require"
-            return url
+            # SSL for PostgreSQL is handled via connect_args in database.py
+            return self.database_url
 
         # Default to SQLite for local mode
         if self.is_local:

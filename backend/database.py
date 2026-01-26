@@ -285,7 +285,30 @@ async def init_db():
     IMPORTANT: This function is not thread-safe. Run with a single worker
     during startup to avoid migration race conditions. After initial startup,
     multiple workers can safely access the database for read/write operations.
+
+    CLOUD MODE: When running against PostgreSQL (cloud deployment), most SQLite-specific
+    migrations are skipped since the schema is managed by Supabase migrations.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Check if we're in cloud mode (PostgreSQL)
+    is_postgres = DATABASE_URL.startswith("postgresql")
+
+    if is_postgres:
+        # Cloud mode: PostgreSQL schema is managed by Supabase migrations
+        # Just run create_all to ensure SQLAlchemy models are synced
+        # and seed reference data
+        logger.info("Cloud mode detected - using PostgreSQL migrations")
+        async with engine.begin() as conn:
+            # Create any tables that might be missing from Supabase schema
+            await conn.run_sync(Base.metadata.create_all)
+
+        # Seed reference data (these use standard SQL, no SQLite-specific syntax)
+        await _seed_reference_data()
+        return
+
+    # Local mode: Run full SQLite migrations
     async with engine.begin() as conn:
         # Step 1: Schema migrations for existing DBs
         await conn.run_sync(_migrate_add_original_gravity)
@@ -363,6 +386,15 @@ async def init_db():
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
 
+    # Seed reference data
+    await _seed_reference_data(force_reseed_styles=reseed_styles)
+
+
+async def _seed_reference_data(force_reseed_styles: bool = False):
+    """Seed reference data (yeast strains, hop varieties, fermentables, styles).
+
+    This uses standard SQL that works with both SQLite and PostgreSQL.
+    """
     # Seed yeast strains from JSON file
     from .services.yeast_seeder import seed_yeast_strains
     async with async_session_factory() as session:
@@ -387,7 +419,7 @@ async def init_db():
     # Seed BJCP styles from JSON file (force re-seed if comments column was just added)
     from .services.style_seeder import seed_styles
     async with async_session_factory() as session:
-        result = await seed_styles(session, force=reseed_styles)
+        result = await seed_styles(session, force=force_reseed_styles)
         if result.get("action") == "seeded":
             print(f"Seeded {result.get('count', 0)} BJCP styles")
 

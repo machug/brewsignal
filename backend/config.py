@@ -72,7 +72,12 @@ class Settings(BaseSettings):
     def get_database_url(self) -> str:
         """Get the database URL, with defaults based on deployment mode."""
         if self.database_url:
-            return self.database_url
+            url = self.database_url
+            # Ensure SSL mode is set for PostgreSQL (required by Supabase)
+            if url.startswith("postgresql") and "sslmode=" not in url:
+                separator = "&" if "?" in url else "?"
+                url = f"{url}{separator}sslmode=require"
+            return url
 
         # Default to SQLite for local mode
         if self.is_local:

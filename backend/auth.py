@@ -28,27 +28,18 @@ def get_settings() -> Settings:
 
 
 @lru_cache()
-def get_jwt_secret() -> Optional[str]:
-    """Get JWT secret for verifying Supabase JWTs.
+def get_jwk_client() -> Optional[PyJWKClient]:
+    """Get JWK client for verifying Supabase JWTs.
 
-    Supabase uses HS256 with the JWT secret, not RS256 with JWKS.
-    The secret is derived from the project's JWT secret in settings.
+    Supabase uses RS256 with JWKS for user session tokens.
     """
     settings = get_settings()
-    if not settings.is_cloud or not settings.supabase_anon_key:
+    if not settings.is_cloud or not settings.supabase_url:
         return None
 
-    # Supabase JWT secret - for verification, we use the anon key's secret
-    # The actual secret is in SUPABASE_JWT_SECRET env var if set,
-    # otherwise we can extract from service role key or use anon key
-    import os
-    jwt_secret = os.environ.get("SUPABASE_JWT_SECRET")
-    if jwt_secret:
-        return jwt_secret
-
-    # Fallback: if no explicit secret, auth won't work properly
-    logger.warning("SUPABASE_JWT_SECRET not set - JWT verification may fail")
-    return None
+    # Supabase JWKS endpoint for RS256 verification
+    jwks_url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
+    return PyJWKClient(jwks_url, cache_keys=True)
 
 
 class AuthUser:
@@ -84,17 +75,20 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Authentication required")
 
     token = credentials.credentials
-    jwt_secret = get_jwt_secret()
+    jwk_client = get_jwk_client()
 
-    if not jwt_secret:
-        raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_JWT_SECRET required")
+    if not jwk_client:
+        raise HTTPException(status_code=500, detail="Auth not configured - SUPABASE_URL required")
 
     try:
-        # Decode and verify the token using HS256
+        # Get the signing key from Supabase JWKS
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
+
+        # Decode and verify the token using RS256
         payload = jwt.decode(
             token,
-            jwt_secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["RS256"],
             audience="authenticated",
             options={"verify_exp": True},
         )

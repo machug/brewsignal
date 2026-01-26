@@ -9,7 +9,7 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Imports after logging configuration
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from sqlalchemy import select, desc  # noqa: E402
@@ -19,6 +19,7 @@ from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
 from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, mqtt, recipes, system, yeast_strains  # noqa: E402
+from .auth import require_auth  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
 from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
@@ -445,30 +446,35 @@ async def lifespan(app: FastAPI):
 
 
 from .routers.system import VERSION  # noqa: E402
+
 app = FastAPI(title="BrewSignal", version=VERSION, lifespan=lifespan)
 
-# Register routers
-app.include_router(devices.router)
-app.include_router(config.router)
-app.include_router(system.router)
-app.include_router(ambient.router)
-app.include_router(chamber.router)
-app.include_router(ha.router)
-app.include_router(mqtt.router)
-app.include_router(control.router)
-app.include_router(alerts.router)
-app.include_router(ingest.router)
-app.include_router(recipes.router)
-app.include_router(batches.router)
-app.include_router(maintenance.router)
-app.include_router(yeast_strains.router)
-app.include_router(hop_varieties.router)
-app.include_router(fermentables.router)
-app.include_router(assistant.router)
-app.include_router(ag_ui.router)
-app.include_router(inventory_equipment.router)
-app.include_router(inventory_hops.router)
-app.include_router(inventory_yeast.router)
+# Auth dependencies for protected routes
+# In local mode, require_auth returns a dummy user; in cloud mode, validates JWT
+auth_deps = [Depends(require_auth)]
+
+# Register routers with auth protection
+app.include_router(devices.router, dependencies=auth_deps)
+app.include_router(config.router, dependencies=auth_deps)
+app.include_router(system.router, dependencies=auth_deps)
+app.include_router(ambient.router, dependencies=auth_deps)
+app.include_router(chamber.router, dependencies=auth_deps)
+app.include_router(ha.router, dependencies=auth_deps)
+app.include_router(mqtt.router, dependencies=auth_deps)
+app.include_router(control.router, dependencies=auth_deps)
+app.include_router(alerts.router, dependencies=auth_deps)
+app.include_router(ingest.router, dependencies=auth_deps)
+app.include_router(recipes.router, dependencies=auth_deps)
+app.include_router(batches.router, dependencies=auth_deps)
+app.include_router(maintenance.router, dependencies=auth_deps)
+app.include_router(yeast_strains.router, dependencies=auth_deps)
+app.include_router(hop_varieties.router, dependencies=auth_deps)
+app.include_router(fermentables.router, dependencies=auth_deps)
+app.include_router(assistant.router, dependencies=auth_deps)
+app.include_router(ag_ui.router, dependencies=auth_deps)
+app.include_router(inventory_equipment.router, dependencies=auth_deps)
+app.include_router(inventory_hops.router, dependencies=auth_deps)
+app.include_router(inventory_yeast.router, dependencies=auth_deps)
 
 
 @app.get("/api/health")

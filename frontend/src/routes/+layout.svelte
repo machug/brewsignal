@@ -3,9 +3,13 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { tiltsState, connectWebSocket, disconnectWebSocket, startHeaterPolling, stopHeaterPolling } from '$lib/stores/tilts.svelte';
 	import { loadConfig, configState, getTempUnit } from '$lib/stores/config.svelte';
 	import { weatherState, startWeatherPolling, stopWeatherPolling, getWeatherIcon, formatDayName } from '$lib/stores/weather.svelte';
+	import { initAuth, authState } from '$lib/stores/auth.svelte';
+	import { signOut } from '$lib/supabase';
+	import { isCloudMode } from '$lib/config';
 
 	// Format ambient temp based on user's unit preference
 	function formatAmbientTemp(tempC: number): string {
@@ -24,6 +28,8 @@
 	let { children } = $props();
 	let mobileMenuOpen = $state(false);
 	let weatherDropdownOpen = $state(false);
+	let userMenuOpen = $state(false);
+	let signingOut = $state(false);
 
 	// Derived: show heater indicator only when HA is enabled and heater entity is configured
 	let showHeaterIndicator = $derived(
@@ -33,7 +39,20 @@
 	// Get today's forecast
 	let todayForecast = $derived(weatherState.forecast[0] || null);
 
-	onMount(() => {
+	// Check if current route is the login page
+	let isLoginPage = $derived($page.url.pathname === '/login');
+
+	// Redirect to login if not authenticated (cloud mode only)
+	$effect(() => {
+		if (isCloudMode && authState.initialized && !authState.isAuthenticated && !isLoginPage) {
+			goto('/login');
+		}
+	});
+
+	onMount(async () => {
+		// Initialize auth first
+		await initAuth();
+
 		loadConfig();
 		// Connect WebSocket for live updates (persists across navigation)
 		connectWebSocket();
@@ -42,6 +61,25 @@
 		// Start polling weather every 30 minutes
 		startWeatherPolling(30 * 60 * 1000);
 	});
+
+	async function handleSignOut() {
+		signingOut = true;
+		try {
+			await signOut();
+			goto('/login');
+		} finally {
+			signingOut = false;
+			userMenuOpen = false;
+		}
+	}
+
+	function toggleUserMenu() {
+		userMenuOpen = !userMenuOpen;
+	}
+
+	function closeUserMenu() {
+		userMenuOpen = false;
+	}
 
 	onDestroy(() => {
 		disconnectWebSocket();
@@ -193,6 +231,38 @@
 						</span>
 					</div>
 
+					<!-- User menu (cloud mode only) -->
+					{#if isCloudMode && authState.isAuthenticated}
+						<div class="user-menu-wrapper">
+							<button
+								type="button"
+								class="user-menu-btn"
+								onclick={toggleUserMenu}
+								aria-label="User menu"
+							>
+								<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+								</svg>
+							</button>
+							{#if userMenuOpen}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<div class="user-menu-backdrop" onclick={closeUserMenu}></div>
+								<div class="user-menu-dropdown" transition:slide={{ duration: 150 }}>
+									<div class="user-menu-email">{authState.user?.email}</div>
+									<button
+										type="button"
+										class="user-menu-item"
+										onclick={handleSignOut}
+										disabled={signingOut}
+									>
+										{signingOut ? 'Signing out...' : 'Sign out'}
+									</button>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
 					<!-- Mobile menu button -->
 					<button
 						type="button"
@@ -236,7 +306,20 @@
 
 	<!-- Main content -->
 	<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-		{@render children()}
+		{#if isCloudMode && !authState.initialized}
+			<!-- Loading auth state -->
+			<div class="auth-loading">
+				<div class="auth-loading-spinner"></div>
+				<p>Loading...</p>
+			</div>
+		{:else if isCloudMode && !authState.isAuthenticated && !isLoginPage}
+			<!-- Redirecting to login -->
+			<div class="auth-loading">
+				<p>Redirecting to login...</p>
+			</div>
+		{:else}
+			{@render children()}
+		{/if}
 	</main>
 </div>
 
@@ -568,5 +651,107 @@
 		font-size: 0.75rem;
 		font-family: var(--font-mono);
 		color: var(--text-muted);
+	}
+
+	/* User menu */
+	.user-menu-wrapper {
+		position: relative;
+	}
+
+	.user-menu-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 9999px;
+		background: var(--bg-elevated);
+		border: none;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: background var(--transition), color var(--transition);
+	}
+
+	.user-menu-btn:hover {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.user-menu-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+	}
+
+	.user-menu-dropdown {
+		position: absolute;
+		top: calc(100% + 0.5rem);
+		right: 0;
+		z-index: 50;
+		min-width: 12rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+		overflow: hidden;
+	}
+
+	.user-menu-email {
+		padding: 0.75rem 1rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		border-bottom: 1px solid var(--border-subtle);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.user-menu-item {
+		display: block;
+		width: 100%;
+		padding: 0.75rem 1rem;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		background: transparent;
+		border: none;
+		text-align: left;
+		cursor: pointer;
+		transition: background var(--transition), color var(--transition);
+	}
+
+	.user-menu-item:hover {
+		background: var(--bg-elevated);
+		color: var(--text-primary);
+	}
+
+	.user-menu-item:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	/* Auth loading state */
+	.auth-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 50vh;
+		color: var(--text-muted);
+	}
+
+	.auth-loading-spinner {
+		width: 2rem;
+		height: 2rem;
+		border: 2px solid var(--border-subtle);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+		margin-bottom: 1rem;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

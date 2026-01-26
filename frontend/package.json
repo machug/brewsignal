@@ -27,6 +27,8 @@
 		"vite": "^7.2.2"
 	},
 	"dependencies": {
+		"@supabase/ssr": "^0.8.0",
+		"@supabase/supabase-js": "^2.91.1",
 		"marked": "^17.0.1",
 		"uplot": "^1.6.32"
 	}

@@ -1,6 +1,27 @@
 // API helper functions for BrewSignal
 
+import { getAccessToken } from './supabase';
+import { isCloudMode } from './config';
+
 const BASE_URL = '/api';
+
+/**
+ * Authenticated fetch wrapper
+ * Adds Authorization header with Supabase JWT in cloud mode
+ */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+	const headers = new Headers(options.headers);
+
+	// Add auth token in cloud mode
+	if (isCloudMode) {
+		const token = await getAccessToken();
+		if (token) {
+			headers.set('Authorization', `Bearer ${token}`);
+		}
+	}
+
+	return fetch(url, { ...options, headers });
+}
 
 export interface HistoricalReading {
 	id: number;
@@ -51,7 +72,7 @@ export async function fetchReadings(
 	if (batchId !== undefined) {
 		params.append('batch_id', String(batchId));
 	}
-	const response = await fetch(`${BASE_URL}/devices/${deviceId}/readings?${params}`);
+	const response = await authFetch(`${BASE_URL}/devices/${deviceId}/readings?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch readings: ${response.statusText}`);
 	}
@@ -67,7 +88,7 @@ export async function fetchBatchReadings(
 	if (hours !== undefined && hours > 0) {
 		params.append('hours', String(hours));
 	}
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/readings?${params}`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/readings?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch readings: ${response.statusText}`);
 	}
@@ -75,7 +96,7 @@ export async function fetchBatchReadings(
 }
 
 export async function updateTiltBeerName(tiltId: string, beerName: string): Promise<void> {
-	const response = await fetch(`${BASE_URL}/tilts/${tiltId}`, {
+	const response = await authFetch(`${BASE_URL}/tilts/${tiltId}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ beer_name: beerName })
@@ -93,7 +114,7 @@ export interface AmbientHistoricalReading {
 }
 
 export async function fetchAmbientHistory(hours: number = 24): Promise<AmbientHistoricalReading[]> {
-	const response = await fetch(`${BASE_URL}/ambient/history?hours=${hours}`);
+	const response = await authFetch(`${BASE_URL}/ambient/history?hours=${hours}`);
 	if (!response.ok) {
 		throw new Error('Failed to fetch ambient history');
 	}
@@ -108,7 +129,7 @@ export interface ChamberHistoricalReading {
 }
 
 export async function fetchChamberHistory(hours: number = 24): Promise<ChamberHistoricalReading[]> {
-	const response = await fetch(`${BASE_URL}/chamber/history?hours=${hours}`);
+	const response = await authFetch(`${BASE_URL}/chamber/history?hours=${hours}`);
 	if (!response.ok) {
 		throw new Error('Failed to fetch chamber history');
 	}
@@ -145,7 +166,7 @@ export async function fetchBatchPredictions(
 		? `${BASE_URL}/batches/${batchId}/predictions?${queryString}`
 		: `${BASE_URL}/batches/${batchId}/predictions`;
 
-	const response = await fetch(url);
+	const response = await authFetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch predictions: ${response.statusText}`);
 	}
@@ -156,7 +177,7 @@ export async function fetchBatchPredictions(
  * Reload ML predictions from database history
  */
 export async function reloadBatchPredictions(batchId: number): Promise<{ success: boolean; readings_loaded: number; message: string }> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/reload-predictions`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reload-predictions`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -631,7 +652,7 @@ export interface OverrideRequest {
  * Fetch available heater entities from Home Assistant
  */
 export async function fetchHeaterEntities(): Promise<HeaterEntity[]> {
-	const response = await fetch(`${BASE_URL}/control/heater-entities`);
+	const response = await authFetch(`${BASE_URL}/control/heater-entities`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch heater entities: ${response.statusText}`);
 	}
@@ -642,7 +663,7 @@ export async function fetchHeaterEntities(): Promise<HeaterEntity[]> {
  * Fetch available cooler entities from Home Assistant
  */
 export async function fetchCoolerEntities(): Promise<HeaterEntity[]> {
-	const response = await fetch(`${BASE_URL}/control/cooler-entities`);
+	const response = await authFetch(`${BASE_URL}/control/cooler-entities`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch cooler entities: ${response.statusText}`);
 	}
@@ -653,7 +674,7 @@ export async function fetchCoolerEntities(): Promise<HeaterEntity[]> {
  * Fetch batch control status
  */
 export async function fetchBatchControlStatus(batchId: number): Promise<BatchControlStatus> {
-	const response = await fetch(`${BASE_URL}/control/batch/${batchId}/status`);
+	const response = await authFetch(`${BASE_URL}/control/batch/${batchId}/status`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch control status: ${response.statusText}`);
 	}
@@ -664,7 +685,7 @@ export async function fetchBatchControlStatus(batchId: number): Promise<BatchCon
  * Toggle heater for a specific batch
  */
 export async function toggleBatchHeater(batchId: number, state: 'on' | 'off'): Promise<{ success: boolean; message: string; new_state?: string }> {
-	const response = await fetch(`${BASE_URL}/control/heater`, {
+	const response = await authFetch(`${BASE_URL}/control/heater`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ state, batch_id: batchId })
@@ -681,7 +702,7 @@ export async function setBatchHeaterOverride(
 	durationMinutes: number = 60,
 	deviceType: string = 'heater'
 ): Promise<{ success: boolean; message: string; override_state?: string; override_until?: string }> {
-	const response = await fetch(`${BASE_URL}/control/override`, {
+	const response = await authFetch(`${BASE_URL}/control/override`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -711,7 +732,7 @@ export async function fetchBatches(
 	params.append('limit', String(limit));
 	params.append('offset', String(offset));
 
-	const response = await fetch(`${BASE_URL}/batches?${params}`);
+	const response = await authFetch(`${BASE_URL}/batches?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batches: ${response.statusText}`);
 	}
@@ -726,7 +747,7 @@ export async function fetchActiveBatches(limit: number = 50, offset: number = 0)
 	params.append('limit', String(limit));
 	params.append('offset', String(offset));
 
-	const response = await fetch(`${BASE_URL}/batches/active?${params}`);
+	const response = await authFetch(`${BASE_URL}/batches/active?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch active batches: ${response.statusText}`);
 	}
@@ -741,7 +762,7 @@ export async function fetchCompletedBatches(limit: number = 50, offset: number =
 	params.append('limit', String(limit));
 	params.append('offset', String(offset));
 
-	const response = await fetch(`${BASE_URL}/batches/completed?${params}`);
+	const response = await authFetch(`${BASE_URL}/batches/completed?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch completed batches: ${response.statusText}`);
 	}
@@ -759,7 +780,7 @@ export async function fetchDeletedBatches(limit: number = 50, offset: number = 0
  * Fetch a single batch by ID
  */
 export async function fetchBatch(batchId: number): Promise<BatchResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch: ${response.statusText}`);
 	}
@@ -770,7 +791,7 @@ export async function fetchBatch(batchId: number): Promise<BatchResponse> {
  * Create a new batch
  */
 export async function createBatch(batch: BatchCreate): Promise<BatchResponse> {
-	const response = await fetch(`${BASE_URL}/batches`, {
+	const response = await authFetch(`${BASE_URL}/batches`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(batch)
@@ -785,7 +806,7 @@ export async function createBatch(batch: BatchCreate): Promise<BatchResponse> {
  * Update an existing batch
  */
 export async function updateBatch(batchId: number, update: BatchUpdate): Promise<BatchResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(update)
@@ -802,7 +823,7 @@ export async function updateBatch(batchId: number, update: BatchUpdate): Promise
 export async function deleteBatch(batchId: number, hardDelete: boolean = false): Promise<void> {
 	const url = `${BASE_URL}/batches/${batchId}/delete`;
 	const urlWithParams = hardDelete ? `${url}?hard_delete=true` : url;
-	const response = await fetch(urlWithParams, {
+	const response = await authFetch(urlWithParams, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -814,7 +835,7 @@ export async function deleteBatch(batchId: number, hardDelete: boolean = false):
  * Restore a soft-deleted batch
  */
 export async function restoreBatch(batchId: number): Promise<BatchResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/restore`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/restore`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -831,7 +852,7 @@ export async function restoreBatch(batchId: number): Promise<BatchResponse> {
  * Fetch all tasting notes for a batch
  */
 export async function fetchTastingNotes(batchId: number): Promise<TastingNoteResponse[]> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/tasting-notes`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch tasting notes: ${response.statusText}`);
 	}
@@ -842,7 +863,7 @@ export async function fetchTastingNotes(batchId: number): Promise<TastingNoteRes
  * Create a new tasting note for a batch
  */
 export async function createTastingNote(batchId: number, note: TastingNoteCreate): Promise<TastingNoteResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/tasting-notes`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(note)
@@ -857,7 +878,7 @@ export async function createTastingNote(batchId: number, note: TastingNoteCreate
  * Update a tasting note
  */
 export async function updateTastingNote(batchId: number, noteId: number, update: TastingNoteUpdate): Promise<TastingNoteResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(update)
@@ -872,7 +893,7 @@ export async function updateTastingNote(batchId: number, noteId: number, update:
  * Delete a tasting note
  */
 export async function deleteTastingNote(batchId: number, noteId: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/tasting-notes/${noteId}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -884,7 +905,7 @@ export async function deleteTastingNote(batchId: number, noteId: number): Promis
  * Fetch fermentation progress for a batch
  */
 export async function fetchBatchProgress(batchId: number): Promise<BatchProgressResponse> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/progress`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/progress`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch progress: ${response.statusText}`);
 	}
@@ -896,7 +917,7 @@ export async function fetchBatchProgress(batchId: number): Promise<BatchProgress
 // ============================================================================
 
 export async function fetchRecipes(limit = 50, offset = 0): Promise<RecipeResponse[]> {
-	const response = await fetch(`${BASE_URL}/recipes?limit=${limit}&offset=${offset}`);
+	const response = await authFetch(`${BASE_URL}/recipes?limit=${limit}&offset=${offset}`);
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
 		throw new Error(error.detail || 'Failed to fetch recipes');
@@ -905,7 +926,7 @@ export async function fetchRecipes(limit = 50, offset = 0): Promise<RecipeRespon
 }
 
 export async function fetchRecipe(id: number): Promise<RecipeResponse> {
-	const response = await fetch(`${BASE_URL}/recipes/${id}`);
+	const response = await authFetch(`${BASE_URL}/recipes/${id}`);
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
 		throw new Error(error.detail || 'Failed to fetch recipe');
@@ -962,7 +983,7 @@ export interface RecipeUpdateData {
 }
 
 export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse> {
-	const response = await fetch(`${BASE_URL}/recipes`, {
+	const response = await authFetch(`${BASE_URL}/recipes`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(recipe)
@@ -979,7 +1000,7 @@ export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse
 }
 
 export async function updateRecipe(id: number, recipe: RecipeUpdateData): Promise<RecipeResponse> {
-	const response = await fetch(`${BASE_URL}/recipes/${id}`, {
+	const response = await authFetch(`${BASE_URL}/recipes/${id}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(recipe)
@@ -1007,7 +1028,7 @@ export async function importRecipe(file: File): Promise<RecipeResponse[]> {
 	const formData = new FormData();
 	formData.append('file', file);
 
-	const response = await fetch(`${BASE_URL}/recipes/import`, {
+	const response = await authFetch(`${BASE_URL}/recipes/import`, {
 		method: 'POST',
 		body: formData
 	});
@@ -1023,7 +1044,7 @@ export async function importRecipe(file: File): Promise<RecipeResponse[]> {
 }
 
 export async function deleteRecipe(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/recipes/${id}`, {
+	const response = await authFetch(`${BASE_URL}/recipes/${id}`, {
 		method: 'DELETE'
 	});
 
@@ -1053,7 +1074,7 @@ export interface CleanupPreview {
  * Fetch orphaned data report (readings linked to deleted batches)
  */
 export async function fetchOrphanedData(): Promise<OrphanedDataReport> {
-	const response = await fetch(`${BASE_URL}/maintenance/orphaned-data`);
+	const response = await authFetch(`${BASE_URL}/maintenance/orphaned-data`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch orphaned data: ${response.statusText}`);
 	}
@@ -1064,7 +1085,7 @@ export async function fetchOrphanedData(): Promise<OrphanedDataReport> {
  * Preview cleanup of readings for deleted batches
  */
 export async function previewCleanup(batchIds: number[]): Promise<CleanupPreview> {
-	const response = await fetch(`${BASE_URL}/maintenance/cleanup-readings`, {
+	const response = await authFetch(`${BASE_URL}/maintenance/cleanup-readings`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ deleted_batch_ids: batchIds, dry_run: true })
@@ -1080,7 +1101,7 @@ export async function previewCleanup(batchIds: number[]): Promise<CleanupPreview
  * Execute cleanup of readings for deleted batches
  */
 export async function executeCleanup(batchIds: number[]): Promise<CleanupPreview> {
-	const response = await fetch(`${BASE_URL}/maintenance/cleanup-readings`, {
+	const response = await authFetch(`${BASE_URL}/maintenance/cleanup-readings`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ deleted_batch_ids: batchIds, dry_run: false })
@@ -1114,7 +1135,7 @@ export async function fetchBatchControlEvents(
 	batchId: number,
 	hours: number = 24
 ): Promise<ControlEvent[]> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/control-events?hours=${hours}`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/control-events?hours=${hours}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch control events: ${response.statusText}`);
 	}
@@ -1152,7 +1173,7 @@ export async function fetchBatchAlerts(
 	const params = new URLSearchParams();
 	if (includeCleared) params.append('include_cleared', 'true');
 
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts?${params}`);
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/alerts?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch batch alerts: ${response.statusText}`);
 	}
@@ -1166,7 +1187,7 @@ export async function dismissAlert(
 	batchId: number,
 	alertId: number
 ): Promise<{ status: string; alert_id: number; alert_type: string; cleared_at: string }> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts/${alertId}/dismiss`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/alerts/${alertId}/dismiss`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -1182,7 +1203,7 @@ export async function dismissAlert(
 export async function dismissAllAlerts(
 	batchId: number
 ): Promise<{ status: string; count: number; cleared_at?: string }> {
-	const response = await fetch(`${BASE_URL}/batches/${batchId}/alerts/dismiss-all`, {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/alerts/dismiss-all`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -1219,7 +1240,7 @@ export async function fetchYeastStrains(filters?: YeastStrainFilters): Promise<Y
 	if (filters?.limit) params.append('limit', String(filters.limit));
 	if (filters?.offset) params.append('offset', String(filters.offset));
 
-	const response = await fetch(`${BASE_URL}/yeast-strains?${params}`);
+	const response = await authFetch(`${BASE_URL}/yeast-strains?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast strains: ${response.statusText}`);
 	}
@@ -1230,7 +1251,7 @@ export async function fetchYeastStrains(filters?: YeastStrainFilters): Promise<Y
  * Fetch a single yeast strain by ID
  */
 export async function fetchYeastStrain(id: number): Promise<YeastStrainResponse> {
-	const response = await fetch(`${BASE_URL}/yeast-strains/${id}`);
+	const response = await authFetch(`${BASE_URL}/yeast-strains/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast strain: ${response.statusText}`);
 	}
@@ -1241,7 +1262,7 @@ export async function fetchYeastStrain(id: number): Promise<YeastStrainResponse>
  * Fetch yeast strain statistics
  */
 export async function fetchYeastStrainStats(): Promise<{ total: number; custom: number; seeded: number }> {
-	const response = await fetch(`${BASE_URL}/yeast-strains/stats`);
+	const response = await authFetch(`${BASE_URL}/yeast-strains/stats`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast strain stats: ${response.statusText}`);
 	}
@@ -1252,7 +1273,7 @@ export async function fetchYeastStrainStats(): Promise<{ total: number; custom: 
  * Fetch list of unique producers
  */
 export async function fetchYeastProducers(): Promise<{ producers: string[] }> {
-	const response = await fetch(`${BASE_URL}/yeast-strains/producers`);
+	const response = await authFetch(`${BASE_URL}/yeast-strains/producers`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast producers: ${response.statusText}`);
 	}
@@ -1263,7 +1284,7 @@ export async function fetchYeastProducers(): Promise<{ producers: string[] }> {
  * Create a custom yeast strain
  */
 export async function createYeastStrain(strain: YeastStrainCreate): Promise<YeastStrainResponse> {
-	const response = await fetch(`${BASE_URL}/yeast-strains`, {
+	const response = await authFetch(`${BASE_URL}/yeast-strains`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(strain)
@@ -1278,7 +1299,7 @@ export async function createYeastStrain(strain: YeastStrainCreate): Promise<Yeas
  * Delete a custom yeast strain
  */
 export async function deleteYeastStrain(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/yeast-strains/${id}`, {
+	const response = await authFetch(`${BASE_URL}/yeast-strains/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -1295,7 +1316,7 @@ export async function refreshYeastStrains(): Promise<{
 	count?: number;
 	version?: string;
 }> {
-	const response = await fetch(`${BASE_URL}/yeast-strains/refresh`, {
+	const response = await authFetch(`${BASE_URL}/yeast-strains/refresh`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -1320,7 +1341,7 @@ export async function fetchHopVarieties(filters?: HopVarietyFilters): Promise<Ho
 	if (filters?.limit) params.append('limit', String(filters.limit));
 	if (filters?.offset) params.append('offset', String(filters.offset));
 
-	const response = await fetch(`${BASE_URL}/hop-varieties?${params}`);
+	const response = await authFetch(`${BASE_URL}/hop-varieties?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop varieties: ${response.statusText}`);
 	}
@@ -1331,7 +1352,7 @@ export async function fetchHopVarieties(filters?: HopVarietyFilters): Promise<Ho
  * Fetch a single hop variety by ID
  */
 export async function fetchHopVariety(id: number): Promise<HopVarietyResponse> {
-	const response = await fetch(`${BASE_URL}/hop-varieties/${id}`);
+	const response = await authFetch(`${BASE_URL}/hop-varieties/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop variety: ${response.statusText}`);
 	}
@@ -1342,7 +1363,7 @@ export async function fetchHopVariety(id: number): Promise<HopVarietyResponse> {
  * Fetch hop variety statistics
  */
 export async function fetchHopVarietyStats(): Promise<{ total: number; custom: number; seeded: number }> {
-	const response = await fetch(`${BASE_URL}/hop-varieties/stats`);
+	const response = await authFetch(`${BASE_URL}/hop-varieties/stats`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop variety stats: ${response.statusText}`);
 	}
@@ -1353,7 +1374,7 @@ export async function fetchHopVarietyStats(): Promise<{ total: number; custom: n
  * Fetch list of unique hop origins
  */
 export async function fetchHopOrigins(): Promise<{ origins: string[] }> {
-	const response = await fetch(`${BASE_URL}/hop-varieties/origins`);
+	const response = await authFetch(`${BASE_URL}/hop-varieties/origins`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop origins: ${response.statusText}`);
 	}
@@ -1364,7 +1385,7 @@ export async function fetchHopOrigins(): Promise<{ origins: string[] }> {
  * Create a custom hop variety
  */
 export async function createHopVariety(variety: HopVarietyCreate): Promise<HopVarietyResponse> {
-	const response = await fetch(`${BASE_URL}/hop-varieties`, {
+	const response = await authFetch(`${BASE_URL}/hop-varieties`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(variety)
@@ -1379,7 +1400,7 @@ export async function createHopVariety(variety: HopVarietyCreate): Promise<HopVa
  * Delete a custom hop variety
  */
 export async function deleteHopVariety(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/hop-varieties/${id}`, {
+	const response = await authFetch(`${BASE_URL}/hop-varieties/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -1396,7 +1417,7 @@ export async function refreshHopVarieties(): Promise<{
 	count?: number;
 	version?: string;
 }> {
-	const response = await fetch(`${BASE_URL}/hop-varieties/refresh`, {
+	const response = await authFetch(`${BASE_URL}/hop-varieties/refresh`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -1422,7 +1443,7 @@ export async function fetchFermentables(filters?: FermentableFilters): Promise<F
 	if (filters?.limit) params.append('limit', String(filters.limit));
 	if (filters?.offset) params.append('offset', String(filters.offset));
 
-	const response = await fetch(`${BASE_URL}/fermentables?${params}`);
+	const response = await authFetch(`${BASE_URL}/fermentables?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch fermentables: ${response.statusText}`);
 	}
@@ -1433,7 +1454,7 @@ export async function fetchFermentables(filters?: FermentableFilters): Promise<F
  * Fetch a single fermentable by ID
  */
 export async function fetchFermentable(id: number): Promise<FermentableResponse> {
-	const response = await fetch(`${BASE_URL}/fermentables/${id}`);
+	const response = await authFetch(`${BASE_URL}/fermentables/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch fermentable: ${response.statusText}`);
 	}
@@ -1444,7 +1465,7 @@ export async function fetchFermentable(id: number): Promise<FermentableResponse>
  * Fetch fermentable statistics
  */
 export async function fetchFermentableStats(): Promise<{ total: number; custom: number; seeded: number }> {
-	const response = await fetch(`${BASE_URL}/fermentables/stats`);
+	const response = await authFetch(`${BASE_URL}/fermentables/stats`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch fermentable stats: ${response.statusText}`);
 	}
@@ -1455,7 +1476,7 @@ export async function fetchFermentableStats(): Promise<{ total: number; custom: 
  * Fetch list of unique fermentable types
  */
 export async function fetchFermentableTypes(): Promise<{ types: string[] }> {
-	const response = await fetch(`${BASE_URL}/fermentables/types`);
+	const response = await authFetch(`${BASE_URL}/fermentables/types`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch fermentable types: ${response.statusText}`);
 	}
@@ -1466,7 +1487,7 @@ export async function fetchFermentableTypes(): Promise<{ types: string[] }> {
  * Fetch list of unique fermentable origins
  */
 export async function fetchFermentableOrigins(): Promise<{ origins: string[] }> {
-	const response = await fetch(`${BASE_URL}/fermentables/origins`);
+	const response = await authFetch(`${BASE_URL}/fermentables/origins`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch fermentable origins: ${response.statusText}`);
 	}
@@ -1477,7 +1498,7 @@ export async function fetchFermentableOrigins(): Promise<{ origins: string[] }> 
  * Fetch list of unique maltsters
  */
 export async function fetchMaltsters(): Promise<{ maltsters: string[] }> {
-	const response = await fetch(`${BASE_URL}/fermentables/maltsters`);
+	const response = await authFetch(`${BASE_URL}/fermentables/maltsters`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch maltsters: ${response.statusText}`);
 	}
@@ -1488,7 +1509,7 @@ export async function fetchMaltsters(): Promise<{ maltsters: string[] }> {
  * Create a custom fermentable
  */
 export async function createFermentable(fermentable: FermentableCreate): Promise<FermentableResponse> {
-	const response = await fetch(`${BASE_URL}/fermentables`, {
+	const response = await authFetch(`${BASE_URL}/fermentables`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(fermentable)
@@ -1503,7 +1524,7 @@ export async function createFermentable(fermentable: FermentableCreate): Promise
  * Delete a custom fermentable
  */
 export async function deleteFermentable(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/fermentables/${id}`, {
+	const response = await authFetch(`${BASE_URL}/fermentables/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -1520,7 +1541,7 @@ export async function refreshFermentables(): Promise<{
 	count?: number;
 	version?: string;
 }> {
-	const response = await fetch(`${BASE_URL}/fermentables/refresh`, {
+	const response = await authFetch(`${BASE_URL}/fermentables/refresh`, {
 		method: 'POST'
 	});
 	if (!response.ok) {
@@ -1707,7 +1728,7 @@ export async function fetchEquipment(params?: {
 	if (params?.limit) urlParams.append('limit', String(params.limit));
 	if (params?.offset) urlParams.append('offset', String(params.offset));
 
-	const response = await fetch(`${BASE_URL}/inventory/equipment?${urlParams}`);
+	const response = await authFetch(`${BASE_URL}/inventory/equipment?${urlParams}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch equipment: ${response.statusText}`);
 	}
@@ -1715,7 +1736,7 @@ export async function fetchEquipment(params?: {
 }
 
 export async function fetchEquipmentTypes(): Promise<string[]> {
-	const response = await fetch(`${BASE_URL}/inventory/equipment/types`);
+	const response = await authFetch(`${BASE_URL}/inventory/equipment/types`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch equipment types: ${response.statusText}`);
 	}
@@ -1723,7 +1744,7 @@ export async function fetchEquipmentTypes(): Promise<string[]> {
 }
 
 export async function fetchEquipmentItem(id: number): Promise<EquipmentResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`);
+	const response = await authFetch(`${BASE_URL}/inventory/equipment/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch equipment: ${response.statusText}`);
 	}
@@ -1731,7 +1752,7 @@ export async function fetchEquipmentItem(id: number): Promise<EquipmentResponse>
 }
 
 export async function createEquipment(equipment: EquipmentCreate): Promise<EquipmentResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/equipment`, {
+	const response = await authFetch(`${BASE_URL}/inventory/equipment`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(equipment)
@@ -1744,7 +1765,7 @@ export async function createEquipment(equipment: EquipmentCreate): Promise<Equip
 }
 
 export async function updateEquipment(id: number, equipment: EquipmentUpdate): Promise<EquipmentResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/equipment/${id}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(equipment)
@@ -1757,7 +1778,7 @@ export async function updateEquipment(id: number, equipment: EquipmentUpdate): P
 }
 
 export async function deleteEquipment(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/inventory/equipment/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/equipment/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -1780,7 +1801,7 @@ export async function fetchHopInventory(params?: {
 	if (params?.limit) urlParams.append('limit', String(params.limit));
 	if (params?.offset) urlParams.append('offset', String(params.offset));
 
-	const response = await fetch(`${BASE_URL}/inventory/hops?${urlParams}`);
+	const response = await authFetch(`${BASE_URL}/inventory/hops?${urlParams}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop inventory: ${response.statusText}`);
 	}
@@ -1788,7 +1809,7 @@ export async function fetchHopInventory(params?: {
 }
 
 export async function fetchHopSummary(): Promise<HopSummary> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/summary`);
+	const response = await authFetch(`${BASE_URL}/inventory/hops/summary`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop summary: ${response.statusText}`);
 	}
@@ -1796,7 +1817,7 @@ export async function fetchHopSummary(): Promise<HopSummary> {
 }
 
 export async function fetchHopItem(id: number): Promise<HopInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`);
+	const response = await authFetch(`${BASE_URL}/inventory/hops/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch hop: ${response.statusText}`);
 	}
@@ -1804,7 +1825,7 @@ export async function fetchHopItem(id: number): Promise<HopInventoryResponse> {
 }
 
 export async function createHopInventory(hop: HopInventoryCreate): Promise<HopInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/hops`, {
+	const response = await authFetch(`${BASE_URL}/inventory/hops`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(hop)
@@ -1817,7 +1838,7 @@ export async function createHopInventory(hop: HopInventoryCreate): Promise<HopIn
 }
 
 export async function updateHopInventory(id: number, hop: HopInventoryUpdate): Promise<HopInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/hops/${id}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(hop)
@@ -1830,7 +1851,7 @@ export async function updateHopInventory(id: number, hop: HopInventoryUpdate): P
 }
 
 export async function adjustHopAmount(id: number, delta_grams: number): Promise<HopInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/${id}/adjust`, {
+	const response = await authFetch(`${BASE_URL}/inventory/hops/${id}/adjust`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ delta_grams })
@@ -1843,7 +1864,7 @@ export async function adjustHopAmount(id: number, delta_grams: number): Promise<
 }
 
 export async function deleteHopInventory(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/inventory/hops/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/hops/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -1866,7 +1887,7 @@ export async function fetchYeastInventory(params?: {
 	if (params?.limit) urlParams.append('limit', String(params.limit));
 	if (params?.offset) urlParams.append('offset', String(params.offset));
 
-	const response = await fetch(`${BASE_URL}/inventory/yeast?${urlParams}`);
+	const response = await authFetch(`${BASE_URL}/inventory/yeast?${urlParams}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast inventory: ${response.statusText}`);
 	}
@@ -1874,7 +1895,7 @@ export async function fetchYeastInventory(params?: {
 }
 
 export async function fetchExpiringYeast(days: number = 30): Promise<YeastInventoryResponse[]> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/expiring-soon?days=${days}`);
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/expiring-soon?days=${days}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch expiring yeast: ${response.statusText}`);
 	}
@@ -1882,7 +1903,7 @@ export async function fetchExpiringYeast(days: number = 30): Promise<YeastInvent
 }
 
 export async function fetchYeastInventorySummary(): Promise<YeastInventorySummary> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/summary`);
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/summary`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast summary: ${response.statusText}`);
 	}
@@ -1890,7 +1911,7 @@ export async function fetchYeastInventorySummary(): Promise<YeastInventorySummar
 }
 
 export async function fetchYeastInventoryItem(id: number): Promise<YeastInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`);
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/${id}`);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch yeast: ${response.statusText}`);
 	}
@@ -1898,7 +1919,7 @@ export async function fetchYeastInventoryItem(id: number): Promise<YeastInventor
 }
 
 export async function createYeastInventory(yeast: YeastInventoryCreate): Promise<YeastInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast`, {
+	const response = await authFetch(`${BASE_URL}/inventory/yeast`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(yeast)
@@ -1911,7 +1932,7 @@ export async function createYeastInventory(yeast: YeastInventoryCreate): Promise
 }
 
 export async function updateYeastInventory(id: number, yeast: YeastInventoryUpdate): Promise<YeastInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/${id}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(yeast)
@@ -1924,7 +1945,7 @@ export async function updateYeastInventory(id: number, yeast: YeastInventoryUpda
 }
 
 export async function useYeast(id: number, quantity: number = 1): Promise<YeastInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}/use`, {
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/${id}/use`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ quantity })
@@ -1937,7 +1958,7 @@ export async function useYeast(id: number, quantity: number = 1): Promise<YeastI
 }
 
 export async function harvestYeast(source_batch_id: number, quantity: number = 1, notes?: string): Promise<YeastInventoryResponse> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/harvest`, {
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/harvest`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ source_batch_id, quantity, notes })
@@ -1950,7 +1971,7 @@ export async function harvestYeast(source_batch_id: number, quantity: number = 1
 }
 
 export async function deleteYeastInventory(id: number): Promise<void> {
-	const response = await fetch(`${BASE_URL}/inventory/yeast/${id}`, {
+	const response = await authFetch(`${BASE_URL}/inventory/yeast/${id}`, {
 		method: 'DELETE'
 	});
 	if (!response.ok) {
@@ -2004,7 +2025,7 @@ export interface RecipeReviewResponse {
 }
 
 export async function reviewRecipe(request: RecipeReviewRequest): Promise<RecipeReviewResponse> {
-	const response = await fetch(`${BASE_URL}/assistant/review-recipe`, {
+	const response = await authFetch(`${BASE_URL}/assistant/review-recipe`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(request)
@@ -2049,7 +2070,7 @@ export async function searchStyles(query: string, limit: number = 10): Promise<B
 	params.append('q', query);
 	params.append('limit', String(limit));
 
-	const response = await fetch(`${BASE_URL}/recipes/styles/search?${params}`);
+	const response = await authFetch(`${BASE_URL}/recipes/styles/search?${params}`);
 	if (!response.ok) {
 		throw new Error(`Failed to search styles: ${response.statusText}`);
 	}
@@ -2060,7 +2081,7 @@ export async function searchStyles(query: string, limit: number = 10): Promise<B
  * Get a specific BJCP style by ID
  */
 export async function getStyle(styleId: string): Promise<BJCPStyleResponse> {
-	const response = await fetch(`${BASE_URL}/recipes/styles/${encodeURIComponent(styleId)}`);
+	const response = await authFetch(`${BASE_URL}/recipes/styles/${encodeURIComponent(styleId)}`);
 	if (!response.ok) {
 		throw new Error(`Failed to get style: ${response.statusText}`);
 	}
@@ -2080,7 +2101,7 @@ export async function listStyles(params?: {
 	if (params?.type) urlParams.append('type', params.type);
 	if (params?.limit) urlParams.append('limit', String(params.limit));
 
-	const response = await fetch(`${BASE_URL}/recipes/styles?${urlParams}`);
+	const response = await authFetch(`${BASE_URL}/recipes/styles?${urlParams}`);
 	if (!response.ok) {
 		throw new Error(`Failed to list styles: ${response.statusText}`);
 	}

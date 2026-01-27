@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import AuthUser, require_auth
 from ..config import get_settings
-from ..database import get_async_session
+from ..database import async_session_factory
 from ..models import Batch, Device, Recipe
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def push_to_cloud(
             "Prefer": "resolution=merge-duplicates",  # Upsert mode
         }
 
-        async with get_async_session() as session:
+        async with async_session_factory() as session:
             # Sync devices first (no dependencies)
             devices = await _fetch_user_devices(session, user.user_id)
             for device in devices:
@@ -372,7 +372,7 @@ async def get_sync_status(user: AuthUser = Depends(require_auth)):
 
     Returns counts of syncable data and last sync timestamp.
     """
-    async with get_async_session() as session:
+    async with async_session_factory() as session:
         devices = await _fetch_user_devices(session, user.user_id)
         recipes = await _fetch_user_recipes(session, user.user_id)
         batches = await _fetch_user_batches(session, user.user_id)

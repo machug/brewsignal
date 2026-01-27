@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,13 +36,29 @@ from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
 router = APIRouter(prefix="/api/batches", tags=["batches"])
 
 
+def user_owns_batch(user: AuthUser):
+    """Create a SQLAlchemy condition for batch ownership.
+
+    In LOCAL mode (user.role == "local"), includes both:
+    - Batches explicitly owned by "local" user
+    - Unclaimed batches (user_id IS NULL) for backward compatibility
+
+    In cloud mode, strictly filters by user_id.
+    """
+    if user.role == "local":
+        # LOCAL mode: include owned + unclaimed batches
+        return or_(Batch.user_id == user.user_id, Batch.user_id.is_(None))
+    # Cloud mode: strict user isolation
+    return Batch.user_id == user.user_id
+
+
 async def get_user_batch(batch_id: int, user: AuthUser, db: AsyncSession) -> Batch:
     """Fetch a batch with user ownership verification.
 
     Raises 404 if batch not found or not owned by user.
     """
     result = await db.execute(
-        select(Batch).where(Batch.id == batch_id, Batch.user_id == user.user_id)
+        select(Batch).where(Batch.id == batch_id, user_owns_batch(user))
     )
     batch = result.scalar_one_or_none()
     if not batch:
@@ -65,7 +81,7 @@ async def list_batches(
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-        .where(Batch.user_id == user.user_id)  # User isolation
+        .where(user_owns_batch(user))  # User isolation (LOCAL mode includes unclaimed)
         .order_by(Batch.created_at.desc())
     )
 
@@ -95,7 +111,7 @@ async def list_active_batches(
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
-            Batch.user_id == user.user_id,  # User isolation
+            user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
             Batch.status.in_(["planning", "brewing", "fermenting"])
         )
@@ -115,7 +131,7 @@ async def list_completed_batches(
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
-            Batch.user_id == user.user_id,  # User isolation
+            user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
             Batch.status.in_(["completed", "conditioning"])
         )
@@ -135,7 +151,7 @@ async def get_batch(
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-        .where(Batch.id == batch_id, Batch.user_id == user.user_id)  # User isolation
+        .where(Batch.id == batch_id, user_owns_batch(user))  # User isolation
     )
     result = await db.execute(query)
     batch = result.scalar_one_or_none()
@@ -157,7 +173,7 @@ async def create_batch(
     if batch.heater_entity_id:
         conflict_result = await db.execute(
             select(Batch).where(
-                Batch.user_id == user.user_id,  # Only check user's batches
+                user_owns_batch(user),  # Only check user's batches
                 Batch.status == "fermenting",
                 Batch.heater_entity_id == batch.heater_entity_id,
                 Batch.deleted_at.is_(None),
@@ -175,7 +191,7 @@ async def create_batch(
     if batch.device_id and batch.status == "fermenting":
         conflict_result = await db.execute(
             select(Batch).where(
-                Batch.user_id == user.user_id,  # Only check user's batches
+                user_owns_batch(user),  # Only check user's batches
                 Batch.status == "fermenting",
                 Batch.device_id == batch.device_id,
                 Batch.deleted_at.is_(None),
@@ -268,7 +284,7 @@ async def update_batch(
     """Update a batch."""
     # Fetch batch with user isolation
     result = await db.execute(
-        select(Batch).where(Batch.id == batch_id, Batch.user_id == user.user_id)
+        select(Batch).where(Batch.id == batch_id, user_owns_batch(user))
     )
     batch = result.scalar_one_or_none()
     if not batch:
@@ -285,7 +301,7 @@ async def update_batch(
         if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
             conflict_result = await db.execute(
                 select(Batch).where(
-                    Batch.user_id == user.user_id,  # User isolation
+                    user_owns_batch(user),  # User isolation
                     Batch.status == "fermenting",
                     Batch.heater_entity_id == new_heater,
                     Batch.id != batch_id,
@@ -306,7 +322,7 @@ async def update_batch(
         if update.device_id is not None and update.device_id != batch.device_id:
             conflict_result = await db.execute(
                 select(Batch).where(
-                    Batch.user_id == user.user_id,  # User isolation
+                    user_owns_batch(user),  # User isolation
                     Batch.status == "fermenting",
                     Batch.device_id == new_device_id,
                     Batch.id != batch_id,
@@ -503,7 +519,7 @@ async def get_batch_progress(
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-        .where(Batch.id == batch_id, Batch.user_id == user.user_id)
+        .where(Batch.id == batch_id, user_owns_batch(user))
     )
     result = await db.execute(query)
     batch = result.scalar_one_or_none()

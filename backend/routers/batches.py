@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..auth import AuthUser, require_auth
+from ..config import get_settings
 from ..database import get_db
 from ..models import (
     Batch,
@@ -39,14 +40,17 @@ router = APIRouter(prefix="/api/batches", tags=["batches"])
 def user_owns_batch(user: AuthUser):
     """Create a SQLAlchemy condition for batch ownership.
 
-    In LOCAL mode (user.role == "local"), includes both:
-    - Batches explicitly owned by "local" user
+    In LOCAL deployment mode, includes both:
+    - Batches explicitly owned by the user
     - Unclaimed batches (user_id IS NULL) for backward compatibility
+    This applies to both the dummy "local" user AND authenticated BrewSignal users.
 
-    In cloud mode, strictly filters by user_id.
+    In CLOUD deployment mode, strictly filters by user_id.
     """
-    if user.role == "local":
+    settings = get_settings()
+    if settings.is_local:
         # LOCAL mode: include owned + unclaimed batches
+        # Allows authenticated users to see unclaimed data before claiming it
         return or_(Batch.user_id == user.user_id, Batch.user_id.is_(None))
     # Cloud mode: strict user isolation
     return Batch.user_id == user.user_id

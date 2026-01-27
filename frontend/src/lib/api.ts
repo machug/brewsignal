@@ -9,7 +9,7 @@ const BASE_URL = '/api';
  * Authenticated fetch wrapper
  * Adds Authorization header with Supabase JWT when user is authenticated
  */
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
 	const headers = new Headers(options.headers);
 
 	// Add auth token if available (works in both local and cloud modes)

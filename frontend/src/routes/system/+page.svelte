@@ -4,6 +4,7 @@
 	import { config } from '$lib/config';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from '$lib/supabase';
+	import { authFetch } from '$lib/api';
 
 	interface GPUInfo {
 		vendor: string;  // "nvidia", "amd", "intel", "apple", "none"
@@ -230,7 +231,7 @@
 		if (!config.authEnabled) return;
 		cloudLoading = true;
 		try {
-			const response = await fetch('/api/users/cloud-status');
+			const response = await authFetch('/api/users/cloud-status');
 			if (response.ok) {
 				cloudStatus = await response.json();
 			}
@@ -289,7 +290,7 @@
 		cloudClaimLoading = true;
 		cloudClaimResult = null;
 		try {
-			const response = await fetch('/api/users/claim-data', { method: 'POST' });
+			const response = await authFetch('/api/users/claim-data', { method: 'POST' });
 			if (response.ok) {
 				const data = await response.json();
 				cloudClaimResult = { success: true, message: data.message };

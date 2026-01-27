@@ -285,10 +285,14 @@ async def _sync_recipe(
             "recipe_id": recipe.id,
             "name": ferm.name,
             "type": ferm.type,
+            "grain_group": ferm.grain_group,
             "amount_kg": ferm.amount_kg,
+            "percentage": ferm.percentage,
+            "yield_percent": ferm.yield_percent,
             "color_srm": ferm.color_srm,
-            "potential_sg": ferm.potential_sg,
             "origin": ferm.origin,
+            "supplier": ferm.supplier,
+            "notes": ferm.notes,
         }
         await client.post(f"{base_url}/recipe_fermentables", headers=headers, json=ferm_data)
 
@@ -298,11 +302,13 @@ async def _sync_recipe(
             "id": hop.id,
             "recipe_id": recipe.id,
             "name": hop.name,
-            "amount_g": hop.amount_g,
-            "alpha_acid_percent": hop.alpha_acid_percent,
-            "use": hop.use,
-            "time_minutes": hop.time_minutes,
+            "origin": hop.origin,
             "form": hop.form,
+            "alpha_acid_percent": hop.alpha_acid_percent,
+            "beta_acid_percent": hop.beta_acid_percent,
+            "amount_grams": hop.amount_grams,
+            "timing": hop.timing,
+            "format_extensions": hop.format_extensions,
         }
         await client.post(f"{base_url}/recipe_hops", headers=headers, json=hop_data)
 
@@ -314,13 +320,14 @@ async def _sync_recipe(
             "name": culture.name,
             "type": culture.type,
             "form": culture.form,
+            "producer": culture.producer,
+            "product_id": culture.product_id,
+            "temp_min_c": culture.temp_min_c,
+            "temp_max_c": culture.temp_max_c,
+            "attenuation_min_percent": culture.attenuation_min_percent,
+            "attenuation_max_percent": culture.attenuation_max_percent,
             "amount": culture.amount,
             "amount_unit": culture.amount_unit,
-            "lab": culture.lab,
-            "product_id": culture.product_id,
-            "attenuation_percent": culture.attenuation_percent,
-            "temp_min": culture.temp_min,
-            "temp_max": culture.temp_max,
         }
         await client.post(f"{base_url}/recipe_cultures", headers=headers, json=culture_data)
 

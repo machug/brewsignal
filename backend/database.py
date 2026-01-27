@@ -368,6 +368,9 @@ async def init_db():
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
         await migrate_add_readings_paused(conn)
 
+        # Add user_id columns for multi-tenant support
+        await conn.run_sync(_migrate_add_user_id_columns)
+
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
 
@@ -1728,6 +1731,58 @@ def _migrate_create_tasting_notes_table(conn):
         )
     """))
     print("Migration: Created tasting_notes table")
+
+
+def _migrate_add_user_id_columns(conn):
+    """Add user_id column to devices, recipes, and batches tables for multi-tenant support.
+
+    This enables:
+    - Local RPi: Single user owns all data after login
+    - Cloud SaaS: Strict user isolation with RLS
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    tables_to_migrate = ["devices", "recipes", "batches"]
+
+    for table_name in tables_to_migrate:
+        if table_name not in inspector.get_table_names():
+            continue  # Fresh install, create_all will handle it
+
+        columns = [c["name"] for c in inspector.get_columns(table_name)]
+
+        if "user_id" not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN user_id VARCHAR(36)"))
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_user_id ON {table_name}(user_id)"))
+                print(f"Migration: Added user_id column to {table_name} table")
+            except Exception as e:
+                print(f"Migration: Skipping user_id on {table_name} - {e}")
+
+
+async def claim_unclaimed_data_for_user(user_id: str) -> dict:
+    """Claim all unclaimed data (user_id IS NULL) for the given user.
+
+    This is used when a user first logs into a local RPi installation.
+    All existing data without a user_id gets assigned to them.
+
+    Returns:
+        Dictionary with counts of claimed records per table
+    """
+    from sqlalchemy import text
+
+    results = {}
+
+    async with engine.begin() as conn:
+        for table_name in ["devices", "recipes", "batches"]:
+            result = await conn.execute(text(f"""
+                UPDATE {table_name}
+                SET user_id = :user_id
+                WHERE user_id IS NULL
+            """), {"user_id": user_id})
+            results[table_name] = result.rowcount
+
+    return results
 
 
 def _migrate_add_batch_timer_columns(conn):

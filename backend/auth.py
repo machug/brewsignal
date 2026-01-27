@@ -2,7 +2,9 @@
 Supabase JWT Authentication for BrewSignal API
 
 Validates JWT tokens from Supabase Auth and extracts user information.
-Only active in cloud mode.
+Works in both local and cloud modes:
+- Cloud mode: JWT required for all requests
+- Local mode: JWT optional, validated if provided (enables BrewSignal account login)
 """
 
 import logging
@@ -36,9 +38,12 @@ def get_jwt_secret() -> Optional[str]:
 
 @lru_cache()
 def get_jwk_client() -> Optional[PyJWKClient]:
-    """Get JWK client for RS256 verification."""
+    """Get JWK client for RS256 verification.
+
+    Works in both local and cloud modes if SUPABASE_URL is configured.
+    """
     settings = get_settings()
-    if not settings.is_cloud or not settings.supabase_url:
+    if not settings.supabase_url:
         return None
 
     jwks_url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
@@ -64,18 +69,19 @@ async def get_current_user(
     """
     Extract and validate the current user from the JWT token.
 
-    In local mode, returns None (no auth required).
-    In cloud mode, validates the Supabase JWT and returns the user.
+    In cloud mode: Requires valid JWT, raises 401 if missing/invalid.
+    In local mode: Validates JWT if provided, returns None if not provided.
+
+    This allows local users to optionally login with their BrewSignal account.
     """
     settings = get_settings()
 
-    # In local mode, no auth required
-    if not settings.is_cloud:
-        return None
-
-    # In cloud mode, require valid JWT
+    # If no credentials provided
     if not credentials:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        if settings.is_cloud:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        # Local mode without credentials - return None (will become dummy user in require_auth)
+        return None
 
     token = credentials.credentials
 
@@ -137,13 +143,8 @@ async def get_optional_user(
     Extract user if present, but don't require authentication.
 
     Useful for routes that work with or without auth.
+    Works in both local and cloud modes.
     """
-    settings = get_settings()
-
-    # In local mode, no auth
-    if not settings.is_cloud:
-        return None
-
     # If no credentials, that's fine
     if not credentials:
         return None
@@ -157,7 +158,10 @@ async def get_optional_user(
 
 def require_auth(user: Optional[AuthUser] = Depends(get_current_user)) -> AuthUser:
     """
-    Dependency that requires authentication in cloud mode.
+    Dependency that requires authentication.
+
+    In cloud mode: Requires valid JWT (get_current_user already enforces this).
+    In local mode: Uses JWT if provided, falls back to dummy "local" user.
 
     Usage:
         @router.get("/protected")
@@ -166,11 +170,13 @@ def require_auth(user: Optional[AuthUser] = Depends(get_current_user)) -> AuthUs
     """
     settings = get_settings()
 
-    # In local mode, create a dummy user
+    # If we got a valid user from JWT, return it
+    if user:
+        return user
+
+    # In local mode without JWT, create a dummy user for backward compatibility
     if not settings.is_cloud:
         return AuthUser(user_id="local", email=None, role="local")
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    return user
+    # Cloud mode without user - should not reach here as get_current_user raises 401
+    raise HTTPException(status_code=401, detail="Authentication required")

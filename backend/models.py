@@ -39,6 +39,7 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
     device_type: Mapped[str] = mapped_column(String(20), nullable=False, default="tilt")
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(100))
@@ -404,6 +405,7 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
 
     # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -497,6 +499,7 @@ class Batch(Base):
     __tablename__ = "batches"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
     recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
     device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"))
     yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))

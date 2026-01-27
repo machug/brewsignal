@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..auth import AuthUser, require_auth
 from ..database import get_db
 from ..models import (
     Batch,
@@ -35,6 +36,20 @@ from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
 router = APIRouter(prefix="/api/batches", tags=["batches"])
 
 
+async def get_user_batch(batch_id: int, user: AuthUser, db: AsyncSession) -> Batch:
+    """Fetch a batch with user ownership verification.
+
+    Raises 404 if batch not found or not owned by user.
+    """
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.user_id == user.user_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return batch
+
+
 @router.get("", response_model=list[BatchResponse])
 async def list_batches(
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -43,12 +58,14 @@ async def list_batches(
     deleted_only: bool = Query(False, description="Show only deleted batches (for maintenance)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """List batches with optional filters. By default excludes deleted batches."""
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .where(Batch.user_id == user.user_id)  # User isolation
         .order_by(Batch.created_at.desc())
     )
 
@@ -69,12 +86,16 @@ async def list_batches(
 
 
 @router.get("/active", response_model=list[BatchResponse])
-async def list_active_batches(db: AsyncSession = Depends(get_db)):
+async def list_active_batches(
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Active batches: planning, brewing, or fermenting status, not deleted."""
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
+            Batch.user_id == user.user_id,  # User isolation
             Batch.deleted_at.is_(None),
             Batch.status.in_(["planning", "brewing", "fermenting"])
         )
@@ -85,12 +106,16 @@ async def list_active_batches(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/completed", response_model=list[BatchResponse])
-async def list_completed_batches(db: AsyncSession = Depends(get_db)):
+async def list_completed_batches(
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Historical batches: completed or conditioning, not deleted."""
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
         .where(
+            Batch.user_id == user.user_id,  # User isolation
             Batch.deleted_at.is_(None),
             Batch.status.in_(["completed", "conditioning"])
         )
@@ -101,12 +126,16 @@ async def list_completed_batches(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{batch_id}", response_model=BatchResponse)
-async def get_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
+async def get_batch(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get a specific batch by ID."""
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-        .where(Batch.id == batch_id)
+        .where(Batch.id == batch_id, Batch.user_id == user.user_id)  # User isolation
     )
     result = await db.execute(query)
     batch = result.scalar_one_or_none()
@@ -119,14 +148,16 @@ async def get_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=BatchResponse, status_code=201)
 async def create_batch(
     batch: BatchCreate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new batch."""
     # Check for heater entity conflicts if a heater is specified
-    # Exclude soft-deleted batches from conflict check
+    # Exclude soft-deleted batches from conflict check, scope to current user
     if batch.heater_entity_id:
         conflict_result = await db.execute(
             select(Batch).where(
+                Batch.user_id == user.user_id,  # Only check user's batches
                 Batch.status == "fermenting",
                 Batch.heater_entity_id == batch.heater_entity_id,
                 Batch.deleted_at.is_(None),
@@ -140,10 +171,11 @@ async def create_batch(
             )
 
     # Check for device_id conflicts if a device is specified and status is fermenting
-    # Exclude soft-deleted batches from conflict check
+    # Exclude soft-deleted batches from conflict check, scope to current user
     if batch.device_id and batch.status == "fermenting":
         conflict_result = await db.execute(
             select(Batch).where(
+                Batch.user_id == user.user_id,  # Only check user's batches
                 Batch.status == "fermenting",
                 Batch.device_id == batch.device_id,
                 Batch.deleted_at.is_(None),
@@ -182,6 +214,7 @@ async def create_batch(
                     yeast_strain_id = yeast_strain.id
 
     db_batch = Batch(
+        user_id=user.user_id,  # Set owner
         recipe_id=batch.recipe_id,
         device_id=batch.device_id,
         yeast_strain_id=yeast_strain_id,
@@ -229,10 +262,15 @@ async def create_batch(
 async def update_batch(
     batch_id: int,
     update: BatchUpdate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a batch."""
-    batch = await db.get(Batch, batch_id)
+    # Fetch batch with user isolation
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.user_id == user.user_id)
+    )
+    batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
@@ -243,10 +281,11 @@ async def update_batch(
 
     if new_heater and new_status == "fermenting":
         # Only check for conflicts if the heater entity is actually changing
-        # Exclude soft-deleted batches from conflict check
+        # Exclude soft-deleted batches from conflict check, scope to user
         if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
             conflict_result = await db.execute(
                 select(Batch).where(
+                    Batch.user_id == user.user_id,  # User isolation
                     Batch.status == "fermenting",
                     Batch.heater_entity_id == new_heater,
                     Batch.id != batch_id,
@@ -261,12 +300,13 @@ async def update_batch(
                 )
 
     # Check for device_id conflicts if changing device and batch is/will be fermenting
-    # Exclude soft-deleted batches from conflict check
+    # Exclude soft-deleted batches from conflict check, scope to user
     if new_device_id and new_status == "fermenting":
         # Only check for conflicts if the device_id is actually changing
         if update.device_id is not None and update.device_id != batch.device_id:
             conflict_result = await db.execute(
                 select(Batch).where(
+                    Batch.user_id == user.user_id,  # User isolation
                     Batch.status == "fermenting",
                     Batch.device_id == new_device_id,
                     Batch.id != batch_id,
@@ -411,6 +451,7 @@ async def update_batch(
 async def soft_delete_batch(
     batch_id: int,
     hard_delete: bool = Query(False, description="Cascade delete readings"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete or hard delete a batch.
@@ -418,9 +459,7 @@ async def soft_delete_batch(
     - Soft delete (default): Sets deleted_at timestamp, preserves all data
     - Hard delete: Cascade removes all readings via relationship
     """
-    batch = await db.get(Batch, batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = await get_user_batch(batch_id, user, db)
 
     # Remove MQTT discovery before deleting
     await remove_batch_discovery(batch_id)
@@ -438,11 +477,13 @@ async def soft_delete_batch(
 
 
 @router.post("/{batch_id}/restore")
-async def restore_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
+async def restore_batch(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Restore a soft-deleted batch."""
-    batch = await db.get(Batch, batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = await get_user_batch(batch_id, user, db)
     if not batch.deleted_at:
         raise HTTPException(status_code=400, detail="Batch is not deleted")
 
@@ -452,13 +493,17 @@ async def restore_batch(batch_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{batch_id}/progress", response_model=BatchProgressResponse)
-async def get_batch_progress(batch_id: int, db: AsyncSession = Depends(get_db)):
+async def get_batch_progress(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get fermentation progress for a batch."""
-    # Get batch with recipe
+    # Get batch with recipe and user isolation
     query = (
         select(Batch)
         .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-        .where(Batch.id == batch_id)
+        .where(Batch.id == batch_id, Batch.user_id == user.user_id)
     )
     result = await db.execute(query)
     batch = result.scalar_one_or_none()
@@ -889,6 +934,7 @@ async def get_batch_readings(
     batch_id: int,
     hours: Optional[int] = Query(default=None, description="Time window in hours"),
     limit: int = Query(default=5000, le=10000, description="Maximum readings to return"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get ALL readings for a batch, regardless of which device took them.
@@ -896,10 +942,8 @@ async def get_batch_readings(
     This allows viewing historical data even after switching devices mid-ferment.
     Readings are returned in chronological order (oldest first).
     """
-    # Verify batch exists
-    batch = await db.get(Batch, batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    # Verify batch exists and user owns it
+    batch = await get_user_batch(batch_id, user, db)
 
     # Build query for all readings linked to this batch
     query = select(Reading).where(Reading.batch_id == batch_id)

@@ -147,6 +147,8 @@
 	let cloudAuthError = $state<string | null>(null);
 	let cloudClaimLoading = $state(false);
 	let cloudClaimResult = $state<{ success: boolean; message: string } | null>(null);
+	let cloudSyncLoading = $state(false);
+	let cloudSyncResult = $state<{ success: boolean; message: string; details?: { devices: number; recipes: number; batches: number } } | null>(null);
 
 	// Section expansion state
 	let expandedSection = $state<string | null>('display');
@@ -302,6 +304,36 @@
 			cloudClaimResult = { success: false, message: err instanceof Error ? err.message : 'Error claiming data' };
 		} finally {
 			cloudClaimLoading = false;
+		}
+	}
+
+	async function syncToCloud() {
+		cloudSyncLoading = true;
+		cloudSyncResult = null;
+		try {
+			const response = await authFetch('/api/sync/push', { method: 'POST' });
+			if (response.ok) {
+				const data = await response.json();
+				const devices = data.results?.devices?.synced ?? 0;
+				const recipes = data.results?.recipes?.synced ?? 0;
+				const batches = data.results?.batches?.synced ?? 0;
+				const totalErrors = data.total_errors ?? 0;
+
+				cloudSyncResult = {
+					success: data.status === 'success',
+					message: totalErrors > 0
+						? `Synced ${data.total_synced} items with ${totalErrors} errors`
+						: `Synced ${devices} devices, ${recipes} recipes, ${batches} batches`,
+					details: { devices, recipes, batches }
+				};
+			} else {
+				const errData = await response.json().catch(() => ({}));
+				cloudSyncResult = { success: false, message: errData.detail || 'Failed to sync data' };
+			}
+		} catch (err) {
+			cloudSyncResult = { success: false, message: err instanceof Error ? err.message : 'Error syncing data' };
+		} finally {
+			cloudSyncLoading = false;
 		}
 	}
 
@@ -1532,13 +1564,32 @@
 										</div>
 									{/if}
 
-									<div class="cloud-features">
-										<h4>Coming Soon</h4>
-										<ul class="features-list">
-											<li>Sync batches & recipes to the cloud</li>
-											<li>Access your data from anywhere</li>
-											<li>Share with brew buddies</li>
-										</ul>
+									<div class="sync-to-cloud-box">
+										<h4>Sync to Cloud</h4>
+										<p>Push your local data to the cloud for backup and access from anywhere.</p>
+										<button
+											type="button"
+											class="sync-btn"
+											onclick={syncToCloud}
+											disabled={cloudSyncLoading}
+										>
+											{#if cloudSyncLoading}
+												<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M4 12a8 8 0 018-8V2m0 2a8 8 0 018 8h2" />
+												</svg>
+												Syncing...
+											{:else}
+												<svg class="sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+												</svg>
+												Sync Now
+											{/if}
+										</button>
+										{#if cloudSyncResult}
+											<div class="sync-result" class:success={cloudSyncResult.success} class:error={!cloudSyncResult.success}>
+												{cloudSyncResult.message}
+											</div>
+										{/if}
 									</div>
 
 									<button type="button" class="disconnect-btn" onclick={handleCloudSignOut}>
@@ -2716,6 +2767,85 @@
 
 	.claim-result.success {
 		color: var(--green-400);
+	}
+
+	.sync-to-cloud-box {
+		padding: 1rem;
+		background: var(--blue-900);
+		border: 1px solid var(--blue-700);
+		border-radius: 0.5rem;
+	}
+
+	.sync-to-cloud-box h4 {
+		margin: 0 0 0.5rem 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--blue-200);
+	}
+
+	.sync-to-cloud-box p {
+		margin: 0 0 0.75rem 0;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.sync-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		background: var(--blue-600);
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.sync-btn:hover:not(:disabled) {
+		background: var(--blue-500);
+	}
+
+	.sync-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.sync-btn .sync-icon,
+	.sync-btn .spinner {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.sync-btn .spinner {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.sync-result {
+		display: block;
+		margin-top: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+	}
+
+	.sync-result.success {
+		background: var(--green-900);
+		border: 1px solid var(--green-700);
+		color: var(--green-300);
+	}
+
+	.sync-result.error {
+		background: var(--red-900);
+		border: 1px solid var(--red-700);
+		color: var(--red-300);
 	}
 
 	.cloud-features, .cloud-benefits {

@@ -40,18 +40,23 @@ router = APIRouter(prefix="/api/batches", tags=["batches"])
 def user_owns_batch(user: AuthUser):
     """Create a SQLAlchemy condition for batch ownership.
 
-    In LOCAL deployment mode, includes both:
+    In LOCAL deployment mode, includes:
     - Batches explicitly owned by the user
+    - Batches owned by the dummy "local" user (pre-auth data)
     - Unclaimed batches (user_id IS NULL) for backward compatibility
-    This applies to both the dummy "local" user AND authenticated BrewSignal users.
+    This allows authenticated users to see all local data before claiming it.
 
     In CLOUD deployment mode, strictly filters by user_id.
     """
     settings = get_settings()
     if settings.is_local:
-        # LOCAL mode: include owned + unclaimed batches
-        # Allows authenticated users to see unclaimed data before claiming it
-        return or_(Batch.user_id == user.user_id, Batch.user_id.is_(None))
+        # LOCAL mode: include owned + dummy "local" user + unclaimed batches
+        # Allows authenticated users to see all local data
+        return or_(
+            Batch.user_id == user.user_id,
+            Batch.user_id == "local",
+            Batch.user_id.is_(None),
+        )
     # Cloud mode: strict user isolation
     return Batch.user_id == user.user_id
 

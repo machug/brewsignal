@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends
 
-from ..auth import AuthUser, require_auth
-from ..database import claim_unclaimed_data_for_user
+from ..auth import AuthUser, require_auth, get_optional_user
+from ..database import claim_unclaimed_data_for_user, get_unclaimed_data_stats
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -44,4 +44,35 @@ async def get_current_user(user: AuthUser = Depends(require_auth)):
         "user_id": user.user_id,
         "email": user.email,
         "role": user.role,
+    }
+
+
+@router.get("/cloud-status")
+async def get_cloud_status(user: AuthUser = Depends(get_optional_user)):
+    """Get cloud sync status including unclaimed data counts.
+
+    This endpoint works for both authenticated and unauthenticated users:
+    - Authenticated: returns user info + unclaimed data stats
+    - Unauthenticated: returns just unclaimed data stats
+
+    Returns:
+        Dictionary with connected status, user info, and unclaimed data counts
+    """
+    unclaimed = await get_unclaimed_data_stats()
+
+    if user:
+        return {
+            "connected": True,
+            "user_id": user.user_id,
+            "email": user.email,
+            "unclaimed": unclaimed,
+            "has_unclaimed_data": any(v > 0 for v in unclaimed.values()),
+        }
+
+    return {
+        "connected": False,
+        "user_id": None,
+        "email": None,
+        "unclaimed": unclaimed,
+        "has_unclaimed_data": any(v > 0 for v in unclaimed.values()),
     }

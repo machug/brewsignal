@@ -1760,6 +1760,26 @@ def _migrate_add_user_id_columns(conn):
                 print(f"Migration: Skipping user_id on {table_name} - {e}")
 
 
+async def get_unclaimed_data_stats() -> dict:
+    """Get counts of unclaimed data (user_id IS NULL) per table.
+
+    Returns:
+        Dictionary with counts of unclaimed records per table
+    """
+    from sqlalchemy import text
+
+    results = {}
+
+    async with engine.begin() as conn:
+        for table_name in ["devices", "recipes", "batches"]:
+            result = await conn.execute(text(f"""
+                SELECT COUNT(*) FROM {table_name} WHERE user_id IS NULL
+            """))
+            results[table_name] = result.scalar() or 0
+
+    return results
+
+
 async def claim_unclaimed_data_for_user(user_id: str) -> dict:
     """Claim all unclaimed data (user_id IS NULL) for the given user.
 

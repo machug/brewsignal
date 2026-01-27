@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
+	import { config } from '$lib/config';
+	import { authState } from '$lib/stores/auth.svelte';
+	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from '$lib/supabase';
 
 	interface GPUInfo {
 		vendor: string;  // "nvidia", "amd", "intel", "apple", "none"
@@ -126,6 +129,24 @@
 	let mqttTesting = $state(false);
 	let mqttTestResult = $state<{ success: boolean; message: string } | null>(null);
 
+	// Cloud Sync state
+	interface CloudStatus {
+		connected: boolean;
+		user_id: string | null;
+		email: string | null;
+		unclaimed: { devices: number; recipes: number; batches: number };
+		has_unclaimed_data: boolean;
+	}
+	let cloudStatus = $state<CloudStatus | null>(null);
+	let cloudLoading = $state(false);
+	let cloudAuthMode = $state<'signin' | 'signup' | null>(null);
+	let cloudEmail = $state('');
+	let cloudPassword = $state('');
+	let cloudAuthLoading = $state(false);
+	let cloudAuthError = $state<string | null>(null);
+	let cloudClaimLoading = $state(false);
+	let cloudClaimResult = $state<{ success: boolean; message: string } | null>(null);
+
 	// Section expansion state
 	let expandedSection = $state<string | null>('display');
 
@@ -202,6 +223,84 @@
 			}
 		} catch (e) {
 			console.error('Failed to load timezones:', e);
+		}
+	}
+
+	async function loadCloudStatus() {
+		if (!config.authEnabled) return;
+		cloudLoading = true;
+		try {
+			const response = await fetch('/api/users/cloud-status');
+			if (response.ok) {
+				cloudStatus = await response.json();
+			}
+		} catch (e) {
+			console.error('Failed to load cloud status:', e);
+		} finally {
+			cloudLoading = false;
+		}
+	}
+
+	async function handleCloudSignIn(e: Event) {
+		e.preventDefault();
+		cloudAuthLoading = true;
+		cloudAuthError = null;
+		try {
+			if (cloudAuthMode === 'signup') {
+				await signUpWithEmail(cloudEmail, cloudPassword);
+				cloudAuthError = 'Check your email for a confirmation link!';
+				cloudAuthMode = 'signin';
+			} else {
+				await signInWithEmail(cloudEmail, cloudPassword);
+				cloudAuthMode = null;
+				cloudEmail = '';
+				cloudPassword = '';
+				await loadCloudStatus();
+			}
+		} catch (err) {
+			cloudAuthError = err instanceof Error ? err.message : 'Authentication failed';
+		} finally {
+			cloudAuthLoading = false;
+		}
+	}
+
+	async function handleCloudGoogleSignIn() {
+		cloudAuthLoading = true;
+		cloudAuthError = null;
+		try {
+			await signInWithGoogle();
+		} catch (err) {
+			cloudAuthError = err instanceof Error ? err.message : 'Google sign-in failed';
+			cloudAuthLoading = false;
+		}
+	}
+
+	async function handleCloudSignOut() {
+		try {
+			await signOut();
+			cloudStatus = null;
+			await loadCloudStatus();
+		} catch (err) {
+			console.error('Sign out failed:', err);
+		}
+	}
+
+	async function claimUnclaimedData() {
+		cloudClaimLoading = true;
+		cloudClaimResult = null;
+		try {
+			const response = await fetch('/api/users/claim-data', { method: 'POST' });
+			if (response.ok) {
+				const data = await response.json();
+				cloudClaimResult = { success: true, message: data.message };
+				await loadCloudStatus();
+			} else {
+				cloudClaimResult = { success: false, message: 'Failed to claim data' };
+			}
+		} catch (err) {
+			cloudClaimResult = { success: false, message: err instanceof Error ? err.message : 'Error claiming data' };
+		} finally {
+			cloudClaimLoading = false;
 		}
 	}
 
@@ -655,7 +754,8 @@
 			loadTimezones(),
 			loadHAStatus(),
 			loadAiProviders(),
-			loadAiStatus()
+			loadAiStatus(),
+			loadCloudStatus()
 		]);
 		syncConfigFromStore();
 		loading = false;
@@ -1362,6 +1462,201 @@
 					</div>
 				{/if}
 			</section>
+
+			<!-- Cloud Sync Section -->
+			{#if config.authEnabled}
+				<section class="settings-section">
+					<button
+						type="button"
+						class="section-header"
+						onclick={() => toggleSection('cloud')}
+						aria-expanded={expandedSection === 'cloud'}
+					>
+						<div class="section-title-group">
+							<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+							</svg>
+							<h2>Cloud Sync</h2>
+							{#if authState.user}
+								<span class="status-pill enabled">Connected</span>
+							{/if}
+						</div>
+						<svg class="chevron" class:rotated={expandedSection === 'cloud'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+					{#if expandedSection === 'cloud'}
+						<div class="section-content">
+							{#if cloudLoading}
+								<div class="loading-inline">Loading...</div>
+							{:else if authState.user}
+								<!-- Connected State -->
+								<div class="cloud-connected">
+									<div class="connected-status">
+										<svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+										</svg>
+										<div>
+											<span class="connected-label">Connected as</span>
+											<span class="connected-email">{authState.user.email}</span>
+										</div>
+									</div>
+
+									{#if cloudStatus?.has_unclaimed_data}
+										<div class="claim-data-box">
+											<h4>Claim Existing Data</h4>
+											<p>Associate your existing data with your account:</p>
+											<ul class="unclaimed-list">
+												{#if cloudStatus.unclaimed.batches > 0}
+													<li>{cloudStatus.unclaimed.batches} batch{cloudStatus.unclaimed.batches !== 1 ? 'es' : ''}</li>
+												{/if}
+												{#if cloudStatus.unclaimed.recipes > 0}
+													<li>{cloudStatus.unclaimed.recipes} recipe{cloudStatus.unclaimed.recipes !== 1 ? 's' : ''}</li>
+												{/if}
+												{#if cloudStatus.unclaimed.devices > 0}
+													<li>{cloudStatus.unclaimed.devices} device{cloudStatus.unclaimed.devices !== 1 ? 's' : ''}</li>
+												{/if}
+											</ul>
+											<button
+												type="button"
+												class="claim-btn"
+												onclick={claimUnclaimedData}
+												disabled={cloudClaimLoading}
+											>
+												{cloudClaimLoading ? 'Claiming...' : 'Claim My Data'}
+											</button>
+											{#if cloudClaimResult}
+												<span class="claim-result" class:success={cloudClaimResult.success}>{cloudClaimResult.message}</span>
+											{/if}
+										</div>
+									{/if}
+
+									<div class="cloud-features">
+										<h4>Coming Soon</h4>
+										<ul class="features-list">
+											<li>Sync batches & recipes to the cloud</li>
+											<li>Access your data from anywhere</li>
+											<li>Share with brew buddies</li>
+										</ul>
+									</div>
+
+									<button type="button" class="disconnect-btn" onclick={handleCloudSignOut}>
+										Disconnect Account
+									</button>
+								</div>
+							{:else}
+								<!-- Not Connected State -->
+								<p class="section-intro">
+									Connect your BrewSignal account to enable cloud sync features.
+									Your data stays on your device until you choose to sync.
+								</p>
+
+								{#if cloudAuthMode}
+									<!-- Auth Form -->
+									<div class="cloud-auth-form">
+										<h3>{cloudAuthMode === 'signup' ? 'Create Account' : 'Sign In'}</h3>
+
+										{#if cloudAuthError}
+											<div class="auth-message" class:error={!cloudAuthError.includes('Check your email')}>
+												{cloudAuthError}
+											</div>
+										{/if}
+
+										<button
+											type="button"
+											class="google-btn"
+											onclick={handleCloudGoogleSignIn}
+											disabled={cloudAuthLoading}
+										>
+											<svg class="google-icon" viewBox="0 0 24 24">
+												<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+												<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+												<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+												<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+											</svg>
+											Continue with Google
+										</button>
+
+										<div class="divider">
+											<span>or</span>
+										</div>
+
+										<form onsubmit={handleCloudSignIn}>
+											<div class="form-field">
+												<label for="cloud-email">Email</label>
+												<input
+													type="email"
+													id="cloud-email"
+													bind:value={cloudEmail}
+													required
+													placeholder="you@example.com"
+												/>
+											</div>
+											<div class="form-field">
+												<label for="cloud-password">Password</label>
+												<input
+													type="password"
+													id="cloud-password"
+													bind:value={cloudPassword}
+													required
+													minlength="6"
+													placeholder="••••••••"
+												/>
+											</div>
+											<button type="submit" class="submit-btn" disabled={cloudAuthLoading}>
+												{cloudAuthLoading ? 'Please wait...' : cloudAuthMode === 'signup' ? 'Create Account' : 'Sign In'}
+											</button>
+										</form>
+
+										<div class="auth-footer">
+											<button type="button" class="link-btn" onclick={() => cloudAuthMode = cloudAuthMode === 'signup' ? 'signin' : 'signup'}>
+												{cloudAuthMode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+											</button>
+											<button type="button" class="link-btn" onclick={() => { cloudAuthMode = null; cloudAuthError = null; }}>
+												Cancel
+											</button>
+										</div>
+									</div>
+								{:else}
+									<!-- Connect Buttons -->
+									<div class="connect-actions">
+										<button type="button" class="primary-btn" onclick={() => cloudAuthMode = 'signin'}>
+											Sign In
+										</button>
+										<button type="button" class="secondary-btn" onclick={() => cloudAuthMode = 'signup'}>
+											Create Account
+										</button>
+									</div>
+
+									<div class="cloud-benefits">
+										<h4>Why connect?</h4>
+										<ul class="benefits-list">
+											<li>
+												<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+												Sync batches & recipes to the cloud
+											</li>
+											<li>
+												<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+												Access your data from anywhere
+											</li>
+											<li>
+												<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+												Share with brew buddies (coming soon)
+											</li>
+										</ul>
+									</div>
+								{/if}
+							{/if}
+						</div>
+					{/if}
+				</section>
+			{/if}
 
 			<!-- Power Controls -->
 			<section class="settings-section danger-section">
@@ -2312,5 +2607,317 @@
 			flex-direction: column;
 			align-items: flex-start;
 		}
+	}
+
+	/* Cloud Sync Styles */
+	.loading-inline {
+		padding: 1rem;
+		color: var(--text-muted);
+		text-align: center;
+	}
+
+	.cloud-connected {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.connected-status {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem;
+		background: var(--green-900);
+		border: 1px solid var(--green-700);
+		border-radius: 0.5rem;
+	}
+
+	.connected-status .check-icon {
+		width: 1.5rem;
+		height: 1.5rem;
+		color: var(--green-400);
+		flex-shrink: 0;
+	}
+
+	.connected-label {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.connected-email {
+		display: block;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.claim-data-box {
+		padding: 1rem;
+		background: var(--amber-900);
+		border: 1px solid var(--amber-700);
+		border-radius: 0.5rem;
+	}
+
+	.claim-data-box h4 {
+		margin: 0 0 0.5rem 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--amber-200);
+	}
+
+	.claim-data-box p {
+		margin: 0 0 0.75rem 0;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.unclaimed-list {
+		margin: 0 0 1rem 1.25rem;
+		padding: 0;
+		font-size: 0.8125rem;
+		color: var(--text-primary);
+	}
+
+	.unclaimed-list li {
+		margin-bottom: 0.25rem;
+	}
+
+	.claim-btn {
+		padding: 0.5rem 1rem;
+		background: var(--amber-600);
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.claim-btn:hover:not(:disabled) {
+		background: var(--amber-500);
+	}
+
+	.claim-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.claim-result {
+		display: inline-block;
+		margin-left: 0.75rem;
+		font-size: 0.8125rem;
+		color: var(--red-400);
+	}
+
+	.claim-result.success {
+		color: var(--green-400);
+	}
+
+	.cloud-features, .cloud-benefits {
+		padding: 1rem;
+		background: var(--gray-850);
+		border: 1px solid var(--gray-800);
+		border-radius: 0.5rem;
+	}
+
+	.cloud-features h4, .cloud-benefits h4 {
+		margin: 0 0 0.75rem 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.features-list, .benefits-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.features-list li {
+		padding: 0.25rem 0;
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+
+	.benefits-list li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0;
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+	}
+
+	.benefits-list li svg {
+		width: 1rem;
+		height: 1rem;
+		color: var(--green-500);
+		flex-shrink: 0;
+	}
+
+	.disconnect-btn {
+		padding: 0.5rem 1rem;
+		background: transparent;
+		color: var(--red-400);
+		border: 1px solid var(--red-700);
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.disconnect-btn:hover {
+		background: var(--red-900);
+		border-color: var(--red-600);
+	}
+
+	.cloud-auth-form {
+		max-width: 24rem;
+	}
+
+	.cloud-auth-form h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.auth-message {
+		padding: 0.75rem;
+		margin-bottom: 1rem;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		background: var(--green-900);
+		border: 1px solid var(--green-700);
+		color: var(--green-300);
+	}
+
+	.auth-message.error {
+		background: var(--red-900);
+		border: 1px solid var(--red-700);
+		color: var(--red-300);
+	}
+
+	.google-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		width: 100%;
+		padding: 0.625rem 1rem;
+		background: white;
+		color: #374151;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.google-btn:hover:not(:disabled) {
+		background: #f3f4f6;
+	}
+
+	.google-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.google-icon {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	.divider {
+		display: flex;
+		align-items: center;
+		margin: 1rem 0;
+	}
+
+	.divider::before, .divider::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: var(--gray-700);
+	}
+
+	.divider span {
+		padding: 0 0.75rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.cloud-auth-form form {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.submit-btn {
+		width: 100%;
+		padding: 0.625rem 1rem;
+		background: var(--amber-600);
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.submit-btn:hover:not(:disabled) {
+		background: var(--amber-500);
+	}
+
+	.submit-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.auth-footer {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1rem;
+	}
+
+	.link-btn {
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		font-size: 0.8125rem;
+		cursor: pointer;
+		padding: 0.25rem 0;
+	}
+
+	.link-btn:hover {
+		color: var(--text-secondary);
+		text-decoration: underline;
+	}
+
+	.connect-actions {
+		display: flex;
+		gap: 0.75rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.primary-btn {
+		padding: 0.625rem 1.25rem;
+		background: var(--amber-600);
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.primary-btn:hover {
+		background: var(--amber-500);
 	}
 </style>

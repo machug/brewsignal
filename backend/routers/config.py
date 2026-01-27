@@ -2,14 +2,16 @@
 
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..models import Config, ConfigResponse, ConfigUpdate
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -120,3 +122,41 @@ async def update_config(
 
     # Return full config after update
     return await get_config(db)
+
+
+# --------------------------------------------------------------------------
+# Public App Config (no auth required)
+# --------------------------------------------------------------------------
+
+class AppConfigResponse(BaseModel):
+    """Public application configuration for frontend bootstrap."""
+    deployment_mode: str
+    auth_enabled: bool
+    auth_required: bool
+    supabase_url: Optional[str] = None
+    supabase_anon_key: Optional[str] = None
+
+
+@router.get("/app", response_model=AppConfigResponse)
+async def get_app_config():
+    """Get public application configuration.
+
+    This endpoint returns configuration the frontend needs to bootstrap,
+    including auth provider settings. No authentication required.
+
+    The supabase_url and supabase_anon_key are intentionally public -
+    they are designed to be used in client-side JavaScript. Security
+    is enforced via Supabase RLS policies, not by hiding these values.
+    """
+    settings = get_settings()
+
+    # Auth is enabled if Supabase credentials are configured
+    auth_enabled = bool(settings.supabase_url and settings.supabase_anon_key)
+
+    return AppConfigResponse(
+        deployment_mode=settings.deployment_mode.value,
+        auth_enabled=auth_enabled,
+        auth_required=settings.is_cloud,
+        supabase_url=settings.supabase_url if auth_enabled else None,
+        supabase_anon_key=settings.supabase_anon_key if auth_enabled else None,
+    )

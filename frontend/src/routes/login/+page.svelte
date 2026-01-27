@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithMagicLink } from '$lib/supabase';
 	import { authState } from '$lib/stores/auth.svelte';
-	import { isCloudMode } from '$lib/config';
+	import { config } from '$lib/config';
 
 	let email = $state('');
 	let password = $state('');
@@ -12,9 +12,19 @@
 	let error = $state<string | null>(null);
 	let message = $state<string | null>(null);
 
-	// Redirect if already authenticated or in local mode
+	// Redirect if auth is not available or already authenticated
 	$effect(() => {
-		if (!isCloudMode || authState.isAuthenticated) {
+		// Wait for config to be initialized
+		if (!config.initialized) return;
+
+		// If auth not enabled, can't login
+		if (!config.authEnabled) {
+			goto('/');
+			return;
+		}
+
+		// If already authenticated with a user, redirect home
+		if (authState.user) {
 			goto('/');
 		}
 	});

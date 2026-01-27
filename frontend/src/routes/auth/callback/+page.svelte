@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { supabase } from '$lib/supabase';
+	import { getSupabase } from '$lib/supabase';
+	import { fetchAppConfig, config } from '$lib/config';
 
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
+		// Ensure app config is loaded (provides Supabase credentials)
+		await fetchAppConfig();
+
+		const supabase = getSupabase();
 		if (!supabase) {
 			error = 'Auth not available';
 			return;

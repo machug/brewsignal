@@ -1,19 +1,19 @@
 // API helper functions for BrewSignal
 
 import { getAccessToken } from './supabase';
-import { isCloudMode } from './config';
+import { config } from './config';
 
 const BASE_URL = '/api';
 
 /**
  * Authenticated fetch wrapper
- * Adds Authorization header with Supabase JWT in cloud mode
+ * Adds Authorization header with Supabase JWT when user is authenticated
  */
 async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
 	const headers = new Headers(options.headers);
 
-	// Add auth token in cloud mode
-	if (isCloudMode) {
+	// Add auth token if available (works in both local and cloud modes)
+	if (config.authEnabled) {
 		const token = await getAccessToken();
 		if (token) {
 			headers.set('Authorization', `Bearer ${token}`);

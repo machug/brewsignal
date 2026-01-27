@@ -9,7 +9,7 @@
 	import { weatherState, startWeatherPolling, stopWeatherPolling, getWeatherIcon, formatDayName } from '$lib/stores/weather.svelte';
 	import { initAuth, authState } from '$lib/stores/auth.svelte';
 	import { signOut } from '$lib/supabase';
-	import { isCloudMode } from '$lib/config';
+	import { config, fetchAppConfig } from '$lib/config';
 
 	// Format ambient temp based on user's unit preference
 	function formatAmbientTemp(tempC: number): string {
@@ -42,15 +42,18 @@
 	// Check if current route is the login page
 	let isLoginPage = $derived($page.url.pathname === '/login');
 
-	// Redirect to login if not authenticated (cloud mode only)
+	// Redirect to login if not authenticated (cloud mode with auth required only)
 	$effect(() => {
-		if (isCloudMode && authState.initialized && !authState.isAuthenticated && !isLoginPage) {
+		if (config.authRequired && authState.initialized && !authState.user && !isLoginPage) {
 			goto('/login');
 		}
 	});
 
 	onMount(async () => {
-		// Initialize auth first
+		// Fetch app config from backend (includes Supabase credentials)
+		await fetchAppConfig();
+
+		// Initialize auth (uses app config for Supabase client)
 		await initAuth();
 
 		loadConfig();
@@ -231,8 +234,8 @@
 						</span>
 					</div>
 
-					<!-- User menu (cloud mode only) -->
-					{#if isCloudMode && authState.isAuthenticated}
+					<!-- User menu (shown when authenticated with Supabase) -->
+					{#if config.authEnabled && authState.user}
 						<div class="user-menu-wrapper">
 							<button
 								type="button"
@@ -261,6 +264,11 @@
 								</div>
 							{/if}
 						</div>
+					{:else if config.authEnabled && !config.authRequired && authState.initialized}
+						<!-- Sign in link for local mode users (optional auth) -->
+						<a href="/login" class="sign-in-link">
+							Sign in
+						</a>
 					{/if}
 
 					<!-- Mobile menu button -->
@@ -306,13 +314,13 @@
 
 	<!-- Main content -->
 	<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-		{#if isCloudMode && !authState.initialized}
+		{#if config.authRequired && !authState.initialized}
 			<!-- Loading auth state -->
 			<div class="auth-loading">
 				<div class="auth-loading-spinner"></div>
 				<p>Loading...</p>
 			</div>
-		{:else if isCloudMode && !authState.isAuthenticated && !isLoginPage}
+		{:else if config.authRequired && !authState.user && !isLoginPage}
 			<!-- Redirecting to login -->
 			<div class="auth-loading">
 				<p>Redirecting to login...</p>
@@ -727,6 +735,22 @@
 	.user-menu-item:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Sign in link for local mode */
+	.sign-in-link {
+		padding: 0.375rem 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--accent);
+		background: var(--bg-elevated);
+		border-radius: 9999px;
+		transition: background var(--transition), color var(--transition);
+	}
+
+	.sign-in-link:hover {
+		background: var(--bg-hover);
+		color: var(--accent-hover);
 	}
 
 	/* Auth loading state */

@@ -1,39 +1,107 @@
 /**
  * BrewSignal Frontend Configuration
  *
- * Supports two deployment modes:
- * - local: Single-user RPi deployment (no auth required)
- * - cloud: Multi-tenant SaaS (Supabase Auth)
+ * Fetches configuration from the backend at runtime, enabling auth
+ * in both local and cloud modes without build-time env vars.
  */
-
-// Deployment mode from environment
-export const DEPLOYMENT_MODE = import.meta.env.VITE_DEPLOYMENT_MODE || 'local';
-
-// Convenience checks
-export const isCloudMode = DEPLOYMENT_MODE === 'cloud';
-export const isLocalMode = DEPLOYMENT_MODE === 'local';
 
 // API URL - defaults to same origin for local, explicit URL for cloud
 export const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Supabase configuration (cloud mode only)
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// App config state - populated by fetchAppConfig()
+interface AppConfig {
+	deploymentMode: 'local' | 'cloud';
+	authEnabled: boolean;
+	authRequired: boolean;
+	supabaseUrl: string | null;
+	supabaseAnonKey: string | null;
+	initialized: boolean;
+}
 
-// Feature flags based on deployment mode
+let appConfig: AppConfig = {
+	deploymentMode: 'local',
+	authEnabled: false,
+	authRequired: false,
+	supabaseUrl: null,
+	supabaseAnonKey: null,
+	initialized: false,
+};
+
+// Reactive config for Svelte components
 export const config = {
-  // Auth is only enabled in cloud mode
-  authEnabled: isCloudMode,
+	get deploymentMode() { return appConfig.deploymentMode; },
+	get authEnabled() { return appConfig.authEnabled; },
+	get authRequired() { return appConfig.authRequired; },
+	get supabaseUrl() { return appConfig.supabaseUrl; },
+	get supabaseAnonKey() { return appConfig.supabaseAnonKey; },
+	get initialized() { return appConfig.initialized; },
 
-  // Multi-tenancy is only available in cloud mode
-  multiTenant: isCloudMode,
+	// Convenience checks
+	get isCloudMode() { return appConfig.deploymentMode === 'cloud'; },
+	get isLocalMode() { return appConfig.deploymentMode === 'local'; },
 
-  // Local mode shows device setup, cloud mode shows account linking
-  showDeviceSetup: isLocalMode,
+	// Feature flags
+	get multiTenant() { return appConfig.deploymentMode === 'cloud'; },
+	get showDeviceSetup() { return appConfig.deploymentMode === 'local'; },
+	get directBLEEnabled() { return appConfig.deploymentMode === 'local'; },
+	get gatewayMode() { return appConfig.deploymentMode === 'cloud'; },
+};
 
-  // Local mode can use direct BLE scanning
-  directBLEEnabled: isLocalMode,
+// Callbacks for when config is loaded
+const configLoadCallbacks: Array<() => void> = [];
 
-  // Cloud mode uses gateways for device communication
-  gatewayMode: isCloudMode,
-} as const;
+/**
+ * Register a callback to be called when config is loaded
+ */
+export function onConfigLoaded(callback: () => void): void {
+	if (appConfig.initialized) {
+		callback();
+	} else {
+		configLoadCallbacks.push(callback);
+	}
+}
+
+/**
+ * Fetch app configuration from the backend.
+ * Should be called once during app initialization.
+ */
+export async function fetchAppConfig(): Promise<void> {
+	if (appConfig.initialized) return;
+
+	try {
+		const response = await fetch(`${API_URL}/api/config/app`);
+		if (!response.ok) {
+			console.error('Failed to fetch app config:', response.status);
+			// Fall back to defaults (local mode, no auth)
+			appConfig.initialized = true;
+			return;
+		}
+
+		const data = await response.json();
+		appConfig = {
+			deploymentMode: data.deployment_mode || 'local',
+			authEnabled: data.auth_enabled || false,
+			authRequired: data.auth_required || false,
+			supabaseUrl: data.supabase_url || null,
+			supabaseAnonKey: data.supabase_anon_key || null,
+			initialized: true,
+		};
+
+		// Notify callbacks
+		configLoadCallbacks.forEach(cb => cb());
+		configLoadCallbacks.length = 0;
+
+	} catch (error) {
+		console.error('Failed to fetch app config:', error);
+		// Fall back to defaults (local mode, no auth)
+		appConfig.initialized = true;
+	}
+}
+
+// Legacy exports for backward compatibility during migration
+// These will use empty strings until config is fetched
+export const SUPABASE_URL = '';
+export const SUPABASE_ANON_KEY = '';
+export const supabaseConfigured = false;
+export const isCloudMode = false;
+export const isLocalMode = true;

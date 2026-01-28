@@ -93,6 +93,17 @@
 	let controlError = $state<string | null>(null);
 	let controlSuccess = $state(false);
 
+	// Device Control Backend state
+	let deviceControlBackend = $state<'ha' | 'shelly'>('ha');
+	let shellyEnabled = $state(false);
+	let shellyDevices = $state<string[]>([]);
+	let newShellyIp = $state('');
+	let shellyTesting = $state<string | null>(null); // IP being tested
+	let shellyTestResult = $state<{ ip: string; success: boolean; message: string; gen?: number } | null>(null);
+	let shellySaving = $state(false);
+	let shellyError = $state<string | null>(null);
+	let shellySuccess = $state(false);
+
 	// Weather Alerts state
 	let weatherAlertsEnabled = $state(false);
 	let alertTempThreshold = $state(3.0);
@@ -360,6 +371,11 @@
 		tempHysteresis = configState.config.temp_units === 'C'
 			? Math.round(configState.config.temp_hysteresis * (5 / 9) * 100) / 100
 			: configState.config.temp_hysteresis;
+		// Device Control Backend
+		deviceControlBackend = (configState.config.device_control_backend as 'ha' | 'shelly') ?? 'ha';
+		shellyEnabled = configState.config.shelly_enabled ?? false;
+		const shellyDevicesStr = configState.config.shelly_devices ?? '';
+		shellyDevices = shellyDevicesStr ? shellyDevicesStr.split(',').map((ip: string) => ip.trim()).filter(Boolean) : [];
 		// Weather Alerts
 		weatherAlertsEnabled = configState.config.weather_alerts_enabled;
 		alertTempThreshold = configState.config.alert_temp_threshold;
@@ -779,6 +795,81 @@
 		}
 	}
 
+	// Shelly device functions
+	async function testShellyDevice(ip: string) {
+		shellyTesting = ip;
+		shellyTestResult = null;
+		try {
+			const response = await fetch('/api/device-control/shelly/test', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ip })
+			});
+			if (response.ok) {
+				const result = await response.json();
+				shellyTestResult = { ip, ...result };
+			} else {
+				shellyTestResult = { ip, success: false, message: 'Request failed' };
+			}
+		} catch (e) {
+			shellyTestResult = { ip, success: false, message: 'Network error' };
+		} finally {
+			shellyTesting = null;
+		}
+	}
+
+	function addShellyDevice() {
+		const ip = newShellyIp.trim();
+		if (!ip) return;
+		// Basic IP validation
+		if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(ip)) {
+			shellyError = 'Invalid IP address format';
+			return;
+		}
+		if (shellyDevices.includes(ip)) {
+			shellyError = 'Device already added';
+			return;
+		}
+		shellyDevices = [...shellyDevices, ip];
+		newShellyIp = '';
+		shellyError = null;
+	}
+
+	function removeShellyDevice(ip: string) {
+		shellyDevices = shellyDevices.filter(d => d !== ip);
+		if (shellyTestResult?.ip === ip) {
+			shellyTestResult = null;
+		}
+	}
+
+	async function saveDeviceControlConfig() {
+		shellySaving = true;
+		shellyError = null;
+		shellySuccess = false;
+		try {
+			const response = await fetch('/api/config', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					device_control_backend: deviceControlBackend,
+					shelly_enabled: shellyEnabled,
+					shelly_devices: shellyDevices.join(',')
+				})
+			});
+			if (response.ok) {
+				shellySuccess = true;
+				setTimeout(() => (shellySuccess = false), 2000);
+			} else {
+				const error = await response.json();
+				shellyError = error.detail || 'Failed to save';
+			}
+		} catch (e) {
+			shellyError = 'Network error';
+		} finally {
+			shellySaving = false;
+		}
+	}
+
 	onMount(async () => {
 		await Promise.all([
 			loadSystemInfo(),
@@ -1157,6 +1248,122 @@
 							</button>
 							{#if haError}<span class="error-msg">{haError}</span>{/if}
 							{#if haSuccess}<span class="success-msg">Saved</span>{/if}
+						</div>
+					</div>
+				{/if}
+			</section>
+
+			<!-- Device Control Backend Section -->
+			<section class="settings-section">
+				<button
+					type="button"
+					class="section-header"
+					onclick={() => toggleSection('devicecontrol')}
+					aria-expanded={expandedSection === 'devicecontrol'}
+				>
+					<div class="section-title-group">
+						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
+						</svg>
+						<h2>Device Control</h2>
+						{#if deviceControlBackend === 'shelly' && shellyDevices.length > 0}
+							<span class="status-pill connected">{shellyDevices.length} device{shellyDevices.length !== 1 ? 's' : ''}</span>
+						{:else if deviceControlBackend === 'ha' && haEnabled}
+							<span class="status-pill connected">Via HA</span>
+						{/if}
+					</div>
+					<svg class="chevron" class:rotated={expandedSection === 'devicecontrol'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				{#if expandedSection === 'devicecontrol'}
+					<div class="section-content">
+						<p class="section-desc">Choose how BrewSignal controls heating/cooling devices for temperature control.</p>
+
+						<div class="radio-group">
+							<label class="radio-option" class:selected={deviceControlBackend === 'ha'}>
+								<input type="radio" name="device-backend" value="ha" bind:group={deviceControlBackend} />
+								<div class="radio-content">
+									<span class="radio-label">Home Assistant</span>
+									<span class="radio-desc">Control devices through Home Assistant (local or remote via Nabu Casa/port forwarding)</span>
+								</div>
+							</label>
+							<label class="radio-option" class:selected={deviceControlBackend === 'shelly'}>
+								<input type="radio" name="device-backend" value="shelly" bind:group={deviceControlBackend} />
+								<div class="radio-content">
+									<span class="radio-label">Direct Shelly</span>
+									<span class="radio-desc">Control Shelly smart plugs directly via HTTP (local network only)</span>
+								</div>
+							</label>
+						</div>
+
+						{#if deviceControlBackend === 'ha'}
+							<div class="info-box">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+								</svg>
+								<div>
+									<span>Configure Home Assistant connection in the section above. Assign heater/cooler entities to batches in batch settings.</span>
+									<p class="info-hint">For cloud access: use <a href="https://www.nabucasa.com/" target="_blank" rel="noopener">Nabu Casa</a> or port forward your HA instance.</p>
+								</div>
+							</div>
+						{:else}
+							<div class="subsection">
+								<h3>Shelly Devices</h3>
+								<p class="subsection-desc">Add your Shelly device IP addresses. Supports Gen1 (original) and Gen2 (Plus/Pro) devices.</p>
+								<p class="local-only-note">⚠️ Direct Shelly control requires BrewSignal and Shelly devices on the same local network.</p>
+
+								<div class="device-list">
+									{#each shellyDevices as ip}
+										<div class="device-item">
+											<span class="device-ip">{ip}</span>
+											<div class="device-actions">
+												<button
+													type="button"
+													class="test-btn small"
+													onclick={() => testShellyDevice(ip)}
+													disabled={shellyTesting === ip}
+												>
+													{shellyTesting === ip ? 'Testing...' : 'Test'}
+												</button>
+												<button type="button" class="remove-btn" onclick={() => removeShellyDevice(ip)} title="Remove device">
+													<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+														<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+													</svg>
+												</button>
+											</div>
+											{#if shellyTestResult?.ip === ip}
+												<span class="test-result" class:success={shellyTestResult.success}>
+													{shellyTestResult.message}
+												</span>
+											{/if}
+										</div>
+									{/each}
+								</div>
+
+								<div class="add-device-form">
+									<input
+										type="text"
+										bind:value={newShellyIp}
+										placeholder="192.168.1.50"
+										onkeydown={(e) => e.key === 'Enter' && addShellyDevice()}
+									/>
+									<button type="button" class="add-btn" onclick={addShellyDevice}>Add Device</button>
+								</div>
+
+								<div class="help-text">
+									<p>Entity format for batches: <code>shelly://IP/channel</code></p>
+									<p>Example: <code>shelly://192.168.1.50/0</code> for first relay</p>
+								</div>
+							</div>
+						{/if}
+
+						<div class="section-actions">
+							<button type="button" class="save-btn" onclick={saveDeviceControlConfig} disabled={shellySaving}>
+								{shellySaving ? 'Saving...' : 'Save Device Settings'}
+							</button>
+							{#if shellyError}<span class="error-msg">{shellyError}</span>{/if}
+							{#if shellySuccess}<span class="success-msg">Saved</span>{/if}
 						</div>
 					</div>
 				{/if}
@@ -3053,5 +3260,234 @@
 
 	.primary-btn:hover {
 		background: var(--amber-500);
+	}
+
+	/* Device Control Section */
+	.section-desc {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		margin-bottom: 1rem;
+	}
+
+	.radio-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.radio-option {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.75rem 1rem;
+		background: var(--gray-850);
+		border: 1px solid var(--gray-700);
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.radio-option:hover {
+		border-color: var(--gray-600);
+	}
+
+	.radio-option.selected {
+		border-color: var(--accent);
+		background: var(--gray-800);
+	}
+
+	.radio-option input[type="radio"] {
+		margin-top: 0.125rem;
+		accent-color: var(--accent);
+	}
+
+	.radio-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.radio-label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.radio-desc {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.info-box svg {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+		color: var(--accent);
+	}
+
+	.info-box > span {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		line-height: 1.5;
+	}
+
+	.section-content > .info-box {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+	}
+
+	.subsection-desc {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin-bottom: 0.75rem;
+	}
+
+	.device-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.device-item {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--gray-850);
+		border: 1px solid var(--gray-700);
+		border-radius: 0.375rem;
+	}
+
+	.device-ip {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		color: var(--text-primary);
+		flex: 1;
+	}
+
+	.device-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.test-btn.small {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.6875rem;
+	}
+
+	.remove-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: 0.25rem;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.remove-btn:hover {
+		background: var(--gray-700);
+		color: var(--error);
+	}
+
+	.remove-btn svg {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+
+	.device-item .test-result {
+		width: 100%;
+		font-size: 0.75rem;
+		margin-top: 0.25rem;
+	}
+
+	.add-device-form {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.add-device-form input {
+		flex: 1;
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		background: var(--gray-900);
+		border: 1px solid var(--gray-700);
+		border-radius: 0.375rem;
+		color: var(--text-primary);
+	}
+
+	.add-device-form input:focus {
+		outline: none;
+		border-color: var(--accent);
+	}
+
+	.add-btn {
+		padding: 0.5rem 0.75rem;
+		background: var(--gray-700);
+		color: var(--text-primary);
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.add-btn:hover {
+		background: var(--gray-600);
+	}
+
+	.help-text {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		line-height: 1.6;
+	}
+
+	.help-text code {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--gray-800);
+		border-radius: 0.25rem;
+		color: var(--accent);
+	}
+
+	.help-text p {
+		margin: 0.25rem 0;
+	}
+
+	.info-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin-top: 0.5rem;
+	}
+
+	.info-hint a {
+		color: var(--accent);
+	}
+
+	.info-hint a:hover {
+		text-decoration: underline;
+	}
+
+	.local-only-note {
+		font-size: 0.75rem;
+		color: var(--warning, #f59e0b);
+		background: rgba(245, 158, 11, 0.1);
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		margin-bottom: 0.75rem;
 	}
 </style>

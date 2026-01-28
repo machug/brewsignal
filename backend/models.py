@@ -1229,6 +1229,10 @@ class ConfigUpdate(BaseModel):
     temp_target: Optional[float] = None
     temp_hysteresis: Optional[float] = None
     ha_heater_entity_id: Optional[str] = None
+    # Device control backend (ha or shelly)
+    device_control_backend: Optional[str] = None  # "ha" or "shelly"
+    shelly_enabled: Optional[bool] = None
+    shelly_devices: Optional[str] = None  # Comma-separated IPs: "192.168.1.50,192.168.1.51"
     # Weather
     ha_weather_entity_id: Optional[str] = None
     # Alerts
@@ -1342,6 +1346,13 @@ class ConfigUpdate(BaseModel):
             raise ValueError("mqtt_port must be between 1 and 65535")
         return v
 
+    @field_validator("device_control_backend")
+    @classmethod
+    def validate_device_control_backend(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("ha", "shelly"):
+            raise ValueError("device_control_backend must be 'ha' or 'shelly'")
+        return v
+
 
 class ConfigResponse(BaseModel):
     temp_units: str = "C"
@@ -1366,6 +1377,10 @@ class ConfigResponse(BaseModel):
     temp_target: float = 68.0
     temp_hysteresis: float = 1.0
     ha_heater_entity_id: str = ""
+    # Device control backend
+    device_control_backend: str = "ha"  # "ha" or "shelly"
+    shelly_enabled: bool = False
+    shelly_devices: str = ""  # Comma-separated IPs
     # Weather
     ha_weather_entity_id: str = ""
     # Alerts
@@ -1783,8 +1798,8 @@ class BatchCreate(BaseModel):
     @field_validator("heater_entity_id", "cooler_entity_id")
     @classmethod
     def validate_entity(cls, v: Optional[str]) -> Optional[str]:
-        if v and not v.startswith(("switch.", "input_boolean.")):
-            raise ValueError("entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        if v and not v.startswith(("switch.", "input_boolean.", "shelly://", "ha://")):
+            raise ValueError("entity_id must be a valid entity (e.g., switch.heater_1, shelly://192.168.1.50/0)")
         return v
 
     @field_validator("temp_target")
@@ -1869,8 +1884,8 @@ class BatchUpdate(BaseModel):
     @field_validator("heater_entity_id", "cooler_entity_id")
     @classmethod
     def validate_entity(cls, v: Optional[str]) -> Optional[str]:
-        if v and not v.startswith(("switch.", "input_boolean.")):
-            raise ValueError("entity_id must be a valid HA entity (e.g., switch.heater_1 or input_boolean.heater_1)")
+        if v and not v.startswith(("switch.", "input_boolean.", "shelly://", "ha://")):
+            raise ValueError("entity_id must be a valid entity (e.g., switch.heater_1, shelly://192.168.1.50/0)")
         return v
 
     @field_validator("temp_target")

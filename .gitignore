@@ -68,3 +68,15 @@ docs/plans/
 hpa_recipes/
 
 # Other
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Crush
+.crush/
+
+# Development plans
+plans/
+
+# Ruff linter cache
+.ruff_cache/

@@ -6,6 +6,7 @@
 	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchControlEvents } from '$lib/api';
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
+	import { onConfigLoaded } from '$lib/config';
 	import BatchForm from '$lib/components/BatchForm.svelte';
 	import BatchFermentationCard from '$lib/components/batch/BatchFermentationCard.svelte';
 	import BatchDeviceCard from '$lib/components/batch/BatchDeviceCard.svelte';
@@ -365,9 +366,13 @@
 	}
 
 	onMount(() => {
-		loadBatch();
-		// Connect WebSocket for live heater state updates
-		connectControlWebSocket();
+		// Wait for config to be initialized before loading batch
+		// This ensures auth token is available for Cloud Sync users
+		onConfigLoaded(() => {
+			loadBatch();
+			// Connect WebSocket for live heater state updates
+			connectControlWebSocket();
+		});
 	});
 
 	onDestroy(() => {

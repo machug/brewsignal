@@ -5,6 +5,7 @@
 	import FermentationCard from '$lib/components/FermentationCard.svelte';
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
 	import { fetchBatches, fetchBatchProgress } from '$lib/api';
+	import { onConfigLoaded } from '$lib/config';
 
 	let alertsDismissed = $state(false);
 	let alertsCollapsed = $state(false);
@@ -27,8 +28,11 @@
 			}
 		}
 
-		// Load batches
-		await loadBatches();
+		// Wait for config to be initialized before loading batches
+		// This ensures auth token is available for Cloud Sync users
+		onConfigLoaded(() => {
+			loadBatches();
+		});
 	});
 
 	async function loadBatches() {

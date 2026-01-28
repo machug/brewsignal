@@ -5,6 +5,7 @@
 	import { fetchActiveBatches, fetchCompletedBatches, fetchDeletedBatches, fetchBatchProgress, deleteBatch, restoreBatch } from '$lib/api';
 	import BatchCard from '$lib/components/BatchCard.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
+	import { onConfigLoaded } from '$lib/config';
 
 	type TabType = 'active' | 'completed' | 'deleted';
 
@@ -155,7 +156,11 @@
 	}
 
 	onMount(() => {
-		loadBatches();
+		// Wait for config to be initialized before loading batches
+		// This ensures auth token is available for Cloud Sync users
+		onConfigLoaded(() => {
+			loadBatches();
+		});
 	});
 
 	// Reload when tab changes

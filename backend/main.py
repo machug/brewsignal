@@ -480,6 +480,7 @@ app.include_router(inventory_equipment.router, dependencies=auth_deps)
 app.include_router(inventory_hops.router, dependencies=auth_deps)
 app.include_router(inventory_yeast.router, dependencies=auth_deps)
 app.include_router(users.router, dependencies=auth_deps)
+app.include_router(users.user_router, dependencies=auth_deps)
 app.include_router(sync.router, dependencies=auth_deps)
 
 

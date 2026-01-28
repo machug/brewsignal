@@ -2,10 +2,18 @@
 	import { onMount } from 'svelte';
 	import { pairDevice, unpairDevice, type DeviceResponse } from '$lib/api/devices';
 	import { deviceCache } from '$lib/stores/deviceCache.svelte';
+	import { config, API_URL } from '$lib/config';
+	import { authFetch } from '$lib/api';
 
 	let devices = $state<DeviceResponse[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	// HTTP device setup state
+	let systemIp = $state<string | null>(null);
+	let ingestToken = $state<string | null>(null);
+	let tokenLoading = $state(false);
+	let copied = $state<string | null>(null);
 
 	onMount(async () => {
 		// Try to load from cache first for instant display
@@ -15,7 +23,78 @@
 			loading = false;
 		}
 		await loadDevices();
+		await loadSetupInfo();
 	});
+
+	async function loadSetupInfo() {
+		if (config.isLocalMode) {
+			// Get system IP for local endpoint URL
+			try {
+				const res = await fetch(`${API_URL}/api/system/info`);
+				if (res.ok) {
+					const info = await res.json();
+					// Use first non-localhost IP
+					systemIp = info.ip_addresses?.find((ip: string) => !ip.startsWith('127.')) || null;
+				}
+			} catch (e) {
+				console.error('Failed to get system info:', e);
+			}
+		} else {
+			// Cloud mode - get or generate ingest token
+			await loadIngestToken();
+		}
+	}
+
+	async function loadIngestToken() {
+		tokenLoading = true;
+		try {
+			const res = await authFetch(`${API_URL}/api/user/ingest-token`);
+			if (res.ok) {
+				const data = await res.json();
+				ingestToken = data.token;
+			}
+		} catch (e) {
+			console.error('Failed to get ingest token:', e);
+		} finally {
+			tokenLoading = false;
+		}
+	}
+
+	async function regenerateToken() {
+		tokenLoading = true;
+		try {
+			const res = await authFetch(`${API_URL}/api/user/ingest-token`, {
+				method: 'POST'
+			});
+			if (res.ok) {
+				const data = await res.json();
+				ingestToken = data.token;
+			}
+		} catch (e) {
+			console.error('Failed to regenerate token:', e);
+		} finally {
+			tokenLoading = false;
+		}
+	}
+
+	function getIngestUrl(deviceType: 'gravitymon' | 'ispindel'): string {
+		if (config.isLocalMode && systemIp) {
+			return `http://${systemIp}:8080/api/ingest/${deviceType}`;
+		} else if (config.isCloudMode && ingestToken) {
+			return `https://api.brewsignal.io/api/ingest/${ingestToken}/${deviceType}`;
+		}
+		return '';
+	}
+
+	async function copyToClipboard(text: string, label: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			copied = label;
+			setTimeout(() => copied = null, 2000);
+		} catch (e) {
+			console.error('Failed to copy:', e);
+		}
+	}
 
 	async function loadDevices(forceRefresh = false) {
 		loading = true;
@@ -100,6 +179,132 @@
 	<h1 class="page-title">Devices</h1>
 	<p class="page-description">Manage your hydrometer devices (Tilt, iSpindel, GravityMon)</p>
 </div>
+
+<!-- HTTP Device Setup Section -->
+<section class="setup-section">
+	<h2 class="section-title">HTTP Device Setup</h2>
+	<p class="section-description">
+		Configure your GravityMon or iSpindel to send data to BrewSignal
+	</p>
+
+	{#if config.isLocalMode}
+		{#if systemIp}
+			<div class="setup-cards">
+				<div class="setup-card">
+					<div class="setup-card-header">
+						<span class="setup-icon">📡</span>
+						<h3>GravityMon</h3>
+					</div>
+					<p class="setup-description">Enter this URL in your GravityMon's HTTP Post settings</p>
+					<div class="url-display">
+						<code>{getIngestUrl('gravitymon')}</code>
+						<button
+							class="copy-btn"
+							onclick={() => copyToClipboard(getIngestUrl('gravitymon'), 'gravitymon')}
+						>
+							{copied === 'gravitymon' ? '✓ Copied' : 'Copy'}
+						</button>
+					</div>
+					<a href="https://github.com/mp-se/gravitymon/wiki" target="_blank" rel="noopener" class="docs-link">
+						GravityMon Setup Guide →
+					</a>
+				</div>
+
+				<div class="setup-card">
+					<div class="setup-card-header">
+						<span class="setup-icon">🧪</span>
+						<h3>iSpindel</h3>
+					</div>
+					<p class="setup-description">Enter this URL in your iSpindel's HTTP configuration</p>
+					<div class="url-display">
+						<code>{getIngestUrl('ispindel')}</code>
+						<button
+							class="copy-btn"
+							onclick={() => copyToClipboard(getIngestUrl('ispindel'), 'ispindel')}
+						>
+							{copied === 'ispindel' ? '✓ Copied' : 'Copy'}
+						</button>
+					</div>
+					<a href="https://www.ispindel.de/docs/README_en.html" target="_blank" rel="noopener" class="docs-link">
+						iSpindel Setup Guide →
+					</a>
+				</div>
+			</div>
+
+			<div class="setup-note">
+				<strong>Tilt Hydrometers</strong> are automatically detected via Bluetooth - no configuration needed.
+			</div>
+		{:else}
+			<div class="setup-loading">Loading network information...</div>
+		{/if}
+	{:else}
+		<!-- Cloud mode -->
+		{#if tokenLoading}
+			<div class="setup-loading">Loading your ingest token...</div>
+		{:else if ingestToken}
+			<div class="setup-cards">
+				<div class="setup-card">
+					<div class="setup-card-header">
+						<span class="setup-icon">📡</span>
+						<h3>GravityMon</h3>
+					</div>
+					<p class="setup-description">Enter this URL in your GravityMon's HTTP Post settings</p>
+					<div class="url-display">
+						<code>{getIngestUrl('gravitymon')}</code>
+						<button
+							class="copy-btn"
+							onclick={() => copyToClipboard(getIngestUrl('gravitymon'), 'gravitymon')}
+						>
+							{copied === 'gravitymon' ? '✓ Copied' : 'Copy'}
+						</button>
+					</div>
+					<a href="https://github.com/mp-se/gravitymon/wiki" target="_blank" rel="noopener" class="docs-link">
+						GravityMon Setup Guide →
+					</a>
+				</div>
+
+				<div class="setup-card">
+					<div class="setup-card-header">
+						<span class="setup-icon">🧪</span>
+						<h3>iSpindel</h3>
+					</div>
+					<p class="setup-description">Enter this URL in your iSpindel's HTTP configuration</p>
+					<div class="url-display">
+						<code>{getIngestUrl('ispindel')}</code>
+						<button
+							class="copy-btn"
+							onclick={() => copyToClipboard(getIngestUrl('ispindel'), 'ispindel')}
+						>
+							{copied === 'ispindel' ? '✓ Copied' : 'Copy'}
+						</button>
+					</div>
+					<a href="https://www.ispindel.de/docs/README_en.html" target="_blank" rel="noopener" class="docs-link">
+						iSpindel Setup Guide →
+					</a>
+				</div>
+			</div>
+
+			<div class="token-section">
+				<p class="token-note">
+					Your ingest token: <code class="token-display">{ingestToken.slice(0, 8)}...{ingestToken.slice(-4)}</code>
+				</p>
+				<button class="btn-secondary btn-sm" onclick={regenerateToken} disabled={tokenLoading}>
+					Regenerate Token
+				</button>
+				<p class="token-warning">
+					⚠️ Regenerating will invalidate URLs configured in your devices
+				</p>
+			</div>
+
+			<div class="setup-note">
+				<strong>Tilt Hydrometers</strong> require a BrewSignal Gateway device for cloud connectivity.
+				<a href="/system">Configure your gateway</a> in System Settings.
+			</div>
+		{:else}
+			<div class="setup-error">Unable to load ingest token. Please try refreshing the page.</div>
+		{/if}
+	{/if}
+</section>
 
 {#if loading}
 	<div class="loading-state">Loading devices...</div>
@@ -495,5 +700,157 @@
 
 	.error-state button {
 		margin-top: 1rem;
+	}
+
+	/* HTTP Device Setup Section */
+	.setup-section {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		padding: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.setup-cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.setup-card {
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		padding: 1.25rem;
+	}
+
+	.setup-card-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.setup-card-header h3 {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.setup-icon {
+		font-size: 1.25rem;
+	}
+
+	.setup-description {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		margin-bottom: 0.75rem;
+	}
+
+	.url-display {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-default);
+		border-radius: 0.375rem;
+		padding: 0.5rem 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.url-display code {
+		flex: 1;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--accent);
+		word-break: break-all;
+	}
+
+	.copy-btn {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		background: var(--accent);
+		color: white;
+		border: none;
+		border-radius: 0.25rem;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background var(--transition);
+	}
+
+	.copy-btn:hover {
+		background: var(--accent-hover);
+	}
+
+	.docs-link {
+		font-size: 0.8125rem;
+		color: var(--accent);
+		text-decoration: none;
+	}
+
+	.docs-link:hover {
+		text-decoration: underline;
+	}
+
+	.setup-note {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		padding: 0.75rem;
+		background: var(--bg-elevated);
+		border-radius: 0.375rem;
+		border-left: 3px solid var(--accent);
+	}
+
+	.setup-note a {
+		color: var(--accent);
+		text-decoration: none;
+	}
+
+	.setup-note a:hover {
+		text-decoration: underline;
+	}
+
+	.setup-loading,
+	.setup-error {
+		padding: 1.5rem;
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+
+	.setup-error {
+		color: var(--negative);
+	}
+
+	.token-section {
+		margin-top: 1rem;
+		padding: 1rem;
+		background: var(--bg-elevated);
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-subtle);
+	}
+
+	.token-note {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.5rem;
+	}
+
+	.token-display {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--bg-surface);
+		border-radius: 0.25rem;
+		color: var(--text-muted);
+	}
+
+	.token-warning {
+		font-size: 0.75rem;
+		color: var(--warning);
+		margin-top: 0.5rem;
 	}
 </style>

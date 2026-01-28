@@ -155,6 +155,7 @@ class IngestManager:
         payload: dict,
         source_protocol: str = "http",
         auth_token: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[Reading]:
         """Process a hydrometer payload through the full pipeline.
 
@@ -163,6 +164,7 @@ class IngestManager:
             payload: Raw payload from device
             source_protocol: Protocol used (http, mqtt, ble)
             auth_token: Optional auth token from request header
+            user_id: Optional user ID for cloud mode (from ingest token)
 
         Returns:
             Reading model if successful, None if parsing failed
@@ -174,7 +176,7 @@ class IngestManager:
             return None
 
         # Step 2: Get or create device
-        device = await self._get_or_create_device(db, reading, auth_token)
+        device = await self._get_or_create_device(db, reading, auth_token, user_id)
 
         # Step 3: Validate auth token if device has one configured
         if not self._validate_auth(device, auth_token):
@@ -318,6 +320,7 @@ class IngestManager:
         db: AsyncSession,
         reading: HydrometerReading,
         auth_token: Optional[str],
+        user_id: Optional[str] = None,
     ) -> Device:
         """Get existing device or create a new one from reading data."""
         # Build kwargs based on device type
@@ -332,6 +335,10 @@ class IngestManager:
         elif reading.device_type in ("ispindel", "gravitymon"):
             kwargs["native_gravity_unit"] = str(reading.gravity_unit.value)
             kwargs["native_temp_unit"] = str(reading.temperature_unit.value)
+
+        # Pass user_id for cloud mode multi-tenant support
+        if user_id:
+            kwargs["user_id"] = user_id
 
         device = await calibration_service.get_or_create_device(
             db=db,

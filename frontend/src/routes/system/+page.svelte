@@ -1354,6 +1354,12 @@
 								<div class="help-text">
 									<p>Entity format for batches: <code>shelly://IP/channel</code></p>
 									<p>Example: <code>shelly://192.168.1.50/0</code> for first relay</p>
+									<p class="help-detail">
+										<strong>IP:</strong> Find in your router's DHCP list or the
+										<a href="https://shelly.cloud/" target="_blank" rel="noopener">Shelly app</a><br>
+										<strong>Channel:</strong> Use <code>0</code> for single-relay devices (Plug, 1, 1PM).
+										Multi-relay devices (2.5, 4PM) use <code>0</code>, <code>1</code>, etc.
+									</p>
 								</div>
 							</div>
 						{/if}
@@ -3466,6 +3472,21 @@
 
 	.help-text p {
 		margin: 0.25rem 0;
+	}
+
+	.help-text a {
+		color: var(--accent);
+		text-decoration: none;
+	}
+
+	.help-text a:hover {
+		text-decoration: underline;
+	}
+
+	.help-text .help-detail {
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--gray-700);
 	}
 
 	.info-hint {

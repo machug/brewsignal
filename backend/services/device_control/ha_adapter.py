@@ -6,7 +6,12 @@ Wraps the existing HAClient to provide the DeviceControlAdapter interface.
 import logging
 
 from .base import DeviceControlAdapter, DeviceInfo
-from ..ha_client import HAClient
+
+# Import HAClient - use try/except to support both installed package and test contexts
+try:
+    from backend.services.ha_client import HAClient
+except ImportError:
+    from ha_client import HAClient
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,10 @@
-"""Background task for temperature control via Home Assistant."""
+"""Background task for temperature control.
+
+Supports multiple control backends via the device control abstraction layer:
+- Home Assistant (existing)
+- Direct Shelly HTTP (planned - tilt_ui-amh)
+- Gateway relay (planned - tilt_ui-123)
+"""
 
 import asyncio
 import logging
@@ -10,7 +16,12 @@ from sqlalchemy import select
 from .database import async_session_factory
 from .models import Batch, ControlEvent, AmbientReading, serialize_datetime_to_utc
 from .routers.config import get_config_value
-from .services.ha_client import get_ha_client, init_ha_client
+from .services.device_control import (
+    get_device_router,
+    init_device_router,
+    RouterConfig,
+    DeviceControlRouter,
+)
 from .websocket import manager as ws_manager
 
 logger = logging.getLogger(__name__)
@@ -234,7 +245,7 @@ async def log_control_event(
 
 
 async def set_heater_state_for_batch(
-    ha_client,
+    router: DeviceControlRouter,
     entity_id: str,
     state: str,
     db,
@@ -263,12 +274,8 @@ async def set_heater_state_for_batch(
 
     logger.debug(f"Batch {batch_id}: Attempting to set heater to '{state}' (entity: {entity_id})")
 
-    if state == "on":
-        success = await ha_client.call_service("switch", "turn_on", entity_id)
-        action = "heat_on"
-    else:
-        success = await ha_client.call_service("switch", "turn_off", entity_id)
-        action = "heat_off"
+    success = await router.set_state(entity_id, state)
+    action = "heat_on" if state == "on" else "heat_off"
 
     if success:
         _batch_heater_states[batch_id] = {
@@ -279,13 +286,13 @@ async def set_heater_state_for_batch(
         logger.info(f"Batch {batch_id}: Heater state changed: {last_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, device_id, batch_id)
     else:
-        logger.error(f"Batch {batch_id}: Failed to set heater to '{state}' via HA (entity: {entity_id})")
+        logger.error(f"Batch {batch_id}: Failed to set heater to '{state}' (entity: {entity_id})")
 
     return success
 
 
 async def set_cooler_state_for_batch(
-    ha_client,
+    router: DeviceControlRouter,
     entity_id: str,
     state: str,
     db,
@@ -314,12 +321,8 @@ async def set_cooler_state_for_batch(
 
     logger.debug(f"Batch {batch_id}: Attempting to set cooler to '{state}' (entity: {entity_id})")
 
-    if state == "on":
-        success = await ha_client.call_service("switch", "turn_on", entity_id)
-        action = "cool_on"
-    else:
-        success = await ha_client.call_service("switch", "turn_off", entity_id)
-        action = "cool_off"
+    success = await router.set_state(entity_id, state)
+    action = "cool_on" if state == "on" else "cool_off"
 
     if success:
         _batch_cooler_states[batch_id] = {
@@ -330,13 +333,13 @@ async def set_cooler_state_for_batch(
         logger.info(f"Batch {batch_id}: Cooler state changed: {last_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, device_id, batch_id)
     else:
-        logger.error(f"Batch {batch_id}: Failed to set cooler to '{state}' via HA (entity: {entity_id})")
+        logger.error(f"Batch {batch_id}: Failed to set cooler to '{state}' (entity: {entity_id})")
 
     return success
 
 
 async def control_batch_temperature(
-    ha_client,
+    router: DeviceControlRouter,
     batch: Batch,
     db,
     global_target: float,
@@ -373,46 +376,42 @@ async def control_batch_temperature(
     target_temp = batch.temp_target if batch.temp_target is not None else global_target
     hysteresis = batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis
 
-    # Sync cached heater state with actual HA state
+    # Sync cached heater state with actual device state
     # NOTE: This sync happens before checking minimum cycle time. If the heater state
     # was changed externally (e.g., manual toggle in HA), this sync updates our cache
     # but does NOT reset the last_change timestamp. This means external changes won't
     # bypass the MIN_CYCLE_MINUTES protection, which is intentional to prevent rapid
     # cycling even when users manually toggle the heater.
     if heater_entity:
-        actual_heater_state = await ha_client.get_state(heater_entity)
-        if actual_heater_state:
-            ha_heater_state = actual_heater_state.get("state", "").lower()
-            if ha_heater_state in ("on", "off"):
-                if batch_id in _batch_heater_states:
-                    if _batch_heater_states[batch_id].get("state") != ha_heater_state:
-                        logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {ha_heater_state} (from HA)")
-                    # Only update the state, preserve the existing last_change timestamp
-                    _batch_heater_states[batch_id]["state"] = ha_heater_state
-                else:
-                    # Initialize state tracking for new batch (no last_change yet)
-                    _batch_heater_states[batch_id] = {"state": ha_heater_state}
-            elif ha_heater_state == "unavailable":
-                logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable in HA")
-                return  # Early return - cannot control unavailable entity
+        actual_heater_state = await router.get_state(heater_entity)
+        if actual_heater_state in ("on", "off"):
+            if batch_id in _batch_heater_states:
+                if _batch_heater_states[batch_id].get("state") != actual_heater_state:
+                    logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {actual_heater_state}")
+                # Only update the state, preserve the existing last_change timestamp
+                _batch_heater_states[batch_id]["state"] = actual_heater_state
+            else:
+                # Initialize state tracking for new batch (no last_change yet)
+                _batch_heater_states[batch_id] = {"state": actual_heater_state}
+        elif actual_heater_state is None:
+            logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable")
+            return  # Early return - cannot control unavailable entity
 
-    # Sync cached cooler state with actual HA state
+    # Sync cached cooler state with actual device state
     if cooler_entity:
-        actual_cooler_state = await ha_client.get_state(cooler_entity)
-        if actual_cooler_state:
-            ha_cooler_state = actual_cooler_state.get("state", "").lower()
-            if ha_cooler_state in ("on", "off"):
-                if batch_id in _batch_cooler_states:
-                    if _batch_cooler_states[batch_id].get("state") != ha_cooler_state:
-                        logger.debug(f"Batch {batch_id}: Syncing cooler cache: {_batch_cooler_states[batch_id].get('state')} -> {ha_cooler_state} (from HA)")
-                    # Only update the state, preserve the existing last_change timestamp
-                    _batch_cooler_states[batch_id]["state"] = ha_cooler_state
-                else:
-                    # Initialize state tracking for new batch (no last_change yet)
-                    _batch_cooler_states[batch_id] = {"state": ha_cooler_state}
-            elif ha_cooler_state == "unavailable":
-                logger.warning(f"Batch {batch_id}: Cooler entity {cooler_entity} is unavailable in HA")
-                return  # Early return - cannot control unavailable entity
+        actual_cooler_state = await router.get_state(cooler_entity)
+        if actual_cooler_state in ("on", "off"):
+            if batch_id in _batch_cooler_states:
+                if _batch_cooler_states[batch_id].get("state") != actual_cooler_state:
+                    logger.debug(f"Batch {batch_id}: Syncing cooler cache: {_batch_cooler_states[batch_id].get('state')} -> {actual_cooler_state}")
+                # Only update the state, preserve the existing last_change timestamp
+                _batch_cooler_states[batch_id]["state"] = actual_cooler_state
+            else:
+                # Initialize state tracking for new batch (no last_change yet)
+                _batch_cooler_states[batch_id] = {"state": actual_cooler_state}
+        elif actual_cooler_state is None:
+            logger.warning(f"Batch {batch_id}: Cooler entity {cooler_entity} is unavailable")
+            return  # Early return - cannot control unavailable entity
 
     current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
     current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
@@ -434,7 +433,7 @@ async def control_batch_temperature(
                 desired_state = heater_override.get("state")
                 if heater_entity and current_heater_state != desired_state:
                     await set_heater_state_for_batch(
-                        ha_client, heater_entity, desired_state, db, batch_id,
+                        router, heater_entity, desired_state, db, batch_id,
                         wort_temp, ambient_temp, target_temp, device_id, force=True
                     )
 
@@ -451,7 +450,7 @@ async def control_batch_temperature(
                 desired_state = cooler_override.get("state")
                 if cooler_entity and current_cooler_state != desired_state:
                     await set_cooler_state_for_batch(
-                        ha_client, cooler_entity, desired_state, db, batch_id,
+                        router, cooler_entity, desired_state, db, batch_id,
                         wort_temp, ambient_temp, target_temp, device_id, force=True
                     )
 
@@ -481,7 +480,7 @@ async def control_batch_temperature(
         if cooler_entity and current_cooler_state == "on":
             logger.info(f"Batch {batch_id}: Turning cooler OFF (heater needs to run)")
             await set_cooler_state_for_batch(
-                ha_client, cooler_entity, "off", db, batch_id,
+                router, cooler_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
             # Refresh state after change
@@ -491,7 +490,7 @@ async def control_batch_temperature(
         if heater_entity and current_heater_state != "on":
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/below threshold {heat_on_threshold:.1f}F, turning heater ON")
             await set_heater_state_for_batch(
-                ha_client, heater_entity, "on", db, batch_id,
+                router, heater_entity, "on", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
             # Refresh state after change
@@ -502,7 +501,7 @@ async def control_batch_temperature(
         if heater_entity and current_heater_state == "on":
             logger.info(f"Batch {batch_id}: Turning heater OFF (cooler needs to run)")
             await set_heater_state_for_batch(
-                ha_client, heater_entity, "off", db, batch_id,
+                router, heater_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
             # Refresh state after change
@@ -512,7 +511,7 @@ async def control_batch_temperature(
         if cooler_entity and current_cooler_state != "on":
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {cool_on_threshold:.1f}F, turning cooler ON")
             await set_cooler_state_for_batch(
-                ha_client, cooler_entity, "on", db, batch_id,
+                router, cooler_entity, "on", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
             # Refresh state after change
@@ -524,14 +523,14 @@ async def control_batch_temperature(
             # Reached target temp while heating - turn heater OFF to prevent overshoot
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F reached target {heat_off_threshold:.1f}F, turning heater OFF")
             await set_heater_state_for_batch(
-                ha_client, heater_entity, "off", db, batch_id,
+                router, heater_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
         elif wort_temp <= cool_off_threshold and cooler_entity and current_cooler_state == "on":
             # Reached target temp while cooling - turn cooler OFF to prevent undershoot
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C reached target {cool_off_threshold:.1f}C, turning cooler OFF")
             await set_cooler_state_for_batch(
-                ha_client, cooler_entity, "off", db, batch_id,
+                router, cooler_entity, "off", db, batch_id,
                 wort_temp, ambient_temp, target_temp, device_id
             )
             # If in chilling mode (planning status), send pitch-ready notification
@@ -565,13 +564,13 @@ async def temperature_control_loop() -> None:
                     await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                     continue
 
-                # Check if HA is enabled
+                # Check if HA is enabled (for now - future: support other backends)
                 ha_enabled = await get_config_value(db, "ha_enabled")
                 if not ha_enabled:
                     await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                     continue
 
-                # Get HA client - reinitialize if config changed
+                # Get HA config - reinitialize router if config changed
                 ha_url = await get_config_value(db, "ha_url")
                 ha_token = await get_config_value(db, "ha_token")
 
@@ -579,21 +578,29 @@ async def temperature_control_loop() -> None:
                     await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                     continue
 
-                # Reinitialize HA client if URL or token changed
+                # Reinitialize device router if config changed
                 if ha_url != _last_ha_url or ha_token != _last_ha_token:
-                    logger.info("HA config changed, reinitializing client")
-                    init_ha_client(ha_url, ha_token)
+                    logger.info("Device control config changed, reinitializing router")
+                    init_device_router(RouterConfig(
+                        ha_enabled=True,
+                        ha_url=ha_url,
+                        ha_token=ha_token,
+                    ))
                     _last_ha_url = ha_url
                     _last_ha_token = ha_token
 
-                ha_client = get_ha_client()
-                if not ha_client:
-                    init_ha_client(ha_url, ha_token)
+                router = get_device_router()
+                if not router:
+                    init_device_router(RouterConfig(
+                        ha_enabled=True,
+                        ha_url=ha_url,
+                        ha_token=ha_token,
+                    ))
                     _last_ha_url = ha_url
                     _last_ha_token = ha_token
-                    ha_client = get_ha_client()
+                    router = get_device_router()
 
-                if not ha_client:
+                if not router:
                     await _wait_or_wake(CONTROL_INTERVAL_SECONDS)
                     continue
 
@@ -625,7 +632,7 @@ async def temperature_control_loop() -> None:
                 if batches:
                     await asyncio.gather(*[
                         control_batch_temperature(
-                            ha_client, batch, db, global_target, global_hysteresis, ambient_temp
+                            router, batch, db, global_target, global_hysteresis, ambient_temp
                         )
                         for batch in batches
                     ], return_exceptions=True)

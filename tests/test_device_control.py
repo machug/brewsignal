@@ -8,7 +8,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from dataclasses import asdict
 import sys
 from pathlib import Path
@@ -710,3 +710,339 @@ class TestGlobalRouterFunctions:
             await router_module.close_device_router()
 
             assert router_module.get_device_router() is None
+
+
+class TestShellyDirectAdapter:
+    """Tests for ShellyDirectAdapter with mocked HTTP responses."""
+
+    @pytest.fixture
+    def mock_httpx_client(self):
+        """Create a mock httpx.AsyncClient."""
+        with patch("device_control.shelly_adapter.httpx.AsyncClient") as mock_class:
+            mock_client = AsyncMock()
+            mock_client.is_closed = False
+            mock_class.return_value = mock_client
+            yield mock_client
+
+    def _make_response(self, status_code: int, json_data: dict = None):
+        """Helper to create a mock response.
+
+        Note: httpx response.json() is sync, not async.
+        """
+        response = MagicMock()
+        response.status_code = status_code
+        if json_data is not None:
+            response.json.return_value = json_data
+        return response
+
+    # --- Entity ID Parsing ---
+
+    def test_parse_entity_id_basic(self):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        ip, channel = adapter._parse_entity_id("shelly://192.168.1.50/0")
+
+        assert ip == "192.168.1.50"
+        assert channel == 0
+
+    def test_parse_entity_id_different_channel(self):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        ip, channel = adapter._parse_entity_id("shelly://192.168.1.50/1")
+
+        assert ip == "192.168.1.50"
+        assert channel == 1
+
+    def test_parse_entity_id_default_channel(self):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        # No channel specified - should default to 0
+        ip, channel = adapter._parse_entity_id("shelly://192.168.1.50")
+
+        assert ip == "192.168.1.50"
+        assert channel == 0
+
+    def test_parse_entity_id_with_port(self):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        ip, channel = adapter._parse_entity_id("shelly://192.168.1.50:8080/0")
+
+        assert ip == "192.168.1.50:8080"
+        assert channel == 0
+
+    def test_parse_entity_id_without_scheme(self):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        # Should handle raw IP as well
+        ip, channel = adapter._parse_entity_id("192.168.1.50/0")
+
+        assert ip == "192.168.1.50"
+        assert channel == 0
+
+    # --- Gen2 API (RPC) ---
+
+    @pytest.mark.asyncio
+    async def test_get_state_gen2_on(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Gen2 response
+        mock_httpx_client.get.return_value = self._make_response(
+            200, {"output": True, "apower": 42.5}
+        )
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state == "on"
+        mock_httpx_client.get.assert_called_once()
+        call_url = mock_httpx_client.get.call_args[0][0]
+        assert "rpc/Switch.GetStatus" in call_url
+
+    @pytest.mark.asyncio
+    async def test_get_state_gen2_off(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.return_value = self._make_response(200, {"output": False})
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state == "off"
+
+    @pytest.mark.asyncio
+    async def test_set_state_gen2_on(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.return_value = self._make_response(200, {"was_on": False})
+
+        adapter = ShellyDirectAdapter()
+        result = await adapter.set_state("shelly://192.168.1.50/0", "on")
+
+        assert result is True
+        call_url = mock_httpx_client.get.call_args[0][0]
+        assert "rpc/Switch.Set" in call_url
+        assert "on=true" in call_url
+
+    @pytest.mark.asyncio
+    async def test_set_state_gen2_off(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.return_value = self._make_response(200, {"was_on": True})
+
+        adapter = ShellyDirectAdapter()
+        result = await adapter.set_state("shelly://192.168.1.50/0", "off")
+
+        assert result is True
+        call_url = mock_httpx_client.get.call_args[0][0]
+        assert "on=false" in call_url
+
+    # --- Gen1 API Fallback ---
+
+    @pytest.mark.asyncio
+    async def test_get_state_gen1_fallback_on(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Gen2 fails (404), Gen1 succeeds
+        mock_httpx_client.get.side_effect = [
+            self._make_response(404),
+            self._make_response(200, {"ison": True, "power": 45.0}),
+        ]
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state == "on"
+        assert mock_httpx_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_state_gen1_fallback_off(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.side_effect = [
+            self._make_response(404),
+            self._make_response(200, {"ison": False}),
+        ]
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state == "off"
+
+    @pytest.mark.asyncio
+    async def test_set_state_gen1_fallback(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Gen2 fails, Gen1 succeeds
+        mock_httpx_client.get.side_effect = [
+            self._make_response(404),
+            self._make_response(200, {"ison": True}),
+        ]
+
+        adapter = ShellyDirectAdapter()
+        result = await adapter.set_state("shelly://192.168.1.50/0", "on")
+
+        assert result is True
+        # Second call should be Gen1 format
+        gen1_call_url = mock_httpx_client.get.call_args_list[1][0][0]
+        assert "/relay/0" in gen1_call_url
+        assert "turn=on" in gen1_call_url
+
+    # --- Error Handling ---
+
+    @pytest.mark.asyncio
+    async def test_get_state_device_offline(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+        import httpx
+
+        mock_httpx_client.get.side_effect = httpx.ConnectError("Connection refused")
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state is None
+
+    @pytest.mark.asyncio
+    async def test_set_state_device_offline(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+        import httpx
+
+        mock_httpx_client.get.side_effect = httpx.ConnectError("Connection refused")
+
+        adapter = ShellyDirectAdapter()
+        result = await adapter.set_state("shelly://192.168.1.50/0", "on")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_get_state_both_apis_fail(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Both Gen2 and Gen1 fail
+        mock_httpx_client.get.return_value = self._make_response(500)
+
+        adapter = ShellyDirectAdapter()
+        state = await adapter.get_state("shelly://192.168.1.50/0")
+
+        assert state is None
+
+    @pytest.mark.asyncio
+    async def test_set_state_invalid_state(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        result = await adapter.set_state("shelly://192.168.1.50/0", "invalid")
+
+        assert result is False
+        mock_httpx_client.get.assert_not_called()
+
+    # --- Power Usage ---
+
+    @pytest.mark.asyncio
+    async def test_get_power_usage_gen2(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.return_value = self._make_response(
+            200, {"output": True, "apower": 42.5}
+        )
+
+        adapter = ShellyDirectAdapter()
+        power = await adapter.get_power_usage("shelly://192.168.1.50/0")
+
+        assert power == 42.5
+
+    @pytest.mark.asyncio
+    async def test_get_power_usage_gen1(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Gen2 fails, Gen1 succeeds with power
+        mock_httpx_client.get.side_effect = [
+            self._make_response(404),
+            self._make_response(200, {"ison": True, "power": 38.2}),
+        ]
+
+        adapter = ShellyDirectAdapter()
+        power = await adapter.get_power_usage("shelly://192.168.1.50/0")
+
+        assert power == 38.2
+
+    @pytest.mark.asyncio
+    async def test_get_power_usage_not_available(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Device without power meter
+        mock_httpx_client.get.return_value = self._make_response(
+            200, {"output": True}  # No apower field
+        )
+
+        adapter = ShellyDirectAdapter()
+        power = await adapter.get_power_usage("shelly://192.168.1.50/0")
+
+        assert power is None
+
+    # --- Connection Test ---
+
+    @pytest.mark.asyncio
+    async def test_test_connection_success(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        mock_httpx_client.get.return_value = self._make_response(
+            200, {"id": "shellyplus1pm-abc123"}
+        )
+
+        adapter = ShellyDirectAdapter()
+        # Need to register a device first
+        adapter._devices["192.168.1.50"] = {"gen": 2}
+        result = await adapter.test_connection()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_test_connection_no_devices(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        adapter = ShellyDirectAdapter()
+        # No devices registered
+        result = await adapter.test_connection()
+
+        # Should return True (no devices to test = nothing broken)
+        assert result is True
+
+    # --- Device Caching ---
+
+    @pytest.mark.asyncio
+    async def test_caches_device_generation(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # First call - Gen2 succeeds
+        mock_httpx_client.get.return_value = self._make_response(200, {"output": True})
+
+        adapter = ShellyDirectAdapter()
+
+        # First call discovers it's Gen2
+        await adapter.get_state("shelly://192.168.1.50/0")
+        first_call_count = mock_httpx_client.get.call_count
+
+        # Second call should skip Gen2 detection
+        await adapter.get_state("shelly://192.168.1.50/0")
+        second_call_count = mock_httpx_client.get.call_count
+
+        # Should only make 1 call on second request (cached Gen2)
+        assert second_call_count == first_call_count + 1
+
+    @pytest.mark.asyncio
+    async def test_close(self, mock_httpx_client):
+        from device_control.shelly_adapter import ShellyDirectAdapter
+
+        # Need to trigger client creation first
+        mock_httpx_client.get.return_value = self._make_response(200, {"output": True})
+
+        adapter = ShellyDirectAdapter()
+        await adapter.get_state("shelly://192.168.1.50/0")  # Creates client
+        await adapter.close()
+
+        mock_httpx_client.aclose.assert_called_once()

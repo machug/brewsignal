@@ -2,7 +2,7 @@
 
 Entity ID schemes:
 - ha://switch.entity_name - Home Assistant
-- shelly://192.168.1.50/0 - Direct Shelly HTTP (future)
+- shelly://192.168.1.50/0 - Direct Shelly HTTP
 - gateway://BSG-123/192.168.1.50/0 - Gateway relay (future)
 
 For backward compatibility, entity IDs without a scheme prefix are assumed
@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from .base import DeviceControlAdapter, DeviceInfo, DeviceControlError
 from .ha_adapter import HAAdapter
+from .shelly_adapter import ShellyDirectAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,8 @@ class DeviceControlRouter:
         # Check if config actually changed
         if (self._config.ha_url == config.ha_url and
             self._config.ha_token == config.ha_token and
-            self._config.ha_enabled == config.ha_enabled):
+            self._config.ha_enabled == config.ha_enabled and
+            self._config.shelly_enabled == config.shelly_enabled):
             return  # No change
 
         logger.info("Device control router reconfiguring")
@@ -77,10 +79,10 @@ class DeviceControlRouter:
             self._adapters["ha"] = HAAdapter(self._config.ha_url, self._config.ha_token)
             logger.info(f"HA adapter initialized: {self._config.ha_url}")
 
-        # Shelly direct adapter (future - tilt_ui-amh)
+        # Shelly direct adapter
         if self._config.shelly_enabled:
-            # self._adapters["shelly"] = ShellyDirectAdapter()
-            logger.info("Shelly direct adapter: not yet implemented")
+            self._adapters["shelly"] = ShellyDirectAdapter()
+            logger.info("Shelly direct adapter initialized")
 
         # Gateway relay adapter (future - tilt_ui-123)
         if self._config.gateway_enabled:

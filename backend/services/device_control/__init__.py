@@ -31,6 +31,7 @@ from .base import (
     DeviceInfo,
 )
 from .ha_adapter import HAAdapter
+from .shelly_adapter import ShellyDirectAdapter
 from .router import (
     DeviceControlRouter,
     RouterConfig,
@@ -46,6 +47,7 @@ __all__ = [
     "DeviceInfo",
     # Adapters
     "HAAdapter",
+    "ShellyDirectAdapter",
     # Router
     "DeviceControlRouter",
     "RouterConfig",

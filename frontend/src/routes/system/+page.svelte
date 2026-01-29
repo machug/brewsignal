@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
-	import { config } from '$lib/config';
+	import { config, onConfigLoaded, configStores } from '$lib/config';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from '$lib/supabase';
 	import { authFetch } from '$lib/api';
@@ -127,6 +127,7 @@
 	let aiProviders = $state<Array<{ id: string; name: string; description: string; requires_api_key: boolean; setup_url: string }>>([]);
 	let aiModels = $state<Array<{ id: string; name: string; description: string }>>([]);
 	let aiHasEnvKey = $state(false);
+	let localModeActive = $state(true); // Reactive flag for deployment mode
 
 	// MQTT state
 	let mqttEnabled = $state(false);
@@ -403,16 +404,27 @@
 			const response = await authFetch('/api/assistant/providers');
 			if (response.ok) {
 				aiProviders = await response.json();
-				// In cloud mode, ensure selected provider is valid (not local-only)
-				if (!config.isLocalMode) {
-					const validProviders = aiProviders.filter(p => p.id !== 'hailo' && p.id !== 'local');
-					if (!validProviders.find(p => p.id === aiProvider) && validProviders.length > 0) {
-						aiProvider = validProviders[0].id;
-					}
+				// Auto-select valid provider once config is loaded
+				onConfigLoaded(() => {
+					selectValidProvider();
+				});
+				// Also select immediately if config is already loaded
+				if (config.initialized) {
+					selectValidProvider();
 				}
 			}
 		} catch (e) {
 			console.error('Failed to load AI providers:', e);
+		}
+	}
+
+	function selectValidProvider() {
+		// In cloud mode, ensure selected provider is valid (not local-only)
+		if (!config.isLocalMode && aiProviders.length > 0) {
+			const validProviders = aiProviders.filter(p => p.id !== 'hailo' && p.id !== 'local');
+			if (!validProviders.find(p => p.id === aiProvider) && validProviders.length > 0) {
+				aiProvider = validProviders[0].id;
+			}
 		}
 	}
 
@@ -900,6 +912,18 @@
 			syncConfigFromStore();
 		}
 	});
+
+	// Subscribe to deployment mode changes for reactive template updates
+	$effect(() => {
+		const unsubscribe = configStores.isLocalMode.subscribe((value) => {
+			localModeActive = value;
+			// Also reselect provider when mode changes
+			if (aiProviders.length > 0) {
+				selectValidProvider();
+			}
+		});
+		return unsubscribe;
+	});
 </script>
 
 <svelte:head>
@@ -936,7 +960,7 @@
 					<span class="status-label">Readings</span>
 					<span class="status-value">{storageStats ? formatNumber(storageStats.total_readings) : '—'}</span>
 				</div>
-				{#if config.isLocalMode}
+				{#if localModeActive}
 					<div class="status-item ai-status" class:active={aiAccelerator?.available}>
 						<span class="status-label">AI Accelerator</span>
 						<span class="status-value">
@@ -1435,7 +1459,7 @@
 								<div class="form-field">
 									<label for="ai-provider">Provider</label>
 									<select id="ai-provider" bind:value={aiProvider}>
-										{#each aiProviders.filter(p => config.isLocalMode || (p.id !== 'hailo' && p.id !== 'local')) as provider}
+										{#each aiProviders.filter(p => localModeActive || (p.id !== 'hailo' && p.id !== 'local')) as provider}
 											<option value={provider.id}>{provider.name}</option>
 										{/each}
 									</select>
@@ -1451,7 +1475,7 @@
 								</div>
 							</div>
 
-							{#if aiProvider === 'hailo' && config.isLocalMode}
+							{#if aiProvider === 'hailo' && localModeActive}
 								<div class="info-box hailo">
 									<h4>Hailo AI HAT+ Setup</h4>
 									{#if aiAccelerator?.available}
@@ -1484,7 +1508,7 @@
 											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
 											<li>Enter the remote machine's IP below</li>
 										</ol>
-										{#if config.isLocalMode && aiAccelerator?.available}
+										{#if localModeActive && aiAccelerator?.available}
 											<p class="hint">For local AI on Pi, select <strong>Hailo AI HAT+</strong> provider instead.</p>
 										{/if}
 									{:else if systemInfo?.platform?.gpu?.vendor === 'nvidia' || systemInfo?.platform?.gpu?.vendor === 'amd' || systemInfo?.platform?.gpu?.vendor === 'apple'}

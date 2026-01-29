@@ -1320,7 +1320,7 @@ class ConfigUpdate(BaseModel):
     @field_validator("ai_provider")
     @classmethod
     def validate_ai_provider(cls, v: Optional[str]) -> Optional[str]:
-        valid_providers = ("local", "openai", "anthropic", "google", "groq", "deepseek", "huggingface", "openrouter")
+        valid_providers = ("local", "hailo", "openai", "anthropic", "google", "groq", "deepseek", "huggingface", "openrouter")
         if v is not None and v not in valid_providers:
             raise ValueError(f"ai_provider must be one of: {', '.join(valid_providers)}")
         return v

@@ -1,5 +1,7 @@
 [build]
 builder = "railpack"
+# Only rebuild when backend code changes (not frontend)
+watchPatterns = ["backend/**", "requirements.txt", "pyproject.toml", "railway.toml"]
 
 [deploy]
 startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"

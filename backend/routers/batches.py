@@ -717,10 +717,19 @@ async def get_batch_predictions(
     if not predictions.get("fitted"):
         return {"available": False, "reason": predictions.get("reason", "unknown")}
 
-    # Calculate completion date from hours_to_completion
+    # Use blended prediction (linear/curve blend based on confidence)
+    # Fall back to curve-only hours_to_completion if blended not available
+    blended_hours = predictions.get("blended_hours_to_completion")
+    curve_hours = predictions.get("hours_to_completion")
+    linear_hours = predictions.get("hours_to_target_linear")
+    confidence = predictions.get("confidence")
+
+    # Primary estimate uses blended prediction
+    hours_to_completion = blended_hours if blended_hours is not None else curve_hours
+
+    # Calculate completion date from blended hours
     # Note: hours_to_completion is relative to NOW, not batch start time
     completion_date = None
-    hours_to_completion = predictions.get("hours_to_completion")
     if hours_to_completion is not None and hours_to_completion > 0:
         completion_date = datetime.now(timezone.utc) + timedelta(hours=hours_to_completion)
 
@@ -730,6 +739,9 @@ async def get_batch_predictions(
         "predicted_og": predictions.get("predicted_og"),
         "estimated_completion": completion_date.isoformat() if completion_date else None,
         "hours_to_completion": hours_to_completion,
+        "hours_to_target_linear": linear_hours,
+        "curve_hours_to_completion": curve_hours,
+        "confidence": confidence,
         "model_type": predictions.get("model_type"),
         "r_squared": predictions.get("r_squared"),
         "num_readings": device_state.get("history_count", 0)

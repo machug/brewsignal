@@ -46,6 +46,11 @@ class FermentationCurveFitter:
     - Estimating final gravity (FG)
     - Predicting completion time
     - Forecasting future SG values
+
+    Blended Predictions:
+    - Early in fermentation, curve fitting may predict premature plateau
+    - Linear extrapolation to recipe target FG is more reliable early on
+    - Confidence score determines blend: low confidence = favor linear
     """
 
     def __init__(
@@ -158,18 +163,18 @@ class FermentationCurveFitter:
 
         # AUTO mode: try all models and pick the best R²
         if model == "auto":
-            return self._fit_auto(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_auto(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
 
         # Fit specific model
         if model == "exponential":
-            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
         elif model == "gompertz":
-            return self._fit_gompertz(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_gompertz(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
         elif model == "logistic":
-            return self._fit_logistic(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_logistic(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
         else:
             # Unknown model, default to exponential
-            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
 
     def _failure_result(self, reason: str) -> dict:
         """Return a standard failure result dictionary."""
@@ -181,8 +186,149 @@ class FermentationCurveFitter:
             "decay_rate": None,
             "r_squared": None,
             "hours_to_completion": None,
+            "hours_to_target_linear": None,
+            "blended_hours_to_completion": None,
+            "confidence": None,
             "reason": reason,
         }
+
+    def _calculate_linear_eta(
+        self,
+        times: np.ndarray,
+        sgs: np.ndarray,
+        target_fg: float,
+    ) -> Optional[float]:
+        """Calculate hours to target FG using linear extrapolation.
+
+        Args:
+            times: Time points in hours
+            sgs: Specific gravity readings
+            target_fg: Target final gravity from recipe
+
+        Returns:
+            Hours until target FG reached, or None if slope is positive/zero
+        """
+        n = len(times)
+        if n < 2:
+            return None
+
+        # Simple linear regression
+        sum_x = np.sum(times)
+        sum_y = np.sum(sgs)
+        sum_xy = np.sum(times * sgs)
+        sum_x2 = np.sum(times ** 2)
+
+        denom = n * sum_x2 - sum_x ** 2
+        if abs(denom) < 1e-10:
+            return None
+
+        slope = (n * sum_xy - sum_x * sum_y) / denom
+        intercept = (sum_y - slope * sum_x) / n
+
+        # Only meaningful if gravity is dropping
+        if slope >= 0:
+            return None
+
+        # Calculate when we'll hit target FG
+        # target_fg = slope * t + intercept
+        # t = (target_fg - intercept) / slope
+        t_target = (target_fg - intercept) / slope
+        current_time = times[-1]
+
+        if t_target <= current_time:
+            return 0  # Already past target
+
+        hours_remaining = t_target - current_time
+
+        # Cap at 60 days (1440 hours) for sanity
+        if hours_remaining > 1440:
+            return 1440
+
+        return float(hours_remaining)
+
+    def _calculate_confidence(
+        self,
+        r_squared: float,
+        predicted_fg: float,
+        target_fg: Optional[float],
+        current_sg: float,
+        og: float,
+    ) -> float:
+        """Calculate confidence score for curve-based prediction.
+
+        Confidence is reduced when:
+        - R² is low (poor curve fit)
+        - Predicted FG deviates significantly from recipe target
+        - Progress toward target is low (too early to predict plateau)
+
+        Args:
+            r_squared: Curve fit quality (0-1)
+            predicted_fg: FG predicted by curve fit
+            target_fg: Recipe target FG (if available)
+            current_sg: Current specific gravity
+            og: Original gravity
+
+        Returns:
+            Confidence score (0-1) for curve-based prediction
+        """
+        # Start with R² as base confidence
+        confidence = r_squared
+
+        # If no target FG provided, use moderate confidence
+        if target_fg is None:
+            return confidence * 0.7
+
+        # Factor 1: FG deviation penalty
+        # If predicted FG differs significantly from target, reduce confidence
+        fg_deviation = abs(predicted_fg - target_fg)
+        if fg_deviation > 0.003:
+            # Scale: 0.003 deviation = no penalty, 0.020+ = 80% penalty
+            deviation_factor = max(0.2, 1.0 - (fg_deviation - 0.003) / 0.017)
+            confidence *= deviation_factor
+
+        # Factor 2: Progress penalty
+        # If we're early in fermentation, curve plateau prediction is unreliable
+        total_expected_drop = og - target_fg
+        if total_expected_drop > 0.005:
+            current_drop = og - current_sg
+            progress = current_drop / total_expected_drop
+
+            if progress < 0.6:
+                # Scale: 0% progress = 0 confidence, 60%+ = full confidence
+                progress_factor = progress / 0.6
+                confidence *= progress_factor
+
+        return max(0.0, min(1.0, confidence))
+
+    def _blend_predictions(
+        self,
+        curve_hours: Optional[float],
+        linear_hours: Optional[float],
+        confidence: float,
+    ) -> Optional[float]:
+        """Blend curve and linear predictions based on confidence.
+
+        Args:
+            curve_hours: Hours to completion from curve fit (to predicted FG)
+            linear_hours: Hours to target FG from linear extrapolation
+            confidence: Confidence in curve prediction (0-1)
+
+        Returns:
+            Blended hours estimate, or best available single estimate
+        """
+        # If both are available, blend them
+        if curve_hours is not None and linear_hours is not None:
+            # High confidence = favor curve, low confidence = favor linear
+            blended = confidence * curve_hours + (1 - confidence) * linear_hours
+            return float(blended)
+
+        # Fall back to whichever is available
+        if linear_hours is not None:
+            return linear_hours
+        if curve_hours is not None:
+            return curve_hours
+
+        return None
 
     def _calculate_r_squared(self, y_actual: np.ndarray, y_predicted: np.ndarray) -> float:
         """Calculate R² (coefficient of determination)."""
@@ -198,6 +344,7 @@ class FermentationCurveFitter:
         og_guess: float,
         fg_guess: float,
         fg_lower: float,
+        target_fg: Optional[float] = None,
     ) -> dict:
         """Try all models and return the one with best R²."""
         results = []
@@ -208,13 +355,13 @@ class FermentationCurveFitter:
             ("gompertz", self._fit_gompertz),
             ("logistic", self._fit_logistic),
         ]:
-            result = fit_func(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            result = fit_func(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, target_fg)
             if result["fitted"] and result["r_squared"] is not None:
                 results.append(result)
 
         if not results:
             # All models failed, return exponential failure for consistent error
-            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower)
+            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, target_fg)
 
         # Return result with highest R²
         best = max(results, key=lambda r: r["r_squared"])
@@ -227,6 +374,7 @@ class FermentationCurveFitter:
         og_guess: float,
         fg_guess: float,
         fg_lower: float,
+        target_fg: Optional[float] = None,
     ) -> dict:
         """Fit exponential decay model."""
         k_guess = 0.02  # Typical fermentation rate
@@ -262,6 +410,22 @@ class FermentationCurveFitter:
                 times_arr[-1], sgs_arr[-1]
             )
 
+            # Calculate linear ETA to recipe target
+            linear_target = target_fg if target_fg is not None else fg_fit
+            hours_to_target_linear = self._calculate_linear_eta(
+                times_arr, sgs_arr, linear_target
+            )
+
+            # Calculate confidence score
+            confidence = self._calculate_confidence(
+                r_squared, fg_fit, target_fg, sgs_arr[-1], og_fit
+            )
+
+            # Calculate blended prediction
+            blended_hours = self._blend_predictions(
+                hours_to_completion, hours_to_target_linear, confidence
+            )
+
             return {
                 "fitted": True,
                 "model_type": "exponential",
@@ -270,6 +434,9 @@ class FermentationCurveFitter:
                 "decay_rate": self.k,
                 "r_squared": self.r_squared,
                 "hours_to_completion": hours_to_completion,
+                "hours_to_target_linear": hours_to_target_linear,
+                "blended_hours_to_completion": blended_hours,
+                "confidence": confidence,
                 "reason": None,
             }
 
@@ -283,6 +450,7 @@ class FermentationCurveFitter:
         og_guess: float,
         fg_guess: float,
         fg_lower: float,
+        target_fg: Optional[float] = None,
     ) -> dict:
         """Fit Gompertz S-curve model."""
         # Initial guesses for Gompertz: mu (max rate), lag (lag time)
@@ -323,6 +491,22 @@ class FermentationCurveFitter:
                 times_arr[-1], sgs_arr[-1], og_fit, fg_fit, mu_fit, lag_fit
             )
 
+            # Calculate linear ETA to recipe target
+            linear_target = target_fg if target_fg is not None else fg_fit
+            hours_to_target_linear = self._calculate_linear_eta(
+                times_arr, sgs_arr, linear_target
+            )
+
+            # Calculate confidence score
+            confidence = self._calculate_confidence(
+                r_squared, fg_fit, target_fg, sgs_arr[-1], og_fit
+            )
+
+            # Calculate blended prediction
+            blended_hours = self._blend_predictions(
+                hours_to_completion, hours_to_target_linear, confidence
+            )
+
             return {
                 "fitted": True,
                 "model_type": "gompertz",
@@ -331,6 +515,9 @@ class FermentationCurveFitter:
                 "decay_rate": self.k,
                 "r_squared": self.r_squared,
                 "hours_to_completion": hours_to_completion,
+                "hours_to_target_linear": hours_to_target_linear,
+                "blended_hours_to_completion": blended_hours,
+                "confidence": confidence,
                 "reason": None,
             }
 
@@ -344,6 +531,7 @@ class FermentationCurveFitter:
         og_guess: float,
         fg_guess: float,
         fg_lower: float,
+        target_fg: Optional[float] = None,
     ) -> dict:
         """Fit Logistic S-curve model."""
         # Initial guesses: k (rate), t_half (midpoint time)
@@ -384,6 +572,22 @@ class FermentationCurveFitter:
                 times_arr[-1], sgs_arr[-1], og_fit, fg_fit, k_fit, t_half_fit
             )
 
+            # Calculate linear ETA to recipe target
+            linear_target = target_fg if target_fg is not None else fg_fit
+            hours_to_target_linear = self._calculate_linear_eta(
+                times_arr, sgs_arr, linear_target
+            )
+
+            # Calculate confidence score
+            confidence = self._calculate_confidence(
+                r_squared, fg_fit, target_fg, sgs_arr[-1], og_fit
+            )
+
+            # Calculate blended prediction
+            blended_hours = self._blend_predictions(
+                hours_to_completion, hours_to_target_linear, confidence
+            )
+
             return {
                 "fitted": True,
                 "model_type": "logistic",
@@ -392,6 +596,9 @@ class FermentationCurveFitter:
                 "decay_rate": self.k,
                 "r_squared": self.r_squared,
                 "hours_to_completion": hours_to_completion,
+                "hours_to_target_linear": hours_to_target_linear,
+                "blended_hours_to_completion": blended_hours,
+                "confidence": confidence,
                 "reason": None,
             }
 

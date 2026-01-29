@@ -145,7 +145,10 @@ export interface MLPredictions {
 	predicted_fg?: number;
 	predicted_og?: number;
 	estimated_completion?: string;
-	hours_to_completion?: number;
+	hours_to_completion?: number;  // Blended estimate (linear/curve blend)
+	hours_to_target_linear?: number;  // Linear extrapolation to recipe target
+	curve_hours_to_completion?: number;  // Curve-fit prediction to plateau
+	confidence?: number;  // Confidence in curve prediction (0-1)
 	model_type?: string;
 	r_squared?: number;
 	num_readings?: number;

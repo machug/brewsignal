@@ -8,12 +8,13 @@
 		batchId: number;
 		batchStatus?: string;
 		measuredOg?: number | null;
-		measuredFg?: number | null;  // Actual FG from batch
+		measuredFg?: number | null;  // Actual FG from batch (after completion)
+		recipeFg?: number | null;  // Recipe target FG (for progress calculation)
 		currentSg?: number | null;
 		liveReading?: TiltReading | null;
 	}
 
-	let { batchId, batchStatus = 'fermenting', measuredOg = null, measuredFg = null, currentSg = null, liveReading = null }: Props = $props();
+	let { batchId, batchStatus = 'fermenting', measuredOg = null, measuredFg = null, recipeFg = null, currentSg = null, liveReading = null }: Props = $props();
 
 	let predictions = $state<MLPredictions>({ available: false });
 	let loading = $state(true);
@@ -101,10 +102,12 @@
 		return Math.ceil(diff / (1000 * 60 * 60 * 24));
 	}
 
-	// Calculate fermentation progress percentage (OG → FG)
+	// Calculate fermentation progress percentage (OG → target FG)
+	// Use recipe target FG for progress, not predicted plateau FG
 	let fermentationProgress = $derived.by(() => {
 		const og = measuredOg ?? predictions.predicted_og;
-		const fg = predictions.predicted_fg;
+		// Prefer recipe target FG over ML predicted FG for progress calculation
+		const fg = recipeFg ?? predictions.predicted_fg;
 		const current = currentSg ?? liveReading?.sg;
 
 		if (!og || !fg || !current) return null;
@@ -115,6 +118,33 @@
 		const progress = (currentDrop / totalDrop) * 100;
 
 		return Math.min(100, Math.max(0, progress));
+	});
+
+	// Detect potential stuck fermentation (predicted FG differs from recipe target)
+	let stuckFermentationWarning = $derived.by(() => {
+		if (!recipeFg || !predictions.predicted_fg) return null;
+
+		const deviation = predictions.predicted_fg - recipeFg;
+		const deviationPoints = Math.round(deviation * 1000);
+
+		// Warn if predicted FG is more than 5 points above recipe target
+		if (deviationPoints > 5) {
+			return {
+				predicted: predictions.predicted_fg,
+				target: recipeFg,
+				points: deviationPoints
+			};
+		}
+		return null;
+	});
+
+	// Confidence level indicator
+	let confidenceLevel = $derived.by(() => {
+		const conf = predictions.confidence;
+		if (conf === undefined || conf === null) return null;
+		if (conf >= 0.7) return { label: 'High', color: 'var(--positive)' };
+		if (conf >= 0.4) return { label: 'Medium', color: 'var(--recipe-accent)' };
+		return { label: 'Low', color: 'var(--text-muted)' };
 	});
 
 	// Calculate apparent attenuation
@@ -263,6 +293,20 @@
 				</div>
 			{/if}
 
+			<!-- Stuck Fermentation Warning -->
+			{#if stuckFermentationWarning}
+				<div class="stuck-warning">
+					<span class="stuck-icon">⚠️</span>
+					<div class="stuck-content">
+						<span class="stuck-label">Potential Early Stall</span>
+						<span class="stuck-detail">
+							Model predicts {formatGravity(stuckFermentationWarning.predicted)} vs target {formatGravity(stuckFermentationWarning.target)}
+							({stuckFermentationWarning.points} pts high)
+						</span>
+					</div>
+				</div>
+			{/if}
+
 			<!-- Fermentation Progress Section -->
 			{#if fermentationProgress !== null}
 				<div class="progress-section">
@@ -280,7 +324,7 @@
 					<div class="progress-labels">
 						<span class="og-label">OG: {formatGravity(measuredOg ?? predictions.predicted_og ?? 0)}</span>
 						<span class="progress-percent">{fermentationProgress.toFixed(0)}%</span>
-						<span class="fg-label">FG: {formatGravity(predictions.predicted_fg ?? 0)}</span>
+						<span class="fg-label">FG: {formatGravity(recipeFg ?? predictions.predicted_fg ?? 0)}</span>
 					</div>
 				</div>
 			{/if}
@@ -328,10 +372,10 @@
 							<span class="model-value model-type">{predictions.model_type}</span>
 						</div>
 					{/if}
-					{#if predictions.r_squared !== undefined}
+					{#if confidenceLevel}
 						<div class="model-metric">
-							<span class="model-label">Fit:</span>
-							<span class="model-value">{(predictions.r_squared * 100).toFixed(0)}%</span>
+							<span class="model-label">Conf:</span>
+							<span class="model-value" style="color: {confidenceLevel.color}">{confidenceLevel.label}</span>
 						</div>
 					{/if}
 					{#if predictions.num_readings}
@@ -613,6 +657,39 @@
 	}
 
 	.anomaly-reasons {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	/* Stuck Fermentation Warning */
+	.stuck-warning {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		margin-bottom: 1rem;
+		background: rgba(251, 191, 36, 0.1);
+		border: 1px solid rgba(251, 191, 36, 0.3);
+		border-radius: 0.375rem;
+	}
+
+	.stuck-icon {
+		font-size: 1.25rem;
+	}
+
+	.stuck-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.stuck-label {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--recipe-accent);
+	}
+
+	.stuck-detail {
 		font-size: 0.75rem;
 		color: var(--text-secondary);
 	}

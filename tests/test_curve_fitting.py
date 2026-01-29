@@ -303,3 +303,118 @@ class TestMultiModelPredictions:
             if result["fitted"]:
                 # Predicted FG should respect the constraint (with margin)
                 assert result["predicted_fg"] >= expected_fg - 0.003
+
+
+class TestBlendedPredictions:
+    """Tests for blended linear/curve predictions."""
+
+    def test_returns_blended_fields(self, fermentation_data):
+        """Fit result includes blended prediction fields."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            expected_fg=fermentation_data["fg"]
+        )
+
+        assert result["fitted"] is True
+        assert "hours_to_target_linear" in result
+        assert "blended_hours_to_completion" in result
+        assert "confidence" in result
+
+    def test_confidence_high_when_prediction_matches_target(self, fermentation_data):
+        """Confidence should be high when predicted FG close to target."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Use the actual FG from data as expected (perfect match scenario)
+        result = fitter.fit(
+            fermentation_data["hours"],
+            fermentation_data["sg"],
+            expected_fg=fermentation_data["fg"]
+        )
+
+        assert result["fitted"] is True
+        # Should have reasonable confidence when prediction matches
+        assert result["confidence"] is not None
+        assert result["confidence"] > 0.5
+
+    def test_confidence_low_when_prediction_differs_from_target(self):
+        """Confidence should be lower when predicted FG differs significantly from target."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Create data that will plateau early (around 1.030)
+        og = 1.050
+        fg_actual = 1.030  # Will stall early
+        fg_target = 1.010  # Recipe expects lower
+
+        hours = list(range(0, 120, 4))
+        sgs = [fg_actual + (og - fg_actual) * np.exp(-0.03 * t) for t in hours]
+
+        result = fitter.fit(hours, sgs, expected_fg=fg_target)
+
+        assert result["fitted"] is True
+        # Confidence should be lower due to FG mismatch
+        assert result["confidence"] is not None
+        # Large deviation (0.020) should reduce confidence significantly
+        assert result["confidence"] < 0.8
+
+    def test_blended_prediction_favors_linear_when_confidence_low(self):
+        """Blended prediction should favor linear ETA when confidence is low."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Early fermentation data - not enough to predict plateau reliably
+        og = 1.050
+        fg_target = 1.010
+
+        # Only generate first 20% of fermentation (early stage)
+        hours = list(range(0, 30, 2))
+        # Simulate linear-ish drop at beginning
+        sgs = [og - 0.0003 * t for t in hours]
+
+        result = fitter.fit(hours, sgs, expected_fg=fg_target)
+
+        if result["fitted"]:
+            # At early stage, confidence should be low
+            # and blended should be closer to linear
+            assert result["confidence"] is not None
+            assert result["hours_to_target_linear"] is not None
+            assert result["blended_hours_to_completion"] is not None
+
+    def test_confidence_considers_progress(self):
+        """Confidence should be lower when fermentation progress is low."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        og = 1.050
+        fg_target = 1.010
+
+        # Generate early fermentation data (only 10% progress)
+        hours = list(range(0, 24, 2))  # 24 hours
+        current_sg = 1.046  # Only dropped 4 points from 1.050
+        sgs = [og - (og - current_sg) * (t / hours[-1]) for t in hours]
+
+        result = fitter.fit(hours, sgs, expected_fg=fg_target)
+
+        if result["fitted"]:
+            # Low progress should reduce confidence
+            assert result["confidence"] is not None
+            # 10% progress to target means very low confidence
+            assert result["confidence"] < 0.5
+
+    def test_linear_eta_extrapolates_to_target(self, fermentation_data):
+        """Linear ETA should predict time to reach recipe target FG."""
+        fitter = FermentationCurveFitter(min_readings=10)
+
+        # Use first half of fermentation data (still actively fermenting)
+        midpoint = len(fermentation_data["hours"]) // 2
+
+        result = fitter.fit(
+            fermentation_data["hours"][:midpoint],
+            fermentation_data["sg"][:midpoint],
+            expected_fg=fermentation_data["fg"]
+        )
+
+        assert result["fitted"] is True
+        assert result["hours_to_target_linear"] is not None
+        # Linear ETA should be positive (still fermenting)
+        assert result["hours_to_target_linear"] > 0

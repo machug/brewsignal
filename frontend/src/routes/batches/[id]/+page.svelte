@@ -816,6 +816,7 @@
 					batchStatus={batch.status}
 					measuredOg={batch.measured_og}
 					measuredFg={batch.measured_fg ?? progress?.measured?.current_sg}
+					recipeFg={batch.recipe?.fg}
 					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
 					{liveReading}
 				/>

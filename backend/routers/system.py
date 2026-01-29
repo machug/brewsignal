@@ -391,9 +391,18 @@ class AIAcceleratorDevice(BaseModel):
     tops: int
 
 
+class HailoOllamaStatus(BaseModel):
+    """Status of the hailo-ollama inference server."""
+    running: bool
+    url: str = "http://localhost:8000"
+    models_available: list[str] = []
+    models_loaded: list[str] = []
+
+
 class AIAcceleratorStatus(BaseModel):
     available: bool
     device: Optional[AIAcceleratorDevice] = None
+    ollama_server: Optional[HailoOllamaStatus] = None
 
 
 @router.post("/cleanup")
@@ -433,11 +442,51 @@ async def trigger_cleanup(cleanup: CleanupRequest, request: Request):
     }
 
 
+def check_hailo_ollama_status() -> Optional[HailoOllamaStatus]:
+    """Check if hailo-ollama server is running and get model info."""
+    import httpx
+
+    url = "http://localhost:8000"
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            # Get available models from hailo model zoo
+            available_models = []
+            try:
+                resp = client.get(f"{url}/hailo/v1/list")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    available_models = data.get("models", [])
+            except Exception:
+                pass
+
+            # Get loaded/pulled models
+            loaded_models = []
+            try:
+                resp = client.get(f"{url}/api/tags")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    loaded_models = [m["name"] for m in data.get("models", [])]
+            except Exception:
+                pass
+
+            return HailoOllamaStatus(
+                running=True,
+                url=url,
+                models_available=available_models,
+                models_loaded=loaded_models,
+            )
+    except Exception:
+        return HailoOllamaStatus(running=False, url=url)
+
+
 def detect_ai_accelerator() -> AIAcceleratorStatus:
     """Detect Hailo AI accelerator (AI HAT+ 2)."""
     # Quick check: does the device node exist?
     if not Path(HAILO_DEVICE_PATH).exists():
-        return AIAcceleratorStatus(available=False)
+        return AIAcceleratorStatus(available=False, ollama_server=check_hailo_ollama_status())
+
+    # Check hailo-ollama status
+    ollama_status = check_hailo_ollama_status()
 
     # Try to get detailed info via hailortcli
     if not Path(HAILORTCLI_PATH).exists():
@@ -450,6 +499,7 @@ def detect_ai_accelerator() -> AIAcceleratorStatus:
                 firmware_version="unknown",
                 tops=0,
             ),
+            ollama_server=ollama_status,
         )
 
     try:
@@ -469,6 +519,7 @@ def detect_ai_accelerator() -> AIAcceleratorStatus:
                     firmware_version="unknown",
                     tops=0,
                 ),
+                ollama_server=ollama_status,
             )
 
         # Parse output for device info
@@ -498,6 +549,7 @@ def detect_ai_accelerator() -> AIAcceleratorStatus:
                 firmware_version=firmware_version,
                 tops=tops,
             ),
+            ollama_server=ollama_status,
         )
 
     except subprocess.TimeoutExpired:
@@ -510,10 +562,11 @@ def detect_ai_accelerator() -> AIAcceleratorStatus:
                 firmware_version="unknown",
                 tops=0,
             ),
+            ollama_server=ollama_status,
         )
     except Exception as e:
         logger.error(f"Error detecting AI accelerator: {e}")
-        return AIAcceleratorStatus(available=False)
+        return AIAcceleratorStatus(available=False, ollama_server=check_hailo_ollama_status())
 
 
 @router.get("/ai-accelerator", response_model=AIAcceleratorStatus)

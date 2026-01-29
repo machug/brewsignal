@@ -403,6 +403,13 @@
 			const response = await fetch('/api/assistant/providers');
 			if (response.ok) {
 				aiProviders = await response.json();
+				// In cloud mode, ensure selected provider is valid (not local-only)
+				if (!config.isLocalMode) {
+					const validProviders = aiProviders.filter(p => p.id !== 'hailo' && p.id !== 'local');
+					if (!validProviders.find(p => p.id === aiProvider) && validProviders.length > 0) {
+						aiProvider = validProviders[0].id;
+					}
+				}
 			}
 		} catch (e) {
 			console.error('Failed to load AI providers:', e);
@@ -1428,7 +1435,7 @@
 								<div class="form-field">
 									<label for="ai-provider">Provider</label>
 									<select id="ai-provider" bind:value={aiProvider}>
-										{#each aiProviders.filter(p => config.isLocalMode || p.id !== 'hailo') as provider}
+										{#each aiProviders.filter(p => config.isLocalMode || (p.id !== 'hailo' && p.id !== 'local')) as provider}
 											<option value={provider.id}>{provider.name}</option>
 										{/each}
 									</select>

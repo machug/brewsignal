@@ -2215,6 +2215,26 @@ class YeastInventory(Base):
     source_batch: Mapped[Optional["Batch"]] = relationship()
 
 
+class Gateway(Base):
+    """ESP32 gateway device that relays Tilt readings to cloud."""
+    __tablename__ = "gateways"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # BSG-AABBCCDDEE00
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)  # Owning user (UUID)
+    name: Mapped[str] = mapped_column(String(100), default="Gateway")
+    firmware_version: Mapped[Optional[str]] = mapped_column(String(20))
+    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_online: Mapped[bool] = mapped_column(default=False)
+    wifi_rssi: Mapped[Optional[int]] = mapped_column()  # WiFi signal strength
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))  # IPv4 or IPv6
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    def __repr__(self) -> str:
+        return f"<Gateway(id={self.id}, name={self.name}, online={self.is_online})>"
+
+
 # AG-UI Pydantic Schemas
 
 class AgUiMessageResponse(BaseModel):

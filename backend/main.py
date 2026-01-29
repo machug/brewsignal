@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, mqtt, recipes, sync, system, users, yeast_strains  # noqa: E402
+from .routers import ag_ui, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, gateway, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, maintenance, mqtt, recipes, sync, system, users, yeast_strains  # noqa: E402
 from .auth import require_auth  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
@@ -482,6 +482,9 @@ app.include_router(inventory_yeast.router, dependencies=auth_deps)
 app.include_router(users.router, dependencies=auth_deps)
 app.include_router(users.user_router, dependencies=auth_deps)
 app.include_router(sync.router, dependencies=auth_deps)
+
+# Gateway WebSocket - no auth deps (handles auth via token query param)
+app.include_router(gateway.router)
 
 
 @app.get("/api/health")

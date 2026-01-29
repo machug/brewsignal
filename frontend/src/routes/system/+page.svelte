@@ -400,7 +400,7 @@
 
 	async function loadAiProviders() {
 		try {
-			const response = await fetch('/api/assistant/providers');
+			const response = await authFetch('/api/assistant/providers');
 			if (response.ok) {
 				aiProviders = await response.json();
 				// In cloud mode, ensure selected provider is valid (not local-only)
@@ -418,7 +418,7 @@
 
 	async function loadAiModels(provider: string) {
 		try {
-			const response = await fetch(`/api/assistant/models/${provider}`);
+			const response = await authFetch(`/api/assistant/models/${provider}`);
 			if (response.ok) {
 				const data = await response.json();
 				aiModels = data.models;
@@ -431,7 +431,7 @@
 
 	async function loadAiStatus() {
 		try {
-			const response = await fetch('/api/assistant/status');
+			const response = await authFetch('/api/assistant/status');
 			if (response.ok) {
 				const data = await response.json();
 				aiHasEnvKey = data.has_env_api_key ?? false;
@@ -482,7 +482,7 @@
 			});
 
 			// Then test the connection
-			const response = await fetch('/api/assistant/test', { method: 'POST' });
+			const response = await authFetch('/api/assistant/test', { method: 'POST' });
 			const result = await response.json();
 			aiTestResult = result;
 		} catch (e) {

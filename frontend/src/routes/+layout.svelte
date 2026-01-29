@@ -49,6 +49,32 @@
 		}
 	});
 
+	// Track if services have been started (to avoid duplicate starts)
+	let servicesStarted = $state(false);
+
+	// Start authenticated services only when appropriate
+	function startAuthenticatedServices() {
+		if (servicesStarted) return;
+		servicesStarted = true;
+
+		loadConfig();
+		connectWebSocket();
+		startHeaterPolling(30000);
+		startWeatherPolling(30 * 60 * 1000);
+	}
+
+	// Effect to start services when auth state is ready
+	$effect(() => {
+		// Don't start until auth is initialized
+		if (!authState.initialized) return;
+
+		// In cloud mode with required auth, wait until user is authenticated
+		if (config.authRequired && !authState.user) return;
+
+		// Otherwise (local mode or authenticated), start services
+		startAuthenticatedServices();
+	});
+
 	onMount(async () => {
 		// Fetch app config from backend (includes Supabase credentials)
 		await fetchAppConfig();
@@ -56,13 +82,7 @@
 		// Initialize auth (uses app config for Supabase client)
 		await initAuth();
 
-		loadConfig();
-		// Connect WebSocket for live updates (persists across navigation)
-		connectWebSocket();
-		// Start polling heater state every 30 seconds
-		startHeaterPolling(30000);
-		// Start polling weather every 30 minutes
-		startWeatherPolling(30 * 60 * 1000);
+		// Services will be started by the $effect above once auth is ready
 	});
 
 	async function handleSignOut() {

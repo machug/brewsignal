@@ -211,6 +211,8 @@
 	}
 
 	async function loadAiAccelerator() {
+		// AI accelerator (Hailo HAT+) only relevant in local mode
+		if (!config.isLocalMode) return;
 		try {
 			const response = await fetch('/api/system/ai-accelerator');
 			if (response.ok) {
@@ -927,20 +929,22 @@
 					<span class="status-label">Readings</span>
 					<span class="status-value">{storageStats ? formatNumber(storageStats.total_readings) : '—'}</span>
 				</div>
-				<div class="status-item ai-status" class:active={aiAccelerator?.available}>
-					<span class="status-label">AI Accelerator</span>
-					<span class="status-value">
-						{#if aiAccelerator?.available && aiAccelerator.device}
-							<span class="ai-chip">
-								<span class="ai-dot"></span>
-								{aiAccelerator.device.architecture}
-								<span class="ai-tops">{aiAccelerator.device.tops} TOPS</span>
-							</span>
-						{:else}
-							<span class="ai-unavailable">Not detected</span>
-						{/if}
-					</span>
-				</div>
+				{#if config.isLocalMode}
+					<div class="status-item ai-status" class:active={aiAccelerator?.available}>
+						<span class="status-label">AI Accelerator</span>
+						<span class="status-value">
+							{#if aiAccelerator?.available && aiAccelerator.device}
+								<span class="ai-chip">
+									<span class="ai-dot"></span>
+									{aiAccelerator.device.architecture}
+									<span class="ai-tops">{aiAccelerator.device.tops} TOPS</span>
+								</span>
+							{:else}
+								<span class="ai-unavailable">Not detected</span>
+							{/if}
+						</span>
+					</div>
+				{/if}
 			</div>
 		</header>
 
@@ -1424,7 +1428,7 @@
 								<div class="form-field">
 									<label for="ai-provider">Provider</label>
 									<select id="ai-provider" bind:value={aiProvider}>
-										{#each aiProviders as provider}
+										{#each aiProviders.filter(p => config.isLocalMode || p.id !== 'hailo') as provider}
 											<option value={provider.id}>{provider.name}</option>
 										{/each}
 									</select>
@@ -1440,7 +1444,7 @@
 								</div>
 							</div>
 
-							{#if aiProvider === 'hailo'}
+							{#if aiProvider === 'hailo' && config.isLocalMode}
 								<div class="info-box hailo">
 									<h4>Hailo AI HAT+ Setup</h4>
 									{#if aiAccelerator?.available}
@@ -1473,7 +1477,7 @@
 											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
 											<li>Enter the remote machine's IP below</li>
 										</ol>
-										{#if aiAccelerator?.available}
+										{#if config.isLocalMode && aiAccelerator?.available}
 											<p class="hint">For local AI on Pi, select <strong>Hailo AI HAT+</strong> provider instead.</p>
 										{/if}
 									{:else if systemInfo?.platform?.gpu?.vendor === 'nvidia' || systemInfo?.platform?.gpu?.vendor === 'amd' || systemInfo?.platform?.gpu?.vendor === 'apple'}

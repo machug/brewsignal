@@ -41,9 +41,17 @@
 		tops: number;
 	}
 
+	interface HailoOllamaStatus {
+		running: boolean;
+		url: string;
+		models_available: string[];
+		models_loaded: string[];
+	}
+
 	interface AIAcceleratorStatus {
 		available: boolean;
 		device: AIAcceleratorDevice | null;
+		ollama_server: HailoOllamaStatus | null;
 	}
 
 	let systemInfo = $state<SystemInfo | null>(null);
@@ -975,6 +983,21 @@
 							{/if}
 						</span>
 					</div>
+					{#if aiAccelerator?.available}
+						<div class="status-item ai-status" class:active={aiAccelerator?.ollama_server?.running}>
+							<span class="status-label">Hailo-Ollama</span>
+							<span class="status-value">
+								{#if aiAccelerator?.ollama_server?.running}
+									<span class="ai-chip">
+										<span class="ai-dot"></span>
+										{aiAccelerator.ollama_server.models_loaded.length} model{aiAccelerator.ollama_server.models_loaded.length !== 1 ? 's' : ''} loaded
+									</span>
+								{:else}
+									<span class="ai-unavailable">Not running</span>
+								{/if}
+							</span>
+						</div>
+					{/if}
 				{/if}
 			</div>
 		</header>
@@ -1483,14 +1506,26 @@
 									{:else}
 										<p class="warning">AI HAT+ not detected. Ensure hardware is installed and drivers loaded.</p>
 									{/if}
-									<p>Uses <a href="https://www.raspberrypi.com/documentation/computers/ai.html" target="_blank" rel="noopener">hailo-ollama</a> for hardware-accelerated inference.</p>
-									<ol>
-										<li>Install Hailo drivers: <code>sudo apt install hailo-all</code></li>
-										<li>Install AI packages: <code>sudo apt install hailo-ai-sw-suite</code></li>
-										<li>Download model zoo from <a href="https://www.raspberrypi.com/documentation/computers/ai.html#model-zoo" target="_blank" rel="noopener">RPi docs</a></li>
-										<li>Start server: <code>hailo-ollama</code> (runs on port 8000)</li>
-									</ol>
-									<p class="hint">Models like Qwen2 1.5B and Llama 3.2 1B are optimized for Hailo-10H.</p>
+									{#if aiAccelerator?.ollama_server?.running}
+										<p class="ai-detected">✓ hailo-ollama running ({aiAccelerator.ollama_server.models_loaded.length} of {aiAccelerator.ollama_server.models_available.length} models loaded)</p>
+										{#if aiAccelerator.ollama_server.models_loaded.length > 0}
+											<p class="hint">Loaded: {aiAccelerator.ollama_server.models_loaded.join(', ')}</p>
+										{:else}
+											<p class="warning">No models loaded. Pull a model using: <code>curl http://localhost:8000/api/pull -d '{"{"}\"model\": \"qwen2:1.5b\"{"}"}'</code></p>
+										{/if}
+									{:else if aiAccelerator?.available}
+										<p class="warning">hailo-ollama not running. Start with: <code>sudo systemctl start hailo-ollama</code></p>
+									{/if}
+									{#if !aiAccelerator?.ollama_server?.running}
+										<p>Uses <a href="https://www.raspberrypi.com/documentation/computers/ai.html" target="_blank" rel="noopener">hailo-ollama</a> for hardware-accelerated inference.</p>
+										<ol>
+											<li>Install Hailo drivers: <code>sudo apt install hailo-all</code></li>
+											<li>Install AI packages: <code>sudo apt install hailo-ai-sw-suite</code></li>
+											<li>Download model zoo from <a href="https://www.raspberrypi.com/documentation/computers/ai.html#model-zoo" target="_blank" rel="noopener">RPi docs</a></li>
+											<li>Start server: <code>hailo-ollama</code> (runs on port 8000)</li>
+										</ol>
+										<p class="hint">Models like Qwen2 1.5B and Llama 3.2 1B are optimized for Hailo-10H.</p>
+									{/if}
 								</div>
 								<div class="form-field full">
 									<label for="ai-url">Hailo-Ollama URL</label>

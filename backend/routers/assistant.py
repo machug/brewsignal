@@ -217,15 +217,13 @@ async def get_models(provider: str) -> ModelsResponse:
 
 @router.get("/providers")
 async def get_providers() -> list[dict]:
-    """Get available LLM providers."""
+    """Get available LLM providers.
+
+    Note: Hailo is NOT included here because it doesn't support function calling,
+    which is required for the full AI assistant. Hailo is used separately for
+    lightweight tasks (title summarization) via the ai_lite_enabled config.
+    """
     return [
-        {
-            "id": "hailo",
-            "name": "Hailo AI HAT+",
-            "description": "Hardware-accelerated inference on Raspberry Pi AI HAT+ 2",
-            "requires_api_key": False,
-            "setup_url": "https://www.raspberrypi.com/documentation/computers/ai.html",
-        },
         {
             "id": "local",
             "name": "Ollama",

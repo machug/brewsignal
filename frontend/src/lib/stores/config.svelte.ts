@@ -30,6 +30,7 @@ export interface AppConfig {
 	alert_temp_threshold: number;
 	// AI Assistant
 	ai_enabled: boolean;
+	ai_lite_enabled: boolean; // Use Hailo for lightweight tasks
 	ai_provider: string;
 	ai_model: string;
 	ai_api_key: string;
@@ -75,6 +76,7 @@ const DEFAULT_CONFIG: AppConfig = {
 	alert_temp_threshold: 3.0,
 	// AI Assistant
 	ai_enabled: false,
+	ai_lite_enabled: false,
 	ai_provider: 'local',
 	ai_model: '',
 	ai_api_key: '',

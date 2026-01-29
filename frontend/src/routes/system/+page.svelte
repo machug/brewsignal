@@ -121,11 +121,11 @@
 
 	// AI Assistant state
 	let aiEnabled = $state(false);
+	let aiLiteEnabled = $state(false); // Use Hailo for lightweight tasks (summaries)
 	let aiProvider = $state('local');
 	let aiModel = $state('');
 	let aiApiKey = $state('');
 	let aiBaseUrl = $state('');
-	let hailoUrl = $derived(aiAccelerator?.ollama_server?.url || aiBaseUrl || 'http://localhost:8000');
 	let aiTemperature = $state(0.7);
 	let aiMaxTokens = $state(2000);
 	let aiSaving = $state(false);
@@ -393,6 +393,7 @@
 		alertTempThreshold = configState.config.alert_temp_threshold;
 		// AI Assistant
 		aiEnabled = configState.config.ai_enabled ?? false;
+		aiLiteEnabled = configState.config.ai_lite_enabled ?? false;
 		aiProvider = configState.config.ai_provider ?? 'local';
 		aiModel = configState.config.ai_model ?? '';
 		aiApiKey = configState.config.ai_api_key ?? '';
@@ -430,7 +431,7 @@
 	function selectValidProvider() {
 		// In cloud mode, ensure selected provider is valid (not local-only)
 		if (!config.isLocalMode && aiProviders.length > 0) {
-			const validProviders = aiProviders.filter(p => p.id !== 'hailo' && p.id !== 'local');
+			const validProviders = aiProviders.filter(p => p.id !== 'local');
 			if (!validProviders.find(p => p.id === aiProvider) && validProviders.length > 0) {
 				aiProvider = validProviders[0].id;
 			}
@@ -470,6 +471,7 @@
 		try {
 			await updateConfig({
 				ai_enabled: aiEnabled,
+				ai_lite_enabled: aiLiteEnabled,
 				ai_provider: aiProvider,
 				ai_model: aiModel,
 				ai_api_key: aiApiKey,
@@ -1478,12 +1480,35 @@
 							</button>
 						</div>
 
+						{#if aiAccelerator?.available && aiAccelerator?.ollama_server?.running}
+							<div class="toggle-setting">
+								<div class="toggle-info">
+									<span class="toggle-label">Local Lite LLM</span>
+									<span class="toggle-desc">Use Hailo AI HAT+ for summaries and lightweight tasks (free, on-device)</span>
+								</div>
+								<button
+									type="button"
+									class="switch"
+									class:on={aiLiteEnabled}
+									onclick={() => (aiLiteEnabled = !aiLiteEnabled)}
+									aria-pressed={aiLiteEnabled}
+								>
+									<span class="switch-thumb"></span>
+								</button>
+							</div>
+							{#if aiLiteEnabled}
+								<div class="info-box success compact">
+									<p>✓ Hailo AI HAT+ will handle thread summaries and other lightweight tasks locally.</p>
+								</div>
+							{/if}
+						{/if}
+
 						{#if aiEnabled}
 							<div class="form-grid">
 								<div class="form-field">
 									<label for="ai-provider">Provider</label>
 									<select id="ai-provider" bind:value={aiProvider}>
-										{#each aiProviders.filter(p => localModeActive || (p.id !== 'hailo' && p.id !== 'local')) as provider}
+										{#each aiProviders.filter(p => localModeActive || p.id !== 'local') as provider}
 											<option value={provider.id}>{provider.name}</option>
 										{/each}
 									</select>
@@ -1499,40 +1524,7 @@
 								</div>
 							</div>
 
-							{#if aiProvider === 'hailo' && localModeActive}
-								<div class="info-box hailo">
-									<h4>Hailo AI HAT+ Setup</h4>
-									{#if aiAccelerator?.available}
-										<p class="ai-detected">✓ AI HAT+ 2 detected ({aiAccelerator.device?.tops} TOPS)</p>
-									{:else}
-										<p class="warning">AI HAT+ not detected. Ensure hardware is installed and drivers loaded.</p>
-									{/if}
-									{#if aiAccelerator?.ollama_server?.running}
-										<p class="ai-detected">✓ hailo-ollama running ({aiAccelerator.ollama_server.models_loaded.length} of {aiAccelerator.ollama_server.models_available.length} models loaded)</p>
-									{#if aiAccelerator.ollama_server.models_loaded.length > 0}
-										<p class="hint">Loaded: {aiAccelerator.ollama_server.models_loaded.join(', ')}</p>
-									{:else}
-										<p class="warning">No models loaded. Pull a model using: <code>curl {hailoUrl}/api/pull -d '{"{"}\"model\": \"qwen2:1.5b\"{"}"}'</code></p>
-									{/if}
-									{:else if aiAccelerator?.available}
-										<p class="warning">hailo-ollama not running. Start with: <code>sudo systemctl start hailo-ollama</code></p>
-									{/if}
-									{#if !aiAccelerator?.ollama_server?.running}
-										<p>Uses <a href="https://www.raspberrypi.com/documentation/computers/ai.html" target="_blank" rel="noopener">hailo-ollama</a> for hardware-accelerated inference.</p>
-										<ol>
-											<li>Install Hailo drivers: <code>sudo apt install hailo-all</code></li>
-											<li>Install AI packages: <code>sudo apt install hailo-ai-sw-suite</code></li>
-											<li>Download model zoo from <a href="https://www.raspberrypi.com/documentation/computers/ai.html#model-zoo" target="_blank" rel="noopener">RPi docs</a></li>
-											<li>Start server: <code>hailo-ollama</code> (runs on port 8000)</li>
-										</ol>
-										<p class="hint">Models like Qwen2 1.5B and Llama 3.2 1B are optimized for Hailo-10H.</p>
-									{/if}
-								</div>
-								<div class="form-field full">
-									<label for="ai-url">Hailo-Ollama URL</label>
-									<input id="ai-url" type="text" bind:value={aiBaseUrl} placeholder="http://localhost:8000" />
-								</div>
-							{:else if aiProvider === 'local'}
+							{#if aiProvider === 'local'}
 								<div class="info-box">
 									<h4>Ollama Setup</h4>
 									{#if systemInfo?.platform?.is_raspberry_pi}
@@ -1544,8 +1536,8 @@
 											<li>Pull a model: <code>ollama pull llama3:8b</code></li>
 											<li>Enter the remote machine's IP below</li>
 										</ol>
-										{#if localModeActive && aiAccelerator?.available}
-											<p class="hint">For local AI on Pi, select <strong>Hailo AI HAT+</strong> provider instead.</p>
+										{#if localModeActive && aiAccelerator?.available && aiAccelerator?.ollama_server?.running}
+											<p class="hint">Tip: Enable <strong>Local Lite LLM</strong> above to use the Hailo HAT for summaries (free).</p>
 										{/if}
 									{:else if systemInfo?.platform?.gpu?.vendor === 'nvidia' || systemInfo?.platform?.gpu?.vendor === 'amd' || systemInfo?.platform?.gpu?.vendor === 'apple'}
 										<!-- Running on desktop/server with GPU -->

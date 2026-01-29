@@ -282,6 +282,44 @@ async def _save_message(
     return message
 
 
+async def _get_lite_llm_config(db: AsyncSession) -> tuple[bool, Optional[str]]:
+    """Check if lite LLM is enabled and get hailo URL if available.
+
+    Returns (is_enabled, hailo_url) tuple.
+    """
+    from sqlalchemy import select
+    from backend.models import Config
+    from backend.routers.system import check_hailo_ollama_status
+
+    try:
+        result = await db.execute(
+            select(Config).where(Config.key == "ai_lite_enabled")
+        )
+        config_row = result.scalar_one_or_none()
+        if not config_row:
+            return False, None
+
+        import json
+        try:
+            enabled = json.loads(config_row.value)
+        except (json.JSONDecodeError, TypeError):
+            enabled = config_row.value == "true"
+
+        if not enabled:
+            return False, None
+
+        # Check if hailo-ollama is running
+        for url in ["http://localhost:8000", "http://127.0.0.1:8000"]:
+            status = check_hailo_ollama_status(url)
+            if status and status.running:
+                return True, url
+
+        return False, None
+    except Exception as e:
+        logger.warning(f"Failed to check lite LLM config: {e}")
+        return False, None
+
+
 async def _summarize_thread_title(
     db: AsyncSession,
     thread_id: str,
@@ -291,14 +329,23 @@ async def _summarize_thread_title(
     Called asynchronously after a run completes to update the thread title
     with a semantic summary instead of just the first message.
     Uses Prompty template for the title generation prompt.
+
+    If ai_lite_enabled is true and hailo-ollama is running, uses hailo
+    for cost-free local inference instead of the cloud provider.
     """
     try:
         import litellm
 
-        # Get LLM config to access API key and provider
+        # Check if we should use hailo for lite LLM tasks
+        lite_enabled, hailo_url = await _get_lite_llm_config(db)
+
+        # Get main LLM config (still need it for fallback)
         config = await get_llm_config(db)
-        if not config.is_configured():
-            logger.debug("LLM not configured, skipping title summarization")
+
+        # Determine if we can use lite mode or need main config
+        use_hailo = lite_enabled and hailo_url
+        if not use_hailo and not config.is_configured():
+            logger.debug("LLM not configured and lite mode unavailable, skipping title summarization")
             return None
 
         # Get thread messages
@@ -317,28 +364,34 @@ async def _summarize_thread_title(
         p = prompty.load(str(prompt_path))
         rendered = prompty.prepare(p, inputs={"conversation": context})
 
-        # Determine provider and fast model
-        provider_str = config._provider_str()
-        fast_model = FAST_MODELS_BY_PROVIDER.get(provider_str, "gpt-4o-mini")
+        if use_hailo:
+            # Use hailo for lite LLM task (free, local)
+            fast_model = "ollama/qwen2:1.5b"
+            kwargs = {
+                "model": fast_model,
+                "messages": rendered,
+                "temperature": 0.3,
+                "max_tokens": 30,
+                "api_base": hailo_url,
+            }
+            logger.info(f"Summarizing thread {thread_id} title with hailo lite LLM")
+        else:
+            # Use main provider's fast model
+            provider_str = config._provider_str()
+            fast_model = FAST_MODELS_BY_PROVIDER.get(provider_str, "gpt-4o-mini")
+            kwargs = {
+                "model": fast_model,
+                "messages": rendered,
+                "temperature": 0.3,
+                "max_tokens": 30,
+            }
+            if config.api_key:
+                kwargs["api_key"] = config.api_key.get_secret_value()
+            if provider_str in ("local", "hailo"):
+                default_url = "http://localhost:8000" if provider_str == "hailo" else "http://localhost:11434"
+                kwargs["api_base"] = config.base_url or default_url
+            logger.info(f"Summarizing thread {thread_id} title with {fast_model}")
 
-        # Build kwargs for litellm using rendered messages
-        kwargs = {
-            "model": fast_model,
-            "messages": rendered,
-            "temperature": 0.3,
-            "max_tokens": 30,
-        }
-
-        # Pass API key if configured (same approach as main LLM service)
-        if config.api_key:
-            kwargs["api_key"] = config.api_key.get_secret_value()
-
-        # Add base URL for Ollama/Hailo
-        if provider_str in ("local", "hailo"):
-            default_url = "http://localhost:8000" if provider_str == "hailo" else "http://localhost:11434"
-            kwargs["api_base"] = config.base_url or default_url
-
-        logger.info(f"Summarizing thread {thread_id} title with {fast_model}")
         response = await litellm.acompletion(**kwargs)
 
         title = response.choices[0].message.content.strip()

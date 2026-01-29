@@ -122,7 +122,7 @@ if [ -d "$FRONTEND_DIR" ]; then
         cd "$FRONTEND_DIR"
         rm -rf node_modules
         npm ci
-        npm run build
+        npm run build:pi
         cd "$INSTALL_DIR"
     fi
 else

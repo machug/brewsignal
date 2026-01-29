@@ -561,7 +561,7 @@ npm run dev
 
 ```bash
 cd frontend
-npm run build  # Outputs to backend/static/
+npm run build:pi  # Outputs to backend/static/ for local Pi deployment
 ```
 
 ## Tech Stack

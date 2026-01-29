@@ -125,6 +125,7 @@
 	let aiModel = $state('');
 	let aiApiKey = $state('');
 	let aiBaseUrl = $state('');
+	let hailoUrl = $derived(aiAccelerator?.ollama_server?.url || aiBaseUrl || 'http://localhost:8000');
 	let aiTemperature = $state(0.7);
 	let aiMaxTokens = $state(2000);
 	let aiSaving = $state(false);
@@ -1508,11 +1509,11 @@
 									{/if}
 									{#if aiAccelerator?.ollama_server?.running}
 										<p class="ai-detected">✓ hailo-ollama running ({aiAccelerator.ollama_server.models_loaded.length} of {aiAccelerator.ollama_server.models_available.length} models loaded)</p>
-										{#if aiAccelerator.ollama_server.models_loaded.length > 0}
-											<p class="hint">Loaded: {aiAccelerator.ollama_server.models_loaded.join(', ')}</p>
-										{:else}
-											<p class="warning">No models loaded. Pull a model using: <code>curl http://localhost:8000/api/pull -d '{"{"}\"model\": \"qwen2:1.5b\"{"}"}'</code></p>
-										{/if}
+									{#if aiAccelerator.ollama_server.models_loaded.length > 0}
+										<p class="hint">Loaded: {aiAccelerator.ollama_server.models_loaded.join(', ')}</p>
+									{:else}
+										<p class="warning">No models loaded. Pull a model using: <code>curl {hailoUrl}/api/pull -d '{"{"}\"model\": \"qwen2:1.5b\"{"}"}'</code></p>
+									{/if}
 									{:else if aiAccelerator?.available}
 										<p class="warning">hailo-ollama not running. Start with: <code>sudo systemctl start hailo-ollama</code></p>
 									{/if}

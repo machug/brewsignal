@@ -78,6 +78,61 @@ class LLMService:
             return self.config.api_key.get_secret_value()
         return None
 
+    def _strip_ollama_prefix(self, model: str) -> str:
+        """Remove ollama/ prefix for direct Ollama-compatible APIs."""
+        if model.startswith("ollama/"):
+            return model[len("ollama/"):]
+        return model
+
+    def _messages_to_prompt(self, messages: list[dict]) -> str:
+        """Convert chat messages into a simple prompt for generate endpoints."""
+        lines = []
+        for msg in messages:
+            role = msg.get("role", "user").strip().lower()
+            content = msg.get("content", "")
+            if role == "system":
+                lines.append(f"System: {content}")
+            elif role == "assistant":
+                lines.append(f"Assistant: {content}")
+            else:
+                lines.append(f"User: {content}")
+        lines.append("Assistant:")
+        return "\n".join(lines)
+
+    async def _hailo_generate_fallback(
+        self,
+        messages: list[dict],
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> str:
+        """Fallback to /api/generate for hailo-ollama when chat fails."""
+        import httpx
+
+        base_url = self.config.base_url or DEFAULT_BASE_URLS.get(
+            LLMProvider.HAILO, "http://localhost:8000"
+        )
+        model = self._strip_ollama_prefix(self.config.effective_model)
+        payload = {
+            "model": model,
+            "prompt": self._messages_to_prompt(messages),
+            "stream": False,
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["num_predict"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{base_url}/api/generate", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            if "response" in data:
+                return data["response"]
+            # Fallback if server returns chat-style payload
+            if "message" in data and isinstance(data["message"], dict):
+                return data["message"].get("content", "")
+            raise LLMServiceError("Unexpected hailo-ollama response format")
+
     async def chat(
         self,
         messages: list[dict],
@@ -131,6 +186,24 @@ class LLMService:
             response = await litellm.acompletion(**kwargs)
             return response.choices[0].message.content
         except Exception as e:
+            provider_str = self.config._provider_str()
+            if provider_str == "hailo":
+                try:
+                    logger.warning("Hailo chat failed, falling back to /api/generate")
+                    return await self._hailo_generate_fallback(
+                        messages=messages,
+                        temperature=temperature or self.config.temperature,
+                        max_tokens=max_tokens or self.config.max_tokens,
+                    )
+                except Exception as fallback_error:
+                    logger.error(
+                        "Hailo fallback error: %s; original error: %s",
+                        fallback_error,
+                        e,
+                    )
+                    raise LLMServiceError(
+                        f"LLM API error: {str(e)}; hailo fallback failed: {fallback_error}"
+                    ) from fallback_error
             logger.error(f"LLM API error: {e}")
             raise LLMServiceError(f"LLM API error: {str(e)}") from e
 
@@ -191,6 +264,27 @@ class LLMService:
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
+            provider_str = self.config._provider_str()
+            if provider_str == "hailo":
+                try:
+                    logger.warning("Hailo streaming failed, falling back to /api/generate")
+                    text = await self._hailo_generate_fallback(
+                        messages=messages,
+                        temperature=temperature or self.config.temperature,
+                        max_tokens=max_tokens or self.config.max_tokens,
+                    )
+                    if text:
+                        yield text
+                    return
+                except Exception as fallback_error:
+                    logger.error(
+                        "Hailo streaming fallback error: %s; original error: %s",
+                        fallback_error,
+                        e,
+                    )
+                    raise LLMServiceError(
+                        f"LLM streaming error: {str(e)}; hailo fallback failed: {fallback_error}"
+                    ) from fallback_error
             logger.error(f"LLM streaming error: {e}")
             raise LLMServiceError(f"LLM streaming error: {str(e)}") from e
 

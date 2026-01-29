@@ -5,6 +5,7 @@ Safety: Destructive operations (reboot/shutdown) require:
 2. Explicit confirmation in request body
 """
 
+import json
 import logging
 import socket
 import subprocess
@@ -442,11 +443,10 @@ async def trigger_cleanup(cleanup: CleanupRequest, request: Request):
     }
 
 
-def check_hailo_ollama_status() -> Optional[HailoOllamaStatus]:
+def check_hailo_ollama_status(url: str) -> Optional[HailoOllamaStatus]:
     """Check if hailo-ollama server is running and get model info."""
     import httpx
 
-    url = "http://localhost:8000"
     try:
         with httpx.Client(timeout=2.0) as client:
             # Get available models from hailo model zoo
@@ -479,14 +479,65 @@ def check_hailo_ollama_status() -> Optional[HailoOllamaStatus]:
         return HailoOllamaStatus(running=False, url=url)
 
 
-def detect_ai_accelerator() -> AIAcceleratorStatus:
+async def get_hailo_base_url() -> Optional[str]:
+    """Resolve a configured hailo-ollama base URL if set."""
+    try:
+        from sqlalchemy import select
+        from ..database import async_session_factory
+        from ..models import Config
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Config).where(Config.key.in_(["ai_provider", "ai_base_url"]))
+            )
+            config_rows = {row.key: row.value for row in result.scalars().all()}
+
+        def get_value(key: str, fallback=None):
+            val = config_rows.get(key)
+            if val is None:
+                return fallback
+            try:
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                return val
+
+        provider = get_value("ai_provider", "local")
+        base_url = get_value("ai_base_url", "")
+        if provider == "hailo" and base_url:
+            return base_url
+    except Exception as e:
+        logger.warning("Failed to read Hailo base URL from config: %s", e)
+
+    return None
+
+
+def discover_hailo_ollama_status(configured_url: Optional[str]) -> HailoOllamaStatus:
+    """Try configured URL, then common defaults to detect hailo-ollama."""
+    if configured_url:
+        return check_hailo_ollama_status(configured_url)
+
+    candidate_urls = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:11434",
+        "http://127.0.0.1:11434",
+    ]
+    for url in candidate_urls:
+        status = check_hailo_ollama_status(url)
+        if status and status.running:
+            return status
+
+    return HailoOllamaStatus(running=False, url=candidate_urls[0])
+
+
+def detect_ai_accelerator(ollama_status: HailoOllamaStatus) -> AIAcceleratorStatus:
     """Detect Hailo AI accelerator (AI HAT+ 2)."""
     # Quick check: does the device node exist?
     if not Path(HAILO_DEVICE_PATH).exists():
-        return AIAcceleratorStatus(available=False, ollama_server=check_hailo_ollama_status())
-
-    # Check hailo-ollama status
-    ollama_status = check_hailo_ollama_status()
+        return AIAcceleratorStatus(
+            available=False,
+            ollama_server=ollama_status,
+        )
 
     # Try to get detailed info via hailortcli
     if not Path(HAILORTCLI_PATH).exists():
@@ -566,10 +617,15 @@ def detect_ai_accelerator() -> AIAcceleratorStatus:
         )
     except Exception as e:
         logger.error(f"Error detecting AI accelerator: {e}")
-        return AIAcceleratorStatus(available=False, ollama_server=check_hailo_ollama_status())
+        return AIAcceleratorStatus(
+            available=False,
+            ollama_server=ollama_status,
+        )
 
 
 @router.get("/ai-accelerator", response_model=AIAcceleratorStatus)
 async def get_ai_accelerator_status():
     """Check if AI accelerator (Hailo) is available."""
-    return detect_ai_accelerator()
+    configured_url = await get_hailo_base_url()
+    ollama_status = discover_hailo_ollama_status(configured_url)
+    return detect_ai_accelerator(ollama_status)

@@ -31,6 +31,7 @@ To create a production version of your app:
 
 ```sh
 npm run build
+npm run build:pi # Static build for local Pi (outputs to ../backend/static)
 ```
 
 You can preview the production build with `npm run preview`.

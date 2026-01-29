@@ -55,7 +55,6 @@ extracted/
 .worktrees/
 
 # Project documentation (development only)
-CLAUDE.md
 docs/plans/
 
 # Test screenshots and temporary images in root

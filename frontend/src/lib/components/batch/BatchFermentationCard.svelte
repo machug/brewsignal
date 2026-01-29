@@ -2,7 +2,7 @@
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatGravity, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
-	import { timeSince } from '$lib/utils/signal';
+	import { timeSince, getSignalStrength } from '$lib/utils/signal';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
@@ -13,6 +13,19 @@
 	}
 
 	let { batch, currentSg, progress, liveReading }: Props = $props();
+
+	// Device info (merged from BatchDeviceCard)
+	let isBleDevice = $derived(liveReading?.device_type === 'tilt');
+	let signal = $derived(isBleDevice && liveReading?.rssi ? getSignalStrength(liveReading.rssi) : null);
+	let deviceDisplayName = $derived.by(() => {
+		if (!liveReading) return batch.device_id || null;
+		const deviceType = liveReading.device_type;
+		if (deviceType === 'tilt') return `${liveReading.color} Tilt`;
+		if (deviceType === 'gravitymon') return `GravityMon`;
+		if (deviceType === 'ispindel') return `iSpindel`;
+		if (deviceType === 'floaty') return `Floaty`;
+		return liveReading.color || liveReading.id;
+	});
 
 	// Get the best available current gravity
 	let sg = $derived(currentSg ?? progress?.measured?.current_sg);
@@ -75,14 +88,31 @@
 
 <BatchCard title="Fermentation">
 	{#if sg && isFermenting}
-		<!-- Live indicator and timestamp -->
+		<!-- Live indicator with device info -->
 		<div class="status-row">
-			<div class="live-indicator">
-				<span class="pulse-dot"></span>
-				<span class="status-text">LIVE</span>
+			<div class="status-left">
+				<div class="live-indicator">
+					<span class="pulse-dot"></span>
+					<span class="status-text">LIVE</span>
+				</div>
+				{#if deviceDisplayName}
+					<div class="device-badge">
+						<span class="device-name">{deviceDisplayName}</span>
+						{#if signal}
+							<div class="signal-bars">
+								{#each Array(4) as _, i}
+									<div
+										class="signal-bar"
+										style="height: {4 + i * 2}px; background: {i < signal.bars ? signal.color : 'var(--bg-hover)'};"
+									></div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
 			</div>
 			{#if lastSeenText}
-				<span class="updated-text">Updated {lastSeenText}</span>
+				<span class="updated-text">{lastSeenText}</span>
 			{/if}
 		</div>
 
@@ -192,7 +222,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem;
 		margin-bottom: 1rem;
+	}
+
+	.status-left {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.live-indicator {
@@ -220,6 +257,32 @@
 	@keyframes pulse {
 		0%, 100% { opacity: 1; transform: scale(1); }
 		50% { opacity: 0.5; transform: scale(1.2); }
+	}
+
+	.device-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.25rem 0.5rem;
+		background: var(--bg-elevated);
+		border-radius: 9999px;
+		font-size: 0.6875rem;
+	}
+
+	.device-name {
+		color: var(--positive);
+		font-weight: 500;
+	}
+
+	.signal-bars {
+		display: flex;
+		align-items: flex-end;
+		gap: 1px;
+	}
+
+	.signal-bar {
+		width: 2px;
+		border-radius: 1px;
 	}
 
 	.updated-text {

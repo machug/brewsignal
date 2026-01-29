@@ -798,13 +798,6 @@
 
 			<!-- Right column -->
 			<div class="info-section">
-				<!-- Device Card -->
-				<BatchDeviceCard
-					{batch}
-					{liveReading}
-					onEdit={() => (isEditing = true)}
-				/>
-
 				<!-- Active Alerts Card (only show during fermentation/conditioning) -->
 				{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
 					<BatchAlertsCard batchId={batch.id} />

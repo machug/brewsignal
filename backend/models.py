@@ -2222,11 +2222,13 @@ class Gateway(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)  # BSG-AABBCCDDEE00
     user_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)  # Owning user (UUID)
     name: Mapped[str] = mapped_column(String(100), default="Gateway")
+    token_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA-256 of gateway token
     firmware_version: Mapped[Optional[str]] = mapped_column(String(20))
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     is_online: Mapped[bool] = mapped_column(default=False)
     wifi_rssi: Mapped[Optional[int]] = mapped_column()  # WiFi signal strength
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))  # IPv4 or IPv6
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

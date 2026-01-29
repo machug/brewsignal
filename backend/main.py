@@ -485,6 +485,8 @@ app.include_router(sync.router, dependencies=auth_deps)
 
 # Gateway WebSocket - no auth deps (handles auth via token query param)
 app.include_router(gateway.router)
+# Gateway HTTP API - requires auth
+app.include_router(gateway.api_router, dependencies=auth_deps)
 
 
 @app.get("/api/health")

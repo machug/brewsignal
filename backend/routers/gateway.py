@@ -1,16 +1,18 @@
-"""WebSocket endpoint for BrewSignal Gateway devices.
+"""WebSocket and HTTP endpoints for BrewSignal Gateway devices.
 
 Gateways are ESP32 devices that relay Tilt BLE readings to the cloud.
-Each gateway authenticates via a unique gateway_id and optional user token.
+Each gateway authenticates via a unique gateway-specific token.
 """
 
-import asyncio
+import hashlib
 import json
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +23,174 @@ from ..services.batch_linker import link_reading_to_batch
 from ..websocket import manager as broadcast_manager
 from ..state import update_reading
 from ..models import serialize_datetime_to_utc
-from .users import get_user_id_from_token
+from .users import get_user_id_from_token, require_auth
 
 logger = logging.getLogger(__name__)
+
+# Two routers: one for WebSocket, one for HTTP API
 router = APIRouter(prefix="/ws", tags=["gateway"])
+api_router = APIRouter(prefix="/api/gateways", tags=["gateway"])
+
+
+# --- Token utilities ---
+
+def generate_gateway_token() -> str:
+    """Generate a secure gateway token."""
+    # Format: bsg_<32 random hex chars>
+    return f"bsg_{secrets.token_hex(16)}"
+
+
+def hash_token(token: str) -> str:
+    """Hash a token for storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def validate_gateway_token(gateway_id: str, token: str) -> Optional[str]:
+    """Validate a gateway token and return the owner's user_id if valid."""
+    async with async_session_factory() as session:
+        gateway = await session.get(Gateway, gateway_id)
+        if not gateway or not gateway.token_hash:
+            return None
+
+        if gateway.token_hash != hash_token(token):
+            return None
+
+        return gateway.user_id
+
+
+# --- Pydantic models ---
+
+class ClaimGatewayRequest(BaseModel):
+    gateway_id: str
+    name: Optional[str] = None
+
+
+class ClaimGatewayResponse(BaseModel):
+    gateway_id: str
+    token: str
+    name: str
+    message: str
+
+
+class GatewayResponse(BaseModel):
+    id: str
+    name: str
+    is_online: bool
+    last_seen: Optional[str]
+    firmware_version: Optional[str]
+
+
+# --- HTTP API endpoints ---
+
+@api_router.post("/claim", response_model=ClaimGatewayResponse)
+async def claim_gateway(
+    request: ClaimGatewayRequest,
+    user_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Claim a gateway and get a provisioning token.
+
+    The token should be sent to the gateway via BLE during setup.
+    """
+    gateway_id = request.gateway_id.upper()
+
+    # Validate gateway ID format (BSG-XXXXXXXXXXXX)
+    if not gateway_id.startswith("BSG-") or len(gateway_id) != 16:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid gateway ID format. Expected: BSG-XXXXXXXXXXXX"
+        )
+
+    # Check if gateway exists and is already claimed by another user
+    gateway = await db.get(Gateway, gateway_id)
+    if gateway and gateway.user_id and gateway.user_id != user_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Gateway is already claimed by another user"
+        )
+
+    # Generate new token
+    token = generate_gateway_token()
+    token_hashed = hash_token(token)
+
+    if gateway:
+        # Update existing gateway
+        gateway.user_id = user_id
+        gateway.token_hash = token_hashed
+        gateway.claimed_at = datetime.now(timezone.utc)
+        if request.name:
+            gateway.name = request.name
+    else:
+        # Create new gateway record
+        gateway = Gateway(
+            id=gateway_id,
+            user_id=user_id,
+            name=request.name or f"Gateway {gateway_id[-6:]}",
+            token_hash=token_hashed,
+            claimed_at=datetime.now(timezone.utc),
+        )
+        db.add(gateway)
+
+    await db.commit()
+
+    logger.info(f"Gateway {gateway_id} claimed by user {user_id}")
+
+    return ClaimGatewayResponse(
+        gateway_id=gateway_id,
+        token=token,
+        name=gateway.name,
+        message="Gateway claimed successfully. Send this token to the gateway via BLE.",
+    )
+
+
+@api_router.get("", response_model=list[GatewayResponse])
+async def list_gateways(
+    user_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all gateways owned by the current user."""
+    result = await db.execute(
+        select(Gateway).where(Gateway.user_id == user_id)
+    )
+    gateways = result.scalars().all()
+
+    return [
+        GatewayResponse(
+            id=g.id,
+            name=g.name,
+            is_online=g.is_online,
+            last_seen=serialize_datetime_to_utc(g.last_seen),
+            firmware_version=g.firmware_version,
+        )
+        for g in gateways
+    ]
+
+
+@api_router.delete("/{gateway_id}")
+async def unclaim_gateway(
+    gateway_id: str,
+    user_id: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unclaim a gateway (removes token and user association)."""
+    gateway = await db.get(Gateway, gateway_id.upper())
+
+    if not gateway:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+
+    if gateway.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not your gateway")
+
+    # Clear ownership but keep the record for history
+    gateway.user_id = None
+    gateway.token_hash = None
+    gateway.claimed_at = None
+
+    await db.commit()
+
+    logger.info(f"Gateway {gateway_id} unclaimed by user {user_id}")
+
+    return {"message": "Gateway unclaimed successfully"}
 
 # Track connected gateways
 connected_gateways: dict[str, WebSocket] = {}
@@ -169,19 +335,29 @@ async def gateway_websocket(
 
     Protocol:
     - Gateway connects with its unique ID in the URL
-    - Optional token query param for user association
+    - Token query param required for cloud mode (gateway-specific token from /claim)
     - Gateway sends readings as JSON: {"type": "reading", "device_id": "...", ...}
     - Server can send commands: {"type": "command", "action": "...", ...}
 
-    Example URL: wss://api.brewsignal.io/ws/gateway/BSG-AABBCCDDEE00?token=xxx
+    Example URL: wss://api.brewsignal.io/ws/gateway/BSG-AABBCCDDEE00?token=bsg_xxx
     """
-    # Validate token if provided (associates gateway with user)
+    gateway_id = gateway_id.upper()
+
+    # Validate gateway token
     user_id = None
     if token:
-        user_id = await get_user_id_from_token(token)
-        if not user_id:
-            await websocket.close(code=4001, reason="Invalid token")
-            return
+        # Gateway-specific token (bsg_xxx)
+        if token.startswith("bsg_"):
+            user_id = await validate_gateway_token(gateway_id, token)
+            if not user_id:
+                await websocket.close(code=4001, reason="Invalid gateway token")
+                return
+        else:
+            # Legacy: user JWT token (for backwards compatibility)
+            user_id = await get_user_id_from_token(token)
+            if not user_id:
+                await websocket.close(code=4001, reason="Invalid token")
+                return
 
     await websocket.accept()
     logger.info(f"Gateway connected: {gateway_id} (user: {user_id or 'anonymous'})")

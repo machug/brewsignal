@@ -456,6 +456,9 @@ app = FastAPI(title="BrewSignal", version=VERSION, lifespan=lifespan)
 # In local mode, require_auth returns a dummy user; in cloud mode, validates JWT
 auth_deps = [Depends(require_auth)]
 
+# Public routes (no auth required)
+app.include_router(config.public_router)  # /api/config/app - frontend bootstrap
+
 # Register routers with auth protection
 app.include_router(devices.router, dependencies=auth_deps)
 app.include_router(config.router, dependencies=auth_deps)

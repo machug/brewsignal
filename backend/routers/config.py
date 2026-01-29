@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
+# Separate public router for app config (no auth required)
+public_router = APIRouter(prefix="/api/config", tags=["config"])
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "temp_units": "C",
     "sg_units": "sg",
@@ -137,7 +140,7 @@ class AppConfigResponse(BaseModel):
     supabase_anon_key: Optional[str] = None
 
 
-@router.get("/app", response_model=AppConfigResponse)
+@public_router.get("/app", response_model=AppConfigResponse)
 async def get_app_config():
     """Get public application configuration.
 

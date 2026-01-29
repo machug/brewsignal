@@ -68,8 +68,9 @@ def get_ip_addresses() -> list[str]:
     """Get all non-loopback IP addresses."""
     ips = []
     try:
+        # Use full path since systemd service may have limited PATH
         result = subprocess.run(
-            ["hostname", "-I"],
+            ["/usr/bin/hostname", "-I"],
             capture_output=True,
             text=True,
             timeout=5,

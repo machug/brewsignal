@@ -5,16 +5,17 @@
  * Client is lazily initialized after app config is fetched from backend.
  */
 
-import { createBrowserClient, type SupabaseClient as SupabaseClientType } from '@supabase/ssr';
-import { config } from './config';
+import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { config } from '$lib/config';
 
 // Lazily initialized Supabase client
-let _supabase: SupabaseClientType<any, "public", any> | null = null;
+let _supabase: SupabaseClient | null = null;
 
 /**
  * Get the Supabase client (lazily initialized)
  */
-export function getSupabase(): SupabaseClientType<any, "public", any> | null {
+export function getSupabase(): SupabaseClient | null {
 	// Initialize on first access if config is ready
 	if (!_supabase && config.authEnabled && config.supabaseUrl && config.supabaseAnonKey) {
 		_supabase = createBrowserClient(config.supabaseUrl, config.supabaseAnonKey);

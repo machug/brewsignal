@@ -7,7 +7,7 @@
  * - Local mode: Auth is optional but enables data claiming and multi-tenant features
  */
 
-import type { User, Session } from '@supabase/supabase-js';
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { getSupabase } from '$lib/supabase';
 import { config } from '$lib/config';
 
@@ -42,7 +42,7 @@ export async function initAuth() {
 	initialized = true;
 
 	// Listen for auth changes
-	supabase.auth.onAuthStateChange((_event, newSession) => {
+	supabase.auth.onAuthStateChange((_event: AuthChangeEvent, newSession: Session | null) => {
 		session = newSession;
 		user = newSession?.user ?? null;
 	});

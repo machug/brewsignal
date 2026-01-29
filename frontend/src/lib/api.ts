@@ -1,7 +1,7 @@
 // API helper functions for BrewSignal
 
-import { getAccessToken } from './supabase';
-import { config } from './config';
+import { getAccessToken } from '$lib/supabase';
+import { config } from '$lib/config';
 
 const BASE_URL = '/api';
 

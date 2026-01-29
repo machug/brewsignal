@@ -45,6 +45,7 @@ FAST_MODELS_BY_PROVIDER = {
     "groq": "groq/llama-3.1-8b-instant",
     "deepseek": "deepseek/deepseek-chat",
     "local": "ollama/smollm2:360m",
+    "hailo": "ollama/qwen2:1.5b",
 }
 
 logger = logging.getLogger(__name__)
@@ -332,9 +333,10 @@ async def _summarize_thread_title(
         if config.api_key:
             kwargs["api_key"] = config.api_key.get_secret_value()
 
-        # Add base URL for Ollama
-        if provider_str == "local":
-            kwargs["api_base"] = config.base_url or "http://localhost:11434"
+        # Add base URL for Ollama/Hailo
+        if provider_str in ("local", "hailo"):
+            default_url = "http://localhost:8000" if provider_str == "hailo" else "http://localhost:11434"
+            kwargs["api_base"] = config.base_url or default_url
 
         logger.info(f"Summarizing thread {thread_id} title with {fast_model}")
         response = await litellm.acompletion(**kwargs)
@@ -403,9 +405,11 @@ async def _run_agent_loop(
         if api_key:
             kwargs["api_key"] = api_key
 
-        # Add base URL for Ollama
-        if service.config._provider_str() == "local":
-            kwargs["api_base"] = service.config.base_url or "http://localhost:11434"
+        # Add base URL for Ollama/Hailo
+        provider_str = service.config._provider_str()
+        if provider_str in ("local", "hailo"):
+            default_url = "http://localhost:8000" if provider_str == "hailo" else "http://localhost:11434"
+            kwargs["api_base"] = service.config.base_url or default_url
 
         logger.info(f"AG-UI iteration {iteration}: sending to LLM with {len(TOOL_DEFINITIONS)} tools")
 

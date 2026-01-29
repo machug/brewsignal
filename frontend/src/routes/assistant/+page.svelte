@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { useAgent } from '$lib/ag-ui';
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { Message, ToolCall, Thread } from '$lib/ag-ui/types';
+	import { configState } from '$lib/stores/config.svelte';
+
+	// Redirect if AI is not enabled
+	$effect(() => {
+		if (configState.loaded && !configState.config.ai_enabled) {
+			goto('/');
+		}
+	});
 
 	// Configuration
 	let showDebugPanel = $state(false);

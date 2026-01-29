@@ -118,15 +118,22 @@
 		weatherDropdownOpen = false;
 	}
 
-	const navLinks = [
+	// Base nav links (always shown)
+	const baseNavLinks = [
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/batches', label: 'Batches' },
 		{ href: '/recipes', label: 'Recipes' },
 		{ href: '/inventory', label: 'Inventory' },
-		{ href: '/library', label: 'Library' },
-		{ href: '/assistant', label: 'Assistant' },
-		{ href: '/system', label: 'System' }
+		{ href: '/library', label: 'Library' }
 	];
+
+	// Dynamic nav links based on config
+	let navLinks = $derived([
+		...baseNavLinks,
+		// Only show Assistant when AI is enabled
+		...(configState.config.ai_enabled ? [{ href: '/assistant', label: 'Assistant' }] : []),
+		{ href: '/system', label: 'System' }
+	]);
 
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/';

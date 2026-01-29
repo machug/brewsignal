@@ -80,3 +80,5 @@ plans/
 
 # Ruff linter cache
 .ruff_cache/
+.vercel
+.env*.local

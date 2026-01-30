@@ -66,6 +66,11 @@
 	let deleting = $state(false);
 	let saving = $state(false);
 
+	// Detail modal state
+	let selectedYeast = $state<YeastStrainResponse | null>(null);
+	let selectedHop = $state<HopVarietyResponse | null>(null);
+	let selectedFermentable = $state<FermentableResponse | null>(null);
+
 	// Filtered data
 	let filteredYeast = $derived(() => {
 		return yeastStrains.filter((s) => {
@@ -347,6 +352,22 @@
 		return '#1A0C0A';
 	}
 
+	function formatSourceName(source?: string): string {
+		if (!source) return 'Unknown';
+		switch (source) {
+			case 'brewfather': return 'Brewfather';
+			case 'beerxml': return 'BeerXML';
+			case 'custom': return 'Custom';
+			default: return source;
+		}
+	}
+
+	function closeDetailModal() {
+		selectedYeast = null;
+		selectedHop = null;
+		selectedFermentable = null;
+	}
+
 	onMount(loadData);
 </script>
 
@@ -471,15 +492,15 @@
 						<h2 class="group-name">{producer} <span class="group-count">({strains.length})</span></h2>
 						<div class="items-grid">
 							{#each strains as strain (strain.id)}
-								<div class="item-card" class:custom={strain.is_custom}>
+								<button type="button" class="item-card" class:custom={strain.is_custom} onclick={() => (selectedYeast = strain)}>
 									<div class="item-header">
 										<h3 class="item-name">{strain.name}</h3>
 										{#if strain.is_custom}
-											<button type="button" class="delete-btn" onclick={() => (deleteTarget = { type: 'yeast', id: strain.id, name: strain.name })} aria-label="Delete">
+											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'yeast', id: strain.id, name: strain.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'yeast', id: strain.id, name: strain.name })} aria-label="Delete">
 												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 												</svg>
-											</button>
+											</span>
 										{/if}
 									</div>
 									<div class="item-meta">
@@ -512,7 +533,7 @@
 									{#if strain.description}
 										<p class="item-description">{strain.description}</p>
 									{/if}
-								</div>
+								</button>
 							{/each}
 						</div>
 					</div>
@@ -532,15 +553,15 @@
 						<h2 class="group-name">{origin} <span class="group-count">({hops.length})</span></h2>
 						<div class="items-grid">
 							{#each hops as hop (hop.id)}
-								<div class="item-card" class:custom={hop.is_custom}>
+								<button type="button" class="item-card" class:custom={hop.is_custom} onclick={() => (selectedHop = hop)}>
 									<div class="item-header">
 										<h3 class="item-name">{hop.name}</h3>
 										{#if hop.is_custom}
-											<button type="button" class="delete-btn" onclick={() => (deleteTarget = { type: 'hops', id: hop.id, name: hop.name })} aria-label="Delete">
+											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'hops', id: hop.id, name: hop.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'hops', id: hop.id, name: hop.name })} aria-label="Delete">
 												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 												</svg>
-											</button>
+											</span>
 										{/if}
 									</div>
 									<div class="item-meta">
@@ -566,7 +587,7 @@
 									{#if hop.aroma_profile}
 										<p class="item-description">{hop.aroma_profile}</p>
 									{/if}
-								</div>
+								</button>
 							{/each}
 						</div>
 					</div>
@@ -586,15 +607,15 @@
 						<h2 class="group-name">{type} <span class="group-count">({items.length})</span></h2>
 						<div class="items-grid">
 							{#each items as item (item.id)}
-								<div class="item-card" class:custom={item.is_custom}>
+								<button type="button" class="item-card" class:custom={item.is_custom} onclick={() => (selectedFermentable = item)}>
 									<div class="item-header">
 										<h3 class="item-name">{item.name}</h3>
 										{#if item.is_custom}
-											<button type="button" class="delete-btn" onclick={() => (deleteTarget = { type: 'fermentables', id: item.id, name: item.name })} aria-label="Delete">
+											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'fermentables', id: item.id, name: item.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'fermentables', id: item.id, name: item.name })} aria-label="Delete">
 												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 												</svg>
-											</button>
+											</span>
 										{/if}
 									</div>
 									<div class="item-meta">
@@ -640,7 +661,7 @@
 									{#if item.flavor_profile}
 										<p class="item-description">{item.flavor_profile}</p>
 									{/if}
-								</div>
+								</button>
 							{/each}
 						</div>
 					</div>
@@ -841,6 +862,256 @@
 				<button type="button" class="btn-delete" onclick={handleDelete} disabled={deleting}>
 					{deleting ? 'Deleting...' : 'Delete'}
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Yeast Detail Modal -->
+{#if selectedYeast}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={closeDetailModal}
+		onkeydown={(e) => e.key === 'Escape' && closeDetailModal()}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="yeast-detail-title" tabindex="-1">
+			<div class="detail-header">
+				<div class="detail-title-row">
+					<h2 id="yeast-detail-title" class="detail-title">{selectedYeast.name}</h2>
+					<button type="button" class="close-btn" onclick={closeDetailModal} aria-label="Close">
+						<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				<div class="detail-meta">
+					{#if selectedYeast.producer}
+						<span class="detail-producer">{selectedYeast.producer}</span>
+					{/if}
+					{#if selectedYeast.product_id}
+						<span class="detail-product-id">{selectedYeast.product_id}</span>
+					{/if}
+					{#if selectedYeast.type}
+						<span class="detail-type-badge" style="color: {getYeastTypeColor(selectedYeast.type)}">{selectedYeast.type}</span>
+					{/if}
+					{#if selectedYeast.form}
+						<span class="detail-form">{selectedYeast.form}</span>
+					{/if}
+					{#if selectedYeast.is_custom}
+						<span class="custom-badge">custom</span>
+					{/if}
+				</div>
+			</div>
+
+			<div class="detail-content">
+				<div class="detail-specs-grid">
+					<div class="detail-spec">
+						<span class="detail-spec-label">Attenuation</span>
+						<span class="detail-spec-value">{formatAttenuation(selectedYeast.attenuation_low, selectedYeast.attenuation_high)}</span>
+					</div>
+					<div class="detail-spec">
+						<span class="detail-spec-label">Temp Range</span>
+						<span class="detail-spec-value">{formatTempRange(selectedYeast.temp_low, selectedYeast.temp_high)}</span>
+					</div>
+					{#if selectedYeast.flocculation}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Flocculation</span>
+							<span class="detail-spec-value">{selectedYeast.flocculation}</span>
+						</div>
+					{/if}
+					{#if selectedYeast.alcohol_tolerance}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Alcohol Tolerance</span>
+							<span class="detail-spec-value">{selectedYeast.alcohol_tolerance}%</span>
+						</div>
+					{/if}
+				</div>
+
+				{#if selectedYeast.description}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Description</h3>
+						<p class="detail-description">{selectedYeast.description}</p>
+					</div>
+				{/if}
+
+				<div class="detail-footer">
+					<span class="detail-source">Source: {formatSourceName(selectedYeast.source)}</span>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Hop Detail Modal -->
+{#if selectedHop}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={closeDetailModal}
+		onkeydown={(e) => e.key === 'Escape' && closeDetailModal()}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="hop-detail-title" tabindex="-1">
+			<div class="detail-header">
+				<div class="detail-title-row">
+					<h2 id="hop-detail-title" class="detail-title">{selectedHop.name}</h2>
+					<button type="button" class="close-btn" onclick={closeDetailModal} aria-label="Close">
+						<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				<div class="detail-meta">
+					{#if selectedHop.origin}
+						<span class="detail-producer">{selectedHop.origin}</span>
+					{/if}
+					{#if selectedHop.purpose}
+						<span class="detail-type-badge" style="color: {getHopPurposeColor(selectedHop.purpose)}">{selectedHop.purpose}</span>
+					{/if}
+					{#if selectedHop.is_custom}
+						<span class="custom-badge">custom</span>
+					{/if}
+				</div>
+			</div>
+
+			<div class="detail-content">
+				<div class="detail-specs-grid">
+					<div class="detail-spec">
+						<span class="detail-spec-label">Alpha Acid</span>
+						<span class="detail-spec-value">{formatAlphaAcid(selectedHop.alpha_acid_low, selectedHop.alpha_acid_high)}</span>
+					</div>
+					{#if selectedHop.beta_acid_low || selectedHop.beta_acid_high}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Beta Acid</span>
+							<span class="detail-spec-value">{formatAlphaAcid(selectedHop.beta_acid_low, selectedHop.beta_acid_high)}</span>
+						</div>
+					{/if}
+				</div>
+
+				{#if selectedHop.aroma_profile}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Aroma Profile</h3>
+						<p class="detail-description">{selectedHop.aroma_profile}</p>
+					</div>
+				{/if}
+
+				{#if selectedHop.substitutes}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Substitutes</h3>
+						<p class="detail-substitutes">{selectedHop.substitutes}</p>
+					</div>
+				{/if}
+
+				{#if selectedHop.description}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Description</h3>
+						<p class="detail-description">{selectedHop.description}</p>
+					</div>
+				{/if}
+
+				<div class="detail-footer">
+					<span class="detail-source">Source: {formatSourceName(selectedHop.source)}</span>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Fermentable Detail Modal -->
+{#if selectedFermentable}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="modal-overlay"
+		onclick={closeDetailModal}
+		onkeydown={(e) => e.key === 'Escape' && closeDetailModal()}
+		role="presentation"
+	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="fermentable-detail-title" tabindex="-1">
+			<div class="detail-header">
+				<div class="detail-title-row">
+					<h2 id="fermentable-detail-title" class="detail-title">{selectedFermentable.name}</h2>
+					<button type="button" class="close-btn" onclick={closeDetailModal} aria-label="Close">
+						<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				<div class="detail-meta">
+					{#if selectedFermentable.maltster}
+						<span class="detail-producer">{selectedFermentable.maltster}</span>
+					{/if}
+					{#if selectedFermentable.origin}
+						<span class="detail-origin">{selectedFermentable.origin}</span>
+					{/if}
+					{#if selectedFermentable.type}
+						<span class="detail-type-badge" style="color: {getFermentableTypeColor(selectedFermentable.type)}">{selectedFermentable.type}</span>
+					{/if}
+					{#if selectedFermentable.is_custom}
+						<span class="custom-badge">custom</span>
+					{/if}
+				</div>
+			</div>
+
+			<div class="detail-content">
+				<div class="detail-specs-grid">
+					{#if selectedFermentable.color_srm != null}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Color</span>
+							<span class="detail-spec-value" style="display: flex; align-items: center; gap: 6px;">
+								<span class="color-swatch-lg" style="background: {getSrmColor(selectedFermentable.color_srm)};"></span>
+								{formatColor(selectedFermentable.color_srm)}
+							</span>
+						</div>
+					{/if}
+					{#if selectedFermentable.potential_sg != null}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Potential SG</span>
+							<span class="detail-spec-value">{selectedFermentable.potential_sg.toFixed(3)}</span>
+						</div>
+					{/if}
+					{#if selectedFermentable.max_in_batch_percent != null}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Max in Batch</span>
+							<span class="detail-spec-value">{selectedFermentable.max_in_batch_percent}%</span>
+						</div>
+					{/if}
+					{#if selectedFermentable.diastatic_power != null}
+						<div class="detail-spec">
+							<span class="detail-spec-label">Diastatic Power</span>
+							<span class="detail-spec-value">{selectedFermentable.diastatic_power}°L</span>
+						</div>
+					{/if}
+				</div>
+
+				{#if selectedFermentable.flavor_profile}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Flavor Profile</h3>
+						<p class="detail-description">{selectedFermentable.flavor_profile}</p>
+					</div>
+				{/if}
+
+				{#if selectedFermentable.substitutes}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Substitutes</h3>
+						<p class="detail-substitutes">{selectedFermentable.substitutes}</p>
+					</div>
+				{/if}
+
+				{#if selectedFermentable.description}
+					<div class="detail-section">
+						<h3 class="detail-section-title">Description</h3>
+						<p class="detail-description">{selectedFermentable.description}</p>
+					</div>
+				{/if}
+
+				<div class="detail-footer">
+					<span class="detail-source">Source: {formatSourceName(selectedFermentable.source)}</span>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -1087,14 +1358,29 @@
 	}
 
 	.item-card {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		text-align: left;
 		background: var(--bg-surface);
 		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
 		padding: var(--space-4);
-		transition: border-color var(--transition);
+		cursor: pointer;
+		transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
 	}
 
-	.item-card:hover { border-color: var(--border-default); }
+	.item-card:hover {
+		border-color: var(--accent);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		transform: translateY(-1px);
+	}
+
+	.item-card:focus {
+		outline: none;
+		border-color: var(--accent);
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+	}
 
 	.item-card.custom {
 		border-color: var(--accent);
@@ -1342,5 +1628,198 @@
 		.search-input { max-width: none; }
 		.form-row { grid-template-columns: 1fr; }
 		.tabs { overflow-x: auto; }
+	}
+
+	/* Detail Modal */
+	.detail-modal {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-default);
+		border-radius: 12px;
+		max-width: 560px;
+		width: 100%;
+		max-height: 85vh;
+		overflow-y: auto;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+	}
+
+	.detail-header {
+		padding: var(--space-5) var(--space-6);
+		border-bottom: 1px solid var(--border-subtle);
+		background: var(--bg-elevated);
+	}
+
+	.detail-title-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: var(--space-4);
+		margin-bottom: var(--space-3);
+	}
+
+	.detail-title {
+		font-size: 22px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+		line-height: 1.3;
+	}
+
+	.close-btn {
+		flex-shrink: 0;
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		border-radius: 6px;
+		transition: all var(--transition);
+	}
+
+	.close-btn:hover {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.detail-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.detail-producer {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-secondary);
+	}
+
+	.detail-product-id {
+		font-size: 12px;
+		font-family: var(--font-mono);
+		color: var(--text-muted);
+		background: var(--bg-hover);
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+
+	.detail-origin {
+		font-size: 13px;
+		color: var(--text-muted);
+	}
+
+	.detail-type-badge {
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.detail-form {
+		font-size: 12px;
+		color: var(--text-muted);
+		text-transform: capitalize;
+	}
+
+	.detail-content {
+		padding: var(--space-5) var(--space-6);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-5);
+	}
+
+	.detail-specs-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: var(--space-4);
+	}
+
+	.detail-spec {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.detail-spec-label {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.detail-spec-value {
+		font-size: 15px;
+		font-family: var(--font-mono);
+		color: var(--text-primary);
+	}
+
+	.detail-section {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.detail-section-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0;
+	}
+
+	.detail-description {
+		font-size: 14px;
+		line-height: 1.6;
+		color: var(--text-secondary);
+		margin: 0;
+	}
+
+	.detail-substitutes {
+		font-size: 14px;
+		line-height: 1.5;
+		color: var(--text-primary);
+		margin: 0;
+		background: var(--bg-elevated);
+		padding: var(--space-3);
+		border-radius: 6px;
+		border: 1px solid var(--border-subtle);
+	}
+
+	.detail-footer {
+		padding-top: var(--space-4);
+		border-top: 1px solid var(--border-subtle);
+	}
+
+	.detail-source {
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.color-swatch-lg {
+		width: 20px;
+		height: 20px;
+		border-radius: 4px;
+		border: 1px solid var(--border-default);
+	}
+
+	@media (max-width: 640px) {
+		.detail-modal {
+			max-height: 90vh;
+			margin: var(--space-4);
+		}
+
+		.detail-header,
+		.detail-content {
+			padding: var(--space-4);
+		}
+
+		.detail-specs-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

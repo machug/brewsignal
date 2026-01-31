@@ -2,8 +2,11 @@
 BrewSignal Configuration
 
 Supports two deployment modes:
-- local: Single-user RPi deployment with SQLite, no auth
+- local: Single-user RPi deployment with SQLite, optional auth
 - cloud: Multi-tenant SaaS with PostgreSQL + Supabase Auth
+
+Feature flags control which capabilities are enabled. Each deployment mode
+has sensible defaults, with optional per-flag overrides via environment variables.
 """
 
 import os
@@ -18,6 +21,35 @@ from pydantic_settings import BaseSettings
 class DeploymentMode(str, Enum):
     LOCAL = "local"
     CLOUD = "cloud"
+
+
+# Default feature flags for each deployment mode
+DEPLOYMENT_PRESETS = {
+    "local": {
+        "scanner": True,       # BLE Tilt scanning
+        "ha": True,            # Home Assistant integration
+        "mqtt": True,          # MQTT publishing
+        "control": True,       # Temperature controller
+        "pollers": True,       # Ambient/chamber polling
+        "cleanup": True,       # Reading cleanup service
+        "gateway": False,      # Gateway WebSocket for ESP32
+        "cloud_sync": False,   # Premium cloud sync
+        "require_auth": False, # Anonymous access allowed
+        "serve_frontend": True, # Serve static SvelteKit build
+    },
+    "cloud": {
+        "scanner": False,
+        "ha": False,
+        "mqtt": False,
+        "control": False,
+        "pollers": False,
+        "cleanup": False,      # Disabled until TZ fix
+        "gateway": True,
+        "cloud_sync": True,
+        "require_auth": True,  # JWT required
+        "serve_frontend": False, # Vercel serves frontend
+    },
+}
 
 
 class Settings(BaseSettings):
@@ -54,6 +86,18 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
+    # Feature flag overrides (None = use preset default)
+    scanner_enabled: Optional[bool] = None
+    ha_enabled: Optional[bool] = None
+    mqtt_enabled: Optional[bool] = None
+    control_enabled: Optional[bool] = None
+    pollers_enabled: Optional[bool] = None
+    cleanup_enabled: Optional[bool] = None
+    gateway_enabled: Optional[bool] = None
+    cloud_sync_enabled: Optional[bool] = None
+    require_auth_enabled: Optional[bool] = None
+    serve_frontend_enabled: Optional[bool] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -68,6 +112,31 @@ class Settings(BaseSettings):
     def is_local(self) -> bool:
         """Check if running in local mode."""
         return self.deployment_mode == DeploymentMode.LOCAL
+
+    def is_enabled(self, feature: str) -> bool:
+        """Check if a feature is enabled.
+
+        First checks for an explicit override via environment variable,
+        then falls back to the deployment preset default.
+
+        Args:
+            feature: Feature name (e.g., "scanner", "mqtt", "require_auth")
+
+        Returns:
+            True if the feature is enabled, False otherwise.
+        """
+        # Check for explicit override
+        override = getattr(self, f"{feature}_enabled", None)
+        if override is not None:
+            return override
+        # Fall back to preset default
+        preset = DEPLOYMENT_PRESETS.get(self.deployment_mode.value, {})
+        return preset.get(feature, False)
+
+    @property
+    def require_auth(self) -> bool:
+        """Check if authentication is required."""
+        return self.is_enabled("require_auth")
 
     def get_database_url(self) -> str:
         """Get the database URL, with defaults based on deployment mode."""

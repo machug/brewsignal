@@ -372,66 +372,59 @@ async def lifespan(app: FastAPI):
     global scanner, scanner_task, cleanup_service, ml_pipeline_manager
 
     settings = Settings()
-    is_cloud = settings.is_cloud
 
     # Startup
-    mode_str = "CLOUD" if is_cloud else "LOCAL"
-    print(f"Starting BrewSignal ({mode_str} mode)...")
+    print(f"Starting BrewSignal ({settings.deployment_mode.value.upper()} mode)...")
     await init_db()
     print("Database initialized")
 
-    # Load cached readings from disk (survives restarts) - only for local mode
-    if not is_cloud:
-        load_readings_cache()
-        print(f"Loaded {len(latest_readings)} cached device readings")
-
-    # Initialize ML pipeline manager
+    # Initialize ML pipeline manager (always enabled)
     ml_pipeline_manager = MLPipelineManager()
     logging.info("ML Pipeline Manager initialized")
 
-    # Start scanner - only in local mode (cloud gets data from gateway WebSocket)
-    if not is_cloud:
+    # Scanner: BLE Tilt scanning (local only, cloud uses gateway)
+    if settings.is_enabled("scanner"):
+        load_readings_cache()
+        print(f"Loaded {len(latest_readings)} cached device readings")
         scanner = TiltScanner(on_reading=handle_tilt_reading)
         scanner_task = asyncio.create_task(scanner.start())
         print("Scanner started")
-    else:
-        print("Cloud mode: Scanner disabled (data comes from gateway)")
 
-    # Start cleanup service (30-day retention, hourly check)
-    # Disabled in cloud mode until datetime timezone handling is fixed
-    if not is_cloud:
+    # Cleanup service: prune old readings
+    if settings.is_enabled("cleanup"):
         cleanup_service = CleanupService(retention_days=30, interval_hours=1)
         await cleanup_service.start()
-    else:
-        print("Cloud mode: Cleanup service disabled (datetime tz fix pending)")
+        print("Cleanup service started")
 
-    # Local-only services (require Home Assistant access)
-    if not is_cloud:
-        # Start ambient poller for Home Assistant integration
+    # Home Assistant integration: ambient/chamber polling
+    if settings.is_enabled("ha"):
         start_ambient_poller()
-        print("Ambient poller started")
-
-        # Start chamber poller for fermentation chamber environment
         await start_chamber_poller()
-        print("Chamber poller started")
+        print("HA integration started (ambient + chamber pollers)")
 
-        # Start temperature controller for HA-based temperature control
+    # Temperature controller
+    if settings.is_enabled("control"):
         start_temp_controller()
         print("Temperature controller started")
 
-        # Start MQTT manager for Home Assistant batch data publishing
+    # MQTT publishing
+    if settings.is_enabled("mqtt"):
         start_mqtt_manager()
         print("MQTT manager started")
-    else:
-        print("Cloud mode: Skipping Home Assistant services (ambient, chamber, temp control, MQTT)")
+
+    # Gateway WebSocket (cloud only, accepts ESP32 connections)
+    if settings.is_enabled("gateway"):
+        print("Gateway WebSocket enabled")
 
     yield
 
-    # Shutdown
+    # Shutdown (reverse order)
     print("Shutting down BrewSignal...")
-    if not is_cloud:
+    if settings.is_enabled("mqtt"):
         stop_mqtt_manager()
+    if settings.is_enabled("control"):
         stop_temp_controller()
+    if settings.is_enabled("ha"):
         stop_chamber_poller()
         stop_ambient_poller()
     if cleanup_service:
@@ -445,7 +438,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     ml_pipeline_manager = None
-    print("Scanner stopped")
+    print("Shutdown complete")
 
 
 from .routers.system import VERSION  # noqa: E402
@@ -605,10 +598,10 @@ async def get_stats():
 
 
 # SPA page routes - serve pre-rendered HTML files
-# Only in local mode; cloud mode uses Vercel for frontend
+# Controlled by serve_frontend feature flag (local serves static, cloud uses Vercel)
 static_dir = Path(__file__).parent / "static"
 _settings = Settings()
-_serve_frontend = not _settings.is_cloud and static_dir.exists()
+_serve_frontend = _settings.is_enabled("serve_frontend") and static_dir.exists()
 
 if _serve_frontend:
     @app.get("/", response_class=FileResponse)
@@ -725,8 +718,8 @@ if _serve_frontend:
     if app_assets.exists():
         app.mount("/_app", StaticFiles(directory=app_assets), name="app_assets")
 else:
-    # Cloud mode: minimal root endpoint
+    # Frontend disabled: minimal root endpoint (Vercel or other serves frontend)
     @app.get("/")
     async def api_root():
-        """API root - frontend served by Vercel."""
+        """API root - frontend served externally."""
         return {"message": "BrewSignal API", "docs": "/docs", "health": "/api/health"}

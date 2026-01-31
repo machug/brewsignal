@@ -69,10 +69,10 @@ async def get_current_user(
     """
     Extract and validate the current user from the JWT token.
 
-    In cloud mode: Requires valid JWT, raises 401 if missing/invalid.
-    In local mode: Validates JWT if provided, returns None if not provided.
+    When require_auth=True: Requires valid JWT, raises 401 if missing/invalid.
+    When require_auth=False: Validates JWT if provided, returns None if not provided.
 
-    This allows local users to optionally login with their BrewSignal account.
+    This allows anonymous access in local mode while supporting optional login.
     """
     settings = get_settings()
 
@@ -82,10 +82,10 @@ async def get_current_user(
 
     # If no credentials provided
     if not credentials:
-        if settings.is_cloud:
+        if settings.require_auth:
             raise HTTPException(status_code=401, detail="Authentication required")
-        # Local mode without credentials - return None (will become dummy user in require_auth)
-        logger.debug("No credentials provided in local mode, returning None")
+        # Anonymous access allowed - return None (will become dummy user in require_auth)
+        logger.debug("No credentials provided, anonymous access allowed")
         return None
 
     token = credentials.credentials
@@ -165,8 +165,8 @@ def require_auth(user: Optional[AuthUser] = Depends(get_current_user)) -> AuthUs
     """
     Dependency that requires authentication.
 
-    In cloud mode: Requires valid JWT (get_current_user already enforces this).
-    In local mode: Uses JWT if provided, falls back to dummy "local" user.
+    When require_auth=True: Requires valid JWT (get_current_user already enforces this).
+    When require_auth=False: Uses JWT if provided, falls back to dummy "local" user.
 
     Usage:
         @router.get("/protected")
@@ -180,9 +180,9 @@ def require_auth(user: Optional[AuthUser] = Depends(get_current_user)) -> AuthUs
         logger.info(f"Authenticated user: {user.user_id[:8]}...")
         return user
 
-    # In local mode without JWT, create a dummy user for backward compatibility
-    if not settings.is_cloud:
-        logger.info("Using fallback 'local' user - no JWT provided in local mode")
+    # Anonymous access allowed - create a dummy user for backward compatibility
+    if not settings.require_auth:
+        logger.info("Using fallback 'local' user - anonymous access allowed")
         return AuthUser(user_id="local", email=None, role="local")
 
     # Cloud mode without user - should not reach here as get_current_user raises 401

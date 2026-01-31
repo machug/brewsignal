@@ -73,6 +73,14 @@
 	let configError = $state<string | null>(null);
 	let configSuccess = $state(false);
 
+	// Auth config state (reactive for template)
+	let authEnabled = $state(config.authEnabled);
+
+	// Update authEnabled when config loads
+	onConfigLoaded(() => {
+		authEnabled = config.authEnabled;
+	});
+
 	// Cleanup state
 	let cleanupRetentionDays = $state(30);
 	let cleanupPreview = $state<{ readings_to_delete: number } | null>(null);
@@ -1773,7 +1781,7 @@
 			</section>
 
 			<!-- Cloud Sync Section -->
-			{#if config.authEnabled}
+			{#if authEnabled}
 				<section class="settings-section">
 					<button
 						type="button"

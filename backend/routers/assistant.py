@@ -21,6 +21,9 @@ PROMPTS_DIR = Path(__file__).parent.parent / "services" / "llm" / "prompts"
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
+# Public router for endpoints that don't require auth (providers list, models list)
+public_router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+
 
 class ChatMessage(BaseModel):
     """A single chat message."""
@@ -149,7 +152,7 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models/{provider}", response_model=ModelsResponse)
+@public_router.get("/models/{provider}", response_model=ModelsResponse)
 async def get_models(provider: str) -> ModelsResponse:
     """Get available models for a provider."""
     # Define popular models per provider
@@ -215,7 +218,7 @@ async def get_models(provider: str) -> ModelsResponse:
     return ModelsResponse(provider=provider, models=models_by_provider[provider])
 
 
-@router.get("/providers")
+@public_router.get("/providers")
 async def get_providers() -> list[dict]:
     """Get available LLM providers.
 

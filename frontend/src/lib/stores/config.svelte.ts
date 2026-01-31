@@ -1,5 +1,7 @@
 // Svelte 5 runes-based store for app configuration
 
+import { authFetch } from '$lib/api';
+
 export interface AppConfig {
 	temp_units: 'C' | 'F';
 	sg_units: 'sg' | 'plato' | 'brix';
@@ -99,7 +101,7 @@ export const configState = $state<{ config: AppConfig; loaded: boolean }>({
 
 export async function loadConfig(): Promise<void> {
 	try {
-		const response = await fetch('/api/config');
+		const response = await authFetch('/api/config');
 		if (response.ok) {
 			const data = await response.json();
 			configState.config = { ...DEFAULT_CONFIG, ...data };
@@ -118,7 +120,7 @@ export interface ConfigUpdateResult {
 
 export async function updateConfig(updates: Partial<AppConfig>): Promise<ConfigUpdateResult> {
 	try {
-		const response = await fetch('/api/config', {
+		const response = await authFetch('/api/config', {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(updates)

@@ -9,7 +9,24 @@
 	import { weatherState, startWeatherPolling, stopWeatherPolling, getWeatherIcon, formatDayName } from '$lib/stores/weather.svelte';
 	import { initAuth, authState } from '$lib/stores/auth.svelte';
 	import { signOut } from '$lib/supabase';
-	import { config, fetchAppConfig } from '$lib/config';
+	import { config, configStores, fetchAppConfig } from '$lib/config';
+	import { get } from 'svelte/store';
+
+	// Create reactive state from config stores (Svelte 5 pattern)
+	let authRequired = $state(false);
+	let authEnabled = $state(false);
+	let configInitialized = $state(false);
+
+	// Subscribe to config stores in onMount for proper cleanup
+	let unsubscribes: Array<() => void> = [];
+
+	function setupConfigSubscriptions() {
+		unsubscribes.push(
+			configStores.authRequired.subscribe(v => authRequired = v),
+			configStores.authEnabled.subscribe(v => authEnabled = v),
+			configStores.initialized.subscribe(v => configInitialized = v)
+		);
+	}
 
 	// Format ambient temp based on user's unit preference
 	function formatAmbientTemp(tempC: number): string {
@@ -44,7 +61,7 @@
 
 	// Redirect to login if not authenticated (cloud mode with auth required only)
 	$effect(() => {
-		if (config.authRequired && authState.initialized && !authState.user && !isLoginPage) {
+		if (authRequired && authState.initialized && !authState.user && !isLoginPage) {
 			goto('/login');
 		}
 	});
@@ -65,17 +82,23 @@
 
 	// Effect to start services when auth state is ready
 	$effect(() => {
+		// Don't start until config is initialized
+		if (!configInitialized) return;
+
 		// Don't start until auth is initialized
 		if (!authState.initialized) return;
 
 		// In cloud mode with required auth, wait until user is authenticated
-		if (config.authRequired && !authState.user) return;
+		if (authRequired && !authState.user) return;
 
 		// Otherwise (local mode or authenticated), start services
 		startAuthenticatedServices();
 	});
 
 	onMount(async () => {
+		// Set up config store subscriptions
+		setupConfigSubscriptions();
+
 		// Fetch app config from backend (includes Supabase credentials)
 		await fetchAppConfig();
 
@@ -105,6 +128,9 @@
 	}
 
 	onDestroy(() => {
+		// Clean up config store subscriptions
+		unsubscribes.forEach(unsub => unsub());
+
 		disconnectWebSocket();
 		stopHeaterPolling();
 		stopWeatherPolling();
@@ -262,7 +288,7 @@
 					</div>
 
 					<!-- User menu (shown when authenticated with Supabase) -->
-					{#if config.authEnabled && authState.user}
+					{#if authEnabled && authState.user}
 						<div class="user-menu-wrapper">
 							<button
 								type="button"
@@ -291,7 +317,7 @@
 								</div>
 							{/if}
 						</div>
-					{:else if config.authEnabled && !config.authRequired && authState.initialized}
+					{:else if authEnabled && !authRequired && authState.initialized}
 						<!-- Sign in link for local mode users (optional auth) -->
 						<a href="/login" class="sign-in-link">
 							Sign in
@@ -341,13 +367,19 @@
 
 	<!-- Main content -->
 	<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-		{#if config.authRequired && !authState.initialized}
+		{#if !configInitialized}
+			<!-- Loading config -->
+			<div class="auth-loading">
+				<div class="auth-loading-spinner"></div>
+				<p>Loading...</p>
+			</div>
+		{:else if authRequired && !authState.initialized}
 			<!-- Loading auth state -->
 			<div class="auth-loading">
 				<div class="auth-loading-spinner"></div>
 				<p>Loading...</p>
 			</div>
-		{:else if config.authRequired && !authState.user && !isLoginPage}
+		{:else if authRequired && !authState.user && !isLoginPage}
 			<!-- Redirecting to login -->
 			<div class="auth-loading">
 				<p>Redirecting to login...</p>

@@ -458,6 +458,7 @@ auth_deps = [Depends(require_auth)]
 
 # Public routes (no auth required)
 app.include_router(config.public_router)  # /api/config/app - frontend bootstrap
+app.include_router(assistant.public_router)  # /api/assistant/providers, models - static lists
 
 # Register routers with auth protection
 app.include_router(devices.router, dependencies=auth_deps)

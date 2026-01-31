@@ -74,8 +74,8 @@ hpa_recipes/
 # Crush
 .crush/
 
-# Development plans
-plans/
+# Development plans (root level only, docs/plans is tracked)
+/plans/
 
 # Ruff linter cache
 .ruff_cache/

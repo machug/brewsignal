@@ -4,6 +4,9 @@
 	import { goto } from '$app/navigation';
 	import type { Message, ToolCall, Thread } from '$lib/ag-ui/types';
 	import { configState } from '$lib/stores/config.svelte';
+	import { authFetch } from '$lib/api';
+	import { getAccessToken } from '$lib/supabase';
+	import { config } from '$lib/config';
 
 	// Redirect if AI is not enabled
 	$effect(() => {
@@ -22,10 +25,22 @@
 	let currentThreadId = $state<string | null>(null);
 	let loadingThreads = $state(false);
 
-	// Initialize AG-UI agent
+	// Async function to get auth headers - called fresh before each request
+	async function getAuthHeaders(): Promise<Record<string, string>> {
+		if (config.authEnabled) {
+			const token = await getAccessToken();
+			if (token) {
+				return { 'Authorization': `Bearer ${token}` };
+			}
+		}
+		return {};
+	}
+
+	// Initialize AG-UI agent with dynamic auth headers
 	// Note: Batch size and efficiency are now fetched from equipment inventory on the backend
 	const agent = useAgent({
 		url: '/api/ag-ui/run',
+		headers: getAuthHeaders,  // Async function called before each request
 		initialState: {},
 		onStateChange: (state) => {
 			// Handle recipe extraction from agent
@@ -77,11 +92,11 @@
 		}
 	});
 
-	// Thread management functions
+	// Thread management functions - use authFetch for JWT auth
 	async function fetchThreads() {
 		loadingThreads = true;
 		try {
-			const res = await fetch('/api/ag-ui/threads?limit=50');
+			const res = await authFetch('/api/ag-ui/threads?limit=50');
 			if (res.ok) {
 				threads = await res.json();
 			}
@@ -94,7 +109,7 @@
 
 	async function loadThread(threadId: string) {
 		try {
-			const res = await fetch(`/api/ag-ui/threads/${threadId}`);
+			const res = await authFetch(`/api/ag-ui/threads/${threadId}`);
 			if (res.ok) {
 				const thread = await res.json();
 				currentThreadId = threadId;
@@ -117,7 +132,7 @@
 	async function deleteThread(threadId: string) {
 		if (!confirm('Delete this conversation?')) return;
 		try {
-			const res = await fetch(`/api/ag-ui/threads/${threadId}`, { method: 'DELETE' });
+			const res = await authFetch(`/api/ag-ui/threads/${threadId}`, { method: 'DELETE' });
 			if (res.ok) {
 				threads = threads.filter(t => t.id !== threadId);
 				if (currentThreadId === threadId) {

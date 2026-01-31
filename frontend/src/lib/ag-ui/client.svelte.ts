@@ -334,9 +334,20 @@ export type AgentState = ReturnType<typeof createAgentState>;
  */
 export function createAgentClient(config: {
 	url: string;
-	headers?: Record<string, string>;
+	headers?: Record<string, string> | (() => Record<string, string>) | (() => Promise<Record<string, string>>);
 }) {
 	let abortController: AbortController | null = null;
+
+	/**
+	 * Resolve headers - supports static object, sync function, or async function
+	 */
+	async function resolveHeaders(): Promise<Record<string, string>> {
+		if (!config.headers) return {};
+		if (typeof config.headers === 'function') {
+			return await config.headers();
+		}
+		return config.headers;
+	}
 
 	/**
 	 * Run the agent with the given configuration
@@ -353,12 +364,15 @@ export function createAgentClient(config: {
 		agentState._setError(null);
 
 		try {
+			// Resolve headers dynamically (supports async token fetching)
+			const headers = await resolveHeaders();
+
 			const response = await fetch(config.url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					Accept: 'text/event-stream',
-					...config.headers
+					...headers
 				},
 				body: JSON.stringify(runConfig),
 				signal: abortController.signal

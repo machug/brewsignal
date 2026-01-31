@@ -9,8 +9,8 @@ import type { Message, ToolDefinition, RunConfig } from './types';
 export interface UseAgentConfig {
 	/** AG-UI endpoint URL */
 	url: string;
-	/** Optional HTTP headers */
-	headers?: Record<string, string>;
+	/** Optional HTTP headers - can be static, sync function, or async function for dynamic tokens */
+	headers?: Record<string, string> | (() => Record<string, string>) | (() => Promise<Record<string, string>>);
 	/** Optional thread ID for conversation continuity */
 	threadId?: string;
 	/** Tool definitions available to the agent */

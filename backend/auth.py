@@ -76,11 +76,16 @@ async def get_current_user(
     """
     settings = get_settings()
 
+    # Debug: log whether credentials were provided
+    has_auth_header = "Authorization" in request.headers
+    logger.debug(f"Auth check: has_auth_header={has_auth_header}, credentials_provided={credentials is not None}")
+
     # If no credentials provided
     if not credentials:
         if settings.is_cloud:
             raise HTTPException(status_code=401, detail="Authentication required")
         # Local mode without credentials - return None (will become dummy user in require_auth)
+        logger.debug("No credentials provided in local mode, returning None")
         return None
 
     token = credentials.credentials
@@ -172,10 +177,12 @@ def require_auth(user: Optional[AuthUser] = Depends(get_current_user)) -> AuthUs
 
     # If we got a valid user from JWT, return it
     if user:
+        logger.info(f"Authenticated user: {user.user_id[:8]}...")
         return user
 
     # In local mode without JWT, create a dummy user for backward compatibility
     if not settings.is_cloud:
+        logger.info("Using fallback 'local' user - no JWT provided in local mode")
         return AuthUser(user_id="local", email=None, role="local")
 
     # Cloud mode without user - should not reach here as get_current_user raises 401

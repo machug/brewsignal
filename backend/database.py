@@ -397,6 +397,8 @@ async def init_db():
         reseed_styles = await conn.run_sync(_migrate_add_style_comments_column)
         # Add title_locked column to ag_ui_threads
         await conn.run_sync(_migrate_add_ag_ui_thread_title_locked)
+        # Add user_id column to ag_ui_threads for multi-tenant isolation
+        await conn.run_sync(_migrate_add_ag_ui_thread_user_id)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
 
@@ -1576,6 +1578,21 @@ def _migrate_add_ag_ui_thread_title_locked(conn):
     if "title_locked" not in columns:
         conn.execute(text("ALTER TABLE ag_ui_threads ADD COLUMN title_locked INTEGER DEFAULT 0"))
         print("Migration: Added title_locked column to ag_ui_threads table")
+
+
+def _migrate_add_ag_ui_thread_user_id(conn):
+    """Add user_id column to ag_ui_threads for multi-tenant isolation."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "ag_ui_threads" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("ag_ui_threads")]
+    if "user_id" not in columns:
+        conn.execute(text("ALTER TABLE ag_ui_threads ADD COLUMN user_id VARCHAR(36)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ag_ui_threads_user_id ON ag_ui_threads(user_id)"))
+        print("Migration: Added user_id column to ag_ui_threads table")
 
 
 def _migrate_add_batch_phase_timestamps(conn):

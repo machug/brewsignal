@@ -164,18 +164,24 @@ async def rename_chat(
 async def list_recent_threads(
     db: AsyncSession,
     current_thread_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     limit: int = 10,
 ) -> dict[str, Any]:
     """List recent chat threads to browse conversation history.
 
     Returns recent threads with titles, dates, and message previews.
     Use this to see what topics have been discussed before.
+    Filters by user_id for multi-tenant isolation.
     """
     limit = min(max(1, limit), 20)  # Clamp between 1 and 20
 
     try:
-        # Get recent threads, excluding current
+        # Get recent threads, excluding current, filtered by user
         query_stmt = select(AgUiThread).order_by(AgUiThread.updated_at.desc())
+
+        # User isolation - only show threads owned by this user
+        if user_id:
+            query_stmt = query_stmt.where(AgUiThread.user_id == user_id)
 
         if current_thread_id:
             query_stmt = query_stmt.where(AgUiThread.id != current_thread_id)
@@ -239,6 +245,7 @@ async def list_recent_threads(
 async def get_thread_context(
     db: AsyncSession,
     thread_id: str,
+    user_id: Optional[str] = None,
     max_messages: int = 20,
 ) -> dict[str, Any]:
     """Get the full context from a previous conversation thread.
@@ -246,6 +253,7 @@ async def get_thread_context(
     Use this to recall details from a past conversation when the user
     references something discussed before, or when you need to understand
     what was previously decided/discussed about a topic.
+    Enforces user_id check for multi-tenant isolation.
     """
     if not thread_id:
         return {"error": "Thread ID is required"}
@@ -253,10 +261,12 @@ async def get_thread_context(
     max_messages = min(max(1, max_messages), 50)  # Clamp between 1 and 50
 
     try:
-        # Get the thread
-        result = await db.execute(
-            select(AgUiThread).where(AgUiThread.id == thread_id)
-        )
+        # Get the thread with user isolation check
+        query_stmt = select(AgUiThread).where(AgUiThread.id == thread_id)
+        if user_id:
+            query_stmt = query_stmt.where(AgUiThread.user_id == user_id)
+
+        result = await db.execute(query_stmt)
         thread = result.scalar_one_or_none()
 
         if not thread:
@@ -303,9 +313,13 @@ async def search_threads(
     db: AsyncSession,
     query: str,
     current_thread_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     limit: int = 5,
 ) -> dict[str, Any]:
-    """Search previous chat threads for recipes, discussions, and brewing information."""
+    """Search previous chat threads for recipes, discussions, and brewing information.
+
+    Enforces user_id filtering for multi-tenant isolation.
+    """
     if not query or not query.strip():
         return {"error": "Search query cannot be empty"}
 
@@ -317,16 +331,26 @@ async def search_threads(
         # Use LIKE for SQLite compatibility
         search_pattern = f"%{query}%"
 
-        # Find threads with matching titles or message content
-        result = await db.execute(
+        # Build base query with user isolation
+        base_query = (
             select(AgUiThread)
             .outerjoin(AgUiMessage, AgUiThread.id == AgUiMessage.thread_id)
-            .where(
-                or_(
-                    func.lower(AgUiThread.title).like(search_pattern),
-                    func.lower(AgUiMessage.content).like(search_pattern),
-                )
+        )
+
+        # User isolation filter
+        filters = [
+            or_(
+                func.lower(AgUiThread.title).like(search_pattern),
+                func.lower(AgUiMessage.content).like(search_pattern),
             )
+        ]
+        if user_id:
+            filters.append(AgUiThread.user_id == user_id)
+
+        # Find threads with matching titles or message content
+        result = await db.execute(
+            base_query
+            .where(*filters)
             .distinct()
             .order_by(AgUiThread.updated_at.desc())
             .limit(limit)

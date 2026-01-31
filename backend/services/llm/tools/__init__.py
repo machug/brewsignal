@@ -732,6 +732,7 @@ async def execute_tool(
     tool_name: str,
     arguments: dict[str, Any],
     thread_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute a tool and return the result.
 
@@ -740,6 +741,7 @@ async def execute_tool(
         tool_name: Name of the tool to execute
         arguments: Tool arguments
         thread_id: Current chat thread ID (for tools that need it)
+        user_id: Current user ID for multi-tenant isolation
 
     Returns:
         Tool result as a dictionary
@@ -797,10 +799,10 @@ async def execute_tool(
     elif tool_name == "rename_chat":
         return await rename_chat(db, thread_id, **arguments)
     elif tool_name == "search_threads":
-        return await search_threads(db, current_thread_id=thread_id, **arguments)
+        return await search_threads(db, current_thread_id=thread_id, user_id=user_id, **arguments)
     elif tool_name == "list_recent_threads":
-        return await list_recent_threads(db, current_thread_id=thread_id, **arguments)
+        return await list_recent_threads(db, current_thread_id=thread_id, user_id=user_id, **arguments)
     elif tool_name == "get_thread_context":
-        return await get_thread_context(db, **arguments)
+        return await get_thread_context(db, user_id=user_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
+from backend.auth import AuthUser, require_auth
 from backend.routers.assistant import get_llm_config
 from backend.services.llm import LLMService
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
@@ -103,6 +104,7 @@ async def generate_ag_ui_events(
     service: LLMService,
     request: RunRequest,
     db: AsyncSession,
+    user_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Generate AG-UI events from LLM streaming response."""
 
@@ -110,8 +112,8 @@ async def generate_ag_ui_events(
     thread_id = request.threadId or str(uuid.uuid4())
     run_id = str(uuid.uuid4())
 
-    # Create or get thread
-    thread = await _get_or_create_thread(db, thread_id, request.messages)
+    # Create or get thread (with user isolation)
+    thread = await _get_or_create_thread(db, thread_id, request.messages, user_id)
 
     # Emit RUN_STARTED
     yield AGUIEvent(
@@ -222,9 +224,10 @@ def _parse_sse_event(sse: str) -> Optional[dict]:
 async def _get_or_create_thread(
     db: AsyncSession,
     thread_id: str,
-    messages: list[Message]
+    messages: list[Message],
+    user_id: Optional[str] = None,
 ) -> AgUiThread:
-    """Get existing thread or create new one."""
+    """Get existing thread or create new one with user isolation."""
     result = await db.execute(
         select(AgUiThread).where(AgUiThread.id == thread_id)
     )
@@ -240,10 +243,10 @@ async def _get_or_create_thread(
                     title += "..."
                 break
 
-        thread = AgUiThread(id=thread_id, title=title)
+        thread = AgUiThread(id=thread_id, title=title, user_id=user_id)
         db.add(thread)
         await db.commit()
-        logger.info(f"Created new AG-UI thread: {thread_id}")
+        logger.info(f"Created new AG-UI thread: {thread_id} for user: {user_id}")
     else:
         # Update timestamp
         thread.updated_at = datetime.utcnow()
@@ -590,7 +593,7 @@ async def _run_agent_loop(
             # Parse arguments and execute
             try:
                 tool_args = json.loads(tool_args_str) if tool_args_str else {}
-                result = await execute_tool(db, tool_name, tool_args, thread_id=thread_id)
+                result = await execute_tool(db, tool_name, tool_args, thread_id=thread_id, user_id=user_id)
                 result_str = json.dumps(result)
             except json.JSONDecodeError as e:
                 result_str = json.dumps({"error": f"Invalid arguments: {e}"})
@@ -720,6 +723,7 @@ def _extract_recipe_json(text: str) -> Optional[dict]:
 @router.post("/run")
 async def run_agent(
     request: RunRequest,
+    user: AuthUser = Depends(require_auth),
     service: LLMService = Depends(get_llm_service),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
@@ -745,7 +749,7 @@ async def run_agent(
     - RUN_ERROR: Error occurred
     """
     return StreamingResponse(
-        generate_ag_ui_events(service, request, db),
+        generate_ag_ui_events(service, request, db, user.user_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -793,10 +797,11 @@ async def list_threads(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     search: Optional[str] = Query(None, description="Search thread titles"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[AgUiThreadListItem]:
-    """List all conversation threads."""
-    query = select(AgUiThread)
+    """List all conversation threads for the current user."""
+    query = select(AgUiThread).where(AgUiThread.user_id == user.user_id)
 
     # Apply search filter if provided
     if search:
@@ -832,18 +837,19 @@ async def list_threads(
 @router.get("/threads/{thread_id}", response_model=AgUiThreadResponse)
 async def get_thread(
     thread_id: str,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> AgUiThreadResponse:
-    """Get a specific thread with all messages."""
+    """Get a specific thread with all messages (user-scoped)."""
     result = await db.execute(
         select(AgUiThread)
         .options(selectinload(AgUiThread.messages))
-        .where(AgUiThread.id == thread_id)
+        .where(AgUiThread.id == thread_id, AgUiThread.user_id == user.user_id)
     )
     thread = result.scalar_one_or_none()
 
     if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+        raise HTTPException(status_code=404, detail="Thread not found or access denied")
 
     # Sort messages by created_at to ensure correct order
     sorted_messages = sorted(thread.messages, key=lambda m: m.created_at)
@@ -871,16 +877,17 @@ async def get_thread(
 @router.delete("/threads/{thread_id}")
 async def delete_thread(
     thread_id: str,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Delete a conversation thread and all its messages."""
+    """Delete a conversation thread and all its messages (user-scoped)."""
     result = await db.execute(
-        select(AgUiThread).where(AgUiThread.id == thread_id)
+        select(AgUiThread).where(AgUiThread.id == thread_id, AgUiThread.user_id == user.user_id)
     )
     thread = result.scalar_one_or_none()
 
     if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+        raise HTTPException(status_code=404, detail="Thread not found or access denied")
 
     await db.delete(thread)
     await db.commit()
@@ -893,16 +900,17 @@ async def delete_thread(
 async def update_thread(
     thread_id: str,
     title: str = Query(..., description="New thread title"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> AgUiThreadListItem:
-    """Update a thread's title."""
+    """Update a thread's title (user-scoped)."""
     result = await db.execute(
-        select(AgUiThread).where(AgUiThread.id == thread_id)
+        select(AgUiThread).where(AgUiThread.id == thread_id, AgUiThread.user_id == user.user_id)
     )
     thread = result.scalar_one_or_none()
 
     if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+        raise HTTPException(status_code=404, detail="Thread not found or access denied")
 
     thread.title = title
     await db.commit()

@@ -2078,6 +2078,7 @@ class AgUiThread(Base):
     __tablename__ = "ag_ui_threads"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
     title: Mapped[Optional[str]] = mapped_column(String(200))
     title_locked: Mapped[bool] = mapped_column(default=False)  # Prevents auto-summarization
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

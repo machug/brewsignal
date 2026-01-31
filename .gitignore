@@ -54,8 +54,8 @@ extracted/
 # Git worktrees
 .worktrees/
 
-# Project documentation (development only)
-docs/plans/
+# Project documentation
+# (docs/plans/ now tracked - approved designs are public)
 
 # Test screenshots and temporary images in root
 /*.png

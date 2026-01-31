@@ -27,8 +27,10 @@
 
 	// Async function to get auth headers - called fresh before each request
 	async function getAuthHeaders(): Promise<Record<string, string>> {
+		console.log('[getAuthHeaders] config.authEnabled:', config.authEnabled);
 		if (config.authEnabled) {
 			const token = await getAccessToken();
+			console.log('[getAuthHeaders] token:', token ? `${token.slice(0, 20)}...` : 'null');
 			if (token) {
 				return { 'Authorization': `Bearer ${token}` };
 			}

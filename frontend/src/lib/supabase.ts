@@ -34,9 +34,11 @@ export const supabase = {
  */
 export async function getAccessToken(): Promise<string | null> {
 	const client = getSupabase();
+	console.log('[getAccessToken] client:', client ? 'initialized' : 'null');
 	if (!client) return null;
 
 	const { data: { session } } = await client.auth.getSession();
+	console.log('[getAccessToken] session:', session ? 'exists' : 'null');
 	return session?.access_token ?? null;
 }
 

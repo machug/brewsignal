@@ -29,6 +29,7 @@ from backend.auth import AuthUser, require_auth
 from backend.routers.assistant import get_llm_config
 from backend.services.llm import LLMService
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
+from backend.services.memory import search_memories, add_memory, format_memories_for_context
 from backend.models import (
     AgUiThread, AgUiMessage,
     AgUiThreadResponse, AgUiThreadListItem, AgUiMessageResponse
@@ -162,6 +163,22 @@ async def generate_ag_ui_events(
 
         # Add system prompt for recipe assistant
         system_prompt = await _get_recipe_system_prompt(db, request.state)
+
+        # Search for relevant memories and inject into system prompt
+        if user_id:
+            # Get the latest user message for memory search
+            user_query = next(
+                (m.content for m in reversed(request.messages) if m.role == "user"),
+                ""
+            )
+            if user_query:
+                memories = await search_memories(
+                    user_query, user_id=user_id, llm_config=service.config, limit=5
+                )
+                memory_context = format_memories_for_context(memories)
+                if memory_context:
+                    system_prompt = f"{system_prompt}\n\n{memory_context}"
+
         llm_messages.insert(0, {"role": "system", "content": system_prompt})
 
         # Run agent loop (handles tool calls) - collect final response
@@ -187,6 +204,10 @@ async def generate_ag_ui_events(
             runId=run_id,
         ).to_sse()
 
+        # Extract and store memories from the conversation (background, non-blocking)
+        if user_id:
+            asyncio.create_task(_extract_memories_background(llm_messages, user_id, service.config))
+
         # Trigger title summarization in background (don't block response)
         # Use a new session since the generator's session may close
         from backend.database import async_session_factory
@@ -209,6 +230,30 @@ async def _summarize_thread_background(thread_id: str):
             await _summarize_thread_title(db, thread_id)
     except Exception as e:
         logger.warning(f"Background title summarization failed: {e}")
+
+
+async def _extract_memories_background(messages: list[dict], user_id: str, llm_config):
+    """Background task to extract and store memories from conversation.
+
+    Runs after each successful agent run to extract facts, preferences,
+    and learnings from the conversation into long-term memory.
+    """
+    try:
+        # Filter to just user/assistant messages for memory extraction
+        conversation = [
+            msg for msg in messages
+            if msg.get("role") in ("user", "assistant") and msg.get("content")
+        ]
+
+        if len(conversation) < 2:
+            return  # Need at least a user message and response
+
+        result = await add_memory(conversation, user_id=user_id, llm_config=llm_config)
+        extracted = result.get("results", [])
+        if extracted:
+            logger.info(f"Extracted {len(extracted)} memories for user {user_id[:8]}...")
+    except Exception as e:
+        logger.warning(f"Background memory extraction failed: {e}")
 
 
 def _parse_sse_event(sse: str) -> Optional[dict]:

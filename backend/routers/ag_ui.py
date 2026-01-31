@@ -40,8 +40,8 @@ PROMPTS_DIR = Path(__file__).parent.parent / "services" / "llm" / "prompts"
 
 # Fast models per provider for title summarization (cheap, fast)
 FAST_MODELS_BY_PROVIDER = {
-    "anthropic": "claude-3-5-haiku-20241022",
-    "openrouter": "openrouter/anthropic/claude-3-5-haiku-20241022",
+    "anthropic": "claude-haiku-4-5",
+    "openrouter": "openrouter/anthropic/claude-haiku-4.5",
     "openai": "gpt-4o-mini",
     "google": "gemini/gemini-1.5-flash",
     "groq": "groq/llama-3.1-8b-instant",

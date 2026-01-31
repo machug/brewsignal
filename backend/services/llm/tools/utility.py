@@ -161,6 +161,144 @@ async def rename_chat(
         return {"error": f"Failed to rename chat: {str(e)}"}
 
 
+async def list_recent_threads(
+    db: AsyncSession,
+    current_thread_id: Optional[str] = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """List recent chat threads to browse conversation history.
+
+    Returns recent threads with titles, dates, and message previews.
+    Use this to see what topics have been discussed before.
+    """
+    limit = min(max(1, limit), 20)  # Clamp between 1 and 20
+
+    try:
+        # Get recent threads, excluding current
+        query_stmt = select(AgUiThread).order_by(AgUiThread.updated_at.desc())
+
+        if current_thread_id:
+            query_stmt = query_stmt.where(AgUiThread.id != current_thread_id)
+
+        query_stmt = query_stmt.limit(limit)
+        result = await db.execute(query_stmt)
+        threads = result.scalars().all()
+
+        if not threads:
+            return {
+                "threads": [],
+                "message": "No previous conversations found.",
+            }
+
+        # Build thread summaries
+        thread_summaries = []
+        for thread in threads:
+            # Get first user message as preview
+            msg_result = await db.execute(
+                select(AgUiMessage)
+                .where(
+                    AgUiMessage.thread_id == thread.id,
+                    AgUiMessage.role == "user",
+                )
+                .order_by(AgUiMessage.created_at)
+                .limit(1)
+            )
+            first_msg = msg_result.scalar_one_or_none()
+
+            # Get message count
+            count_result = await db.execute(
+                select(func.count(AgUiMessage.id))
+                .where(AgUiMessage.thread_id == thread.id)
+            )
+            msg_count = count_result.scalar() or 0
+
+            preview = ""
+            if first_msg and first_msg.content:
+                preview = first_msg.content[:150]
+                if len(first_msg.content) > 150:
+                    preview += "..."
+
+            thread_summaries.append({
+                "thread_id": thread.id,
+                "title": thread.title or "Untitled",
+                "updated_at": thread.updated_at.isoformat(),
+                "message_count": msg_count,
+                "preview": preview,
+            })
+
+        return {
+            "threads": thread_summaries,
+            "message": f"Found {len(thread_summaries)} previous conversation(s).",
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing threads: {e}")
+        return {"error": f"Failed to list conversations: {str(e)}"}
+
+
+async def get_thread_context(
+    db: AsyncSession,
+    thread_id: str,
+    max_messages: int = 20,
+) -> dict[str, Any]:
+    """Get the full context from a previous conversation thread.
+
+    Use this to recall details from a past conversation when the user
+    references something discussed before, or when you need to understand
+    what was previously decided/discussed about a topic.
+    """
+    if not thread_id:
+        return {"error": "Thread ID is required"}
+
+    max_messages = min(max(1, max_messages), 50)  # Clamp between 1 and 50
+
+    try:
+        # Get the thread
+        result = await db.execute(
+            select(AgUiThread).where(AgUiThread.id == thread_id)
+        )
+        thread = result.scalar_one_or_none()
+
+        if not thread:
+            return {"error": f"Thread not found: {thread_id}"}
+
+        # Get messages from the thread
+        msg_result = await db.execute(
+            select(AgUiMessage)
+            .where(AgUiMessage.thread_id == thread_id)
+            .order_by(AgUiMessage.created_at)
+            .limit(max_messages)
+        )
+        messages = msg_result.scalars().all()
+
+        # Format messages for context
+        formatted_messages = []
+        for msg in messages:
+            # Skip tool calls/results for cleaner context
+            if msg.role in ("user", "assistant"):
+                content = msg.content
+                # Truncate very long messages
+                if content and len(content) > 1000:
+                    content = content[:1000] + "... [truncated]"
+                formatted_messages.append({
+                    "role": msg.role,
+                    "content": content,
+                    "timestamp": msg.created_at.isoformat(),
+                })
+
+        return {
+            "thread_id": thread_id,
+            "title": thread.title or "Untitled",
+            "created_at": thread.created_at.isoformat(),
+            "messages": formatted_messages,
+            "message_count": len(formatted_messages),
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting thread context for {thread_id}: {e}")
+        return {"error": f"Failed to get conversation: {str(e)}"}
+
+
 async def search_threads(
     db: AsyncSession,
     query: str,

@@ -46,6 +46,8 @@ from .utility import (
     strip_html_tags,
     fetch_url,
     rename_chat,
+    list_recent_threads,
+    get_thread_context,
     search_threads,
 )
 
@@ -667,13 +669,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "search_threads",
-            "description": "Search previous chat conversations for recipes, discussions, and brewing information. Use this to recall information from past conversations when the user references something discussed before. Searches thread titles and message content.",
+            "description": "Search previous chat conversations for a specific topic or keyword. Use SIMPLE, SINGLE-WORD queries for best results (e.g., 'stout', 'IPA', 'temperature'). Use this to recall information from past conversations when the user references something discussed before.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search term to find in previous conversations (e.g., 'green gage plum', 'saison recipe', 'fermentation temperature')"
+                        "description": "A SINGLE keyword or short phrase to search for (e.g., 'stout', 'pilsner', 'yeast', 'fermentation'). Simpler queries work better."
                     },
                     "limit": {
                         "type": "integer",
@@ -681,6 +683,44 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_recent_threads",
+            "description": "List recent conversations to see what has been discussed before. Use this FIRST when asked about previous conversations, to browse conversation history, or when you want to proactively recall relevant past discussions. Returns thread titles, dates, and previews.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of recent conversations to return (default: 10, max: 20)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_thread_context",
+            "description": "Get the full conversation from a previous chat thread. Use this after finding a relevant thread (via list_recent_threads or search_threads) to recall the complete discussion, decisions made, recipes created, or issues resolved.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {
+                        "type": "string",
+                        "description": "The thread ID to retrieve (from list_recent_threads or search_threads results)"
+                    },
+                    "max_messages": {
+                        "type": "integer",
+                        "description": "Maximum messages to retrieve (default: 20, max: 50)"
+                    }
+                },
+                "required": ["thread_id"]
             }
         }
     }
@@ -758,5 +798,9 @@ async def execute_tool(
         return await rename_chat(db, thread_id, **arguments)
     elif tool_name == "search_threads":
         return await search_threads(db, current_thread_id=thread_id, **arguments)
+    elif tool_name == "list_recent_threads":
+        return await list_recent_threads(db, current_thread_id=thread_id, **arguments)
+    elif tool_name == "get_thread_context":
+        return await get_thread_context(db, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

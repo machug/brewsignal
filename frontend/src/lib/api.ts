@@ -265,6 +265,58 @@ export interface MiscResponse {
 	amount_is_weight?: boolean;
 }
 
+// Mash and fermentation schedule types
+export interface MashStepResponse {
+	id: number;
+	step_number: number;
+	name: string;
+	type: string;
+	temp_c: number;
+	time_minutes: number;
+	infusion_amount_liters?: number;
+	infusion_temp_c?: number;
+	ramp_time_minutes?: number;
+}
+
+export interface FermentationStepResponse {
+	id: number;
+	step_number: number;
+	type: string;
+	temp_c: number;
+	time_days: number;
+}
+
+export interface WaterProfileResponse {
+	id: number;
+	profile_type: string;
+	name?: string;
+	calcium_ppm?: number;
+	magnesium_ppm?: number;
+	sodium_ppm?: number;
+	chloride_ppm?: number;
+	sulfate_ppm?: number;
+	bicarbonate_ppm?: number;
+	ph?: number;
+	alkalinity?: number;
+}
+
+export interface WaterAdjustmentResponse {
+	id: number;
+	stage: string;
+	volume_liters?: number;
+	calcium_sulfate_g?: number;
+	calcium_chloride_g?: number;
+	magnesium_sulfate_g?: number;
+	sodium_bicarbonate_g?: number;
+	calcium_carbonate_g?: number;
+	calcium_hydroxide_g?: number;
+	magnesium_chloride_g?: number;
+	sodium_chloride_g?: number;
+	acid_type?: string;
+	acid_ml?: number;
+	acid_concentration_percent?: number;
+}
+
 export interface RecipeResponse {
 	id: number;
 	name: string;
@@ -299,6 +351,12 @@ export interface RecipeResponse {
 	hops?: HopResponse[];
 	cultures?: CultureResponse[];  // BeerJSON uses 'cultures' not 'yeasts'
 	miscs?: MiscResponse[];
+	// Mash and fermentation schedules
+	mash_steps?: MashStepResponse[];
+	fermentation_steps?: FermentationStepResponse[];
+	// Water chemistry
+	water_profiles?: WaterProfileResponse[];
+	water_adjustments?: WaterAdjustmentResponse[];
 }
 
 // Yeast Strain types

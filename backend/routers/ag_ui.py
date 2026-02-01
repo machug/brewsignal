@@ -184,7 +184,7 @@ async def generate_ag_ui_events(
         # Run agent loop (handles tool calls) - collect final response
         final_response = ""
         async for event in _run_agent_loop(
-            service, db, llm_messages, thread_id, run_id
+            service, db, llm_messages, thread_id, run_id, user_id
         ):
             yield event
             # Capture final response content
@@ -474,6 +474,7 @@ async def _run_agent_loop(
     messages: list[dict],
     thread_id: str,
     run_id: str,
+    user_id: Optional[str] = None,
     max_iterations: int = 15
 ) -> AsyncGenerator[str, None]:
     """Run the agent loop, handling tool calls.

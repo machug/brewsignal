@@ -1079,6 +1079,26 @@ class TastingNote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    # Extended fields for Batch Post-Mortem feature
+    # Multi-tenant isolation
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+
+    # Context fields
+    days_since_packaging: Mapped[Optional[int]] = mapped_column(nullable=True)
+    serving_temp_c: Mapped[Optional[float]] = mapped_column(nullable=True)
+    glassware: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Computed/total score field
+    total_score: Mapped[Optional[int]] = mapped_column(nullable=True)
+
+    # Style assessment fields
+    to_style: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    style_deviation_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # AI-assisted fields
+    ai_suggestions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    interview_transcript: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     # Relationship
     batch: Mapped["Batch"] = relationship(back_populates="tasting_notes")
 
@@ -2116,6 +2136,13 @@ class TastingNoteCreate(BaseModel):
     mouthfeel_notes: Optional[str] = None
     overall_score: Optional[int] = None
     overall_notes: Optional[str] = None
+    # Extended context fields
+    days_since_packaging: Optional[int] = None
+    serving_temp_c: Optional[float] = None
+    glassware: Optional[str] = None
+    # Style assessment
+    to_style: Optional[bool] = None
+    style_deviation_notes: Optional[str] = None
 
     @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
     @classmethod
@@ -2138,6 +2165,13 @@ class TastingNoteUpdate(BaseModel):
     mouthfeel_notes: Optional[str] = None
     overall_score: Optional[int] = None
     overall_notes: Optional[str] = None
+    # Extended context fields
+    days_since_packaging: Optional[int] = None
+    serving_temp_c: Optional[float] = None
+    glassware: Optional[str] = None
+    # Style assessment
+    to_style: Optional[bool] = None
+    style_deviation_notes: Optional[str] = None
 
     @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
     @classmethod
@@ -2164,6 +2198,19 @@ class TastingNoteResponse(BaseModel):
     mouthfeel_notes: Optional[str] = None
     overall_score: Optional[int] = None
     overall_notes: Optional[str] = None
+    # Extended context fields
+    user_id: Optional[str] = None
+    days_since_packaging: Optional[int] = None
+    serving_temp_c: Optional[float] = None
+    glassware: Optional[str] = None
+    # Computed/total score
+    total_score: Optional[int] = None
+    # Style assessment
+    to_style: Optional[bool] = None
+    style_deviation_notes: Optional[str] = None
+    # AI-assisted fields
+    ai_suggestions: Optional[str] = None
+    interview_transcript: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

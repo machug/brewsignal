@@ -287,6 +287,43 @@ async def _migrate_populate_recipe_cultures(engine):
         ))
 
 
+def _migrate_extend_tasting_notes(conn):
+    """Add extended fields to tasting_notes table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "tasting_notes" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("tasting_notes")]
+
+    new_columns = [
+        ("user_id", "VARCHAR(36)"),
+        ("days_since_packaging", "INTEGER"),
+        ("serving_temp_c", "REAL"),
+        ("glassware", "VARCHAR(50)"),
+        ("total_score", "INTEGER"),
+        ("to_style", "BOOLEAN"),
+        ("style_deviation_notes", "TEXT"),
+        ("ai_suggestions", "TEXT"),
+        ("interview_transcript", "TEXT"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE tasting_notes ADD COLUMN {col_name} {col_type}"))
+                print(f"Migration: Added {col_name} column to tasting_notes table")
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} on tasting_notes - {e}")
+
+    if "user_id" not in columns:
+        try:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tasting_notes_user_id ON tasting_notes(user_id)"))
+        except Exception:
+            pass
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -362,6 +399,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_brew_day_observations)  # Add brew day observation columns
         await conn.run_sync(_migrate_add_packaging_columns)  # Add packaging info columns
         await conn.run_sync(_migrate_create_tasting_notes_table)  # Create tasting notes table
+        await conn.run_sync(_migrate_extend_tasting_notes)  # Extend tasting notes with context/AI fields
         await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
 
         # Add readings_paused column to batches

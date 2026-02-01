@@ -2,8 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent } from '$lib/api';
-	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchControlEvents } from '$lib/api';
+	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent, BatchReflectionResponse } from '$lib/api';
+	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchControlEvents, fetchBatchReflections, fetchTastingNotes } from '$lib/api';
 	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import { onConfigLoaded } from '$lib/config';
@@ -20,7 +20,11 @@
 	import BrewDayObservations from '$lib/components/batch/BrewDayObservations.svelte';
 	import PackagingInfo from '$lib/components/batch/PackagingInfo.svelte';
 	import TastingNotes from '$lib/components/batch/TastingNotes.svelte';
+	import ReflectionCard from '$lib/components/batch/ReflectionCard.svelte';
+	import TastingNotesList from '$lib/components/batch/TastingNotesList.svelte';
 	import { statusConfig } from '$lib/components/status';
+	import type { BatchReflection } from '$lib/types/reflection';
+	import type { TastingNote } from '$lib/types/tasting';
 
 	// WebSocket for live heater state updates
 	let controlWs: WebSocket | null = null;
@@ -31,6 +35,8 @@
 	let progress = $state<BatchProgressResponse | null>(null);
 	let controlStatus = $state<BatchControlStatus | null>(null);
 	let controlEvents = $state<ControlEvent[]>([]);
+	let reflections = $state<BatchReflection[]>([]);
+	let tastingNotes = $state<TastingNote[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let isEditing = $state(false);
@@ -40,6 +46,10 @@
 	let deleting = $state(false);
 	let tempControlCollapsed = $state(false);
 	let pauseUpdating = $state(false);
+	let reflectionsExpanded = $state(true);
+	let tastingExpanded = $state(true);
+	let reflectionsLoading = $state(false);
+	let tastingLoading = $state(false);
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
@@ -126,10 +136,58 @@
 					// Control status may not be available
 				}
 			}
+			// Load reflections and tasting notes for completed/conditioning batches
+			if (batch.status === 'completed' || batch.status === 'conditioning') {
+				loadReflections();
+				loadTastingNotes();
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load batch';
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadReflections() {
+		reflectionsLoading = true;
+		try {
+			const response = await fetchBatchReflections(batchId);
+			// Map API response to BatchReflection type
+			reflections = response.map(r => ({
+				...r,
+				phase: r.phase as BatchReflection['phase']
+			}));
+		} catch (e) {
+			console.error('Failed to load reflections:', e);
+			reflections = [];
+		} finally {
+			reflectionsLoading = false;
+		}
+	}
+
+	async function loadTastingNotes() {
+		tastingLoading = true;
+		try {
+			const response = await fetchTastingNotes(batchId);
+			// Map API response to TastingNote type, calculating days_since_packaging if we have package date
+			const packageDate = batch?.packaged_at ? new Date(batch.packaged_at) : null;
+			tastingNotes = response.map(n => {
+				let daysSincePackaging: number | undefined = undefined;
+				if (packageDate && n.tasted_at) {
+					const tastedDate = new Date(n.tasted_at);
+					daysSincePackaging = Math.floor((tastedDate.getTime() - packageDate.getTime()) / (1000 * 60 * 60 * 24));
+					if (daysSincePackaging < 0) daysSincePackaging = undefined;
+				}
+				return {
+					...n,
+					days_since_packaging: daysSincePackaging,
+				};
+			});
+		} catch (e) {
+			console.error('Failed to load tasting notes:', e);
+			tastingNotes = [];
+		} finally {
+			tastingLoading = false;
 		}
 	}
 
@@ -766,10 +824,94 @@
 					onUpdate={(updated) => batch = updated}
 				/>
 
-				<!-- Tasting Notes -->
+				<!-- Reflections & Learnings Section -->
+				<div class="postmortem-section">
+					<button
+						type="button"
+						class="section-header"
+						onclick={() => reflectionsExpanded = !reflectionsExpanded}
+					>
+						<div class="section-header-left">
+							<span class="section-icon">💭</span>
+							<h3 class="section-title">Reflections & Learnings</h3>
+							{#if reflections.length > 0}
+								<span class="section-count">{reflections.length}</span>
+							{/if}
+						</div>
+						<svg class="section-chevron" class:expanded={reflectionsExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+
+					{#if reflectionsExpanded}
+						<div class="section-content">
+							{#if reflectionsLoading}
+								<div class="section-loading">
+									<div class="spinner-small"></div>
+									<span>Loading reflections...</span>
+								</div>
+							{:else if reflections.length === 0}
+								<div class="section-empty">
+									<p class="empty-text">No reflections recorded yet.</p>
+									<p class="empty-subtext">Reflections help you learn from each brew. Record what went well, what could improve, and lessons for next time.</p>
+									<button type="button" class="add-first-btn">
+										<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+										</svg>
+										Add First Reflection
+									</button>
+								</div>
+							{:else}
+								<div class="reflections-grid">
+									{#each reflections as reflection}
+										<ReflectionCard {reflection} />
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Tasting Journal Section -->
+				<div class="postmortem-section">
+					<button
+						type="button"
+						class="section-header"
+						onclick={() => tastingExpanded = !tastingExpanded}
+					>
+						<div class="section-header-left">
+							<span class="section-icon">🍺</span>
+							<h3 class="section-title">Tasting Journal</h3>
+							{#if tastingNotes.length > 0}
+								<span class="section-count">{tastingNotes.length}</span>
+							{/if}
+						</div>
+						<svg class="section-chevron" class:expanded={tastingExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+
+					{#if tastingExpanded}
+						<div class="section-content">
+							{#if tastingLoading}
+								<div class="section-loading">
+									<div class="spinner-small"></div>
+									<span>Loading tasting notes...</span>
+								</div>
+							{:else}
+								<TastingNotesList {tastingNotes} />
+							{/if}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Legacy Tasting Notes (for editing) -->
 				<TastingNotes
 					{batch}
-					onUpdate={(updated) => batch = updated}
+					onUpdate={(updated) => {
+						batch = updated;
+						loadTastingNotes();
+					}}
 				/>
 
 				{#if batch.notes}
@@ -986,6 +1128,43 @@
 						originalGravity={batch.measured_og}
 						{controlEvents}
 					/>
+				</div>
+			{/if}
+
+			<!-- Tasting Journal for Conditioning (to track beer development) -->
+			{#if batch.status === 'conditioning'}
+				<div class="conditioning-postmortem">
+					<div class="postmortem-section">
+						<button
+							type="button"
+							class="section-header"
+							onclick={() => tastingExpanded = !tastingExpanded}
+						>
+							<div class="section-header-left">
+								<span class="section-icon">🍺</span>
+								<h3 class="section-title">Tasting Journal</h3>
+								{#if tastingNotes.length > 0}
+									<span class="section-count">{tastingNotes.length}</span>
+								{/if}
+							</div>
+							<svg class="section-chevron" class:expanded={tastingExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+						</button>
+
+						{#if tastingExpanded}
+							<div class="section-content">
+								{#if tastingLoading}
+									<div class="section-loading">
+										<div class="spinner-small"></div>
+										<span>Loading tasting notes...</span>
+									</div>
+								{:else}
+									<TastingNotesList {tastingNotes} />
+								{/if}
+							</div>
+						{/if}
+					</div>
 				</div>
 			{/if}
 		{/if}
@@ -2248,5 +2427,156 @@
 	.timeline-date {
 		font-size: 0.8125rem;
 		color: var(--text-secondary);
+	}
+
+	/* Post-mortem Sections */
+	.postmortem-section {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.75rem;
+		overflow: hidden;
+	}
+
+	.section-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		padding: 1rem 1.25rem;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-align: left;
+		transition: background 0.15s ease;
+	}
+
+	.section-header:hover {
+		background: var(--bg-elevated);
+	}
+
+	.section-header-left {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.section-icon {
+		font-size: 1.25rem;
+	}
+
+	.section-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.section-count {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		padding: 0.125rem 0.5rem;
+		background: var(--accent-bg, rgba(99, 102, 241, 0.1));
+		color: var(--accent);
+		border-radius: 1rem;
+	}
+
+	.section-chevron {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--text-muted);
+		transition: transform 0.2s ease;
+	}
+
+	.section-chevron.expanded {
+		transform: rotate(180deg);
+	}
+
+	.section-content {
+		padding: 0 1.25rem 1.25rem;
+	}
+
+	.section-loading {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 2rem;
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+
+	.spinner-small {
+		width: 1.25rem;
+		height: 1.25rem;
+		border: 2px solid var(--bg-hover);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	.section-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem 1rem;
+		text-align: center;
+	}
+
+	.section-empty .empty-text {
+		font-size: 0.9375rem;
+		font-weight: 500;
+		color: var(--text-secondary);
+		margin: 0 0 0.25rem 0;
+	}
+
+	.section-empty .empty-subtext {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+		margin: 0 0 1rem 0;
+		max-width: 320px;
+		line-height: 1.5;
+	}
+
+	.add-first-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.625rem 1rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--accent);
+		background: transparent;
+		border: 1px dashed var(--accent);
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.add-first-btn:hover {
+		background: rgba(99, 102, 241, 0.1);
+	}
+
+	.add-first-btn svg {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.reflections-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	@media (min-width: 768px) {
+		.reflections-grid {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	/* Conditioning phase postmortem */
+	.conditioning-postmortem {
+		margin-top: 1.5rem;
 	}
 </style>

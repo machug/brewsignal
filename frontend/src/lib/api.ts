@@ -2168,3 +2168,123 @@ export async function listStyles(params?: {
 	}
 	return response.json();
 }
+
+// ============================================================================
+// Batch Reflections API
+// ============================================================================
+
+export type ReflectionPhase = 'brew_day' | 'fermentation' | 'packaging' | 'conditioning';
+
+export interface BatchReflectionResponse {
+	id: number;
+	batch_id: number;
+	user_id?: string;
+	phase: ReflectionPhase;
+	created_at: string;
+	updated_at: string;
+	metrics?: Record<string, number>;
+	what_went_well?: string;
+	what_went_wrong?: string;
+	lessons_learned?: string;
+	next_time_changes?: string;
+	ai_summary?: string;
+	ai_generated_at?: string;
+	ai_model_version?: string;
+}
+
+export interface BatchReflectionCreate {
+	phase: ReflectionPhase;
+	metrics?: Record<string, number>;
+	what_went_well?: string;
+	what_went_wrong?: string;
+	lessons_learned?: string;
+	next_time_changes?: string;
+}
+
+export interface BatchReflectionUpdate {
+	metrics?: Record<string, number>;
+	what_went_well?: string;
+	what_went_wrong?: string;
+	lessons_learned?: string;
+	next_time_changes?: string;
+}
+
+/**
+ * Fetch all reflections for a batch
+ */
+export async function fetchBatchReflections(batchId: number): Promise<BatchReflectionResponse[]> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections`);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch reflections: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Fetch a specific reflection by phase
+ */
+export async function fetchBatchReflectionByPhase(batchId: number, phase: ReflectionPhase): Promise<BatchReflectionResponse | null> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections/${phase}`);
+	if (response.status === 404) {
+		return null;
+	}
+	if (!response.ok) {
+		throw new Error(`Failed to fetch reflection: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Create a new reflection for a batch
+ */
+export async function createBatchReflection(batchId: number, reflection: BatchReflectionCreate): Promise<BatchReflectionResponse> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(reflection)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to create reflection: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Update an existing reflection
+ */
+export async function updateBatchReflection(batchId: number, reflectionId: number, update: BatchReflectionUpdate): Promise<BatchReflectionResponse> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections/${reflectionId}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(update)
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to update reflection: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+/**
+ * Delete a reflection
+ */
+export async function deleteBatchReflection(batchId: number, reflectionId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections/${reflectionId}`, {
+		method: 'DELETE'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to delete reflection: ${response.statusText}`);
+	}
+}
+
+/**
+ * Regenerate AI insights for a reflection
+ */
+export async function regenerateReflectionInsights(batchId: number, reflectionId: number): Promise<BatchReflectionResponse> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/reflections/${reflectionId}/regenerate-insights`, {
+		method: 'POST'
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to regenerate insights: ${response.statusText}`);
+	}
+	return response.json();
+}

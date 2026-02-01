@@ -57,6 +57,10 @@ async def get_user_recipe(recipe_id: int, user: AuthUser, db: AsyncSession) -> R
             selectinload(Recipe.hops),
             selectinload(Recipe.cultures),
             selectinload(Recipe.miscs),
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.fermentation_steps),
+            selectinload(Recipe.water_profiles),
+            selectinload(Recipe.water_adjustments),
         )
         .where(Recipe.id == recipe_id, user_owns_recipe(user))
     )

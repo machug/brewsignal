@@ -1,12 +1,19 @@
 """Test Pydantic response models for mash, fermentation, and water data."""
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from backend.models import (
     MashStepResponse,
     FermentationStepResponse,
     WaterProfileResponse,
     WaterAdjustmentResponse,
     RecipeDetailResponse,
+    Recipe,
+    RecipeMashStep,
+    RecipeFermentationStep,
 )
 
 
@@ -124,3 +131,62 @@ def test_recipe_detail_response_includes_all_water_fields():
     assert len(response.fermentation_steps) == 1
     assert len(response.water_profiles) == 1
     assert len(response.water_adjustments) == 1
+
+
+@pytest.mark.asyncio
+async def test_recipe_loads_mash_and_fermentation_steps(test_db: AsyncSession):
+    """Test that recipe can load mash and fermentation steps via selectinload."""
+    # Create a recipe with mash and fermentation steps
+    recipe = Recipe(name="Test Mash Recipe", author="Test")
+    test_db.add(recipe)
+    await test_db.commit()
+    await test_db.refresh(recipe)
+
+    # Add mash steps
+    mash_step = RecipeMashStep(
+        recipe_id=recipe.id,
+        step_number=1,
+        name="Mash",
+        type="temperature",
+        temp_c=65.0,
+        time_minutes=60,
+    )
+    test_db.add(mash_step)
+
+    # Add fermentation step
+    ferm_step = RecipeFermentationStep(
+        recipe_id=recipe.id,
+        step_number=1,
+        type="primary",
+        temp_c=19.0,
+        time_days=14,
+    )
+    test_db.add(ferm_step)
+    await test_db.commit()
+
+    # Fetch with selectinload (all relationships needed for RecipeDetailResponse)
+    result = await test_db.execute(
+        select(Recipe)
+        .where(Recipe.id == recipe.id)
+        .options(
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.fermentation_steps),
+            selectinload(Recipe.water_profiles),
+            selectinload(Recipe.water_adjustments),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+        )
+    )
+    loaded = result.scalar_one()
+
+    assert len(loaded.mash_steps) == 1
+    assert loaded.mash_steps[0].name == "Mash"
+    assert len(loaded.fermentation_steps) == 1
+    assert loaded.fermentation_steps[0].type == "primary"
+
+    # Verify Pydantic model works
+    response = RecipeDetailResponse.model_validate(loaded)
+    assert len(response.mash_steps) == 1
+    assert len(response.fermentation_steps) == 1

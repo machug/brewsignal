@@ -89,7 +89,7 @@ async def list_batches(
     """List batches with optional filters. By default excludes deleted batches."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(user_owns_batch(user))  # User isolation (LOCAL mode includes unclaimed)
         .order_by(Batch.created_at.desc())
     )
@@ -118,7 +118,7 @@ async def list_active_batches(
     """Active batches: planning, brewing, or fermenting status, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(
             user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
@@ -138,7 +138,7 @@ async def list_completed_batches(
     """Historical batches: completed or conditioning, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(
             user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
@@ -159,7 +159,7 @@ async def get_batch(
     """Get a specific batch by ID."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(Batch.id == batch_id, user_owns_batch(user))  # User isolation
     )
     result = await db.execute(query)
@@ -270,15 +270,19 @@ async def create_batch(
             device_id=db_batch.device_id,
         )
 
-    # Load recipe relationship with nested style for response
-    if db_batch.recipe_id:
-        query = (
-            select(Batch)
-            .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
-            .where(Batch.id == db_batch.id)
+    # Always load relationships for response (tasting_notes, reflections need eager load)
+    query = (
+        select(Batch)
+        .options(
+            selectinload(Batch.recipe).selectinload(Recipe.style),
+            selectinload(Batch.yeast_strain),
+            selectinload(Batch.tasting_notes),
+            selectinload(Batch.reflections),
         )
-        result = await db.execute(query)
-        db_batch = result.scalar_one()
+        .where(Batch.id == db_batch.id)
+    )
+    result = await db.execute(query)
+    db_batch = result.scalar_one()
 
     return db_batch
 
@@ -464,7 +468,8 @@ async def update_batch(
     stmt = select(Batch).where(Batch.id == batch_id).options(
         selectinload(Batch.recipe).selectinload(Recipe.style),
         selectinload(Batch.yeast_strain),
-        selectinload(Batch.tasting_notes)
+        selectinload(Batch.tasting_notes),
+        selectinload(Batch.reflections),
     )
     result = await db.execute(stmt)
     batch = result.scalar_one()
@@ -527,7 +532,7 @@ async def get_batch_progress(
     # Get batch with recipe and user isolation
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes))
+        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(Batch.id == batch_id, user_owns_batch(user))
     )
     result = await db.execute(query)

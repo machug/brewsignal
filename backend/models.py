@@ -2073,6 +2073,7 @@ class BatchResponse(BaseModel):
     recipe: Optional[RecipeResponse] = None
     yeast_strain: Optional[YeastStrainResponse] = None
     tasting_notes: list["TastingNoteResponse"] = []
+    reflections: list["BatchReflectionResponse"] = []
     # Temperature control
     heater_entity_id: Optional[str] = None
     cooler_entity_id: Optional[str] = None

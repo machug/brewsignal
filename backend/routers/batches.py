@@ -1,5 +1,7 @@
 """Batch API endpoints."""
 
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -11,6 +13,8 @@ from sqlalchemy.orm import selectinload
 from ..auth import AuthUser, require_auth
 from ..config import get_settings
 from ..database import get_db
+
+logger = logging.getLogger(__name__)
 from ..models import (
     Batch,
     BatchCreate,
@@ -1009,6 +1013,62 @@ async def get_batch_readings(
 # ==============================================================================
 
 
+async def _store_tasting_memory(
+    db: AsyncSession,
+    note: TastingNote,
+    batch: Batch,
+    user_id: str,
+) -> None:
+    """Store tasting note as a memory in mem0 (non-blocking, graceful failure)."""
+    try:
+        from backend.services.memory import add_memory
+        from backend.routers.assistant import get_llm_config
+
+        # Only store if there's meaningful content
+        has_notable_content = (
+            note.overall_notes
+            or note.ai_suggestions
+            or (note.to_style is False and note.style_deviation_notes)
+        )
+        if not has_notable_content:
+            return
+
+        llm_config = await get_llm_config(db)
+        if not llm_config.is_configured():
+            logger.debug("LLM not configured, skipping memory storage for tasting note")
+            return
+
+        days_str = f"day {note.days_since_packaging}" if note.days_since_packaging else "unknown days"
+        messages = [
+            {
+                "role": "user",
+                "content": f"I just tasted batch '{batch.name}' ({days_str} since packaging). Total score: {note.total_score}/25."
+            },
+            {"role": "assistant", "content": "What are your observations?"},
+            {
+                "role": "user",
+                "content": f"""Overall: {note.overall_notes or 'N/A'}
+To style: {'Yes' if note.to_style else 'No - ' + (note.style_deviation_notes or 'No notes')}"""
+            }
+        ]
+        await add_memory(
+            messages=messages,
+            user_id=user_id,
+            llm_config=llm_config,
+            metadata={
+                "type": "tasting",
+                "batch_id": batch.id,
+                "batch_name": batch.name,
+                "total_score": note.total_score,
+                "days_since_packaging": note.days_since_packaging,
+            }
+        )
+        logger.info(f"Stored tasting memory for batch {batch.id}")
+    except Exception as e:
+        # Non-blocking: log and continue, don't fail the request
+        logger.warning(f"Failed to store tasting memory: {e}")
+
+
 @router.get("/{batch_id}/tasting-notes", response_model=list[TastingNoteResponse])
 async def list_tasting_notes(
     batch_id: int,
@@ -1068,6 +1128,10 @@ async def create_tasting_note(
     db.add(db_note)
     await db.commit()
     await db.refresh(db_note)
+
+    # Store memory in background (non-blocking)
+    asyncio.create_task(_store_tasting_memory(db, db_note, batch, user.user_id))
+
     return db_note
 
 

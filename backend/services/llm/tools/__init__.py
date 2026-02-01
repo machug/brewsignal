@@ -65,6 +65,49 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['TOOL_DEFINITIONS', 'execute_tool']
 
+
+# ==============================================================================
+# Memory Search Tool
+# ==============================================================================
+
+async def search_brewing_memories(
+    db: AsyncSession,
+    query: str,
+    user_id: str,
+    limit: int = 5,
+) -> dict:
+    """Search for relevant brewing memories and past learnings.
+
+    Args:
+        db: Database session (for getting LLM config)
+        query: Search query to find relevant memories
+        user_id: User ID for multi-tenant isolation
+        limit: Maximum number of memories to return
+
+    Returns:
+        Dict with count and list of memories with content and score
+    """
+    from backend.services.memory import search_memories
+    from backend.routers.assistant import get_llm_config
+
+    try:
+        llm_config = await get_llm_config(db)
+        if not llm_config.is_configured():
+            return {"count": 0, "memories": [], "note": "LLM not configured"}
+
+        memories = await search_memories(query, user_id, llm_config, limit)
+
+        return {
+            "count": len(memories),
+            "memories": [
+                {"content": m.get("memory", str(m)), "score": m.get("score", 0)}
+                for m in memories
+            ]
+        }
+    except Exception as e:
+        logger.warning(f"Memory search failed: {e}")
+        return {"count": 0, "memories": [], "error": str(e)}
+
 # Tool definitions in OpenAI function calling format
 TOOL_DEFINITIONS = [
     {
@@ -959,6 +1002,30 @@ TOOL_DEFINITIONS = [
                 "required": ["batch_id"]
             }
         }
+    },
+    # =============================================================================
+    # Memory Search Tools
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "search_brewing_memories",
+            "description": "Search for relevant brewing memories and past learnings. Use this to recall lessons learned from previous batches, tasting notes insights, fermentation experiences, and brewing tips the user has shared. Great for providing personalized advice based on their brewing history.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query to find relevant memories (e.g., 'fermentation temperature issues', 'IPA dry hopping', 'yeast problems')"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of memories to return (default: 5, max: 10)"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -1054,5 +1121,8 @@ async def execute_tool(
         return await save_tasting_note(db, user_id=user_id, **arguments)
     elif tool_name == "get_batch_tasting_notes":
         return await get_batch_tasting_notes(db, user_id=user_id, **arguments)
+    # Memory search tools - pass user_id for multi-tenant isolation
+    elif tool_name == "search_brewing_memories":
+        return await search_brewing_memories(db, user_id=user_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

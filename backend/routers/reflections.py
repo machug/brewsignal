@@ -1,20 +1,26 @@
 """Batch reflections API endpoints."""
 
+import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import Optional
 
 from ..auth import AuthUser, require_auth
 from ..database import get_db
 from ..models import (
+    Batch,
     BatchReflection,
     BatchReflectionUpdate,
     BatchReflectionResponse,
+    Recipe,
 )
 from .batches import get_user_batch
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/batches", tags=["reflections"])
 
 
@@ -36,6 +42,58 @@ class ReflectionCreateBody(BaseModel):
         return v
 
 
+async def _store_reflection_memory(
+    db: AsyncSession,
+    reflection: BatchReflection,
+    batch: Batch,
+    user_id: str,
+) -> None:
+    """Store reflection as a memory in mem0 (non-blocking, graceful failure)."""
+    try:
+        from backend.services.memory import add_memory
+        from backend.routers.assistant import get_llm_config
+
+        # Only store if there's meaningful content
+        if not (reflection.lessons_learned or reflection.what_went_well or reflection.what_went_wrong):
+            return
+
+        llm_config = await get_llm_config(db)
+        if not llm_config.is_configured():
+            logger.debug("LLM not configured, skipping memory storage for reflection")
+            return
+
+        recipe_name = batch.recipe.name if batch.recipe else "unknown recipe"
+        messages = [
+            {
+                "role": "user",
+                "content": f"I just completed the {reflection.phase} phase for batch '{batch.name}' ({recipe_name})."
+            },
+            {"role": "assistant", "content": "How did it go?"},
+            {
+                "role": "user",
+                "content": f"""What went well: {reflection.what_went_well or 'N/A'}
+What went wrong: {reflection.what_went_wrong or 'N/A'}
+Lessons learned: {reflection.lessons_learned or 'N/A'}
+Next time: {reflection.next_time_changes or 'N/A'}"""
+            }
+        ]
+        await add_memory(
+            messages=messages,
+            user_id=user_id,
+            llm_config=llm_config,
+            metadata={
+                "type": "reflection",
+                "batch_id": batch.id,
+                "batch_name": batch.name,
+                "phase": reflection.phase,
+            }
+        )
+        logger.info(f"Stored reflection memory for batch {batch.id} phase {reflection.phase}")
+    except Exception as e:
+        # Non-blocking: log and continue, don't fail the request
+        logger.warning(f"Failed to store reflection memory: {e}")
+
+
 @router.post("/{batch_id}/reflections", response_model=BatchReflectionResponse, status_code=201)
 async def create_reflection(
     batch_id: int,
@@ -44,8 +102,15 @@ async def create_reflection(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new reflection for a batch phase."""
-    # Verify batch exists and user owns it
-    await get_user_batch(batch_id, user, db)
+    # Verify batch exists and user owns it, with recipe eagerly loaded for memory
+    result = await db.execute(
+        select(Batch)
+        .options(selectinload(Batch.recipe))
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
 
     # Check for existing reflection for this phase
     existing = await db.execute(
@@ -73,6 +138,10 @@ async def create_reflection(
     db.add(reflection)
     await db.commit()
     await db.refresh(reflection)
+
+    # Store memory in background (non-blocking)
+    asyncio.create_task(_store_reflection_memory(db, reflection, batch, user.user_id))
+
     return reflection
 
 
@@ -124,7 +193,15 @@ async def update_reflection(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a reflection."""
-    await get_user_batch(batch_id, user, db)
+    # Fetch batch with recipe eagerly loaded for memory
+    batch_result = await db.execute(
+        select(Batch)
+        .options(selectinload(Batch.recipe))
+        .where(Batch.id == batch_id)
+    )
+    batch = batch_result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
 
     result = await db.execute(
         select(BatchReflection).where(
@@ -142,4 +219,8 @@ async def update_reflection(
 
     await db.commit()
     await db.refresh(reflection)
+
+    # Store updated memory in background (non-blocking)
+    asyncio.create_task(_store_reflection_memory(db, reflection, batch, user.user_id))
+
     return reflection

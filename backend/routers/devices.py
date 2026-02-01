@@ -5,10 +5,12 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
-from sqlalchemy import select, delete, desc
+from sqlalchemy import or_, select, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..auth import AuthUser, require_auth
+from ..config import get_settings
 from ..database import get_db
 from ..models import (
     Device,
@@ -22,6 +24,40 @@ from ..models import (
 from ..services.calibration import calibration_service
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+
+
+def user_owns_device(user: AuthUser):
+    """Create a SQLAlchemy condition for device ownership.
+
+    In LOCAL deployment mode, includes:
+    - Devices explicitly owned by the user
+    - Devices owned by the dummy "local" user (pre-auth data)
+    - Unclaimed devices (user_id IS NULL) for backward compatibility
+
+    In CLOUD deployment mode, strictly filters by user_id.
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            Device.user_id == user.user_id,
+            Device.user_id == "local",
+            Device.user_id.is_(None),
+        )
+    return Device.user_id == user.user_id
+
+
+async def get_user_device(device_id: str, user: AuthUser, db: AsyncSession) -> Device:
+    """Fetch a device with user ownership verification.
+
+    Raises 404 if device not found or not owned by user.
+    """
+    result = await db.execute(
+        select(Device).where(Device.id == device_id, user_owns_device(user))
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
 
 
 # Pydantic Schemas
@@ -282,10 +318,11 @@ class CalibrationTestResponse(BaseModel):
 async def list_devices(
     device_type: Optional[str] = Query(None, description="Filter by device type"),
     paired_only: bool = Query(False, description="Only return paired devices"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all devices, optionally filtered by device type and pairing status."""
-    query = select(Device).order_by(Device.created_at.desc())
+    """List all devices owned by the current user, optionally filtered."""
+    query = select(Device).where(user_owns_device(user)).order_by(Device.created_at.desc())
 
     if device_type:
         query = query.where(Device.device_type == device_type)
@@ -313,18 +350,20 @@ async def get_latest_readings():
 
 
 @router.get("/{device_id}", response_model=DeviceResponse)
-async def get_device(device_id: str, db: AsyncSession = Depends(get_db)):
+async def get_device(
+    device_id: str,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get a specific device by ID."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    device = await get_user_device(device_id, user, db)
     return DeviceResponse.from_orm_with_calibration(device)
 
 
 @router.post("", response_model=DeviceResponse, status_code=201)
 async def create_device(
     device_data: DeviceCreate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new device manually (for devices not auto-registered)."""
@@ -336,6 +375,7 @@ async def create_device(
     # Create new device
     device = Device(
         id=device_data.id,
+        user_id=user.user_id,
         device_type=device_data.device_type,
         name=device_data.name,
         display_name=device_data.display_name,
@@ -365,12 +405,11 @@ async def create_device(
 async def update_device(
     device_id: str,
     update_data: DeviceUpdate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Update device properties (name, display_name, beer_name, etc.)."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     # Update fields if provided
     if update_data.name is not None:
@@ -399,11 +438,13 @@ async def update_device(
 
 
 @router.delete("/{device_id}")
-async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_device(
+    device_id: str,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a device and all its readings."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     await db.delete(device)
     await db.commit()
@@ -412,14 +453,16 @@ async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{device_id}/pair", response_model=DeviceResponse)
-async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
+async def pair_device(
+    device_id: str,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Pair any device type to enable reading storage.
 
     Works for Tilt, iSpindel, GravityMon, and future device types.
     """
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     device.paired = True
     device.paired_at = datetime.now(timezone.utc)
@@ -439,14 +482,16 @@ async def pair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{device_id}/unpair", response_model=DeviceResponse)
-async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
+async def unpair_device(
+    device_id: str,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Unpair device to stop reading storage.
 
     Works for all device types.
     """
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     device.paired = False
     device.paired_at = None
@@ -467,11 +512,13 @@ async def unpair_device(device_id: str, db: AsyncSession = Depends(get_db)):
 
 # CalibrationPoint Endpoints (table-based calibration for Tilt devices)
 @router.get("/{device_id}/calibration_points", response_model=list[CalibrationPointResponse])
-async def get_device_calibration_points(device_id: str, db: AsyncSession = Depends(get_db)):
+async def get_device_calibration_points(
+    device_id: str,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get calibration points for any device type."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await get_user_device(device_id, user, db)  # Verify ownership
 
     result = await db.execute(
         select(CalibrationPoint)
@@ -485,12 +532,11 @@ async def get_device_calibration_points(device_id: str, db: AsyncSession = Depen
 async def add_device_calibration_point(
     device_id: str,
     point: CalibrationPointCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
     """Add calibration point for any device type."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await get_user_device(device_id, user, db)  # Verify ownership
 
     calibration_point = CalibrationPoint(
         device_id=device_id,
@@ -507,15 +553,14 @@ async def add_device_calibration_point(
 async def clear_device_calibration_points(
     device_id: str,
     type: str,
-    db: AsyncSession = Depends(get_db)
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
     """Clear calibration points for a specific type (sg or temp)."""
     if type not in ["sg", "temp"]:
         raise HTTPException(status_code=400, detail="Type must be 'sg' or 'temp'")
 
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await get_user_device(device_id, user, db)  # Verify ownership
 
     await db.execute(
         delete(CalibrationPoint)
@@ -533,7 +578,8 @@ async def get_device_readings(
     hours: Optional[int] = Query(default=None, description="Time window in hours (e.g., 24 for last 24 hours)"),
     batch_id: Optional[int] = Query(default=None, description="Filter readings by batch ID"),
     limit: int = Query(default=5000, le=10000, description="Maximum number of readings to return"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get readings for any device type, optionally filtered by time window and/or batch.
 
@@ -548,9 +594,7 @@ async def get_device_readings(
 
     Returns readings in ascending order (oldest → newest) for charting.
     """
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    await get_user_device(device_id, user, db)  # Verify ownership
 
     query = select(Reading).where(Reading.device_id == device_id)
 
@@ -617,6 +661,7 @@ async def get_device_readings(
 async def set_calibration(
     device_id: str,
     calibration: CalibrationRequest,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Set calibration type and data for a device.
@@ -627,9 +672,7 @@ async def set_calibration(
     - linear: Two-point linear {"points": [[raw1, actual1], [raw2, actual2]]}
     - polynomial: iSpindel-style polynomial {"coefficients": [a, b, c, ...]}
     """
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     # Update calibration
     device.calibration_type = calibration.calibration_type
@@ -647,12 +690,11 @@ async def set_calibration(
 @router.get("/{device_id}/calibration", response_model=CalibrationResponse)
 async def get_calibration(
     device_id: str,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current calibration settings for a device."""
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     return CalibrationResponse(
         calibration_type=device.calibration_type,
@@ -664,6 +706,7 @@ async def get_calibration(
 async def test_calibration(
     device_id: str,
     test_data: CalibrationTestRequest,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Test calibration by providing raw values and getting calibrated results.
@@ -676,9 +719,7 @@ async def test_calibration(
     Returns the calibrated gravity and/or temperature based on the device's
     current calibration settings.
     """
-    device = await db.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = await get_user_device(device_id, user, db)
 
     calibration_type = device.calibration_type or "none"
     calibration_data = device.calibration_data or {}

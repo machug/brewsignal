@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Any, Optional
 
+from ..auth import AuthUser, require_auth
+from ..config import get_settings
 from ..database import get_db
 from ..models import Recipe, RecipeCulture, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse, Style, StyleResponse
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
@@ -20,6 +22,48 @@ router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 # File upload constraints
 MAX_FILE_SIZE = 1_000_000  # 1MB in bytes
+
+
+def user_owns_recipe(user: AuthUser):
+    """Create a SQLAlchemy condition for recipe ownership.
+
+    In LOCAL deployment mode, includes:
+    - Recipes explicitly owned by the user
+    - Recipes owned by the dummy "local" user (pre-auth data)
+    - Unclaimed recipes (user_id IS NULL) for backward compatibility
+
+    In CLOUD deployment mode, strictly filters by user_id.
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            Recipe.user_id == user.user_id,
+            Recipe.user_id == "local",
+            Recipe.user_id.is_(None),
+        )
+    return Recipe.user_id == user.user_id
+
+
+async def get_user_recipe(recipe_id: int, user: AuthUser, db: AsyncSession) -> Recipe:
+    """Fetch a recipe with user ownership verification.
+
+    Raises 404 if recipe not found or not owned by user.
+    """
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+        )
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return recipe
 
 
 class RecipeValidationRequest(BaseModel):
@@ -206,12 +250,14 @@ async def list_styles(
 async def list_recipes(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all recipes."""
+    """List all recipes owned by the current user."""
     query = (
         select(Recipe)
         .options(selectinload(Recipe.style))
+        .where(user_owns_recipe(user))
         .order_by(Recipe.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -268,31 +314,20 @@ async def validate_recipe(request: RecipeValidationRequest):
 
 
 @router.get("/{recipe_id}", response_model=RecipeDetailResponse)
-async def get_recipe(recipe_id: int, db: AsyncSession = Depends(get_db)):
+async def get_recipe(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get a specific recipe by ID with all ingredients."""
-    query = (
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-            selectinload(Recipe.miscs),
-        )
-        .where(Recipe.id == recipe_id)
-    )
-    result = await db.execute(query)
-    recipe = result.scalar_one_or_none()
-
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    return recipe
+    return await get_user_recipe(recipe_id, user, db)
 
 
 @router.get("/{recipe_id}/export/brewfather")
 async def export_recipe_brewfather(
     recipe_id: int,
     download: bool = Query(False, description="Return as downloadable file"),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Export a recipe in Brewfather JSON format.
@@ -303,7 +338,7 @@ async def export_recipe_brewfather(
         recipe_id: The recipe ID to export
         download: If True, returns as a downloadable .json file
     """
-    # Load recipe with all relationships
+    # Load recipe with all relationships and ownership check
     query = (
         select(Recipe)
         .options(
@@ -315,7 +350,7 @@ async def export_recipe_brewfather(
             selectinload(Recipe.mash_steps),
             selectinload(Recipe.fermentation_steps),
         )
-        .where(Recipe.id == recipe_id)
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     result = await db.execute(query)
     recipe = result.scalar_one_or_none()
@@ -345,6 +380,7 @@ async def export_recipe_brewfather(
 @router.post("", response_model=RecipeResponse, status_code=201)
 async def create_recipe(
     recipe: RecipeCreate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new recipe manually."""
@@ -357,6 +393,7 @@ async def create_recipe(
     )
 
     db_recipe = Recipe(
+        user_id=user.user_id,
         name=recipe.name,
         author=recipe.author,
         style_id=recipe.style_id,
@@ -404,6 +441,7 @@ async def create_recipe(
 @router.post("/import", response_model=RecipeResponse, status_code=201)
 async def import_recipe(
     file: UploadFile = File(...),
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Import recipe from BeerXML, Brewfather JSON, or BeerJSON file.
@@ -452,6 +490,9 @@ async def import_recipe(
             detail=result.errors
         )
 
+    # Set user_id on imported recipe
+    result.recipe.user_id = user.user_id
+
     # Import succeeded - commit to database
     await db.commit()
 
@@ -481,10 +522,11 @@ async def import_recipe(
 async def update_recipe(
     recipe_id: int,
     recipe_update: RecipeUpdate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing recipe."""
-    # Fetch existing recipe with ingredients for stat recalculation
+    # Fetch existing recipe with ingredients and ownership check
     result = await db.execute(
         select(Recipe)
         .options(
@@ -493,7 +535,7 @@ async def update_recipe(
             selectinload(Recipe.hops),
             selectinload(Recipe.cultures),
         )
-        .where(Recipe.id == recipe_id)
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     existing_recipe = result.scalar_one_or_none()
 
@@ -530,6 +572,7 @@ async def update_recipe(
 @router.post("/{recipe_id}/recalculate", response_model=RecipeResponse)
 async def recalculate_recipe_stats(
     recipe_id: int,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Recalculate a recipe's OG, FG, ABV, IBU, and color from its ingredients.
@@ -544,7 +587,7 @@ async def recalculate_recipe_stats(
             selectinload(Recipe.hops),
             selectinload(Recipe.cultures),
         )
-        .where(Recipe.id == recipe_id)
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     recipe = result.scalar_one_or_none()
 
@@ -571,9 +614,16 @@ async def recalculate_recipe_stats(
 
 
 @router.delete("/{recipe_id}")
-async def delete_recipe(recipe_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_recipe(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a recipe."""
-    recipe = await db.get(Recipe, recipe_id)
+    result = await db.execute(
+        select(Recipe).where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 

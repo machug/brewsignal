@@ -1830,6 +1830,14 @@ class RecipeDetailResponse(BaseModel):
     cultures: list[CultureResponse] = []
     miscs: list[MiscResponse] = []
 
+    # Mash and fermentation schedules
+    mash_steps: list[MashStepResponse] = []
+    fermentation_steps: list[FermentationStepResponse] = []
+
+    # Water chemistry
+    water_profiles: list[WaterProfileResponse] = []
+    water_adjustments: list[WaterAdjustmentResponse] = []
+
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt)

@@ -757,17 +757,17 @@ async def execute_tool(
         return await get_yeast_by_id(db, **arguments)
     elif tool_name == "get_style_by_name":
         return await get_style_by_name(db, **arguments)
-    # Inventory tools (Note: inventory tables don't have user_id yet - future work)
+    # Inventory tools - pass user_id for multi-tenant isolation
     elif tool_name == "search_inventory_hops":
-        return await search_inventory_hops(db, **arguments)
+        return await search_inventory_hops(db, user_id=user_id, **arguments)
     elif tool_name == "search_inventory_yeast":
-        return await search_inventory_yeast(db, **arguments)
+        return await search_inventory_yeast(db, user_id=user_id, **arguments)
     elif tool_name == "check_recipe_ingredients":
-        return await check_recipe_ingredients(db, **arguments)
+        return await check_recipe_ingredients(db, user_id=user_id, **arguments)
     elif tool_name == "get_inventory_summary":
-        return await get_inventory_summary(db)
+        return await get_inventory_summary(db, user_id=user_id)
     elif tool_name == "get_equipment":
-        return await get_equipment(db, **arguments)
+        return await get_equipment(db, user_id=user_id, **arguments)
     # Fermentation monitoring tools - pass user_id for multi-tenant isolation
     elif tool_name == "list_fermentations":
         return await list_fermentations(db, user_id=user_id, **arguments)

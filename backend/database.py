@@ -371,6 +371,9 @@ async def init_db():
         # Add user_id columns for multi-tenant support
         await conn.run_sync(_migrate_add_user_id_columns)
 
+        # Add user_id columns to inventory tables for multi-tenant support
+        await conn.run_sync(_migrate_add_inventory_user_id_columns)
+
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
 
@@ -1761,6 +1764,34 @@ def _migrate_add_user_id_columns(conn):
     inspector = inspect(conn)
 
     tables_to_migrate = ["devices", "recipes", "batches"]
+
+    for table_name in tables_to_migrate:
+        if table_name not in inspector.get_table_names():
+            continue  # Fresh install, create_all will handle it
+
+        columns = [c["name"] for c in inspector.get_columns(table_name)]
+
+        if "user_id" not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN user_id VARCHAR(36)"))
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_user_id ON {table_name}(user_id)"))
+                print(f"Migration: Added user_id column to {table_name} table")
+            except Exception as e:
+                print(f"Migration: Skipping user_id on {table_name} - {e}")
+
+
+def _migrate_add_inventory_user_id_columns(conn):
+    """Add user_id column to inventory tables for multi-tenant support.
+
+    This enables user isolation for:
+    - Equipment (fermenters, kettles, etc.)
+    - HopInventory (hop stock tracking)
+    - YeastInventory (yeast stock tracking)
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    tables_to_migrate = ["equipment", "hop_inventory", "yeast_inventory"]
 
     for table_name in tables_to_migrate:
         if table_name not in inspector.get_table_names():

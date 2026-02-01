@@ -7,9 +7,50 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.config import get_settings
 from backend.models import (
     HopInventory, YeastInventory, YeastStrain, Equipment, Batch, Recipe
 )
+
+
+def _user_owns_hop_condition(user_id: Optional[str]):
+    """Create a SQLAlchemy condition for hop ownership.
+
+    In LOCAL mode: includes user's hops + "local" user + unclaimed (NULL)
+    In CLOUD mode: strict user_id filtering
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            HopInventory.user_id == user_id,
+            HopInventory.user_id == "local",
+            HopInventory.user_id.is_(None),
+        )
+    return HopInventory.user_id == user_id
+
+
+def _user_owns_yeast_condition(user_id: Optional[str]):
+    """Create a SQLAlchemy condition for yeast ownership."""
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            YeastInventory.user_id == user_id,
+            YeastInventory.user_id == "local",
+            YeastInventory.user_id.is_(None),
+        )
+    return YeastInventory.user_id == user_id
+
+
+def _user_owns_equipment_condition(user_id: Optional[str]):
+    """Create a SQLAlchemy condition for equipment ownership."""
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            Equipment.user_id == user_id,
+            Equipment.user_id == "local",
+            Equipment.user_id.is_(None),
+        )
+    return Equipment.user_id == user_id
 
 
 async def search_inventory_hops(
@@ -17,10 +58,15 @@ async def search_inventory_hops(
     query: Optional[str] = None,
     min_amount_grams: Optional[float] = None,
     form: Optional[str] = None,
-    limit: int = 20
+    limit: int = 20,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Search the user's hop inventory."""
     stmt = select(HopInventory).order_by(HopInventory.variety)
+
+    # Filter by user ownership
+    if user_id:
+        stmt = stmt.where(_user_owns_hop_condition(user_id))
 
     if query:
         stmt = stmt.where(HopInventory.variety.ilike(f"%{query}%"))
@@ -64,7 +110,8 @@ async def search_inventory_yeast(
     type: Optional[str] = None,
     form: Optional[str] = None,
     include_expired: bool = False,
-    limit: int = 20
+    limit: int = 20,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Search the user's yeast inventory."""
     stmt = (
@@ -72,6 +119,10 @@ async def search_inventory_yeast(
         .options(selectinload(YeastInventory.yeast_strain))
         .order_by(YeastInventory.expiry_date.asc().nullsfirst())
     )
+
+    # Filter by user ownership
+    if user_id:
+        stmt = stmt.where(_user_owns_yeast_condition(user_id))
 
     if query:
         # Search in both yeast strain name and custom name
@@ -136,7 +187,8 @@ async def search_inventory_yeast(
 async def check_recipe_ingredients(
     db: AsyncSession,
     hop_varieties: Optional[list[str]] = None,
-    yeast_query: Optional[str] = None
+    yeast_query: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Check if user has specific hops and yeast in inventory."""
     result = {
@@ -152,6 +204,8 @@ async def check_recipe_ingredients(
                 HopInventory.variety.ilike(f"%{variety}%"),
                 HopInventory.amount_grams > 0
             )
+            if user_id:
+                stmt = stmt.where(_user_owns_hop_condition(user_id))
             hop_result = await db.execute(stmt)
             hops = hop_result.scalars().all()
 
@@ -188,6 +242,8 @@ async def check_recipe_ingredients(
                 )
             )
         )
+        if user_id:
+            stmt = stmt.where(_user_owns_yeast_condition(user_id))
 
         yeast_result = await db.execute(stmt)
         yeasts = yeast_result.scalars().all()
@@ -206,39 +262,45 @@ async def check_recipe_ingredients(
     return result
 
 
-async def get_inventory_summary(db: AsyncSession) -> dict[str, Any]:
+async def get_inventory_summary(
+    db: AsyncSession,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
     """Get a summary of the user's brewing inventory."""
     now = datetime.now(timezone.utc)
     expiry_cutoff = now + timedelta(days=30)
 
-    # Hop summary
-    hop_result = await db.execute(
-        select(
-            func.count(HopInventory.id).label("total_items"),
-            func.sum(HopInventory.amount_grams).label("total_grams"),
-            func.count(func.distinct(HopInventory.variety)).label("unique_varieties"),
-        )
+    # Hop summary - filter by user
+    hop_stmt = select(
+        func.count(HopInventory.id).label("total_items"),
+        func.sum(HopInventory.amount_grams).label("total_grams"),
+        func.count(func.distinct(HopInventory.variety)).label("unique_varieties"),
     )
+    if user_id:
+        hop_stmt = hop_stmt.where(_user_owns_hop_condition(user_id))
+    hop_result = await db.execute(hop_stmt)
     hop_row = hop_result.one()
 
-    # Yeast summary
-    yeast_result = await db.execute(
-        select(
-            func.count(YeastInventory.id).label("total_items"),
-            func.sum(YeastInventory.quantity).label("total_quantity"),
-        ).where(YeastInventory.quantity > 0)
-    )
+    # Yeast summary - filter by user
+    yeast_stmt = select(
+        func.count(YeastInventory.id).label("total_items"),
+        func.sum(YeastInventory.quantity).label("total_quantity"),
+    ).where(YeastInventory.quantity > 0)
+    if user_id:
+        yeast_stmt = yeast_stmt.where(_user_owns_yeast_condition(user_id))
+    yeast_result = await db.execute(yeast_stmt)
     yeast_row = yeast_result.one()
 
-    # Expiring soon
-    expiring_result = await db.execute(
-        select(func.count(YeastInventory.id)).where(
-            YeastInventory.expiry_date.is_not(None),
-            YeastInventory.expiry_date <= expiry_cutoff,
-            YeastInventory.expiry_date > now,
-            YeastInventory.quantity > 0,
-        )
+    # Expiring soon - filter by user
+    expiring_stmt = select(func.count(YeastInventory.id)).where(
+        YeastInventory.expiry_date.is_not(None),
+        YeastInventory.expiry_date <= expiry_cutoff,
+        YeastInventory.expiry_date > now,
+        YeastInventory.quantity > 0,
     )
+    if user_id:
+        expiring_stmt = expiring_stmt.where(_user_owns_yeast_condition(user_id))
+    expiring_result = await db.execute(expiring_stmt)
     expiring_count = expiring_result.scalar() or 0
 
     return {
@@ -258,10 +320,15 @@ async def get_inventory_summary(db: AsyncSession) -> dict[str, Any]:
 async def get_equipment(
     db: AsyncSession,
     type: Optional[str] = None,
-    active_only: bool = True
+    active_only: bool = True,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Get user's brewing equipment."""
     stmt = select(Equipment).order_by(Equipment.type, Equipment.name)
+
+    # Filter by user ownership
+    if user_id:
+        stmt = stmt.where(_user_owns_equipment_condition(user_id))
 
     if type:
         stmt = stmt.where(Equipment.type == type)

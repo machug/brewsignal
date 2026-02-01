@@ -3,9 +3,11 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import AuthUser, require_auth
+from ..config import get_settings
 from ..database import get_db
 from ..models import (
     HopInventory,
@@ -18,6 +20,26 @@ from ..models import (
 router = APIRouter(prefix="/api/inventory/hops", tags=["inventory-hops"])
 
 
+def user_owns_hop(user: AuthUser):
+    """Create a SQLAlchemy condition for hop inventory ownership.
+
+    In LOCAL deployment mode, includes:
+    - Hops explicitly owned by the user
+    - Hops owned by the dummy "local" user (pre-auth data)
+    - Unclaimed hops (user_id IS NULL) for backward compatibility
+
+    In CLOUD deployment mode, strictly filters by user_id.
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            HopInventory.user_id == user.user_id,
+            HopInventory.user_id == "local",
+            HopInventory.user_id.is_(None),
+        )
+    return HopInventory.user_id == user.user_id
+
+
 @router.get("", response_model=list[HopInventoryResponse])
 async def list_hop_inventory(
     variety: Optional[str] = Query(None, description="Filter by variety name (partial match)"),
@@ -26,9 +48,10 @@ async def list_hop_inventory(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
 ):
     """List hop inventory with optional filters."""
-    query = select(HopInventory).order_by(HopInventory.variety)
+    query = select(HopInventory).where(user_owns_hop(user)).order_by(HopInventory.variety)
 
     if variety:
         query = query.where(HopInventory.variety.ilike(f"%{variety}%"))
@@ -43,15 +66,21 @@ async def list_hop_inventory(
 
 
 @router.get("/varieties", response_model=list[str])
-async def list_hop_varieties(db: AsyncSession = Depends(get_db)):
+async def list_hop_varieties(
+    db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
+):
     """Get unique hop varieties in inventory."""
-    query = select(HopInventory.variety).distinct().order_by(HopInventory.variety)
+    query = select(HopInventory.variety).where(user_owns_hop(user)).distinct().order_by(HopInventory.variety)
     result = await db.execute(query)
     return [row[0] for row in result.all()]
 
 
 @router.get("/summary")
-async def get_hop_summary(db: AsyncSession = Depends(get_db)):
+async def get_hop_summary(
+    db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
+):
     """Get summary statistics for hop inventory."""
     # Total count and weight
     result = await db.execute(
@@ -59,7 +88,7 @@ async def get_hop_summary(db: AsyncSession = Depends(get_db)):
             func.count(HopInventory.id).label("total_items"),
             func.sum(HopInventory.amount_grams).label("total_grams"),
             func.count(func.distinct(HopInventory.variety)).label("unique_varieties"),
-        )
+        ).where(user_owns_hop(user))
     )
     row = result.one()
     return {
@@ -70,9 +99,15 @@ async def get_hop_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{hop_id}", response_model=HopInventoryResponse)
-async def get_hop_inventory(hop_id: int, db: AsyncSession = Depends(get_db)):
+async def get_hop_inventory(
+    hop_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
+):
     """Get a specific hop inventory item by ID."""
-    result = await db.execute(select(HopInventory).where(HopInventory.id == hop_id))
+    result = await db.execute(
+        select(HopInventory).where(HopInventory.id == hop_id, user_owns_hop(user))
+    )
     hop = result.scalar_one_or_none()
 
     if not hop:
@@ -84,6 +119,7 @@ async def get_hop_inventory(hop_id: int, db: AsyncSession = Depends(get_db)):
 async def create_hop_inventory(
     hop: HopInventoryCreate,
     db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
 ):
     """Create a new hop inventory item."""
     db_hop = HopInventory(
@@ -97,6 +133,7 @@ async def create_hop_inventory(
         supplier=hop.supplier,
         lot_number=hop.lot_number,
         notes=hop.notes,
+        user_id=user.user_id,
     )
     db.add(db_hop)
     await db.commit()
@@ -109,9 +146,12 @@ async def update_hop_inventory(
     hop_id: int,
     hop: HopInventoryUpdate,
     db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
 ):
     """Update a hop inventory item."""
-    result = await db.execute(select(HopInventory).where(HopInventory.id == hop_id))
+    result = await db.execute(
+        select(HopInventory).where(HopInventory.id == hop_id, user_owns_hop(user))
+    )
     db_hop = result.scalar_one_or_none()
 
     if not db_hop:
@@ -132,9 +172,12 @@ async def adjust_hop_amount(
     hop_id: int,
     adjustment: HopInventoryAdjust,
     db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
 ):
     """Quick adjust hop amount (add or subtract grams)."""
-    result = await db.execute(select(HopInventory).where(HopInventory.id == hop_id))
+    result = await db.execute(
+        select(HopInventory).where(HopInventory.id == hop_id, user_owns_hop(user))
+    )
     db_hop = result.scalar_one_or_none()
 
     if not db_hop:
@@ -154,9 +197,15 @@ async def adjust_hop_amount(
 
 
 @router.delete("/{hop_id}", status_code=204)
-async def delete_hop_inventory(hop_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_hop_inventory(
+    hop_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
+):
     """Delete a hop inventory item."""
-    result = await db.execute(select(HopInventory).where(HopInventory.id == hop_id))
+    result = await db.execute(
+        select(HopInventory).where(HopInventory.id == hop_id, user_owns_hop(user))
+    )
     db_hop = result.scalar_one_or_none()
 
     if not db_hop:

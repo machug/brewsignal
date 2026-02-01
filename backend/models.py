@@ -2139,6 +2139,7 @@ class Equipment(Base):
     __tablename__ = "equipment"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)  # kettle, fermenter, pump, chiller, etc.
     brand: Mapped[Optional[str]] = mapped_column(String(100))
@@ -2162,6 +2163,7 @@ class HopInventory(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
     variety: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Citra", "Cascade"
     amount_grams: Mapped[float] = mapped_column(nullable=False)  # Current amount in grams
     alpha_acid_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
@@ -2188,6 +2190,7 @@ class YeastInventory(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
     # Link to yeast strain database or custom name
     yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))
     custom_name: Mapped[Optional[str]] = mapped_column(String(200))  # For unlisted strains

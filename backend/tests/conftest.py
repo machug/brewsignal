@@ -1,6 +1,7 @@
 """Pytest configuration for backend tests."""
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import AsyncGenerator, Generator
@@ -10,6 +11,10 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
+# Force LOCAL deployment mode for tests BEFORE importing backend modules
+# This ensures require_auth returns dummy "local" user instead of requiring JWT
+os.environ["DEPLOYMENT_MODE"] = "local"
+
 # Ensure backend package is importable
 backend_path = Path(__file__).parent.parent.parent
 if str(backend_path) not in sys.path:
@@ -17,6 +22,10 @@ if str(backend_path) not in sys.path:
 
 from backend.database import Base  # noqa: E402
 from backend.main import app  # noqa: E402
+
+# Clear cached settings to ensure our env var override takes effect
+from backend.auth import get_settings
+get_settings.cache_clear()
 
 
 # Test database URL (in-memory SQLite)

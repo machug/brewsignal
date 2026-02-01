@@ -55,6 +55,11 @@ from .reflections import (
     get_batch_reflections,
     update_batch_reflection,
 )
+from .tasting import (
+    start_tasting_session,
+    save_tasting_note,
+    get_batch_tasting_notes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -832,6 +837,128 @@ TOOL_DEFINITIONS = [
                 "required": ["reflection_id"]
             }
         }
+    },
+    # =============================================================================
+    # Tasting Note Tools (Post-Mortem / Guided Tasting)
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "start_tasting_session",
+            "description": "Start a guided tasting session for a batch. Returns batch context including recipe, style guidelines, and previous tasting history. Use this when the user wants to taste and evaluate their beer with BJCP-style scoring.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to start tasting session for"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_tasting_note",
+            "description": "Save a complete tasting note for a batch. Records BJCP-style scores (1-5 for each category) plus optional notes and context. Use this after guiding the user through a tasting evaluation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to save tasting note for"
+                    },
+                    "appearance_score": {
+                        "type": "integer",
+                        "description": "Appearance score (1-5): clarity, color, head retention"
+                    },
+                    "appearance_notes": {
+                        "type": "string",
+                        "description": "Notes about appearance"
+                    },
+                    "aroma_score": {
+                        "type": "integer",
+                        "description": "Aroma score (1-5): hop aroma, malt aroma, fermentation character"
+                    },
+                    "aroma_notes": {
+                        "type": "string",
+                        "description": "Notes about aroma"
+                    },
+                    "flavor_score": {
+                        "type": "integer",
+                        "description": "Flavor score (1-5): malt, hops, fermentation, balance, aftertaste"
+                    },
+                    "flavor_notes": {
+                        "type": "string",
+                        "description": "Notes about flavor"
+                    },
+                    "mouthfeel_score": {
+                        "type": "integer",
+                        "description": "Mouthfeel score (1-5): body, carbonation, warmth, creaminess"
+                    },
+                    "mouthfeel_notes": {
+                        "type": "string",
+                        "description": "Notes about mouthfeel"
+                    },
+                    "overall_score": {
+                        "type": "integer",
+                        "description": "Overall impression score (1-5): how enjoyable and true to style"
+                    },
+                    "overall_notes": {
+                        "type": "string",
+                        "description": "Overall impression notes"
+                    },
+                    "days_since_packaging": {
+                        "type": "integer",
+                        "description": "Days since the beer was packaged (auto-calculated if not provided)"
+                    },
+                    "serving_temp_c": {
+                        "type": "number",
+                        "description": "Serving temperature in Celsius"
+                    },
+                    "glassware": {
+                        "type": "string",
+                        "description": "Type of glass used (e.g., pint, tulip, snifter, weizen)"
+                    },
+                    "to_style": {
+                        "type": "boolean",
+                        "description": "Whether the beer is true to its target style"
+                    },
+                    "style_deviation_notes": {
+                        "type": "string",
+                        "description": "Notes about how the beer deviates from style guidelines"
+                    },
+                    "ai_suggestions": {
+                        "type": "string",
+                        "description": "AI-generated suggestions for improvement"
+                    },
+                    "interview_transcript": {
+                        "type": "object",
+                        "description": "Transcript of the AI-guided tasting interview"
+                    }
+                },
+                "required": ["batch_id", "appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_batch_tasting_notes",
+            "description": "Get all tasting notes for a batch. Use this to review previous tastings, track beer evolution over time, or compare conditioning progress.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to get tasting notes for"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
     }
 ]
 
@@ -920,5 +1047,12 @@ async def execute_tool(
         return await get_batch_reflections(db, user_id=user_id, **arguments)
     elif tool_name == "update_batch_reflection":
         return await update_batch_reflection(db, user_id=user_id, **arguments)
+    # Tasting note tools - pass user_id for multi-tenant isolation
+    elif tool_name == "start_tasting_session":
+        return await start_tasting_session(db, user_id=user_id, **arguments)
+    elif tool_name == "save_tasting_note":
+        return await save_tasting_note(db, user_id=user_id, **arguments)
+    elif tool_name == "get_batch_tasting_notes":
+        return await get_batch_tasting_notes(db, user_id=user_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

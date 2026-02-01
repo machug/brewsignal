@@ -1730,6 +1730,69 @@ class MiscResponse(BaseModel):
     amount_is_weight: Optional[bool] = None
 
 
+class MashStepResponse(BaseModel):
+    """Pydantic response model for mash schedule steps."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    step_number: int
+    name: str
+    type: str  # infusion, temperature, decoction
+    temp_c: float
+    time_minutes: int
+    infusion_amount_liters: Optional[float] = None
+    infusion_temp_c: Optional[float] = None
+    ramp_time_minutes: Optional[int] = None
+
+
+class FermentationStepResponse(BaseModel):
+    """Pydantic response model for fermentation schedule steps."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    step_number: int
+    type: str  # primary, secondary, conditioning
+    temp_c: float
+    time_days: int
+
+
+class WaterProfileResponse(BaseModel):
+    """Pydantic response model for water chemistry profiles."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    profile_type: str  # source, target, sparge
+    name: Optional[str] = None
+    calcium_ppm: Optional[float] = None
+    magnesium_ppm: Optional[float] = None
+    sodium_ppm: Optional[float] = None
+    chloride_ppm: Optional[float] = None
+    sulfate_ppm: Optional[float] = None
+    bicarbonate_ppm: Optional[float] = None
+    ph: Optional[float] = None
+    alkalinity: Optional[float] = None
+
+
+class WaterAdjustmentResponse(BaseModel):
+    """Pydantic response model for water treatment additions."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    stage: str  # mash, sparge, total
+    volume_liters: Optional[float] = None
+    calcium_sulfate_g: Optional[float] = None
+    calcium_chloride_g: Optional[float] = None
+    magnesium_sulfate_g: Optional[float] = None
+    sodium_bicarbonate_g: Optional[float] = None
+    calcium_carbonate_g: Optional[float] = None
+    calcium_hydroxide_g: Optional[float] = None
+    magnesium_chloride_g: Optional[float] = None
+    sodium_chloride_g: Optional[float] = None
+    acid_type: Optional[str] = None
+    acid_ml: Optional[float] = None
+    acid_concentration_percent: Optional[float] = None
+
+
 class RecipeDetailResponse(BaseModel):
     """Full recipe with all ingredients."""
     model_config = ConfigDict(from_attributes=True)

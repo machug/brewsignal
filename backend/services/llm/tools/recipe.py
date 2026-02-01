@@ -4,13 +4,30 @@ import logging
 import math
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.config import get_settings
 from backend.models import Recipe, Style
 
 logger = logging.getLogger(__name__)
+
+
+def _user_owns_recipe_condition(user_id: Optional[str]):
+    """Create a SQLAlchemy condition for recipe ownership.
+
+    In LOCAL mode: includes user's recipes + "local" user + unclaimed (NULL)
+    In CLOUD mode: strict user_id filtering
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            Recipe.user_id == user_id,
+            Recipe.user_id == "local",
+            Recipe.user_id.is_(None),
+        )
+    return Recipe.user_id == user_id
 
 
 def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
@@ -560,7 +577,8 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
 async def save_recipe(
     db: AsyncSession,
     recipe: dict[str, Any],
-    name_override: Optional[str] = None
+    name_override: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Save a BeerJSON recipe to the database."""
     from backend.services.serializers.recipe_serializer import RecipeSerializer
@@ -597,6 +615,10 @@ async def save_recipe(
         # Use the RecipeSerializer to convert BeerJSON to SQLAlchemy model
         serializer = RecipeSerializer()
         db_recipe = await serializer.serialize(normalized, db)
+
+        # Set user_id for multi-tenant isolation
+        if user_id:
+            db_recipe.user_id = user_id
 
         # Add to database
         db.add(db_recipe)
@@ -648,6 +670,7 @@ async def review_recipe_style(
     recipe_id: int,
     style_id: Optional[str] = None,
     auto_fix: bool = False,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Review a recipe against BJCP style guidelines.
 
@@ -656,13 +679,17 @@ async def review_recipe_style(
     """
     from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
 
-    # Fetch recipe with all ingredients
+    # Fetch recipe with all ingredients and ownership check
     stmt = select(Recipe).options(
         selectinload(Recipe.style),
         selectinload(Recipe.fermentables),
         selectinload(Recipe.hops),
         selectinload(Recipe.cultures),
     ).where(Recipe.id == recipe_id)
+
+    if user_id:
+        stmt = stmt.where(_user_owns_recipe_condition(user_id))
+
     result = await db.execute(stmt)
     recipe = result.scalar_one_or_none()
 

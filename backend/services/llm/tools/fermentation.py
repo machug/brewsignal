@@ -8,6 +8,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.config import get_settings
 from backend.models import (
     Batch, Reading, Device, Recipe, YeastStrain, AmbientReading, RecipeCulture
 )
@@ -17,8 +18,25 @@ from backend.state import latest_readings
 logger = logging.getLogger(__name__)
 
 
+def _user_owns_batch_condition(user_id: Optional[str]):
+    """Create a SQLAlchemy condition for batch ownership.
+
+    In LOCAL mode: includes user's batches + "local" user + unclaimed (NULL)
+    In CLOUD mode: strict user_id filtering
+    """
+    settings = get_settings()
+    if settings.is_local:
+        return or_(
+            Batch.user_id == user_id,
+            Batch.user_id == "local",
+            Batch.user_id.is_(None),
+        )
+    return Batch.user_id == user_id
+
+
 async def list_fermentations(
     db: AsyncSession,
+    user_id: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 10
 ) -> dict[str, Any]:
@@ -34,6 +52,10 @@ async def list_fermentations(
         )
         .where(Batch.deleted_at.is_(None))  # Exclude deleted
     )
+
+    # Filter by user ownership
+    if user_id:
+        stmt = stmt.where(_user_owns_batch_condition(user_id))
 
     # Filter by status
     if status and status != "all":
@@ -130,10 +152,11 @@ async def list_fermentations(
 
 async def get_fermentation_status(
     db: AsyncSession,
-    batch_id: int
+    batch_id: int,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Get comprehensive status for a specific fermentation batch."""
-    # Query batch with all relationships
+    # Query batch with all relationships and ownership check
     stmt = (
         select(Batch)
         .options(
@@ -144,6 +167,10 @@ async def get_fermentation_status(
         )
         .where(Batch.id == batch_id)
     )
+
+    # Filter by user ownership
+    if user_id:
+        stmt = stmt.where(_user_owns_batch_condition(user_id))
 
     result = await db.execute(stmt)
     batch = result.scalar_one_or_none()
@@ -353,18 +380,22 @@ async def get_fermentation_history(
     db: AsyncSession,
     batch_id: int,
     hours: int = 24,
-    include_anomalies_only: bool = False
+    include_anomalies_only: bool = False,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Get historical readings for a batch with trend analysis."""
     # Validate hours
     hours = min(720, max(1, hours))  # 1 hour to 30 days
 
-    # First verify batch exists
+    # First verify batch exists and user owns it
     batch_stmt = (
         select(Batch)
         .options(selectinload(Batch.recipe))
         .where(Batch.id == batch_id)
     )
+    if user_id:
+        batch_stmt = batch_stmt.where(_user_owns_batch_condition(user_id))
+
     batch_result = await db.execute(batch_stmt)
     batch = batch_result.scalar_one_or_none()
 
@@ -552,10 +583,11 @@ async def compare_batches(
     db: AsyncSession,
     batch_id: int,
     comparison_type: Optional[str] = "recipe",
-    limit: int = 5
+    limit: int = 5,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Find similar historical batches for comparison."""
-    # Get reference batch
+    # Get reference batch with ownership check
     ref_stmt = (
         select(Batch)
         .options(
@@ -565,13 +597,16 @@ async def compare_batches(
         )
         .where(Batch.id == batch_id)
     )
+    if user_id:
+        ref_stmt = ref_stmt.where(_user_owns_batch_condition(user_id))
+
     ref_result = await db.execute(ref_stmt)
     ref_batch = ref_result.scalar_one_or_none()
 
     if not ref_batch:
         return {"error": f"Batch not found: {batch_id}"}
 
-    # Build filter based on comparison type
+    # Build filter based on comparison type - also filter by user ownership
     similar_stmt = (
         select(Batch)
         .options(
@@ -584,6 +619,8 @@ async def compare_batches(
             Batch.status.in_(["completed", "conditioning"])  # Only compare to finished batches
         )
     )
+    if user_id:
+        similar_stmt = similar_stmt.where(_user_owns_batch_condition(user_id))
 
     comparison_type = comparison_type or "recipe"
 
@@ -676,7 +713,8 @@ async def compare_batches(
 async def get_yeast_fermentation_advice(
     db: AsyncSession,
     yeast_query: str,
-    batch_id: Optional[int] = None
+    batch_id: Optional[int] = None,
+    user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Get yeast-specific fermentation advice."""
     # Search for the yeast strain
@@ -792,6 +830,8 @@ async def get_yeast_fermentation_advice(
             )
             .where(Batch.id == batch_id)
         )
+        if user_id:
+            batch_stmt = batch_stmt.where(_user_owns_batch_condition(user_id))
         batch_result = await db.execute(batch_stmt)
         batch = batch_result.scalar_one_or_none()
 

@@ -757,7 +757,7 @@ async def execute_tool(
         return await get_yeast_by_id(db, **arguments)
     elif tool_name == "get_style_by_name":
         return await get_style_by_name(db, **arguments)
-    # Inventory tools
+    # Inventory tools (Note: inventory tables don't have user_id yet - future work)
     elif tool_name == "search_inventory_hops":
         return await search_inventory_hops(db, **arguments)
     elif tool_name == "search_inventory_yeast":
@@ -768,24 +768,24 @@ async def execute_tool(
         return await get_inventory_summary(db)
     elif tool_name == "get_equipment":
         return await get_equipment(db, **arguments)
-    # Fermentation monitoring tools
+    # Fermentation monitoring tools - pass user_id for multi-tenant isolation
     elif tool_name == "list_fermentations":
-        return await list_fermentations(db, **arguments)
+        return await list_fermentations(db, user_id=user_id, **arguments)
     elif tool_name == "get_fermentation_status":
-        return await get_fermentation_status(db, **arguments)
+        return await get_fermentation_status(db, user_id=user_id, **arguments)
     elif tool_name == "get_fermentation_history":
-        return await get_fermentation_history(db, **arguments)
+        return await get_fermentation_history(db, user_id=user_id, **arguments)
     elif tool_name == "get_ambient_conditions":
         return await get_ambient_conditions(db)
     elif tool_name == "compare_batches":
-        return await compare_batches(db, **arguments)
+        return await compare_batches(db, user_id=user_id, **arguments)
     elif tool_name == "get_yeast_fermentation_advice":
-        return await get_yeast_fermentation_advice(db, **arguments)
-    # Recipe tools
+        return await get_yeast_fermentation_advice(db, user_id=user_id, **arguments)
+    # Recipe tools - pass user_id for multi-tenant isolation
     elif tool_name == "save_recipe":
-        return await save_recipe(db, **arguments)
+        return await save_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":
-        return await review_recipe_style(db, **arguments)
+        return await review_recipe_style(db, user_id=user_id, **arguments)
     # Ingredient reference library tools
     elif tool_name == "search_hop_varieties":
         return await search_hop_varieties(db, **arguments)

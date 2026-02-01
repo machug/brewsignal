@@ -1010,12 +1010,14 @@ async def get_batch_readings(
 
 
 @router.get("/{batch_id}/tasting-notes", response_model=list[TastingNoteResponse])
-async def list_tasting_notes(batch_id: int, db: AsyncSession = Depends(get_db)):
+async def list_tasting_notes(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
     """Get all tasting notes for a batch, ordered by tasting date (newest first)."""
-    # Verify batch exists
-    batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
-    if not batch_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Batch not found")
+    # Verify batch exists and user owns it
+    await get_user_batch(batch_id, user, db)
 
     query = (
         select(TastingNote)
@@ -1030,23 +1032,39 @@ async def list_tasting_notes(batch_id: int, db: AsyncSession = Depends(get_db)):
 async def create_tasting_note(
     batch_id: int,
     note: TastingNoteCreate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new tasting note for a batch."""
-    # Verify batch exists
-    batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
-    if not batch_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Batch not found")
+    # Verify batch exists and user owns it
+    batch = await get_user_batch(batch_id, user, db)
 
-    # Override batch_id from path
-    note_data = note.model_dump()
-    note_data["batch_id"] = batch_id
+    # Calculate total score if any scores provided
+    scores = [note.appearance_score, note.aroma_score, note.flavor_score,
+              note.mouthfeel_score, note.overall_score]
+    total = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
 
-    # Set tasted_at to now if not provided
-    if note_data.get("tasted_at") is None:
-        note_data["tasted_at"] = datetime.now(timezone.utc)
-
-    db_note = TastingNote(**note_data)
+    db_note = TastingNote(
+        batch_id=batch_id,
+        user_id=user.user_id,
+        tasted_at=note.tasted_at or datetime.now(timezone.utc),
+        days_since_packaging=note.days_since_packaging,
+        serving_temp_c=note.serving_temp_c,
+        glassware=note.glassware,
+        appearance_score=note.appearance_score,
+        appearance_notes=note.appearance_notes,
+        aroma_score=note.aroma_score,
+        aroma_notes=note.aroma_notes,
+        flavor_score=note.flavor_score,
+        flavor_notes=note.flavor_notes,
+        mouthfeel_score=note.mouthfeel_score,
+        mouthfeel_notes=note.mouthfeel_notes,
+        overall_score=note.overall_score,
+        overall_notes=note.overall_notes,
+        total_score=total,
+        to_style=note.to_style,
+        style_deviation_notes=note.style_deviation_notes,
+    )
     db.add(db_note)
     await db.commit()
     await db.refresh(db_note)
@@ -1057,9 +1075,13 @@ async def create_tasting_note(
 async def get_tasting_note(
     batch_id: int,
     note_id: int,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific tasting note."""
+    # Verify batch exists and user owns it
+    await get_user_batch(batch_id, user, db)
+
     query = select(TastingNote).where(
         TastingNote.id == note_id,
         TastingNote.batch_id == batch_id
@@ -1077,9 +1099,13 @@ async def update_tasting_note(
     batch_id: int,
     note_id: int,
     update: TastingNoteUpdate,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a tasting note."""
+    # Verify batch exists and user owns it
+    await get_user_batch(batch_id, user, db)
+
     query = select(TastingNote).where(
         TastingNote.id == note_id,
         TastingNote.batch_id == batch_id
@@ -1095,6 +1121,11 @@ async def update_tasting_note(
     for key, value in update_data.items():
         setattr(note, key, value)
 
+    # Recalculate total_score from current scores (including any updates)
+    scores = [note.appearance_score, note.aroma_score, note.flavor_score,
+              note.mouthfeel_score, note.overall_score]
+    note.total_score = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
+
     await db.commit()
     await db.refresh(note)
     return note
@@ -1104,9 +1135,13 @@ async def update_tasting_note(
 async def delete_tasting_note(
     batch_id: int,
     note_id: int,
+    user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a tasting note."""
+    # Verify batch exists and user owns it
+    await get_user_batch(batch_id, user, db)
+
     query = select(TastingNote).where(
         TastingNote.id == note_id,
         TastingNote.batch_id == batch_id

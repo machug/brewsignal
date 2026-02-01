@@ -50,6 +50,11 @@ from .utility import (
     get_thread_context,
     search_threads,
 )
+from .reflections import (
+    create_batch_reflection,
+    get_batch_reflections,
+    update_batch_reflection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -723,6 +728,110 @@ TOOL_DEFINITIONS = [
                 "required": ["thread_id"]
             }
         }
+    },
+    # =============================================================================
+    # Batch Reflection Tools (Post-Mortem)
+    # =============================================================================
+    {
+        "type": "function",
+        "function": {
+            "name": "create_batch_reflection",
+            "description": "Create a reflection for a specific batch phase (brew day, fermentation, packaging, conditioning). Use this when the user wants to record what went well, what went wrong, lessons learned, or changes for next time. Only one reflection per phase per batch.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to create reflection for"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "enum": ["brew_day", "fermentation", "packaging", "conditioning"],
+                        "description": "The batch phase this reflection is for"
+                    },
+                    "metrics": {
+                        "type": "object",
+                        "description": "Optional phase-specific metrics (e.g., efficiency_actual, efficiency_expected for brew_day)"
+                    },
+                    "what_went_well": {
+                        "type": "string",
+                        "description": "Things that went well during this phase"
+                    },
+                    "what_went_wrong": {
+                        "type": "string",
+                        "description": "Things that went wrong during this phase"
+                    },
+                    "lessons_learned": {
+                        "type": "string",
+                        "description": "Lessons learned from this phase"
+                    },
+                    "next_time_changes": {
+                        "type": "string",
+                        "description": "Changes to make next time"
+                    }
+                },
+                "required": ["batch_id", "phase"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_batch_reflections",
+            "description": "Get reflections for a batch, optionally filtered by phase. Use this to retrieve past observations and learnings about a specific batch.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "integer",
+                        "description": "The batch ID to get reflections for"
+                    },
+                    "phase": {
+                        "type": "string",
+                        "enum": ["brew_day", "fermentation", "packaging", "conditioning"],
+                        "description": "Optional: Filter by specific phase"
+                    }
+                },
+                "required": ["batch_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_batch_reflection",
+            "description": "Update an existing batch reflection. Use this when the user wants to add or modify observations about a phase they've already reflected on.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reflection_id": {
+                        "type": "integer",
+                        "description": "The reflection ID to update"
+                    },
+                    "metrics": {
+                        "type": "object",
+                        "description": "Updated phase-specific metrics"
+                    },
+                    "what_went_well": {
+                        "type": "string",
+                        "description": "Things that went well during this phase"
+                    },
+                    "what_went_wrong": {
+                        "type": "string",
+                        "description": "Things that went wrong during this phase"
+                    },
+                    "lessons_learned": {
+                        "type": "string",
+                        "description": "Lessons learned from this phase"
+                    },
+                    "next_time_changes": {
+                        "type": "string",
+                        "description": "Changes to make next time"
+                    }
+                },
+                "required": ["reflection_id"]
+            }
+        }
     }
 ]
 
@@ -804,5 +913,12 @@ async def execute_tool(
         return await list_recent_threads(db, current_thread_id=thread_id, user_id=user_id, **arguments)
     elif tool_name == "get_thread_context":
         return await get_thread_context(db, user_id=user_id, **arguments)
+    # Batch reflection tools - pass user_id for multi-tenant isolation
+    elif tool_name == "create_batch_reflection":
+        return await create_batch_reflection(db, user_id=user_id, **arguments)
+    elif tool_name == "get_batch_reflections":
+        return await get_batch_reflections(db, user_id=user_id, **arguments)
+    elif tool_name == "update_batch_reflection":
+        return await update_batch_reflection(db, user_id=user_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

@@ -6,6 +6,9 @@
 	import { fetchRecipe, deleteRecipe } from '$lib/api';
 	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
 	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
+	import MashSchedule from '$lib/components/recipe/MashSchedule.svelte';
+	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
+	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
 
 	let recipe = $state<RecipeResponse | null>(null);
@@ -177,6 +180,27 @@
 			{#if recipe.hops && recipe.hops.length > 0}
 				<section class="content-card">
 					<HopSchedule hops={recipe.hops} />
+				</section>
+			{/if}
+
+			<!-- Mash Schedule Section -->
+			{#if recipe.mash_steps && recipe.mash_steps.length > 0}
+				<section class="content-card">
+					<MashSchedule steps={recipe.mash_steps} />
+				</section>
+			{/if}
+
+			<!-- Fermentation Schedule Section -->
+			{#if recipe.fermentation_steps && recipe.fermentation_steps.length > 0}
+				<section class="content-card">
+					<FermentationSchedule steps={recipe.fermentation_steps} />
+				</section>
+			{/if}
+
+			<!-- Water Additions Section -->
+			{#if recipe.miscs && recipe.miscs.length > 0}
+				<section class="content-card">
+					<WaterAdditions miscs={recipe.miscs} />
 				</section>
 			{/if}
 

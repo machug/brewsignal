@@ -586,6 +586,10 @@ class Batch(Base):
         back_populates="batch",
         cascade="all, delete-orphan"
     )
+    reflections: Mapped[list["BatchReflection"]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan"
+    )
 
     @property
     def is_deleted(self) -> bool:
@@ -1077,6 +1081,34 @@ class TastingNote(Base):
 
     # Relationship
     batch: Mapped["Batch"] = relationship(back_populates="tasting_notes")
+
+
+class BatchReflection(Base):
+    """Phase-specific reflections for a batch (brew day, fermentation, etc.)."""
+    __tablename__ = "batch_reflections"
+    __table_args__ = (
+        Index("ix_batch_reflections_batch_phase", "batch_id", "phase"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    phase: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    what_went_well: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    what_went_wrong: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lessons_learned: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    next_time_changes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_model_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    batch: Mapped["Batch"] = relationship(back_populates="reflections")
 
 
 # Pydantic Schemas
@@ -2136,6 +2168,58 @@ class TastingNoteResponse(BaseModel):
     updated_at: datetime
 
     @field_serializer('tasted_at', 'created_at', 'updated_at')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        return serialize_datetime_to_utc(dt)
+
+
+class BatchReflectionCreate(BaseModel):
+    """Create a new batch reflection."""
+    batch_id: int
+    phase: str
+    metrics: Optional[dict] = None
+    what_went_well: Optional[str] = None
+    what_went_wrong: Optional[str] = None
+    lessons_learned: Optional[str] = None
+    next_time_changes: Optional[str] = None
+
+    @field_validator("phase")
+    @classmethod
+    def validate_phase(cls, v: str) -> str:
+        valid = ["brew_day", "fermentation", "packaging", "conditioning"]
+        if v not in valid:
+            raise ValueError(f"phase must be one of: {', '.join(valid)}")
+        return v
+
+
+class BatchReflectionUpdate(BaseModel):
+    """Update an existing batch reflection."""
+    metrics: Optional[dict] = None
+    what_went_well: Optional[str] = None
+    what_went_wrong: Optional[str] = None
+    lessons_learned: Optional[str] = None
+    next_time_changes: Optional[str] = None
+
+
+class BatchReflectionResponse(BaseModel):
+    """Response schema for a batch reflection."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    batch_id: int
+    user_id: Optional[str] = None
+    phase: str
+    created_at: datetime
+    updated_at: datetime
+    metrics: Optional[dict] = None
+    what_went_well: Optional[str] = None
+    what_went_wrong: Optional[str] = None
+    lessons_learned: Optional[str] = None
+    next_time_changes: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_generated_at: Optional[datetime] = None
+    ai_model_version: Optional[str] = None
+
+    @field_serializer('created_at', 'updated_at', 'ai_generated_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 

@@ -1011,3 +1011,97 @@ async def delete_recipe_miscs(
     await db.commit()
 
     return {"status": "deleted", "recipe_id": recipe_id}
+
+
+# ============================================================================
+# Recipe Water Profiles Sub-Resource API
+# ============================================================================
+
+@router.get("/{recipe_id}/water-profiles", response_model=list[WaterProfileResponse])
+async def get_recipe_water_profiles(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all water profiles for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.water_profiles))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    return recipe.water_profiles
+
+
+@router.put("/{recipe_id}/water-profiles", response_model=list[WaterProfileResponse])
+async def replace_recipe_water_profiles(
+    recipe_id: int,
+    profiles: list[WaterProfileInput],
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace all water profiles for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.water_profiles))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Delete existing profiles
+    await db.execute(
+        delete(RecipeWaterProfile).where(RecipeWaterProfile.recipe_id == recipe_id)
+    )
+
+    # Create new profiles
+    new_profiles = []
+    for profile_data in profiles:
+        profile = RecipeWaterProfile(
+            recipe_id=recipe_id,
+            profile_type=profile_data.profile_type,
+            name=profile_data.name,
+            calcium_ppm=profile_data.calcium_ppm,
+            magnesium_ppm=profile_data.magnesium_ppm,
+            sodium_ppm=profile_data.sodium_ppm,
+            chloride_ppm=profile_data.chloride_ppm,
+            sulfate_ppm=profile_data.sulfate_ppm,
+            bicarbonate_ppm=profile_data.bicarbonate_ppm,
+            ph=profile_data.ph,
+            alkalinity=profile_data.alkalinity,
+        )
+        db.add(profile)
+        new_profiles.append(profile)
+
+    await db.commit()
+
+    for profile in new_profiles:
+        await db.refresh(profile)
+
+    return new_profiles
+
+
+@router.delete("/{recipe_id}/water-profiles", response_model=dict)
+async def delete_recipe_water_profiles(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all water profiles for a recipe."""
+    result = await db.execute(
+        select(Recipe).where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    await db.execute(
+        delete(RecipeWaterProfile).where(RecipeWaterProfile.recipe_id == recipe_id)
+    )
+    await db.commit()
+
+    return {"status": "deleted", "recipe_id": recipe_id}

@@ -198,9 +198,13 @@
 			{/if}
 
 			<!-- Water Additions Section -->
-			{#if recipe.miscs && recipe.miscs.length > 0}
+			{#if (recipe.miscs && recipe.miscs.length > 0) || (recipe.water_profiles && recipe.water_profiles.length > 0) || (recipe.water_adjustments && recipe.water_adjustments.length > 0)}
 				<section class="content-card">
-					<WaterAdditions miscs={recipe.miscs} />
+					<WaterAdditions
+						miscs={recipe.miscs || []}
+						waterProfiles={recipe.water_profiles || []}
+						waterAdjustments={recipe.water_adjustments || []}
+					/>
 				</section>
 			{/if}
 

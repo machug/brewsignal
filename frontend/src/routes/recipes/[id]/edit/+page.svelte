@@ -7,6 +7,24 @@
 	import RecipeBuilder from '$lib/components/recipe/RecipeBuilder.svelte';
 	import type { RecipeData } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { srmToHex, srmToDescription, calculateBUGU } from '$lib/brewing';
+	// Nested collection editors
+	import MashScheduleEditor from '$lib/components/recipe/MashScheduleEditor.svelte';
+	import FermentationScheduleEditor from '$lib/components/recipe/FermentationScheduleEditor.svelte';
+	import WaterProfileEditor from '$lib/components/recipe/WaterProfileEditor.svelte';
+	import WaterAdjustmentEditor from '$lib/components/recipe/WaterAdjustmentEditor.svelte';
+	import MiscEditor from '$lib/components/recipe/MiscEditor.svelte';
+	import {
+		updateRecipeMashSteps,
+		updateRecipeFermentationSteps,
+		updateRecipeWaterProfiles,
+		updateRecipeWaterAdjustments,
+		updateRecipeMiscs,
+		type MashStepInput,
+		type FermentationStepInput,
+		type WaterProfileInput,
+		type WaterAdjustmentInput,
+		type MiscInput
+	} from '$lib/api';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -14,6 +32,27 @@
 	let submitting = $state(false);
 	let recipeBuilder: ReturnType<typeof RecipeBuilder> | undefined = $state();
 	let reviewLoading = $state(false);
+
+	// State for nested collections
+	let mashSteps = $state<MashStepInput[]>([]);
+	let fermentationSteps = $state<FermentationStepInput[]>([]);
+	let waterProfiles = $state<WaterProfileInput[]>([]);
+	let waterAdjustments = $state<WaterAdjustmentInput[]>([]);
+	let miscs = $state<MiscInput[]>([]);
+
+	// Saving states for each collection
+	let mashSaving = $state(false);
+	let fermSaving = $state(false);
+	let waterProfileSaving = $state(false);
+	let waterAdjSaving = $state(false);
+	let miscSaving = $state(false);
+
+	// Save status feedback for each collection
+	let mashSaveStatus = $state<'success' | 'error' | null>(null);
+	let fermSaveStatus = $state<'success' | 'error' | null>(null);
+	let waterProfileSaveStatus = $state<'success' | 'error' | null>(null);
+	let waterAdjSaveStatus = $state<'success' | 'error' | null>(null);
+	let miscSaveStatus = $state<'success' | 'error' | null>(null);
 
 	let recipeId = $derived.by(() => {
 		const id = parseInt($page.params.id || '', 10);
@@ -34,6 +73,138 @@
 		}, 100);
 		return () => clearInterval(interval);
 	});
+
+	// Initialize nested collections from recipe data
+	$effect(() => {
+		if (recipe) {
+			mashSteps = (recipe.mash_steps || []).map((s) => ({
+				step_number: s.step_number,
+				name: s.name,
+				type: s.type,
+				temp_c: s.temp_c,
+				time_minutes: s.time_minutes,
+				infusion_amount_liters: s.infusion_amount_liters,
+				infusion_temp_c: s.infusion_temp_c,
+				ramp_time_minutes: s.ramp_time_minutes
+			}));
+			fermentationSteps = (recipe.fermentation_steps || []).map((s) => ({
+				step_number: s.step_number,
+				type: s.type,
+				temp_c: s.temp_c,
+				time_days: s.time_days
+			}));
+			waterProfiles = (recipe.water_profiles || []).map((p) => ({
+				profile_type: p.profile_type,
+				name: p.name,
+				calcium_ppm: p.calcium_ppm,
+				magnesium_ppm: p.magnesium_ppm,
+				sodium_ppm: p.sodium_ppm,
+				chloride_ppm: p.chloride_ppm,
+				sulfate_ppm: p.sulfate_ppm,
+				bicarbonate_ppm: p.bicarbonate_ppm,
+				ph: p.ph,
+				alkalinity: p.alkalinity
+			}));
+			waterAdjustments = (recipe.water_adjustments || []).map((a) => ({
+				stage: a.stage,
+				volume_liters: a.volume_liters,
+				calcium_sulfate_g: a.calcium_sulfate_g,
+				calcium_chloride_g: a.calcium_chloride_g,
+				magnesium_sulfate_g: a.magnesium_sulfate_g,
+				sodium_bicarbonate_g: a.sodium_bicarbonate_g,
+				calcium_carbonate_g: a.calcium_carbonate_g,
+				calcium_hydroxide_g: a.calcium_hydroxide_g,
+				magnesium_chloride_g: a.magnesium_chloride_g,
+				sodium_chloride_g: a.sodium_chloride_g,
+				acid_type: a.acid_type,
+				acid_ml: a.acid_ml,
+				acid_concentration_percent: a.acid_concentration_percent
+			}));
+			miscs = (recipe.miscs || []).map((m) => ({
+				name: m.name,
+				type: m.type || 'other',
+				use: m.use || 'boil',
+				time_min: m.time_min,
+				amount_kg: m.amount_kg
+			}));
+		}
+	});
+
+	// Save handlers for nested collections
+	async function saveMashSteps() {
+		if (!recipe) return;
+		mashSaving = true;
+		mashSaveStatus = null;
+		try {
+			await updateRecipeMashSteps(recipe.id, mashSteps);
+			mashSaveStatus = 'success';
+		} catch (e) {
+			console.error('Failed to save mash steps', e);
+			mashSaveStatus = 'error';
+		} finally {
+			mashSaving = false;
+		}
+	}
+
+	async function saveFermentationSteps() {
+		if (!recipe) return;
+		fermSaving = true;
+		fermSaveStatus = null;
+		try {
+			await updateRecipeFermentationSteps(recipe.id, fermentationSteps);
+			fermSaveStatus = 'success';
+		} catch (e) {
+			console.error('Failed to save fermentation steps', e);
+			fermSaveStatus = 'error';
+		} finally {
+			fermSaving = false;
+		}
+	}
+
+	async function saveWaterProfiles() {
+		if (!recipe) return;
+		waterProfileSaving = true;
+		waterProfileSaveStatus = null;
+		try {
+			await updateRecipeWaterProfiles(recipe.id, waterProfiles);
+			waterProfileSaveStatus = 'success';
+		} catch (e) {
+			console.error('Failed to save water profiles', e);
+			waterProfileSaveStatus = 'error';
+		} finally {
+			waterProfileSaving = false;
+		}
+	}
+
+	async function saveWaterAdjustments() {
+		if (!recipe) return;
+		waterAdjSaving = true;
+		waterAdjSaveStatus = null;
+		try {
+			await updateRecipeWaterAdjustments(recipe.id, waterAdjustments);
+			waterAdjSaveStatus = 'success';
+		} catch (e) {
+			console.error('Failed to save water adjustments', e);
+			waterAdjSaveStatus = 'error';
+		} finally {
+			waterAdjSaving = false;
+		}
+	}
+
+	async function saveMiscs() {
+		if (!recipe) return;
+		miscSaving = true;
+		miscSaveStatus = null;
+		try {
+			await updateRecipeMiscs(recipe.id, miscs);
+			miscSaveStatus = 'success';
+		} catch (e) {
+			console.error('Failed to save miscs', e);
+			miscSaveStatus = 'error';
+		} finally {
+			miscSaving = false;
+		}
+	}
 
 	onMount(async () => {
 		if (!recipeId) {
@@ -216,6 +387,104 @@
 			onSave={handleSave}
 			onCancel={handleCancel}
 		/>
+
+		<!-- Nested Collections Editors -->
+		<div class="nested-editors">
+			<details class="editor-accordion">
+				<summary>Mash Schedule ({mashSteps.length} steps)</summary>
+				<div class="editor-content">
+					<MashScheduleEditor steps={mashSteps} onUpdate={(s) => (mashSteps = s)} />
+					<div class="save-row">
+						<button class="btn-collection-save" onclick={saveMashSteps} disabled={mashSaving}>
+							{mashSaving ? 'Saving...' : 'Save Mash Schedule'}
+						</button>
+						{#if mashSaveStatus === 'success'}
+							<span class="save-success">Saved!</span>
+						{:else if mashSaveStatus === 'error'}
+							<span class="save-error">Failed to save</span>
+						{/if}
+					</div>
+				</div>
+			</details>
+
+			<details class="editor-accordion">
+				<summary>Fermentation Schedule ({fermentationSteps.length} steps)</summary>
+				<div class="editor-content">
+					<FermentationScheduleEditor
+						steps={fermentationSteps}
+						onUpdate={(s) => (fermentationSteps = s)}
+					/>
+					<div class="save-row">
+						<button class="btn-collection-save" onclick={saveFermentationSteps} disabled={fermSaving}>
+							{fermSaving ? 'Saving...' : 'Save Fermentation Schedule'}
+						</button>
+						{#if fermSaveStatus === 'success'}
+							<span class="save-success">Saved!</span>
+						{:else if fermSaveStatus === 'error'}
+							<span class="save-error">Failed to save</span>
+						{/if}
+					</div>
+				</div>
+			</details>
+
+			<details class="editor-accordion">
+				<summary>Water Profiles ({waterProfiles.length} profiles)</summary>
+				<div class="editor-content">
+					<WaterProfileEditor profiles={waterProfiles} onUpdate={(p) => (waterProfiles = p)} />
+					<div class="save-row">
+						<button
+							class="btn-collection-save"
+							onclick={saveWaterProfiles}
+							disabled={waterProfileSaving}
+						>
+							{waterProfileSaving ? 'Saving...' : 'Save Water Profiles'}
+						</button>
+						{#if waterProfileSaveStatus === 'success'}
+							<span class="save-success">Saved!</span>
+						{:else if waterProfileSaveStatus === 'error'}
+							<span class="save-error">Failed to save</span>
+						{/if}
+					</div>
+				</div>
+			</details>
+
+			<details class="editor-accordion">
+				<summary>Water Adjustments ({waterAdjustments.length} stages)</summary>
+				<div class="editor-content">
+					<WaterAdjustmentEditor
+						adjustments={waterAdjustments}
+						onUpdate={(a) => (waterAdjustments = a)}
+					/>
+					<div class="save-row">
+						<button class="btn-collection-save" onclick={saveWaterAdjustments} disabled={waterAdjSaving}>
+							{waterAdjSaving ? 'Saving...' : 'Save Water Adjustments'}
+						</button>
+						{#if waterAdjSaveStatus === 'success'}
+							<span class="save-success">Saved!</span>
+						{:else if waterAdjSaveStatus === 'error'}
+							<span class="save-error">Failed to save</span>
+						{/if}
+					</div>
+				</div>
+			</details>
+
+			<details class="editor-accordion">
+				<summary>Miscellaneous Ingredients ({miscs.length} items)</summary>
+				<div class="editor-content">
+					<MiscEditor items={miscs} onUpdate={(m) => (miscs = m)} />
+					<div class="save-row">
+						<button class="btn-collection-save" onclick={saveMiscs} disabled={miscSaving}>
+							{miscSaving ? 'Saving...' : 'Save Misc Ingredients'}
+						</button>
+						{#if miscSaveStatus === 'success'}
+							<span class="save-success">Saved!</span>
+						{:else if miscSaveStatus === 'error'}
+							<span class="save-error">Failed to save</span>
+						{/if}
+					</div>
+				</div>
+			</details>
+		</div>
 	{/if}
 </div>
 
@@ -497,5 +766,95 @@
 		z-index: 1000;
 		color: white;
 		font-size: 16px;
+	}
+
+	/* Nested Collection Editors */
+	.nested-editors {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		margin-top: var(--space-6);
+	}
+
+	.editor-accordion {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+	}
+
+	.editor-accordion summary {
+		padding: var(--space-3) var(--space-4);
+		cursor: pointer;
+		font-weight: 500;
+		color: var(--text-primary);
+		list-style: none;
+	}
+
+	.editor-accordion summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.editor-accordion summary::before {
+		content: '+';
+		display: inline-block;
+		width: 16px;
+		margin-right: var(--space-2);
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.editor-accordion[open] summary::before {
+		content: '-';
+	}
+
+	.editor-accordion summary:hover {
+		background: var(--bg-hover);
+	}
+
+	.editor-content {
+		padding: var(--space-4);
+		border-top: 1px solid var(--border-subtle);
+	}
+
+	.btn-collection-save {
+		margin-top: var(--space-3);
+		padding: 8px 16px;
+		background: var(--recipe-accent);
+		color: var(--gray-950);
+		border: none;
+		border-radius: 6px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-collection-save:hover:not(:disabled) {
+		background: var(--recipe-accent-hover);
+	}
+
+	.btn-collection-save:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.save-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		margin-top: var(--space-3);
+	}
+
+	.save-row .btn-collection-save {
+		margin-top: 0;
+	}
+
+	.save-success {
+		color: var(--positive);
+		font-size: 13px;
+	}
+
+	.save-error {
+		color: var(--negative);
+		font-size: 13px;
 	}
 </style>

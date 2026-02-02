@@ -423,3 +423,16 @@ async def test_serialize_fermentation_steps():
 
         await session.close()
         break
+
+
+def test_misc_sparge_use_mapped():
+    """Test that add_to_sparge timing maps to 'sparge' use field."""
+    serializer = RecipeSerializer()
+    misc_dict = {
+        'name': 'Gypsum',
+        'type': 'water agent',
+        'amount': {'value': 1.5, 'unit': 'g'},
+        'timing': {'use': 'add_to_sparge'}
+    }
+    misc = serializer._create_misc(misc_dict)
+    assert misc.use == 'sparge'

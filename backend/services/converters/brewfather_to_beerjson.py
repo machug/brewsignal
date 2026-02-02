@@ -278,7 +278,7 @@ class BrewfatherToBeerJSONConverter:
             'Primary': 'add_to_fermentation',
             'Secondary': 'add_to_fermentation',
             'Bottling': 'add_to_package',
-            'Sparge': 'add_to_mash'
+            'Sparge': 'add_to_sparge'
         }
 
         timing = {

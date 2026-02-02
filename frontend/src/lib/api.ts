@@ -2288,3 +2288,176 @@ export async function regenerateReflectionInsights(batchId: number, reflectionId
 	}
 	return response.json();
 }
+
+// ============================================================================
+// Recipe Nested Collections API
+// ============================================================================
+
+// Input types (for PUT requests)
+export interface MashStepInput {
+	step_number: number;
+	name: string;
+	type: string;
+	temp_c: number;
+	time_minutes: number;
+	infusion_amount_liters?: number;
+	infusion_temp_c?: number;
+	ramp_time_minutes?: number;
+}
+
+export interface FermentationStepInput {
+	step_number: number;
+	type: string;
+	temp_c: number;
+	time_days: number;
+}
+
+export interface WaterProfileInput {
+	profile_type: string;
+	name?: string;
+	calcium_ppm?: number;
+	magnesium_ppm?: number;
+	sodium_ppm?: number;
+	chloride_ppm?: number;
+	sulfate_ppm?: number;
+	bicarbonate_ppm?: number;
+	ph?: number;
+	alkalinity?: number;
+}
+
+export interface WaterAdjustmentInput {
+	stage: string;
+	volume_liters?: number;
+	calcium_sulfate_g?: number;
+	calcium_chloride_g?: number;
+	magnesium_sulfate_g?: number;
+	sodium_bicarbonate_g?: number;
+	calcium_carbonate_g?: number;
+	calcium_hydroxide_g?: number;
+	magnesium_chloride_g?: number;
+	sodium_chloride_g?: number;
+	acid_type?: string;
+	acid_ml?: number;
+	acid_concentration_percent?: number;
+}
+
+export interface MiscInput {
+	name: string;
+	type: string;
+	use: string;
+	time_min?: number;
+	amount_kg?: number;
+	amount_unit?: string;
+	use_for?: string;
+	notes?: string;
+}
+
+// Mash Steps API
+export async function fetchRecipeMashSteps(recipeId: number): Promise<MashStepResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/mash-steps`);
+	if (!response.ok) throw new Error('Failed to fetch mash steps');
+	return response.json();
+}
+
+export async function updateRecipeMashSteps(recipeId: number, steps: MashStepInput[]): Promise<MashStepResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/mash-steps`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(steps)
+	});
+	if (!response.ok) throw new Error('Failed to update mash steps');
+	return response.json();
+}
+
+export async function deleteRecipeMashSteps(recipeId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/mash-steps`, { method: 'DELETE' });
+	if (!response.ok) throw new Error('Failed to delete mash steps');
+}
+
+// Fermentation Steps API
+export async function fetchRecipeFermentationSteps(recipeId: number): Promise<FermentationStepResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/fermentation-steps`);
+	if (!response.ok) throw new Error('Failed to fetch fermentation steps');
+	return response.json();
+}
+
+export async function updateRecipeFermentationSteps(recipeId: number, steps: FermentationStepInput[]): Promise<FermentationStepResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/fermentation-steps`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(steps)
+	});
+	if (!response.ok) throw new Error('Failed to update fermentation steps');
+	return response.json();
+}
+
+export async function deleteRecipeFermentationSteps(recipeId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/fermentation-steps`, { method: 'DELETE' });
+	if (!response.ok) throw new Error('Failed to delete fermentation steps');
+}
+
+// Water Profiles API
+export async function fetchRecipeWaterProfiles(recipeId: number): Promise<WaterProfileResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-profiles`);
+	if (!response.ok) throw new Error('Failed to fetch water profiles');
+	return response.json();
+}
+
+export async function updateRecipeWaterProfiles(recipeId: number, profiles: WaterProfileInput[]): Promise<WaterProfileResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-profiles`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(profiles)
+	});
+	if (!response.ok) throw new Error('Failed to update water profiles');
+	return response.json();
+}
+
+export async function deleteRecipeWaterProfiles(recipeId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-profiles`, { method: 'DELETE' });
+	if (!response.ok) throw new Error('Failed to delete water profiles');
+}
+
+// Water Adjustments API
+export async function fetchRecipeWaterAdjustments(recipeId: number): Promise<WaterAdjustmentResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-adjustments`);
+	if (!response.ok) throw new Error('Failed to fetch water adjustments');
+	return response.json();
+}
+
+export async function updateRecipeWaterAdjustments(recipeId: number, adjustments: WaterAdjustmentInput[]): Promise<WaterAdjustmentResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-adjustments`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(adjustments)
+	});
+	if (!response.ok) throw new Error('Failed to update water adjustments');
+	return response.json();
+}
+
+export async function deleteRecipeWaterAdjustments(recipeId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/water-adjustments`, { method: 'DELETE' });
+	if (!response.ok) throw new Error('Failed to delete water adjustments');
+}
+
+// Miscs API
+export async function fetchRecipeMiscs(recipeId: number): Promise<MiscResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/miscs`);
+	if (!response.ok) throw new Error('Failed to fetch miscs');
+	return response.json();
+}
+
+export async function updateRecipeMiscs(recipeId: number, miscs: MiscInput[]): Promise<MiscResponse[]> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/miscs`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(miscs)
+	});
+	if (!response.ok) throw new Error('Failed to update miscs');
+	return response.json();
+}
+
+export async function deleteRecipeMiscs(recipeId: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/miscs`, { method: 'DELETE' });
+	if (!response.ok) throw new Error('Failed to delete miscs');
+}

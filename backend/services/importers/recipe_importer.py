@@ -113,6 +113,10 @@ class RecipeImporter:
                     beerjson_dict = self.beerxml_converter.convert(parsed_dict)
                 elif detected_format == "brewfather":
                     beerjson_dict = self.brewfather_converter.convert(parsed_dict)
+                    # Extract water data separately (not in BeerJSON spec)
+                    # Pass it through to the serializer via a private key
+                    if 'water' in parsed_dict:
+                        beerjson_dict['beerjson']['recipes'][0]['_brewfather_water'] = parsed_dict['water']
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:

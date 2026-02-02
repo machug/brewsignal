@@ -61,6 +61,10 @@ class RecipeSerializer:
         if '_extensions' in beerjson_recipe:
             recipe.format_extensions = beerjson_recipe['_extensions']
 
+        # Process Brewfather water profiles (not in BeerJSON spec)
+        if '_brewfather_water' in beerjson_recipe:
+            self._serialize_brewfather_water(recipe, beerjson_recipe['_brewfather_water'])
+
         return recipe
 
     def _extract_recipe_vitals(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:
@@ -553,6 +557,7 @@ class RecipeSerializer:
         mapping = {
             'add_to_mash': 'mash',
             'add_to_boil': 'boil',
+            'add_to_sparge': 'sparge',
             'add_to_fermentation': 'primary',
             'add_to_package': 'bottling'
         }
@@ -571,3 +576,69 @@ class RecipeSerializer:
         else:
             # Default to primary
             return 'primary'
+
+    def _serialize_brewfather_water(self, recipe: Recipe, water_data: Dict[str, Any]) -> None:
+        """Serialize water profiles from Brewfather's water object.
+
+        Brewfather stores water chemistry data in a format not covered by BeerJSON 1.0.
+        This method extracts source, target, mash, and sparge water profiles.
+
+        Args:
+            recipe: Recipe model to add water profiles to
+            water_data: Brewfather water object with source, target, mash, sparge keys
+        """
+        profile_types = ['source', 'target', 'mash', 'sparge']
+
+        for profile_type in profile_types:
+            if profile_type not in water_data:
+                continue
+
+            profile_dict = water_data[profile_type]
+            if not profile_dict:
+                continue
+
+            profile = RecipeWaterProfile(
+                profile_type=profile_type,
+                name=profile_dict.get('name')
+            )
+
+            # Extract ion concentrations - Brewfather stores them as raw numbers or strings
+            profile.calcium_ppm = self._extract_numeric(profile_dict.get('calcium'))
+            profile.magnesium_ppm = self._extract_numeric(profile_dict.get('magnesium'))
+            profile.sodium_ppm = self._extract_numeric(profile_dict.get('sodium'))
+            profile.chloride_ppm = self._extract_numeric(profile_dict.get('chloride'))
+            profile.sulfate_ppm = self._extract_numeric(profile_dict.get('sulfate'))
+            profile.bicarbonate_ppm = self._extract_numeric(profile_dict.get('bicarbonate'))
+
+            # Extract pH (can be string or number in Brewfather)
+            profile.ph = self._extract_numeric(profile_dict.get('ph'))
+
+            # Extract alkalinity if present
+            profile.alkalinity = self._extract_numeric(profile_dict.get('alkalinity'))
+
+            recipe.water_profiles.append(profile)
+
+    def _extract_numeric(self, value: Any) -> Optional[float]:
+        """Extract numeric value from a field that may be string, int, or float.
+
+        Brewfather stores some numeric values as strings (e.g., "9.98" instead of 9.98).
+
+        Args:
+            value: Value to extract (may be str, int, float, or None)
+
+        Returns:
+            Float value or None if not convertible
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return None
+
+        return None

@@ -16,6 +16,7 @@ from ..models import (
     Recipe, RecipeCulture, RecipeCreate, RecipeUpdate, RecipeResponse, RecipeDetailResponse,
     Style, StyleResponse,
     RecipeMashStep, MashStepInput, MashStepResponse,
+    RecipeMisc, MiscInput, MiscResponse,
     RecipeWaterAdjustment, WaterAdjustmentInput, WaterAdjustmentResponse,
     RecipeFermentationStep, FermentationStepInput, FermentationStepResponse,
 )
@@ -728,6 +729,94 @@ async def delete_recipe_mash_steps(
 
     await db.execute(
         delete(RecipeMashStep).where(RecipeMashStep.recipe_id == recipe_id)
+    )
+    await db.commit()
+
+    return {"status": "deleted", "recipe_id": recipe_id}
+
+
+# ============================================================================
+# Recipe Fermentation Steps Sub-Resource API
+# ============================================================================
+
+@router.get("/{recipe_id}/fermentation-steps", response_model=list[FermentationStepResponse])
+async def get_recipe_fermentation_steps(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all fermentation steps for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.fermentation_steps))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    return sorted(recipe.fermentation_steps, key=lambda s: s.step_number)
+
+
+@router.put("/{recipe_id}/fermentation-steps", response_model=list[FermentationStepResponse])
+async def replace_recipe_fermentation_steps(
+    recipe_id: int,
+    steps: list[FermentationStepInput],
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace all fermentation steps for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.fermentation_steps))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Delete existing steps
+    await db.execute(
+        delete(RecipeFermentationStep).where(RecipeFermentationStep.recipe_id == recipe_id)
+    )
+
+    # Create new steps
+    new_steps = []
+    for step_data in steps:
+        step = RecipeFermentationStep(
+            recipe_id=recipe_id,
+            step_number=step_data.step_number,
+            type=step_data.type,
+            temp_c=step_data.temp_c,
+            time_days=step_data.time_days,
+        )
+        db.add(step)
+        new_steps.append(step)
+
+    await db.commit()
+
+    for step in new_steps:
+        await db.refresh(step)
+
+    return sorted(new_steps, key=lambda s: s.step_number)
+
+
+@router.delete("/{recipe_id}/fermentation-steps", response_model=dict)
+async def delete_recipe_fermentation_steps(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all fermentation steps for a recipe."""
+    result = await db.execute(
+        select(Recipe).where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    await db.execute(
+        delete(RecipeFermentationStep).where(RecipeFermentationStep.recipe_id == recipe_id)
     )
     await db.commit()
 

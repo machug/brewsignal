@@ -578,15 +578,18 @@ class RecipeSerializer:
             return 'primary'
 
     def _serialize_brewfather_water(self, recipe: Recipe, water_data: Dict[str, Any]) -> None:
-        """Serialize water profiles from Brewfather's water object.
+        """Serialize water profiles and adjustments from Brewfather's water object.
 
         Brewfather stores water chemistry data in a format not covered by BeerJSON 1.0.
-        This method extracts source, target, mash, and sparge water profiles.
+        This method extracts source, target, mash, and sparge water profiles,
+        as well as mash and sparge water adjustments (salts and acids).
 
         Args:
-            recipe: Recipe model to add water profiles to
-            water_data: Brewfather water object with source, target, mash, sparge keys
+            recipe: Recipe model to add water profiles and adjustments to
+            water_data: Brewfather water object with source, target, mash, sparge,
+                        mashAdjustments, and spargeAdjustments keys
         """
+        # Extract water profiles
         profile_types = ['source', 'target', 'mash', 'sparge']
 
         for profile_type in profile_types:
@@ -617,6 +620,45 @@ class RecipeSerializer:
             profile.alkalinity = self._extract_numeric(profile_dict.get('alkalinity'))
 
             recipe.water_profiles.append(profile)
+
+        # Extract water adjustments (mash and sparge)
+        adjustment_stages = [
+            ('mashAdjustments', 'mash'),
+            ('spargeAdjustments', 'sparge'),
+        ]
+
+        for bf_key, stage in adjustment_stages:
+            if bf_key not in water_data:
+                continue
+
+            adj_dict = water_data[bf_key]
+            if not adj_dict:
+                continue
+
+            adjustment = RecipeWaterAdjustment(stage=stage)
+
+            # Volume
+            adjustment.volume_liters = self._extract_numeric(adj_dict.get('volume'))
+
+            # Salt additions - map Brewfather keys to database columns
+            adjustment.calcium_sulfate_g = self._extract_numeric(adj_dict.get('calciumSulfate'))
+            adjustment.calcium_chloride_g = self._extract_numeric(adj_dict.get('calciumChloride'))
+            adjustment.magnesium_sulfate_g = self._extract_numeric(adj_dict.get('magnesiumSulfate'))
+            adjustment.sodium_bicarbonate_g = self._extract_numeric(adj_dict.get('sodiumBicarbonate'))
+            adjustment.calcium_carbonate_g = self._extract_numeric(adj_dict.get('calciumCarbonate'))
+            adjustment.calcium_hydroxide_g = self._extract_numeric(adj_dict.get('calciumHydroxide'))
+            adjustment.magnesium_chloride_g = self._extract_numeric(adj_dict.get('magnesiumChloride'))
+            adjustment.sodium_chloride_g = self._extract_numeric(adj_dict.get('sodiumChloride'))
+
+            # Acid info from acids array (take first acid if present)
+            acids = adj_dict.get('acids', [])
+            if acids and len(acids) > 0:
+                acid = acids[0]
+                adjustment.acid_type = acid.get('type')
+                adjustment.acid_ml = self._extract_numeric(acid.get('amount'))
+                adjustment.acid_concentration_percent = self._extract_numeric(acid.get('concentration'))
+
+            recipe.water_adjustments.append(adjustment)
 
     def _extract_numeric(self, value: Any) -> Optional[float]:
         """Extract numeric value from a field that may be string, int, or float.

@@ -200,3 +200,104 @@ async def test_brewfather_partial_water_data(test_db):
     # Other fields should be None
     assert source.magnesium_ppm is None
     assert source.sodium_ppm is None
+
+
+@pytest.mark.asyncio
+async def test_brewfather_water_adjustments_extracted(test_db):
+    """Test that water adjustments are extracted from Brewfather JSON."""
+    bf_json = '''{
+        "name": "Water Adjustments Recipe",
+        "type": "All Grain",
+        "batchSize": 20,
+        "boilTime": 60,
+        "equipment": {"efficiency": 75},
+        "fermentables": [{"name": "Pale Malt", "amount": 5}],
+        "water": {
+            "mashAdjustments": {
+                "calciumChloride": 1.7,
+                "calciumSulfate": 1.5,
+                "magnesiumSulfate": 2.2,
+                "sodiumBicarbonate": 3.0,
+                "sodiumChloride": 0.4,
+                "volume": 13.29,
+                "acids": [{"type": "lactic", "amount": 1.0, "concentration": 88}]
+            },
+            "spargeAdjustments": {
+                "calciumChloride": 1.89,
+                "calciumSulfate": 1.66,
+                "magnesiumSulfate": 2.44,
+                "sodiumChloride": 0.44,
+                "volume": 14.75
+            }
+        }
+    }'''
+
+    # Import recipe
+    importer = RecipeImporter()
+    result = await importer.import_recipe(bf_json, 'brewfather', test_db)
+
+    # Verify success
+    assert result.success is True
+    assert result.recipe is not None
+
+    # Verify water adjustments were created
+    assert len(result.recipe.water_adjustments) == 2
+
+    # Find and verify mash adjustment
+    mash_adj = next(a for a in result.recipe.water_adjustments if a.stage == 'mash')
+    assert mash_adj.volume_liters == pytest.approx(13.29, rel=0.01)
+    assert mash_adj.calcium_chloride_g == pytest.approx(1.7, rel=0.01)
+    assert mash_adj.calcium_sulfate_g == pytest.approx(1.5, rel=0.01)
+    assert mash_adj.magnesium_sulfate_g == pytest.approx(2.2, rel=0.01)
+    assert mash_adj.sodium_bicarbonate_g == pytest.approx(3.0, rel=0.01)
+    assert mash_adj.sodium_chloride_g == pytest.approx(0.4, rel=0.01)
+    assert mash_adj.acid_type == 'lactic'
+    assert mash_adj.acid_ml == pytest.approx(1.0, rel=0.01)
+    assert mash_adj.acid_concentration_percent == pytest.approx(88, rel=0.01)
+
+    # Find and verify sparge adjustment
+    sparge_adj = next(a for a in result.recipe.water_adjustments if a.stage == 'sparge')
+    assert sparge_adj.volume_liters == pytest.approx(14.75, rel=0.01)
+    assert sparge_adj.calcium_chloride_g == pytest.approx(1.89, rel=0.01)
+    assert sparge_adj.calcium_sulfate_g == pytest.approx(1.66, rel=0.01)
+    assert sparge_adj.magnesium_sulfate_g == pytest.approx(2.44, rel=0.01)
+    assert sparge_adj.sodium_chloride_g == pytest.approx(0.44, rel=0.01)
+    # No acid for sparge in this test
+    assert sparge_adj.acid_type is None
+
+
+@pytest.mark.asyncio
+async def test_brewfather_water_adjustments_from_real_file(test_db):
+    """Test that water adjustments are extracted from actual Brewfather test file."""
+    # Load actual Brewfather test file
+    test_file = Path("docs/Brewfather_RECIPE_PhilterXPAClone_20251207.json")
+    with open(test_file, "r") as f:
+        content = f.read()
+
+    # Import recipe
+    importer = RecipeImporter()
+    result = await importer.import_recipe(content, "brewfather", test_db)
+
+    # Verify success
+    assert result.success is True
+    assert result.recipe is not None
+
+    # Verify water adjustments were created
+    assert len(result.recipe.water_adjustments) >= 2
+
+    # Find and verify mash adjustment
+    mash_adj = next(a for a in result.recipe.water_adjustments if a.stage == 'mash')
+    assert mash_adj.volume_liters == pytest.approx(13.37, rel=0.01)
+    assert mash_adj.calcium_chloride_g == pytest.approx(1.24, rel=0.01)
+    assert mash_adj.calcium_sulfate_g == pytest.approx(4.47, rel=0.01)
+    assert mash_adj.magnesium_sulfate_g == pytest.approx(2.38, rel=0.01)
+    # Acid amount is 0 in this file
+    assert mash_adj.acid_type == 'lactic'
+    assert mash_adj.acid_ml == 0
+
+    # Find and verify sparge adjustment
+    sparge_adj = next(a for a in result.recipe.water_adjustments if a.stage == 'sparge')
+    assert sparge_adj.volume_liters == pytest.approx(15.47, rel=0.01)
+    assert sparge_adj.calcium_chloride_g == pytest.approx(1.43, rel=0.01)
+    assert sparge_adj.calcium_sulfate_g == pytest.approx(5.17, rel=0.01)
+    assert sparge_adj.magnesium_sulfate_g == pytest.approx(2.75, rel=0.01)

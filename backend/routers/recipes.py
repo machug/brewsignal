@@ -18,6 +18,7 @@ from ..models import (
     RecipeMashStep, MashStepInput, MashStepResponse,
     RecipeMisc, MiscInput, MiscResponse,
     RecipeWaterAdjustment, WaterAdjustmentInput, WaterAdjustmentResponse,
+    RecipeWaterProfile, WaterProfileInput, WaterProfileResponse,
     RecipeFermentationStep, FermentationStepInput, FermentationStepResponse,
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
@@ -914,6 +915,98 @@ async def delete_recipe_water_adjustments(
 
     await db.execute(
         delete(RecipeWaterAdjustment).where(RecipeWaterAdjustment.recipe_id == recipe_id)
+    )
+    await db.commit()
+
+    return {"status": "deleted", "recipe_id": recipe_id}
+
+
+# ============================================================================
+# Recipe Miscs Sub-Resource API
+# ============================================================================
+
+@router.get("/{recipe_id}/miscs", response_model=list[MiscResponse])
+async def get_recipe_miscs(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all misc ingredients for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.miscs))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    return recipe.miscs
+
+
+@router.put("/{recipe_id}/miscs", response_model=list[MiscResponse])
+async def replace_recipe_miscs(
+    recipe_id: int,
+    miscs: list[MiscInput],
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace all misc ingredients for a recipe."""
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.miscs))
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Delete existing miscs
+    await db.execute(
+        delete(RecipeMisc).where(RecipeMisc.recipe_id == recipe_id)
+    )
+
+    # Create new miscs
+    new_miscs = []
+    for misc_data in miscs:
+        misc = RecipeMisc(
+            recipe_id=recipe_id,
+            name=misc_data.name,
+            type=misc_data.type,
+            use=misc_data.use,
+            time_min=misc_data.time_min,
+            amount_kg=misc_data.amount_kg,
+            amount_unit=misc_data.amount_unit,
+            use_for=misc_data.use_for,
+            notes=misc_data.notes,
+        )
+        db.add(misc)
+        new_miscs.append(misc)
+
+    await db.commit()
+
+    for misc in new_miscs:
+        await db.refresh(misc)
+
+    return new_miscs
+
+
+@router.delete("/{recipe_id}/miscs", response_model=dict)
+async def delete_recipe_miscs(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all misc ingredients for a recipe."""
+    result = await db.execute(
+        select(Recipe).where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    await db.execute(
+        delete(RecipeMisc).where(RecipeMisc.recipe_id == recipe_id)
     )
     await db.commit()
 

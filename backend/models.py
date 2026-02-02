@@ -1687,6 +1687,73 @@ class RecipeUpdate(BaseModel):
     format_extensions: Optional[Dict[str, Any]] = None
 
 
+# ============================================================================
+# Recipe Nested Collection Input Models
+# ============================================================================
+
+class MashStepInput(BaseModel):
+    """Input model for creating/updating mash steps."""
+    step_number: int
+    name: str
+    type: str  # infusion, temperature, decoction
+    temp_c: float
+    time_minutes: int
+    infusion_amount_liters: Optional[float] = None
+    infusion_temp_c: Optional[float] = None
+    ramp_time_minutes: Optional[int] = None
+
+
+class FermentationStepInput(BaseModel):
+    """Input model for creating/updating fermentation steps."""
+    step_number: int
+    type: str  # primary, secondary, conditioning
+    temp_c: float
+    time_days: int
+
+
+class WaterProfileInput(BaseModel):
+    """Input model for creating/updating water profiles."""
+    profile_type: str  # source, target, mash, sparge
+    name: Optional[str] = None
+    calcium_ppm: Optional[float] = None
+    magnesium_ppm: Optional[float] = None
+    sodium_ppm: Optional[float] = None
+    chloride_ppm: Optional[float] = None
+    sulfate_ppm: Optional[float] = None
+    bicarbonate_ppm: Optional[float] = None
+    ph: Optional[float] = None
+    alkalinity: Optional[float] = None
+
+
+class WaterAdjustmentInput(BaseModel):
+    """Input model for creating/updating water adjustments."""
+    stage: str  # mash, sparge, total
+    volume_liters: Optional[float] = None
+    calcium_sulfate_g: Optional[float] = None
+    calcium_chloride_g: Optional[float] = None
+    magnesium_sulfate_g: Optional[float] = None
+    sodium_bicarbonate_g: Optional[float] = None
+    calcium_carbonate_g: Optional[float] = None
+    calcium_hydroxide_g: Optional[float] = None
+    magnesium_chloride_g: Optional[float] = None
+    sodium_chloride_g: Optional[float] = None
+    acid_type: Optional[str] = None
+    acid_ml: Optional[float] = None
+    acid_concentration_percent: Optional[float] = None
+
+
+class MiscInput(BaseModel):
+    """Input model for creating/updating misc ingredients."""
+    name: str
+    type: str  # spice, fining, water_agent, herb, flavor, other
+    use: str  # boil, mash, primary, secondary, bottling, sparge
+    time_min: Optional[float] = None
+    amount_kg: Optional[float] = None
+    amount_unit: Optional[str] = None
+    use_for: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class RecipeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

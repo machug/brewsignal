@@ -6,9 +6,9 @@
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 	import BatchAlertsCard from './BatchAlertsCard.svelte';
-	import MLPredictions from './MLPredictions.svelte';
 	import BatchNotesCard from './BatchNotesCard.svelte';
 	import TastingNotesList from './TastingNotesList.svelte';
+	import TastingNotes from './TastingNotes.svelte';
 	import FermentationChart from '../FermentationChart.svelte';
 
 	interface Props {
@@ -25,6 +25,8 @@
 		onOverride: (deviceType: 'heater' | 'cooler', state: 'on' | 'off' | null) => void;
 		onClearOverrides: () => void;
 		onTempControlToggle: () => void;
+		onBatchUpdate: (updated: BatchResponse) => void;
+		onTastingNotesReload: () => void;
 	}
 
 	let {
@@ -41,6 +43,8 @@
 		onOverride,
 		onClearOverrides,
 		onTempControlToggle,
+		onBatchUpdate,
+		onTastingNotesReload,
 	}: Props = $props();
 
 	let tempUnit = $derived(getTempUnit());
@@ -90,23 +94,21 @@
 				<TastingNotesList {tastingNotes} />
 			{/if}
 		</div>
+
+		<!-- Tasting Notes CRUD Form -->
+		<TastingNotes
+			{batch}
+			onUpdate={(updated) => {
+				onBatchUpdate(updated);
+				onTastingNotesReload();
+			}}
+		/>
 	</div>
 
 	<!-- Right column -->
 	<div class="info-section">
 		<!-- Active Alerts Card -->
 		<BatchAlertsCard batchId={batch.id} />
-
-		<!-- ML Predictions Panel -->
-		<MLPredictions
-			batchId={batch.id}
-			batchStatus={batch.status}
-			measuredOg={batch.measured_og}
-			measuredFg={batch.measured_fg ?? progress?.measured?.current_sg}
-			recipeFg={batch.recipe?.fg}
-			currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
-			{liveReading}
-		/>
 
 		<!-- Temperature Control Card -->
 		{#if hasTempControl}

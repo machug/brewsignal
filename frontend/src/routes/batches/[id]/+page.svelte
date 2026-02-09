@@ -613,6 +613,8 @@
 					onOverride={handleOverride}
 					onClearOverrides={handleClearAllOverrides}
 					onTempControlToggle={() => tempControlCollapsed = !tempControlCollapsed}
+					onBatchUpdate={(updated) => batch = updated}
+					onTastingNotesReload={loadTastingNotes}
 				/>
 			{:else if activeTab === 'completed'}
 				<PhaseComplete

@@ -50,7 +50,18 @@
 </script>
 
 <div class="brewing-phase">
-	{#if isPrePitchChilling && !pitchTempReached}
+	{#if batch.status !== 'brewing' && batch.status !== 'planning'}
+		<!-- Historical: Brew day already completed -->
+		<div class="phase-action-card completed-brewday">
+			<div class="phase-icon">✅</div>
+			<h2 class="phase-title">Brew Day Complete</h2>
+			{#if batch.brewing_started_at || batch.brew_date}
+				<p class="phase-description">
+					Brewed on {new Date(batch.brewing_started_at || batch.brew_date || '').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+				</p>
+			{/if}
+		</div>
+	{:else if isPrePitchChilling && !pitchTempReached}
 		<!-- Chilling in progress -->
 		<div class="phase-action-card chilling">
 			<div class="phase-icon">❄️</div>
@@ -195,6 +206,11 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 1rem;
+	}
+
+	.phase-action-card.completed-brewday {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(74, 222, 128, 0.03) 100%);
+		border-color: rgba(34, 197, 94, 0.25);
 	}
 
 	.phase-action-card.brewing {

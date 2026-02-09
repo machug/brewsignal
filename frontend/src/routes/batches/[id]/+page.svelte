@@ -2,26 +2,18 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent, BatchReflectionResponse } from '$lib/api';
-	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchControlEvents, fetchBatchReflections, fetchTastingNotes } from '$lib/api';
-	import { formatGravity, getGravityUnit, formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
+	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent } from '$lib/api';
+	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchReflections, fetchTastingNotes } from '$lib/api';
+	import { configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import { onConfigLoaded } from '$lib/config';
 	import BatchForm from '$lib/components/BatchForm.svelte';
-	import BatchFermentationCard from '$lib/components/batch/BatchFermentationCard.svelte';
-	import BatchDeviceCard from '$lib/components/batch/BatchDeviceCard.svelte';
-	import BatchRecipeTargetsCard from '$lib/components/batch/BatchRecipeTargetsCard.svelte';
-	import BatchNotesCard from '$lib/components/batch/BatchNotesCard.svelte';
-	import MLPredictions from '$lib/components/batch/MLPredictions.svelte';
-	import BatchAlertsCard from '$lib/components/batch/BatchAlertsCard.svelte';
-	import FermentationChart from '$lib/components/FermentationChart.svelte';
-	import BrewDayTimer from '$lib/components/batch/BrewDayTimer.svelte';
-	import BrewDayChecklist from '$lib/components/batch/BrewDayChecklist.svelte';
-	import BrewDayObservations from '$lib/components/batch/BrewDayObservations.svelte';
-	import PackagingInfo from '$lib/components/batch/PackagingInfo.svelte';
-	import TastingNotes from '$lib/components/batch/TastingNotes.svelte';
-	import ReflectionCard from '$lib/components/batch/ReflectionCard.svelte';
-	import TastingNotesList from '$lib/components/batch/TastingNotesList.svelte';
+	import LifecycleStepper from '$lib/components/batch/LifecycleStepper.svelte';
+	import PhaseRecipe from '$lib/components/batch/PhaseRecipe.svelte';
+	import PhaseBrewDay from '$lib/components/batch/PhaseBrewDay.svelte';
+	import PhaseFermentation from '$lib/components/batch/PhaseFermentation.svelte';
+	import PhaseConditioning from '$lib/components/batch/PhaseConditioning.svelte';
+	import PhaseComplete from '$lib/components/batch/PhaseComplete.svelte';
 	import { statusConfig } from '$lib/components/status';
 	import type { BatchReflection } from '$lib/types/reflection';
 	import type { TastingNote } from '$lib/types/tasting';
@@ -46,51 +38,42 @@
 	let deleting = $state(false);
 	let tempControlCollapsed = $state(false);
 	let pauseUpdating = $state(false);
-	let reflectionsExpanded = $state(true);
-	let tastingExpanded = $state(true);
 	let reflectionsLoading = $state(false);
 	let tastingLoading = $state(false);
+
+	// Tab navigation state
+	type PhaseTab = 'planning' | 'brewing' | 'fermenting' | 'conditioning' | 'completed';
+	let activeTab = $state<PhaseTab>('planning');
 
 	let batchId = $derived(parseInt($page.params.id ?? '0'));
 
 	const statusOptions: BatchStatus[] = ['planning', 'brewing', 'fermenting', 'conditioning', 'completed', 'archived'];
 
 	let statusInfo = $derived(batch ? statusConfig[batch.status] : statusConfig.planning);
-	let gravityUnit = $derived(getGravityUnit());
-	let tempUnit = $derived(getTempUnit());
 
 	// Check if temperature control is available for this batch
 	let hasTempControl = $derived(
-		configState.config.ha_enabled &&
+		!!(configState.config.ha_enabled &&
 		configState.config.temp_control_enabled &&
-		(batch?.heater_entity_id || batch?.cooler_entity_id)
+		(batch?.heater_entity_id || batch?.cooler_entity_id))
 	);
 
-	// Pre-pitch chilling mode: planning or brewing status with target temp set
-	let isPrePitchChilling = $derived(
-		(batch?.status === 'planning' || batch?.status === 'brewing') && batch?.temp_target != null
-	);
-
-	// Check if wort has reached pitch temperature
-	let pitchTempReached = $derived.by(() => {
-		if (!isPrePitchChilling || !liveReading?.temp || !batch?.temp_target) return false;
-		return liveReading.temp <= batch.temp_target;
+	// Default active tab to current batch status
+	$effect(() => {
+		if (batch) {
+			const status = batch.status;
+			// Map archived to completed tab
+			activeTab = status === 'archived' ? 'completed' : status as PhaseTab;
+		}
 	});
 
-	// Calculate chilling progress (100% when at or below target)
-	let chillingProgress = $derived.by(() => {
-		if (!isPrePitchChilling || !liveReading?.temp || !batch?.temp_target) return null;
-		// Assume starting temp is roughly 30°C higher than target (typical post-boil)
-		const estimatedStartTemp = batch.temp_target + 30;
-		const currentTemp = liveReading.temp;
-		const targetTemp = batch.temp_target;
-
-		if (currentTemp <= targetTemp) return 100;
-		if (currentTemp >= estimatedStartTemp) return 0;
-
-		const progress = ((estimatedStartTemp - currentTemp) / (estimatedStartTemp - targetTemp)) * 100;
-		return Math.min(100, Math.max(0, progress));
-	});
+	const tabs: { id: PhaseTab; label: string }[] = [
+		{ id: 'planning', label: 'Recipe' },
+		{ id: 'brewing', label: 'Brew Day' },
+		{ id: 'fermenting', label: 'Fermentation' },
+		{ id: 'conditioning', label: 'Conditioning' },
+		{ id: 'completed', label: 'Complete' },
+	];
 
 	// Get live readings from WebSocket if device is linked
 	// Supports all device types: Tilt, GravityMon, iSpindel
@@ -375,16 +358,6 @@
 		controlWs = null;
 	}
 
-	function formatSG(value?: number | null): string {
-		if (value === undefined || value === null) return '--';
-		return formatGravity(value);
-	}
-
-	function formatTempValue(value?: number | null): string {
-		if (value === undefined || value === null) return '--';
-		return formatTemp(value);
-	}
-
 	function formatShortDate(isoString?: string | null): string {
 		if (!isoString) return '--';
 		const date = new Date(isoString);
@@ -401,26 +374,6 @@
 		const days = hours / 24;
 		if (days < 7) return `${days.toFixed(1)}d`;
 		return `${Math.round(days)}d`;
-	}
-
-	function formatDate(dateStr?: string | null): string {
-		if (!dateStr) return '--';
-		return new Date(dateStr).toLocaleDateString('en-GB', {
-			weekday: 'short',
-			day: 'numeric',
-			month: 'short',
-			year: 'numeric'
-		});
-	}
-
-	function formatDateTime(dateStr?: string | null): string {
-		if (!dateStr) return '--';
-		return new Date(dateStr).toLocaleString('en-GB', {
-			day: 'numeric',
-			month: 'short',
-			hour: 'numeric',
-			minute: '2-digit'
-		});
 	}
 
 	onMount(() => {
@@ -571,603 +524,84 @@
 			</div>
 		{/if}
 
-		<!-- Phase-specific content -->
-		{#if batch.status === 'planning'}
-			<!-- Planning Phase: Recipe overview + Start Brew Day -->
-			<div class="planning-phase">
-				<div class="phase-action-card">
-					<div class="phase-icon">📋</div>
-					<h2 class="phase-title">Ready to Brew?</h2>
-					<p class="phase-description">
-						Review your recipe below, then start brew day when you're ready to begin.
-					</p>
-					<button
-						type="button"
-						class="start-brewday-btn"
-						onclick={handleStartBrewDay}
-						disabled={statusUpdating}
-					>
-						{#if statusUpdating}
-							<span class="btn-spinner"></span>
-							Starting...
-						{:else}
-							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-								<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-							</svg>
-							Start Brew Day
-						{/if}
-					</button>
-				</div>
+		<!-- Lifecycle Stepper -->
+		<LifecycleStepper currentStatus={batch.status} />
 
-				{#if batch.recipe}
-					<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
-				{/if}
-			</div>
-
-		{:else if batch.status === 'brewing'}
-			<!-- Brewing Phase: Brew day tools and guidance -->
-			<div class="brewing-phase">
-				{#if isPrePitchChilling && !pitchTempReached}
-					<!-- Chilling in progress -->
-					<div class="phase-action-card chilling">
-						<div class="phase-icon">❄️</div>
-						<h2 class="phase-title">Chilling to Pitch Temperature</h2>
-						<p class="phase-description">
-							Wort is being cooled to pitch temperature. The cooler will run automatically.
-							Once target is reached, you can pitch the yeast.
-						</p>
-						<div class="chilling-temp-display">
-							<div class="temp-current">
-								<span class="temp-label">Current</span>
-								<span class="temp-value">{liveReading?.temp != null ? formatTempValue(liveReading.temp) : '--'}</span>
-							</div>
-							<div class="temp-arrow">→</div>
-							<div class="temp-target">
-								<span class="temp-label">Target</span>
-								<span class="temp-value">{batch.temp_target != null ? formatTempValue(batch.temp_target) : '--'}</span>
-							</div>
-						</div>
-						{#if chillingProgress != null}
-							<div class="chilling-progress">
-								<div class="progress-bar">
-									<div class="progress-fill" style="width: {chillingProgress}%"></div>
-								</div>
-								<span class="progress-text">{Math.round(chillingProgress)}% to pitch temp</span>
-							</div>
-						{/if}
-						<div class="chilling-status">
-							{#if !batch.cooler_entity_id}
-								<span class="status-warning">⚠️ No cooler configured - set in Edit to enable automated chilling</span>
-							{:else if !configState.config.ha_enabled || !configState.config.temp_control_enabled}
-								<span class="status-warning">⚠️ Temperature control disabled in settings</span>
-							{:else}
-								<span class="status-active">Cooler running automatically</span>
-							{/if}
-						</div>
-					</div>
-				{:else if isPrePitchChilling && pitchTempReached}
-					<!-- Ready to pitch -->
-					<div class="phase-action-card ready-to-pitch">
-						<div class="phase-icon">🍺</div>
-						<h2 class="phase-title">Ready to Pitch!</h2>
-						<p class="phase-description">
-							Wort has reached pitch temperature ({formatTempValue(batch.temp_target)}{tempUnit}).
-							Pitch the yeast and start fermentation.
-						</p>
-						<button
-							type="button"
-							class="start-fermentation-btn"
-							onclick={handleStartFermentation}
-							disabled={statusUpdating}
-						>
-							{#if statusUpdating}
-								<span class="btn-spinner"></span>
-								Starting...
-							{:else}
-								<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-								</svg>
-								Yeast Pitched - Start Fermentation
-							{/if}
-						</button>
-					</div>
-				{:else}
-					<!-- Normal brewing mode (no device/target set) -->
-					<div class="phase-action-card brewing">
-						<div class="phase-icon">🍺</div>
-						<h2 class="phase-title">Brew Day in Progress</h2>
-						<p class="phase-description">
-							Track your brew day activities. When you've pitched the yeast and fermentation begins, transition to the fermentation phase.
-						</p>
-						<button
-							type="button"
-							class="start-fermentation-btn"
-							onclick={handleStartFermentation}
-							disabled={statusUpdating}
-						>
-							{#if statusUpdating}
-								<span class="btn-spinner"></span>
-								Starting...
-							{:else}
-								<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-								</svg>
-								Yeast Pitched - Start Fermentation
-							{/if}
-						</button>
-					</div>
-				{/if}
-
-				<!-- Brew Day Tools Grid -->
-				<div class="brewday-tools-grid">
-					<!-- Timer -->
-					{#if batch.recipe}
-						<BrewDayTimer {batch} recipe={batch.recipe} />
-					{/if}
-
-					<!-- Checklist -->
-					{#if batch.recipe}
-						<BrewDayChecklist recipe={batch.recipe} batchId={batch.id} />
-					{/if}
-				</div>
-
-				<!-- Observations Log -->
-				{#if batch.recipe}
-					<BrewDayObservations
-						{batch}
-						recipe={batch.recipe}
-						onUpdate={(updated) => batch = updated}
-					/>
-				{/if}
-
-				<!-- Device Card for chilling monitoring -->
-				{#if batch.device_id}
-					<BatchDeviceCard
-						{batch}
-						{liveReading}
-						onEdit={() => (isEditing = true)}
-					/>
-				{/if}
-
-				{#if batch.recipe}
-					<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
-				{/if}
-			</div>
-
-		{:else if batch.status === 'completed'}
-			<!-- Completed Phase: Final summary -->
-			<div class="completed-phase">
-				<div class="batch-summary-card">
-					<h2 class="summary-title">Batch Complete</h2>
-					<div class="summary-stats">
-						<div class="summary-stat">
-							<span class="stat-label">Original Gravity</span>
-							<span class="stat-value">{formatSG(batch.measured_og)}</span>
-						</div>
-						<div class="summary-stat">
-							<span class="stat-label">Final Gravity</span>
-							<span class="stat-value">{formatSG(batch.measured_fg)}</span>
-						</div>
-						<div class="summary-stat">
-							<span class="stat-label">ABV</span>
-							<span class="stat-value">{batch.measured_abv?.toFixed(1) ?? '--'}%</span>
-						</div>
-						<div class="summary-stat">
-							<span class="stat-label">Attenuation</span>
-							<span class="stat-value">
-								{#if batch.measured_og && batch.measured_fg}
-									{(((batch.measured_og - batch.measured_fg) / (batch.measured_og - 1)) * 100).toFixed(0)}%
-								{:else}
-									--
-								{/if}
-							</span>
-						</div>
-					</div>
-				</div>
-
-				<!-- Batch Timeline -->
-				<div class="timeline-card">
-					<h3 class="timeline-title">Batch Timeline</h3>
-					<div class="timeline">
-						{#if batch.brew_date || batch.brewing_started_at}
-							<div class="timeline-item">
-								<div class="timeline-dot brewing"></div>
-								<div class="timeline-content">
-									<span class="timeline-label">Brew Day</span>
-									<span class="timeline-date">{formatDate(batch.brewing_started_at || batch.brew_date)}</span>
-								</div>
-							</div>
-						{/if}
-						{#if batch.start_time || batch.fermenting_started_at}
-							<div class="timeline-item">
-								<div class="timeline-dot fermenting"></div>
-								<div class="timeline-content">
-									<span class="timeline-label">Fermentation Started</span>
-									<span class="timeline-date">{formatDate(batch.fermenting_started_at || batch.start_time)}</span>
-								</div>
-							</div>
-						{/if}
-						{#if batch.conditioning_started_at}
-							<div class="timeline-item">
-								<div class="timeline-dot conditioning"></div>
-								<div class="timeline-content">
-									<span class="timeline-label">Conditioning Started</span>
-									<span class="timeline-date">{formatDate(batch.conditioning_started_at)}</span>
-								</div>
-							</div>
-						{/if}
-						{#if batch.end_time || batch.completed_at}
-							<div class="timeline-item">
-								<div class="timeline-dot completed"></div>
-								<div class="timeline-content">
-									<span class="timeline-label">Completed</span>
-									<span class="timeline-date">{formatDate(batch.completed_at || batch.end_time)}</span>
-								</div>
-							</div>
-						{/if}
-						{#if batch.packaged_at}
-							<div class="timeline-item">
-								<div class="timeline-dot packaged"></div>
-								<div class="timeline-content">
-									<span class="timeline-label">Packaged ({batch.packaging_type || 'kegged'})</span>
-									<span class="timeline-date">{formatDate(batch.packaged_at)}</span>
-								</div>
-							</div>
-						{/if}
-					</div>
-				</div>
-
-				<!-- Packaging Info -->
-				<PackagingInfo
-					{batch}
-					onUpdate={(updated) => batch = updated}
-				/>
-
-				<!-- Reflections & Learnings Section -->
-				<div class="postmortem-section">
-					<button
-						type="button"
-						class="section-header"
-						onclick={() => reflectionsExpanded = !reflectionsExpanded}
-					>
-						<div class="section-header-left">
-							<span class="section-icon">💭</span>
-							<h3 class="section-title">Reflections & Learnings</h3>
-							{#if reflections.length > 0}
-								<span class="section-count">{reflections.length}</span>
-							{/if}
-						</div>
-						<svg class="section-chevron" class:expanded={reflectionsExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-						</svg>
-					</button>
-
-					{#if reflectionsExpanded}
-						<div class="section-content">
-							{#if reflectionsLoading}
-								<div class="section-loading">
-									<div class="spinner-small"></div>
-									<span>Loading reflections...</span>
-								</div>
-							{:else if reflections.length === 0}
-								<div class="section-empty">
-									<p class="empty-text">No reflections recorded yet.</p>
-									<p class="empty-subtext">Reflections help you learn from each brew. Record what went well, what could improve, and lessons for next time.</p>
-									<button type="button" class="add-first-btn">
-										<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-										</svg>
-										Add First Reflection
-									</button>
-								</div>
-							{:else}
-								<div class="reflections-grid">
-									{#each reflections as reflection}
-										<ReflectionCard {reflection} />
-									{/each}
-								</div>
-							{/if}
-						</div>
-					{/if}
-				</div>
-
-				<!-- Tasting Journal Section -->
-				<div class="postmortem-section">
-					<button
-						type="button"
-						class="section-header"
-						onclick={() => tastingExpanded = !tastingExpanded}
-					>
-						<div class="section-header-left">
-							<span class="section-icon">🍺</span>
-							<h3 class="section-title">Tasting Journal</h3>
-							{#if tastingNotes.length > 0}
-								<span class="section-count">{tastingNotes.length}</span>
-							{/if}
-						</div>
-						<svg class="section-chevron" class:expanded={tastingExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-						</svg>
-					</button>
-
-					{#if tastingExpanded}
-						<div class="section-content">
-							{#if tastingLoading}
-								<div class="section-loading">
-									<div class="spinner-small"></div>
-									<span>Loading tasting notes...</span>
-								</div>
-							{:else}
-								<TastingNotesList {tastingNotes} />
-							{/if}
-						</div>
-					{/if}
-				</div>
-
-				<!-- Legacy Tasting Notes (for editing) -->
-				<TastingNotes
-					{batch}
-					onUpdate={(updated) => {
-						batch = updated;
-						loadTastingNotes();
-					}}
-				/>
-
-				{#if batch.notes}
-					<BatchNotesCard notes={batch.notes} />
-				{/if}
-			</div>
-
-		{:else}
-			<!-- Fermenting/Conditioning Phase: Current behavior -->
-			<div class="content-grid">
-				<!-- Left column -->
-				<div class="stats-section">
-					<!-- Fermentation Card (includes live readings) -->
-					<BatchFermentationCard
-						{batch}
-						currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
-						{progress}
-						{liveReading}
-					/>
-
-					<!-- Recipe Targets Card (only if recipe exists) -->
-					{#if batch.recipe}
-						<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
-					{/if}
-				</div>
-
-			<!-- Right column -->
-			<div class="info-section">
-				<!-- Active Alerts Card (only show during fermentation/conditioning) -->
-				{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
-					<BatchAlertsCard batchId={batch.id} />
-				{/if}
-
-				<!-- ML Predictions Panel -->
-				<MLPredictions
-					batchId={batch.id}
-					batchStatus={batch.status}
-					measuredOg={batch.measured_og}
-					measuredFg={batch.measured_fg ?? progress?.measured?.current_sg}
-					recipeFg={batch.recipe?.fg}
-					currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
-					{liveReading}
-				/>
-
-				<!-- Temperature Control Card -->
-				{#if hasTempControl && (batch.status === 'fermenting' || batch.status === 'conditioning')}
-					<div class="info-card temp-control-card"
-						class:heater-on={controlStatus?.heater_state === 'on'}
-						class:cooler-on={controlStatus?.cooler_state === 'on'}
-						class:collapsed={tempControlCollapsed}>
-						<button
-							type="button"
-							class="collapsible-header"
-							onclick={() => tempControlCollapsed = !tempControlCollapsed}
-						>
-							<h3 class="info-title">Temperature Control</h3>
-							<div class="collapse-indicator">
-								{#if controlStatus?.heater_state === 'on'}
-									<span class="status-badge heater">🔥 Heating</span>
-								{:else if controlStatus?.cooler_state === 'on'}
-									<span class="status-badge cooler">❄️ Cooling</span>
-								{:else if tempControlCollapsed && controlStatus}
-									<span class="status-badge idle">🎯 {formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
-								{/if}
-								<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-								</svg>
-							</div>
-						</button>
-
-						{#if !tempControlCollapsed}
-						<!-- Device status indicators -->
-						<div class="device-status-grid">
-							{#if batch.heater_entity_id}
-								<div class="device-status heater">
-									<div class="device-icon-wrap" class:active={controlStatus?.heater_state === 'on'}>
-										🔥
-									</div>
-									<div class="device-info">
-										<span class="device-label">Heater</span>
-										<span class="device-state" class:on={controlStatus?.heater_state === 'on'}>
-											{controlStatus?.heater_state === 'on' ? 'ON' : 'OFF'}
-										</span>
-										<span class="device-entity">{batch.heater_entity_id}</span>
-									</div>
-								</div>
-							{/if}
-
-							{#if batch.cooler_entity_id}
-								<div class="device-status cooler">
-									<div class="device-icon-wrap" class:active={controlStatus?.cooler_state === 'on'}>
-										❄️
-									</div>
-									<div class="device-info">
-										<span class="device-label">Cooler</span>
-										<span class="device-state" class:on={controlStatus?.cooler_state === 'on'}>
-											{controlStatus?.cooler_state === 'on' ? 'ON' : 'OFF'}
-										</span>
-										<span class="device-entity">{batch.cooler_entity_id}</span>
-									</div>
-								</div>
-							{/if}
-						</div>
-
-						{#if controlStatus}
-							<div class="control-details">
-								<div class="control-detail">
-									<span class="detail-label">Target</span>
-									<span class="detail-value">{formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
-								</div>
-								<div class="control-detail">
-									<span class="detail-label">Hysteresis</span>
-									<span class="detail-value">±{controlStatus.hysteresis?.toFixed(1) || '--'}{tempUnit}</span>
-								</div>
-							</div>
-
-							{#if controlStatus.override_active}
-								<div class="override-banner">
-									<span class="override-icon">⚡</span>
-									<span>Override active: {controlStatus.override_state?.toUpperCase()}</span>
-									<button
-										type="button"
-										class="override-cancel-inline"
-										onclick={() => handleClearAllOverrides()}
-										disabled={heaterLoading}
-									>
-										Cancel
-									</button>
-								</div>
-							{/if}
-
-							<div class="override-controls">
-								<span class="override-label">Manual Override (1hr)</span>
-								<div class="override-btns-grid">
-									{#if batch.heater_entity_id}
-										<button
-											type="button"
-											class="override-btn heat-on"
-											onclick={() => handleOverride('heater', 'on')}
-											disabled={heaterLoading}
-										>
-											Force Heat ON
-										</button>
-										<button
-											type="button"
-											class="override-btn heat-off"
-											onclick={() => handleOverride('heater', 'off')}
-											disabled={heaterLoading}
-										>
-											Force Heat OFF
-										</button>
-									{/if}
-
-									{#if batch.cooler_entity_id}
-										<button
-											type="button"
-											class="override-btn cool-on"
-											onclick={() => handleOverride('cooler', 'on')}
-											disabled={heaterLoading}
-										>
-											Force Cool ON
-										</button>
-										<button
-											type="button"
-											class="override-btn cool-off"
-											onclick={() => handleOverride('cooler', 'off')}
-											disabled={heaterLoading}
-										>
-											Force Cool OFF
-										</button>
-									{/if}
-
-									<button
-										type="button"
-										class="override-btn auto-mode"
-										onclick={() => handleClearAllOverrides()}
-										disabled={heaterLoading}
-									>
-										Auto Mode
-									</button>
-								</div>
-							</div>
-						{/if}
-						{/if}
-					</div>
-				{:else if (batch.heater_entity_id || batch.cooler_entity_id) && batch.status !== 'fermenting'}
-					<div class="info-card">
-						<h3 class="info-title">Temperature Control</h3>
-						<div class="no-device">
-							{#if batch.heater_entity_id}
-								<span>Heater: {batch.heater_entity_id}</span>
-							{/if}
-							{#if batch.cooler_entity_id}
-								<span>Cooler: {batch.cooler_entity_id}</span>
-							{/if}
-							<span class="hint">Active only during fermentation</span>
-						</div>
-					</div>
-				{/if}
-
-				<!-- Notes Card (only if notes exist) -->
-				{#if batch.notes}
-					<BatchNotesCard notes={batch.notes} />
-				{/if}
-			</div>
+		<!-- Phase Tab Bar -->
+		<div class="phase-tabs" role="tablist" aria-label="Batch phase tabs">
+			{#each tabs as tab}
+				<button
+					type="button"
+					role="tab"
+					class="phase-tab"
+					class:active={activeTab === tab.id}
+					aria-selected={activeTab === tab.id}
+					onclick={() => activeTab = tab.id}
+				>
+					{tab.label}
+				</button>
+			{/each}
 		</div>
 
-			<!-- Fermentation Chart (shows historical data for all batches with a device) -->
-			{#if batch.device_id}
-				<div class="chart-section">
-					<FermentationChart
-						batchId={batch.id}
-						deviceColor={batch.device_id}
-						originalGravity={batch.measured_og}
-						{controlEvents}
-					/>
-				</div>
+		<!-- Phase Content -->
+		<div class="phase-content" role="tabpanel">
+			{#if activeTab === 'planning'}
+				<PhaseRecipe
+					{batch}
+					{statusUpdating}
+					onStartBrewDay={handleStartBrewDay}
+				/>
+			{:else if activeTab === 'brewing'}
+				<PhaseBrewDay
+					{batch}
+					{liveReading}
+					{statusUpdating}
+					onStartFermentation={handleStartFermentation}
+					onEdit={() => (isEditing = true)}
+					onBatchUpdate={(updated) => batch = updated}
+				/>
+			{:else if activeTab === 'fermenting'}
+				<PhaseFermentation
+					{batch}
+					{progress}
+					{liveReading}
+					{controlStatus}
+					{controlEvents}
+					{hasTempControl}
+					{heaterLoading}
+					{tempControlCollapsed}
+					onOverride={handleOverride}
+					onClearOverrides={handleClearAllOverrides}
+					onTempControlToggle={() => tempControlCollapsed = !tempControlCollapsed}
+				/>
+			{:else if activeTab === 'conditioning'}
+				<PhaseConditioning
+					{batch}
+					{progress}
+					{liveReading}
+					{controlStatus}
+					{controlEvents}
+					{hasTempControl}
+					{heaterLoading}
+					{tempControlCollapsed}
+					{tastingNotes}
+					{tastingLoading}
+					onOverride={handleOverride}
+					onClearOverrides={handleClearAllOverrides}
+					onTempControlToggle={() => tempControlCollapsed = !tempControlCollapsed}
+				/>
+			{:else if activeTab === 'completed'}
+				<PhaseComplete
+					{batch}
+					{reflections}
+					{tastingNotes}
+					{reflectionsLoading}
+					{tastingLoading}
+					onBatchUpdate={(updated) => batch = updated}
+					onTastingNotesReload={loadTastingNotes}
+				/>
 			{/if}
-
-			<!-- Tasting Journal for Conditioning (to track beer development) -->
-			{#if batch.status === 'conditioning'}
-				<div class="conditioning-postmortem">
-					<div class="postmortem-section">
-						<button
-							type="button"
-							class="section-header"
-							onclick={() => tastingExpanded = !tastingExpanded}
-						>
-							<div class="section-header-left">
-								<span class="section-icon">🍺</span>
-								<h3 class="section-title">Tasting Journal</h3>
-								{#if tastingNotes.length > 0}
-									<span class="section-count">{tastingNotes.length}</span>
-								{/if}
-							</div>
-							<svg class="section-chevron" class:expanded={tastingExpanded} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-							</svg>
-						</button>
-
-						{#if tastingExpanded}
-							<div class="section-content">
-								{#if tastingLoading}
-									<div class="section-loading">
-										<div class="spinner-small"></div>
-										<span>Loading tasting notes...</span>
-									</div>
-								{:else}
-									<TastingNotesList {tastingNotes} />
-								{/if}
-							</div>
-						{/if}
-					</div>
-				</div>
-			{/if}
-		{/if}
+		</div>
 	{/if}
 </div>
 
@@ -1205,125 +639,6 @@
 <style>
 	.page-container {
 		max-width: 1200px;
-	}
-
-	/* Pre-Pitch Chilling Banner */
-	.chilling-banner {
-		margin-bottom: 1.5rem;
-		padding: 1.25rem;
-		background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.05) 100%);
-		border: 1px solid rgba(59, 130, 246, 0.3);
-		border-radius: 0.75rem;
-	}
-
-	.chilling-banner.ready {
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(134, 239, 172, 0.05) 100%);
-		border-color: rgba(34, 197, 94, 0.4);
-	}
-
-	.chilling-header {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-	}
-
-	.chilling-icon {
-		font-size: 1.5rem;
-	}
-
-	.chilling-title {
-		font-size: 1.125rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-	}
-
-	.chilling-content {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.temp-display {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1.5rem;
-	}
-
-	.temp-current,
-	.temp-target {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-	}
-
-	.temp-label {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.temp-value {
-		font-size: 1.75rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.temp-arrow {
-		font-size: 1.5rem;
-		color: var(--text-muted);
-	}
-
-	.progress-section {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.progress-bar {
-		width: 100%;
-		max-width: 300px;
-		height: 8px;
-		background: var(--bg-elevated);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-
-	.progress-fill {
-		height: 100%;
-		background: linear-gradient(90deg, var(--accent), var(--tilt-blue));
-		border-radius: 4px;
-		transition: width 0.5s ease;
-	}
-
-	.progress-text {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.chilling-status {
-		text-align: center;
-		font-size: 0.875rem;
-	}
-
-	.status-warning {
-		color: var(--recipe-accent);
-	}
-
-	.status-active {
-		color: var(--text-secondary);
-	}
-
-	.status-ready {
-		color: var(--positive);
-		font-weight: 500;
 	}
 
 	/* Readings Paused Banner */
@@ -1628,376 +943,6 @@
 		height: 1rem;
 	}
 
-	/* Content grid */
-	.content-grid {
-		display: grid;
-		grid-template-columns: 2fr 1fr;
-		gap: 1rem;
-		align-items: start;
-	}
-
-	@media (max-width: 900px) {
-		.content-grid {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	/* Chart section */
-	.chart-section {
-		margin-top: 1.5rem;
-	}
-
-	/* Stats section */
-	.stats-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	/* Info section */
-	.info-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.info-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-	}
-
-	.info-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 1rem 0;
-	}
-
-	/* Keep .no-device for heater card compatibility */
-	.no-device {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		color: var(--text-muted);
-	}
-
-	.hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
-	/* Temperature Control Card */
-	.temp-control-card {
-		transition: all 0.3s ease;
-	}
-
-	.temp-control-card.collapsed {
-		padding-bottom: 0.75rem;
-	}
-
-	.collapsible-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		width: 100%;
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0;
-		margin-bottom: 1rem;
-	}
-
-	.temp-control-card.collapsed .collapsible-header {
-		margin-bottom: 0;
-	}
-
-	.collapsible-header .info-title {
-		margin: 0;
-	}
-
-	.collapse-indicator {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.status-badge {
-		font-size: 0.6875rem;
-		font-weight: 600;
-		padding: 0.125rem 0.375rem;
-		border-radius: 0.25rem;
-	}
-
-	.status-badge.heater {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--tilt-red);
-	}
-
-	.status-badge.cooler {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--tilt-blue);
-	}
-
-	.status-badge.idle {
-		background: var(--bg-elevated);
-		color: var(--text-secondary);
-	}
-
-	.chevron {
-		width: 1rem;
-		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
-	}
-
-	.chevron.rotated {
-		transform: rotate(180deg);
-	}
-
-	.temp-control-card.heater-on {
-		background: rgba(239, 68, 68, 0.08);
-		border-color: rgba(239, 68, 68, 0.3);
-	}
-
-	.temp-control-card.cooler-on {
-		background: rgba(59, 130, 246, 0.08);
-		border-color: rgba(59, 130, 246, 0.3);
-	}
-
-	.device-status-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-	}
-
-	.device-status {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.device-icon-wrap {
-		width: 2.5rem;
-		height: 2.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 0.5rem;
-		background: var(--bg-elevated);
-		font-size: 1.25rem;
-		transition: all 0.3s ease;
-		filter: grayscale(100%) opacity(0.5);
-	}
-
-	.device-status.heater .device-icon-wrap.active {
-		background: rgba(239, 68, 68, 0.2);
-		animation: pulse-glow-red 2s ease-in-out infinite;
-		filter: none;
-	}
-
-	.device-status.cooler .device-icon-wrap.active {
-		background: rgba(59, 130, 246, 0.2);
-		animation: pulse-glow-blue 2s ease-in-out infinite;
-		filter: none;
-	}
-
-	@keyframes pulse-glow-red {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(239, 68, 68, 0.3); }
-	}
-
-	@keyframes pulse-glow-blue {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.3); }
-	}
-
-	.device-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.device-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.device-state {
-		font-size: 1rem;
-		font-weight: 700;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-secondary);
-	}
-
-	.device-status.heater .device-state.on {
-		color: var(--tilt-red);
-	}
-
-	.device-status.cooler .device-state.on {
-		color: var(--tilt-blue);
-	}
-
-	.device-entity {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: 'JetBrains Mono', monospace;
-	}
-
-	.control-details {
-		display: flex;
-		gap: 1.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-	}
-
-	.control-detail {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.detail-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.detail-value {
-		font-size: 0.875rem;
-		font-weight: 500;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-primary);
-	}
-
-	.override-banner {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: rgba(59, 130, 246, 0.1);
-		border-radius: 0.375rem;
-		font-size: 0.75rem;
-		color: var(--tilt-blue);
-	}
-
-	.override-icon {
-		font-size: 0.875rem;
-	}
-
-	.override-cancel-inline {
-		margin-left: auto;
-		padding: 0.25rem 0.5rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
-		background: transparent;
-		border: 1px solid var(--tilt-blue);
-		color: var(--tilt-blue);
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.override-cancel-inline:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.15);
-	}
-
-	.override-cancel-inline:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.override-controls {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.override-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.override-btns-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 0.375rem;
-	}
-
-	.override-btn {
-		padding: 0.5rem 0.75rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.override-btn:hover:not(:disabled) {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.override-btn.heat-on:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.1);
-		border-color: var(--tilt-red);
-		color: var(--tilt-red);
-	}
-
-	.override-btn.heat-off:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.05);
-		border-color: rgba(239, 68, 68, 0.3);
-		color: var(--text-primary);
-	}
-
-	.override-btn.cool-on:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.1);
-		border-color: var(--tilt-blue);
-		color: var(--tilt-blue);
-	}
-
-	.override-btn.cool-off:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.05);
-		border-color: rgba(59, 130, 246, 0.3);
-		color: var(--text-primary);
-	}
-
-	.override-btn.auto-mode {
-		grid-column: 1 / -1;
-		background: var(--accent);
-		border-color: var(--accent);
-		color: white;
-	}
-
-	.override-btn.auto-mode:hover:not(:disabled) {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-
-	.override-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	@media (max-width: 640px) {
 		.batch-header {
 			flex-direction: column;
@@ -2084,499 +1029,46 @@
 		cursor: not-allowed;
 	}
 
-	/* Phase-specific layouts */
-	.planning-phase,
-	.brewing-phase,
-	.completed-phase {
+	/* Phase Tab Bar */
+	.phase-tabs {
 		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	/* Phase Action Card (Planning & Brewing) */
-	.phase-action-card {
-		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
-		border: 1px solid var(--border-subtle);
-		border-radius: 1rem;
-		padding: 2rem;
-		text-align: center;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.phase-action-card.brewing {
-		background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 146, 60, 0.03) 100%);
-		border-color: rgba(249, 115, 22, 0.25);
-	}
-
-	.phase-action-card.chilling {
-		background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.05) 100%);
-		border-color: rgba(59, 130, 246, 0.3);
-	}
-
-	.phase-action-card.ready-to-pitch {
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(134, 239, 172, 0.05) 100%);
-		border-color: rgba(34, 197, 94, 0.35);
-	}
-
-	.chilling-temp-display {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1.5rem;
-		margin: 0.5rem 0;
-	}
-
-	.chilling-temp-display .temp-current,
-	.chilling-temp-display .temp-target {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
 		gap: 0.25rem;
-	}
-
-	.chilling-temp-display .temp-label {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.chilling-temp-display .temp-value {
-		font-size: 1.75rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.chilling-temp-display .temp-arrow {
-		font-size: 1.5rem;
-		color: var(--text-muted);
-	}
-
-	.chilling-progress {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-		width: 100%;
-		max-width: 300px;
-	}
-
-	.chilling-progress .progress-bar {
-		width: 100%;
-		height: 8px;
+		padding: 0.25rem;
 		background: var(--bg-elevated);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-
-	.chilling-progress .progress-fill {
-		height: 100%;
-		background: linear-gradient(90deg, var(--tilt-blue), var(--accent));
-		border-radius: 4px;
-		transition: width 0.5s ease;
-	}
-
-	.chilling-progress .progress-text {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.phase-action-card .chilling-status {
-		margin-top: 0.5rem;
-		font-size: 0.8125rem;
-	}
-
-	.phase-action-card .status-warning {
-		color: var(--recipe-accent);
-	}
-
-	.phase-action-card .status-active {
-		color: var(--tilt-blue);
-	}
-
-	/* Brew Day Tools Grid */
-	.brewday-tools-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-	}
-
-	@media (max-width: 900px) {
-		.brewday-tools-grid {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	.phase-icon {
-		font-size: 3rem;
-		line-height: 1;
-	}
-
-	.phase-title {
-		font-size: 1.5rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-	}
-
-	.phase-description {
-		font-size: 0.9375rem;
-		color: var(--text-secondary);
-		max-width: 400px;
-		line-height: 1.5;
-		margin: 0;
-	}
-
-	.start-brewday-btn,
-	.start-fermentation-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1.5rem;
-		font-size: 1rem;
-		font-weight: 600;
 		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all var(--transition);
-		margin-top: 0.5rem;
+		margin-bottom: 1.5rem;
+		overflow-x: auto;
 	}
 
-	.start-brewday-btn {
-		color: white;
-		background: var(--accent);
-		border: none;
-	}
-
-	.start-brewday-btn:hover:not(:disabled) {
-		background: var(--accent-hover);
-		transform: translateY(-1px);
-	}
-
-	.start-fermentation-btn {
-		color: white;
-		background: linear-gradient(135deg, var(--status-fermenting) 0%, var(--recipe-accent) 100%);
-		border: none;
-	}
-
-	.start-fermentation-btn:hover:not(:disabled) {
-		filter: brightness(1.1);
-		transform: translateY(-1px);
-	}
-
-	.start-brewday-btn:disabled,
-	.start-fermentation-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-		transform: none;
-	}
-
-	.btn-spinner {
-		width: 1rem;
-		height: 1rem;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-		border-top-color: white;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	/* Completed Phase */
-	.batch-summary-card {
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(74, 222, 128, 0.03) 100%);
-		border: 1px solid rgba(34, 197, 94, 0.25);
-		border-radius: 1rem;
-		padding: 1.5rem;
-	}
-
-	.summary-title {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--positive);
-		margin: 0 0 1.25rem 0;
-		text-align: center;
-	}
-
-	.summary-stats {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-		gap: 1rem;
-	}
-
-	.summary-stat {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-		padding: 0.75rem;
-		background: var(--bg-surface);
-		border-radius: 0.5rem;
-	}
-
-	.stat-label {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.stat-value {
-		font-size: 1.25rem;
-		font-weight: 600;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-	}
-
-	/* Timeline */
-	.timeline-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-	}
-
-	.timeline-title {
-		font-size: 0.75rem;
+	.phase-tab {
+		flex: 1;
+		min-width: 0;
+		padding: 0.625rem 0.75rem;
+		font-size: 0.8125rem;
 		font-weight: 500;
 		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 1rem 0;
-	}
-
-	.timeline {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-		position: relative;
-		padding-left: 1.5rem;
-	}
-
-	.timeline::before {
-		content: '';
-		position: absolute;
-		left: 0.4375rem;
-		top: 0.5rem;
-		bottom: 0.5rem;
-		width: 2px;
-		background: var(--border-subtle);
-	}
-
-	.timeline-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-		padding: 0.75rem 0;
-		position: relative;
-	}
-
-	.timeline-dot {
-		position: absolute;
-		left: -1.5rem;
-		top: 1rem;
-		width: 0.875rem;
-		height: 0.875rem;
-		border-radius: 50%;
-		background: var(--bg-elevated);
-		border: 2px solid var(--border-default);
-		z-index: 1;
-	}
-
-	.timeline-dot.brewing {
-		background: var(--status-brewing, #f97316);
-		border-color: var(--status-brewing, #f97316);
-	}
-
-	.timeline-dot.fermenting {
-		background: var(--status-fermenting);
-		border-color: var(--status-fermenting);
-	}
-
-	.timeline-dot.conditioning {
-		background: var(--status-conditioning);
-		border-color: var(--status-conditioning);
-	}
-
-	.timeline-dot.completed {
-		background: var(--status-completed);
-		border-color: var(--status-completed);
-	}
-
-	.timeline-dot.packaged {
-		background: var(--amber);
-		border-color: var(--amber);
-	}
-
-	.timeline-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.timeline-label {
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
-	}
-
-	.timeline-date {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	/* Post-mortem Sections */
-	.postmortem-section {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		overflow: hidden;
-	}
-
-	.section-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		width: 100%;
-		padding: 1rem 1.25rem;
 		background: transparent;
 		border: none;
-		cursor: pointer;
-		text-align: left;
-		transition: background 0.15s ease;
-	}
-
-	.section-header:hover {
-		background: var(--bg-elevated);
-	}
-
-	.section-header-left {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.section-icon {
-		font-size: 1.25rem;
-	}
-
-	.section-title {
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-	}
-
-	.section-count {
-		font-size: 0.6875rem;
-		font-weight: 600;
-		padding: 0.125rem 0.5rem;
-		background: var(--accent-bg, rgba(99, 102, 241, 0.1));
-		color: var(--accent);
-		border-radius: 1rem;
-	}
-
-	.section-chevron {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
-	}
-
-	.section-chevron.expanded {
-		transform: rotate(180deg);
-	}
-
-	.section-content {
-		padding: 0 1.25rem 1.25rem;
-	}
-
-	.section-loading {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		padding: 2rem;
-		color: var(--text-muted);
-		font-size: 0.875rem;
-	}
-
-	.spinner-small {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--bg-hover);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	.section-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 2rem 1rem;
-		text-align: center;
-	}
-
-	.section-empty .empty-text {
-		font-size: 0.9375rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		margin: 0 0 0.25rem 0;
-	}
-
-	.section-empty .empty-subtext {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		margin: 0 0 1rem 0;
-		max-width: 320px;
-		line-height: 1.5;
-	}
-
-	.add-first-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--accent);
-		background: transparent;
-		border: 1px dashed var(--accent);
-		border-radius: 0.5rem;
+		border-radius: 0.375rem;
 		cursor: pointer;
 		transition: all 0.15s ease;
+		white-space: nowrap;
+		text-align: center;
 	}
 
-	.add-first-btn:hover {
-		background: rgba(99, 102, 241, 0.1);
+	.phase-tab:hover:not(.active) {
+		color: var(--text-secondary);
+		background: var(--bg-hover);
 	}
 
-	.add-first-btn svg {
-		width: 1rem;
-		height: 1rem;
+	.phase-tab.active {
+		color: var(--text-primary);
+		background: var(--bg-surface);
+		font-weight: 600;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
-	.reflections-grid {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	@media (min-width: 768px) {
-		.reflections-grid {
-			display: grid;
-			grid-template-columns: repeat(2, 1fr);
-		}
-	}
-
-	/* Conditioning phase postmortem */
-	.conditioning-postmortem {
-		margin-top: 1.5rem;
+	.phase-content {
+		min-height: 200px;
 	}
 </style>

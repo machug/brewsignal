@@ -5,6 +5,7 @@
 	import { formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
+	import BatchAlertsCard from './BatchAlertsCard.svelte';
 	import MLPredictions from './MLPredictions.svelte';
 	import BatchNotesCard from './BatchNotesCard.svelte';
 	import TastingNotesList from './TastingNotesList.svelte';
@@ -93,6 +94,9 @@
 
 	<!-- Right column -->
 	<div class="info-section">
+		<!-- Active Alerts Card -->
+		<BatchAlertsCard batchId={batch.id} />
+
 		<!-- ML Predictions Panel -->
 		<MLPredictions
 			batchId={batch.id}

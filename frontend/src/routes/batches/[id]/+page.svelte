@@ -75,6 +75,22 @@
 		{ id: 'completed', label: 'Complete' },
 	];
 
+	const phaseOrder: Record<PhaseTab, number> = {
+		planning: 0,
+		brewing: 1,
+		fermenting: 2,
+		conditioning: 3,
+		completed: 4,
+	};
+
+	let currentPhaseIndex = $derived(
+		batch ? phaseOrder[batch.status === 'archived' ? 'completed' : batch.status as PhaseTab] ?? 0 : 0
+	);
+
+	function isTabFuture(tabId: PhaseTab): boolean {
+		return phaseOrder[tabId] > currentPhaseIndex;
+	}
+
 	// Get live readings from WebSocket if device is linked
 	// Supports all device types: Tilt, GravityMon, iSpindel
 	// - GravityMon/iSpindel: device_id is the device's ID (e.g., "fce4b6")
@@ -525,16 +541,18 @@
 		{/if}
 
 		<!-- Lifecycle Stepper -->
-		<LifecycleStepper currentStatus={batch.status} />
+		<LifecycleStepper currentStatus={batch.status} onPhaseClick={(status) => activeTab = (status === 'archived' ? 'completed' : status) as PhaseTab} />
 
 		<!-- Phase Tab Bar -->
 		<div class="phase-tabs" role="tablist" aria-label="Batch phase tabs">
 			{#each tabs as tab}
+				{@const future = isTabFuture(tab.id)}
 				<button
 					type="button"
 					role="tab"
 					class="phase-tab"
 					class:active={activeTab === tab.id}
+					class:future
 					aria-selected={activeTab === tab.id}
 					onclick={() => activeTab = tab.id}
 				>
@@ -545,7 +563,13 @@
 
 		<!-- Phase Content -->
 		<div class="phase-content" role="tabpanel">
-			{#if activeTab === 'planning'}
+			{#if isTabFuture(activeTab)}
+				<div class="future-phase-placeholder">
+					<div class="future-icon">🔮</div>
+					<p class="future-text">Not started yet</p>
+					<p class="future-subtext">This phase will become active as the batch progresses.</p>
+				</div>
+			{:else if activeTab === 'planning'}
 				<PhaseRecipe
 					{batch}
 					{statusUpdating}
@@ -1068,7 +1092,45 @@
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
+	.phase-tab.future {
+		opacity: 0.4;
+	}
+
+	.phase-tab.future:hover:not(.active) {
+		opacity: 0.6;
+	}
+
 	.phase-content {
 		min-height: 200px;
+	}
+
+	.future-phase-placeholder {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 4rem 2rem;
+		text-align: center;
+	}
+
+	.future-icon {
+		font-size: 2.5rem;
+		margin-bottom: 1rem;
+		opacity: 0.5;
+	}
+
+	.future-text {
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin: 0 0 0.25rem 0;
+	}
+
+	.future-subtext {
+		font-size: 0.875rem;
+		color: var(--text-muted);
+		margin: 0;
+		max-width: 320px;
+		line-height: 1.5;
 	}
 </style>

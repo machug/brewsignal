@@ -3,9 +3,10 @@
 
 	interface Props {
 		currentStatus: BatchStatus;
+		onPhaseClick?: (status: BatchStatus) => void;
 	}
 
-	let { currentStatus }: Props = $props();
+	let { currentStatus, onPhaseClick }: Props = $props();
 
 	const phases: { label: string; shortLabel: string; status: BatchStatus }[] = [
 		{ label: 'Recipe', shortLabel: 'Recipe', status: 'planning' },
@@ -47,7 +48,12 @@
 				class:completed={state === 'completed'}
 				class:current={state === 'current'}
 				class:future={state === 'future'}
+				class:clickable={state !== 'future' && !!onPhaseClick}
 				aria-current={state === 'current' ? 'step' : undefined}
+				onclick={() => state !== 'future' && onPhaseClick?.(phase.status)}
+				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && state !== 'future' && onPhaseClick?.(phase.status)}
+				role={onPhaseClick ? 'button' : undefined}
+				tabindex={state !== 'future' && onPhaseClick ? 0 : undefined}
 			>
 				<div class="dot">
 					{#if state === 'completed'}
@@ -107,6 +113,14 @@
 		flex-direction: column;
 		align-items: center;
 		flex-shrink: 0;
+	}
+
+	.step.clickable {
+		cursor: pointer;
+	}
+
+	.step.clickable:hover .dot {
+		transform: scale(1.15);
 	}
 
 	/* --- Dot --- */

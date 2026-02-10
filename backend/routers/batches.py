@@ -463,6 +463,21 @@ async def update_batch(
         batch.actual_efficiency = update.actual_efficiency
     if update.brew_day_notes is not None:
         batch.brew_day_notes = update.brew_day_notes
+    # Packaging info
+    if update.packaged_at is not None:
+        batch.packaged_at = update.packaged_at
+    if update.packaging_type is not None:
+        batch.packaging_type = update.packaging_type
+    if update.packaging_volume is not None:
+        batch.packaging_volume = update.packaging_volume
+    if update.carbonation_method is not None:
+        batch.carbonation_method = update.carbonation_method
+    if update.priming_sugar_type is not None:
+        batch.priming_sugar_type = update.priming_sugar_type
+    if update.priming_sugar_amount is not None:
+        batch.priming_sugar_amount = update.priming_sugar_amount
+    if update.packaging_notes is not None:
+        batch.packaging_notes = update.packaging_notes
 
     await db.commit()
     await db.refresh(batch)

@@ -2,10 +2,11 @@
 	import type { BatchResponse } from '$lib/api';
 	import type { BatchReflection } from '$lib/types/reflection';
 	import type { TastingNote } from '$lib/types/tasting';
-	import { formatGravity } from '$lib/stores/config.svelte';
+	import { formatGravity, configState } from '$lib/stores/config.svelte';
 	import PackagingInfo from './PackagingInfo.svelte';
-	import TastingNotes from './TastingNotes.svelte';
 	import TastingNotesList from './TastingNotesList.svelte';
+	import BJCPScoreForm from './BJCPScoreForm.svelte';
+	import TastingPanel from './TastingPanel.svelte';
 	import ReflectionCard from './ReflectionCard.svelte';
 	import BatchNotesCard from './BatchNotesCard.svelte';
 
@@ -31,6 +32,8 @@
 
 	let reflectionsExpanded = $state(true);
 	let tastingExpanded = $state(true);
+	let showBJCPForm = $state(false);
+	let showTastingPanel = $state(false);
 
 	function formatSG(value?: number | null): string {
 		if (value === undefined || value === null) return '--';
@@ -210,25 +213,51 @@
 						<span>Loading tasting notes...</span>
 					</div>
 				{:else}
+					{#if !showBJCPForm && !showTastingPanel}
+						<div class="tasting-actions">
+							{#if configState.config.ai_enabled}
+								<button type="button" class="guided-tasting-btn" onclick={() => showTastingPanel = true}>
+									<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+									</svg>
+									Start Guided Tasting
+								</button>
+							{/if}
+							<button type="button" class="manual-tasting-btn" onclick={() => showBJCPForm = true}>
+								<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+								</svg>
+								{configState.config.ai_enabled ? 'Manual Scoresheet' : 'Add Tasting Note'}
+							</button>
+						</div>
+					{/if}
+
+					{#if showBJCPForm}
+						<BJCPScoreForm
+							{batch}
+							onSave={() => { showBJCPForm = false; onTastingNotesReload(); }}
+							onCancel={() => showBJCPForm = false}
+						/>
+					{/if}
+
 					<TastingNotesList {tastingNotes} />
 				{/if}
 			</div>
 		{/if}
 	</div>
 
-	<!-- Legacy Tasting Notes (for editing) -->
-	<TastingNotes
-		{batch}
-		onUpdate={(updated) => {
-			onBatchUpdate(updated);
-			onTastingNotesReload();
-		}}
-	/>
-
 	{#if batch.notes}
 		<BatchNotesCard notes={batch.notes} />
 	{/if}
 </div>
+
+{#if showTastingPanel}
+	<TastingPanel
+		{batch}
+		onClose={() => showTastingPanel = false}
+		onSaved={() => { showTastingPanel = false; onTastingNotesReload(); }}
+	/>
+{/if}
 
 <style>
 	.completed-phase {
@@ -529,5 +558,51 @@
 			display: grid;
 			grid-template-columns: repeat(2, 1fr);
 		}
+	}
+
+	.tasting-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.guided-tasting-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.875rem 1rem;
+		background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, purple) 100%);
+		color: white;
+		border: none;
+		border-radius: 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: opacity 0.15s ease;
+	}
+
+	.guided-tasting-btn:hover { opacity: 0.9; }
+
+	.manual-tasting-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.625rem 1rem;
+		background: transparent;
+		color: var(--text-secondary);
+		border: 1px dashed var(--border-subtle);
+		border-radius: 0.5rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.manual-tasting-btn:hover {
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 </style>

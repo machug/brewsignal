@@ -495,6 +495,24 @@ export interface TastingNoteResponse {
 	mouthfeel_notes?: string;
 	overall_score?: number;
 	overall_notes?: string;
+	// BJCP v2 scoring
+	scoring_version?: number;
+	aroma_malt?: number;
+	aroma_hops?: number;
+	aroma_fermentation?: number;
+	aroma_other?: number;
+	appearance_color?: number;
+	appearance_clarity?: number;
+	appearance_head?: number;
+	flavor_malt?: number;
+	flavor_hops?: number;
+	flavor_bitterness?: number;
+	flavor_fermentation?: number;
+	flavor_balance?: number;
+	flavor_finish?: number;
+	mouthfeel_body?: number;
+	mouthfeel_carbonation?: number;
+	mouthfeel_warmth?: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -512,6 +530,24 @@ export interface TastingNoteCreate {
 	mouthfeel_notes?: string;
 	overall_score?: number;
 	overall_notes?: string;
+	// BJCP v2 scoring
+	scoring_version?: number;
+	aroma_malt?: number;
+	aroma_hops?: number;
+	aroma_fermentation?: number;
+	aroma_other?: number;
+	appearance_color?: number;
+	appearance_clarity?: number;
+	appearance_head?: number;
+	flavor_malt?: number;
+	flavor_hops?: number;
+	flavor_bitterness?: number;
+	flavor_fermentation?: number;
+	flavor_balance?: number;
+	flavor_finish?: number;
+	mouthfeel_body?: number;
+	mouthfeel_carbonation?: number;
+	mouthfeel_warmth?: number;
 }
 
 export interface TastingNoteUpdate {
@@ -526,6 +562,24 @@ export interface TastingNoteUpdate {
 	mouthfeel_notes?: string;
 	overall_score?: number;
 	overall_notes?: string;
+	// BJCP v2 scoring
+	scoring_version?: number;
+	aroma_malt?: number;
+	aroma_hops?: number;
+	aroma_fermentation?: number;
+	aroma_other?: number;
+	appearance_color?: number;
+	appearance_clarity?: number;
+	appearance_head?: number;
+	flavor_malt?: number;
+	flavor_hops?: number;
+	flavor_bitterness?: number;
+	flavor_fermentation?: number;
+	flavor_balance?: number;
+	flavor_finish?: number;
+	mouthfeel_body?: number;
+	mouthfeel_carbonation?: number;
+	mouthfeel_warmth?: number;
 }
 
 export interface BatchResponse {

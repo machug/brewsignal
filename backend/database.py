@@ -324,6 +324,50 @@ def _migrate_extend_tasting_notes(conn):
             pass
 
 
+def _migrate_add_bjcp_scoring(conn):
+    """Add BJCP 50-point subcategory scoring columns to tasting_notes table."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "tasting_notes" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("tasting_notes")]
+
+    new_columns = [
+        # Scoring version: 1=legacy 1-5, 2=BJCP 50-point
+        ("scoring_version", "INTEGER DEFAULT 1"),
+        # Aroma subcategories (0-3 each, max 12)
+        ("aroma_malt", "INTEGER"),
+        ("aroma_hops", "INTEGER"),
+        ("aroma_fermentation", "INTEGER"),
+        ("aroma_other", "INTEGER"),
+        # Appearance subcategories (0-1 each, max 3)
+        ("appearance_color", "INTEGER"),
+        ("appearance_clarity", "INTEGER"),
+        ("appearance_head", "INTEGER"),
+        # Flavor subcategories (varying, max 20)
+        ("flavor_malt", "INTEGER"),
+        ("flavor_hops", "INTEGER"),
+        ("flavor_bitterness", "INTEGER"),
+        ("flavor_fermentation", "INTEGER"),
+        ("flavor_balance", "INTEGER"),
+        ("flavor_finish", "INTEGER"),
+        # Mouthfeel subcategories (varying, max 5)
+        ("mouthfeel_body", "INTEGER"),
+        ("mouthfeel_carbonation", "INTEGER"),
+        ("mouthfeel_warmth", "INTEGER"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE tasting_notes ADD COLUMN {col_name} {col_type}"))
+                print(f"Migration: Added {col_name} column to tasting_notes table")
+            except Exception as e:
+                print(f"Migration: Skipping {col_name} on tasting_notes - {e}")
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -400,6 +444,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_packaging_columns)  # Add packaging info columns
         await conn.run_sync(_migrate_create_tasting_notes_table)  # Create tasting notes table
         await conn.run_sync(_migrate_extend_tasting_notes)  # Extend tasting notes with context/AI fields
+        await conn.run_sync(_migrate_add_bjcp_scoring)  # Add BJCP 50-point subcategory scoring columns
         await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
 
         # Add readings_paused column to batches

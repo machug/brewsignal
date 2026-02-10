@@ -1099,6 +1099,29 @@ class TastingNote(Base):
     ai_suggestions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interview_transcript: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    # BJCP Scoring v2 (subcategory scoring, max 50 points)
+    scoring_version: Mapped[int] = mapped_column(default=1)  # 1=legacy, 2=BJCP
+    # Aroma subcategories (0-3 each, max 12)
+    aroma_malt: Mapped[Optional[int]] = mapped_column(nullable=True)
+    aroma_hops: Mapped[Optional[int]] = mapped_column(nullable=True)
+    aroma_fermentation: Mapped[Optional[int]] = mapped_column(nullable=True)
+    aroma_other: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Appearance subcategories (0-1 each, max 3)
+    appearance_color: Mapped[Optional[int]] = mapped_column(nullable=True)
+    appearance_clarity: Mapped[Optional[int]] = mapped_column(nullable=True)
+    appearance_head: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Flavor subcategories (varying, max 20)
+    flavor_malt: Mapped[Optional[int]] = mapped_column(nullable=True)
+    flavor_hops: Mapped[Optional[int]] = mapped_column(nullable=True)
+    flavor_bitterness: Mapped[Optional[int]] = mapped_column(nullable=True)
+    flavor_fermentation: Mapped[Optional[int]] = mapped_column(nullable=True)
+    flavor_balance: Mapped[Optional[int]] = mapped_column(nullable=True)
+    flavor_finish: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Mouthfeel subcategories (varying, max 5)
+    mouthfeel_body: Mapped[Optional[int]] = mapped_column(nullable=True)
+    mouthfeel_carbonation: Mapped[Optional[int]] = mapped_column(nullable=True)
+    mouthfeel_warmth: Mapped[Optional[int]] = mapped_column(nullable=True)
+
     # Relationship
     batch: Mapped["Batch"] = relationship(back_populates="tasting_notes")
 
@@ -2211,6 +2234,24 @@ class TastingNoteCreate(BaseModel):
     # Style assessment
     to_style: Optional[bool] = None
     style_deviation_notes: Optional[str] = None
+    # BJCP v2 scoring (all optional - used when scoring_version=2)
+    scoring_version: Optional[int] = None
+    aroma_malt: Optional[int] = None
+    aroma_hops: Optional[int] = None
+    aroma_fermentation: Optional[int] = None
+    aroma_other: Optional[int] = None
+    appearance_color: Optional[int] = None
+    appearance_clarity: Optional[int] = None
+    appearance_head: Optional[int] = None
+    flavor_malt: Optional[int] = None
+    flavor_hops: Optional[int] = None
+    flavor_bitterness: Optional[int] = None
+    flavor_fermentation: Optional[int] = None
+    flavor_balance: Optional[int] = None
+    flavor_finish: Optional[int] = None
+    mouthfeel_body: Optional[int] = None
+    mouthfeel_carbonation: Optional[int] = None
+    mouthfeel_warmth: Optional[int] = None
 
     @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
     @classmethod
@@ -2240,6 +2281,24 @@ class TastingNoteUpdate(BaseModel):
     # Style assessment
     to_style: Optional[bool] = None
     style_deviation_notes: Optional[str] = None
+    # BJCP v2 scoring (all optional - used when scoring_version=2)
+    scoring_version: Optional[int] = None
+    aroma_malt: Optional[int] = None
+    aroma_hops: Optional[int] = None
+    aroma_fermentation: Optional[int] = None
+    aroma_other: Optional[int] = None
+    appearance_color: Optional[int] = None
+    appearance_clarity: Optional[int] = None
+    appearance_head: Optional[int] = None
+    flavor_malt: Optional[int] = None
+    flavor_hops: Optional[int] = None
+    flavor_bitterness: Optional[int] = None
+    flavor_fermentation: Optional[int] = None
+    flavor_balance: Optional[int] = None
+    flavor_finish: Optional[int] = None
+    mouthfeel_body: Optional[int] = None
+    mouthfeel_carbonation: Optional[int] = None
+    mouthfeel_warmth: Optional[int] = None
 
     @field_validator("appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score")
     @classmethod
@@ -2279,6 +2338,24 @@ class TastingNoteResponse(BaseModel):
     # AI-assisted fields
     ai_suggestions: Optional[str] = None
     interview_transcript: Optional[dict] = None
+    # BJCP v2 scoring (all optional - used when scoring_version=2)
+    scoring_version: Optional[int] = None
+    aroma_malt: Optional[int] = None
+    aroma_hops: Optional[int] = None
+    aroma_fermentation: Optional[int] = None
+    aroma_other: Optional[int] = None
+    appearance_color: Optional[int] = None
+    appearance_clarity: Optional[int] = None
+    appearance_head: Optional[int] = None
+    flavor_malt: Optional[int] = None
+    flavor_hops: Optional[int] = None
+    flavor_bitterness: Optional[int] = None
+    flavor_fermentation: Optional[int] = None
+    flavor_balance: Optional[int] = None
+    flavor_finish: Optional[int] = None
+    mouthfeel_body: Optional[int] = None
+    mouthfeel_carbonation: Optional[int] = None
+    mouthfeel_warmth: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

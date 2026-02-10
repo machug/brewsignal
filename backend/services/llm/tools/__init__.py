@@ -905,7 +905,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_tasting_note",
-            "description": "Save a complete tasting note for a batch. Records BJCP-style scores (1-5 for each category) plus optional notes and context. Use this after guiding the user through a tasting evaluation.",
+            "description": "Save a complete tasting note for a batch. Supports two scoring versions: v1 (legacy, 5 categories 1-5, max 25) and v2 (BJCP subcategory scoring, 16 subcategories + overall, max 50). Set scoring_version=2 and use the subcategory fields for BJCP scoring. Use this after guiding the user through a tasting evaluation.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -913,9 +913,14 @@ TOOL_DEFINITIONS = [
                         "type": "integer",
                         "description": "The batch ID to save tasting note for"
                     },
+                    "scoring_version": {
+                        "type": "integer",
+                        "enum": [1, 2],
+                        "description": "Scoring version: 1 for legacy (5 categories, 1-5 each), 2 for BJCP (16 subcategories, max 50). Default: 1"
+                    },
                     "appearance_score": {
                         "type": "integer",
-                        "description": "Appearance score (1-5): clarity, color, head retention"
+                        "description": "Legacy v1 appearance score (1-5): clarity, color, head retention"
                     },
                     "appearance_notes": {
                         "type": "string",
@@ -923,7 +928,7 @@ TOOL_DEFINITIONS = [
                     },
                     "aroma_score": {
                         "type": "integer",
-                        "description": "Aroma score (1-5): hop aroma, malt aroma, fermentation character"
+                        "description": "Legacy v1 aroma score (1-5): hop aroma, malt aroma, fermentation character"
                     },
                     "aroma_notes": {
                         "type": "string",
@@ -931,7 +936,7 @@ TOOL_DEFINITIONS = [
                     },
                     "flavor_score": {
                         "type": "integer",
-                        "description": "Flavor score (1-5): malt, hops, fermentation, balance, aftertaste"
+                        "description": "Legacy v1 flavor score (1-5): malt, hops, fermentation, balance, aftertaste"
                     },
                     "flavor_notes": {
                         "type": "string",
@@ -939,7 +944,7 @@ TOOL_DEFINITIONS = [
                     },
                     "mouthfeel_score": {
                         "type": "integer",
-                        "description": "Mouthfeel score (1-5): body, carbonation, warmth, creaminess"
+                        "description": "Legacy v1 mouthfeel score (1-5): body, carbonation, warmth, creaminess"
                     },
                     "mouthfeel_notes": {
                         "type": "string",
@@ -947,7 +952,7 @@ TOOL_DEFINITIONS = [
                     },
                     "overall_score": {
                         "type": "integer",
-                        "description": "Overall impression score (1-5): how enjoyable and true to style"
+                        "description": "Overall impression score (1-5 for v1, 0-10 for v2)"
                     },
                     "overall_notes": {
                         "type": "string",
@@ -980,9 +985,73 @@ TOOL_DEFINITIONS = [
                     "interview_transcript": {
                         "type": "object",
                         "description": "Transcript of the AI-guided tasting interview"
+                    },
+                    "aroma_malt": {
+                        "type": "integer",
+                        "description": "BJCP v2: Aroma malt character (0-3)"
+                    },
+                    "aroma_hops": {
+                        "type": "integer",
+                        "description": "BJCP v2: Aroma hop character (0-3)"
+                    },
+                    "aroma_fermentation": {
+                        "type": "integer",
+                        "description": "BJCP v2: Aroma fermentation character (0-3)"
+                    },
+                    "aroma_other": {
+                        "type": "integer",
+                        "description": "BJCP v2: Aroma other character (0-3)"
+                    },
+                    "appearance_color": {
+                        "type": "integer",
+                        "description": "BJCP v2: Appearance color (0-1)"
+                    },
+                    "appearance_clarity": {
+                        "type": "integer",
+                        "description": "BJCP v2: Appearance clarity (0-1)"
+                    },
+                    "appearance_head": {
+                        "type": "integer",
+                        "description": "BJCP v2: Appearance head retention/color (0-1)"
+                    },
+                    "flavor_malt": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor malt character (0-5)"
+                    },
+                    "flavor_hops": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor hop character (0-5)"
+                    },
+                    "flavor_bitterness": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor bitterness level (0-3)"
+                    },
+                    "flavor_fermentation": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor fermentation character (0-3)"
+                    },
+                    "flavor_balance": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor balance (0-2)"
+                    },
+                    "flavor_finish": {
+                        "type": "integer",
+                        "description": "BJCP v2: Flavor finish/aftertaste (0-2)"
+                    },
+                    "mouthfeel_body": {
+                        "type": "integer",
+                        "description": "BJCP v2: Mouthfeel body (0-2)"
+                    },
+                    "mouthfeel_carbonation": {
+                        "type": "integer",
+                        "description": "BJCP v2: Mouthfeel carbonation (0-2)"
+                    },
+                    "mouthfeel_warmth": {
+                        "type": "integer",
+                        "description": "BJCP v2: Mouthfeel warmth/alcohol (0-1)"
                     }
                 },
-                "required": ["batch_id", "appearance_score", "aroma_score", "flavor_score", "mouthfeel_score", "overall_score"]
+                "required": ["batch_id"]
             }
         }
     },

@@ -84,17 +84,26 @@ async def start_tasting_session(
         "style_guidelines": style_info,
         "previous_tastings": previous_tastings,
         "tasting_count": len(previous_tastings),
+        "bjcp_scoring": {
+            "aroma": {"max": 12, "subcategories": {"malt": 3, "hops": 3, "fermentation": 3, "other": 3}},
+            "appearance": {"max": 3, "subcategories": {"color": 1, "clarity": 1, "head": 1}},
+            "flavor": {"max": 20, "subcategories": {"malt": 5, "hops": 5, "bitterness": 3, "fermentation": 3, "balance": 2, "finish": 2}},
+            "mouthfeel": {"max": 5, "subcategories": {"body": 2, "carbonation": 2, "warmth": 1}},
+            "overall": {"max": 10},
+            "total_max": 50,
+        },
     }
 
 
 async def save_tasting_note(
     db: AsyncSession,
     batch_id: int,
-    appearance_score: int,
-    aroma_score: int,
-    flavor_score: int,
-    mouthfeel_score: int,
-    overall_score: int,
+    # Legacy v1 scores (optional for v2 BJCP scoring)
+    appearance_score: Optional[int] = None,
+    aroma_score: Optional[int] = None,
+    flavor_score: Optional[int] = None,
+    mouthfeel_score: Optional[int] = None,
+    overall_score: Optional[int] = None,
     appearance_notes: Optional[str] = None,
     aroma_notes: Optional[str] = None,
     flavor_notes: Optional[str] = None,
@@ -108,17 +117,43 @@ async def save_tasting_note(
     ai_suggestions: Optional[str] = None,
     interview_transcript: Optional[dict] = None,
     user_id: Optional[str] = None,
+    # BJCP v2 scoring
+    scoring_version: int = 1,
+    # Aroma subcategories (0-3 each, max 12)
+    aroma_malt: Optional[int] = None,
+    aroma_hops: Optional[int] = None,
+    aroma_fermentation: Optional[int] = None,
+    aroma_other: Optional[int] = None,
+    # Appearance subcategories (0-1 each, max 3)
+    appearance_color: Optional[int] = None,
+    appearance_clarity: Optional[int] = None,
+    appearance_head: Optional[int] = None,
+    # Flavor subcategories (varying, max 20)
+    flavor_malt: Optional[int] = None,
+    flavor_hops: Optional[int] = None,
+    flavor_bitterness: Optional[int] = None,
+    flavor_fermentation: Optional[int] = None,
+    flavor_balance: Optional[int] = None,
+    flavor_finish: Optional[int] = None,
+    # Mouthfeel subcategories (varying, max 5)
+    mouthfeel_body: Optional[int] = None,
+    mouthfeel_carbonation: Optional[int] = None,
+    mouthfeel_warmth: Optional[int] = None,
 ) -> dict[str, Any]:
     """Save a complete tasting note for a batch.
+
+    Supports two scoring versions:
+    - v1 (legacy): 5 category scores (1-5 each), max 25 points
+    - v2 (BJCP): 16 subcategory scores + overall, max 50 points
 
     Args:
         db: Database session
         batch_id: ID of the batch to add tasting note for
-        appearance_score: Appearance score (1-5)
-        aroma_score: Aroma score (1-5)
-        flavor_score: Flavor score (1-5)
-        mouthfeel_score: Mouthfeel score (1-5)
-        overall_score: Overall impression score (1-5)
+        appearance_score: Legacy appearance score (1-5)
+        aroma_score: Legacy aroma score (1-5)
+        flavor_score: Legacy flavor score (1-5)
+        mouthfeel_score: Legacy mouthfeel score (1-5)
+        overall_score: Overall impression score (1-5 for v1, 0-10 for v2)
         appearance_notes: Notes about appearance
         aroma_notes: Notes about aroma
         flavor_notes: Notes about flavor
@@ -132,6 +167,23 @@ async def save_tasting_note(
         ai_suggestions: AI-generated suggestions for improvement
         interview_transcript: Transcript of AI-guided tasting interview
         user_id: User ID for multi-tenant isolation
+        scoring_version: 1 for legacy (default), 2 for BJCP subcategory scoring
+        aroma_malt: BJCP aroma malt score (0-3)
+        aroma_hops: BJCP aroma hops score (0-3)
+        aroma_fermentation: BJCP aroma fermentation score (0-3)
+        aroma_other: BJCP aroma other score (0-3)
+        appearance_color: BJCP appearance color score (0-1)
+        appearance_clarity: BJCP appearance clarity score (0-1)
+        appearance_head: BJCP appearance head score (0-1)
+        flavor_malt: BJCP flavor malt score (0-5)
+        flavor_hops: BJCP flavor hops score (0-5)
+        flavor_bitterness: BJCP flavor bitterness score (0-3)
+        flavor_fermentation: BJCP flavor fermentation score (0-3)
+        flavor_balance: BJCP flavor balance score (0-2)
+        flavor_finish: BJCP flavor finish score (0-2)
+        mouthfeel_body: BJCP mouthfeel body score (0-2)
+        mouthfeel_carbonation: BJCP mouthfeel carbonation score (0-2)
+        mouthfeel_warmth: BJCP mouthfeel warmth score (0-1)
 
     Returns:
         Dict with success status and created tasting note or error message
@@ -141,7 +193,17 @@ async def save_tasting_note(
     if not batch:
         return {"success": False, "error": f"Batch {batch_id} not found"}
 
-    total_score = appearance_score + aroma_score + flavor_score + mouthfeel_score + overall_score
+    if scoring_version == 2:
+        total_score = sum(filter(None, [
+            aroma_malt, aroma_hops, aroma_fermentation, aroma_other,
+            appearance_color, appearance_clarity, appearance_head,
+            flavor_malt, flavor_hops, flavor_bitterness, flavor_fermentation,
+            flavor_balance, flavor_finish,
+            mouthfeel_body, mouthfeel_carbonation, mouthfeel_warmth,
+            overall_score,
+        ]))
+    else:
+        total_score = (appearance_score or 0) + (aroma_score or 0) + (flavor_score or 0) + (mouthfeel_score or 0) + (overall_score or 0)
 
     if days_since_packaging is None and batch.packaged_at:
         days_since_packaging = (datetime.now(timezone.utc) - batch.packaged_at).days
@@ -168,6 +230,23 @@ async def save_tasting_note(
         style_deviation_notes=style_deviation_notes,
         ai_suggestions=ai_suggestions,
         interview_transcript=interview_transcript,
+        scoring_version=scoring_version,
+        aroma_malt=aroma_malt,
+        aroma_hops=aroma_hops,
+        aroma_fermentation=aroma_fermentation,
+        aroma_other=aroma_other,
+        appearance_color=appearance_color,
+        appearance_clarity=appearance_clarity,
+        appearance_head=appearance_head,
+        flavor_malt=flavor_malt,
+        flavor_hops=flavor_hops,
+        flavor_bitterness=flavor_bitterness,
+        flavor_fermentation=flavor_fermentation,
+        flavor_balance=flavor_balance,
+        flavor_finish=flavor_finish,
+        mouthfeel_body=mouthfeel_body,
+        mouthfeel_carbonation=mouthfeel_carbonation,
+        mouthfeel_warmth=mouthfeel_warmth,
     )
     db.add(note)
     await db.commit()
@@ -181,12 +260,30 @@ async def save_tasting_note(
             "tasted_at": note.tasted_at.isoformat(),
             "days_since_packaging": note.days_since_packaging,
             "total_score": note.total_score,
+            "scoring_version": note.scoring_version,
             "appearance_score": note.appearance_score,
             "aroma_score": note.aroma_score,
             "flavor_score": note.flavor_score,
             "mouthfeel_score": note.mouthfeel_score,
             "overall_score": note.overall_score,
             "to_style": note.to_style,
+            # BJCP v2 subcategory scores
+            "aroma_malt": note.aroma_malt,
+            "aroma_hops": note.aroma_hops,
+            "aroma_fermentation": note.aroma_fermentation,
+            "aroma_other": note.aroma_other,
+            "appearance_color": note.appearance_color,
+            "appearance_clarity": note.appearance_clarity,
+            "appearance_head": note.appearance_head,
+            "flavor_malt": note.flavor_malt,
+            "flavor_hops": note.flavor_hops,
+            "flavor_bitterness": note.flavor_bitterness,
+            "flavor_fermentation": note.flavor_fermentation,
+            "flavor_balance": note.flavor_balance,
+            "flavor_finish": note.flavor_finish,
+            "mouthfeel_body": note.mouthfeel_body,
+            "mouthfeel_carbonation": note.mouthfeel_carbonation,
+            "mouthfeel_warmth": note.mouthfeel_warmth,
         }
     }
 
@@ -221,6 +318,7 @@ async def get_batch_tasting_notes(
                 "tasted_at": n.tasted_at.isoformat() if n.tasted_at else None,
                 "days_since_packaging": n.days_since_packaging,
                 "total_score": n.total_score,
+                "scoring_version": n.scoring_version,
                 "appearance_score": n.appearance_score,
                 "appearance_notes": n.appearance_notes,
                 "aroma_score": n.aroma_score,
@@ -234,6 +332,23 @@ async def get_batch_tasting_notes(
                 "to_style": n.to_style,
                 "style_deviation_notes": n.style_deviation_notes,
                 "ai_suggestions": n.ai_suggestions,
+                # BJCP v2 subcategory scores
+                "aroma_malt": n.aroma_malt,
+                "aroma_hops": n.aroma_hops,
+                "aroma_fermentation": n.aroma_fermentation,
+                "aroma_other": n.aroma_other,
+                "appearance_color": n.appearance_color,
+                "appearance_clarity": n.appearance_clarity,
+                "appearance_head": n.appearance_head,
+                "flavor_malt": n.flavor_malt,
+                "flavor_hops": n.flavor_hops,
+                "flavor_bitterness": n.flavor_bitterness,
+                "flavor_fermentation": n.flavor_fermentation,
+                "flavor_balance": n.flavor_balance,
+                "flavor_finish": n.flavor_finish,
+                "mouthfeel_body": n.mouthfeel_body,
+                "mouthfeel_carbonation": n.mouthfeel_carbonation,
+                "mouthfeel_warmth": n.mouthfeel_warmth,
             }
             for n in notes
         ]

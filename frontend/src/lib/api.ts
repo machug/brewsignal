@@ -513,6 +513,11 @@ export interface TastingNoteResponse {
 	mouthfeel_body?: number;
 	mouthfeel_carbonation?: number;
 	mouthfeel_warmth?: number;
+	// Context & style conformance
+	serving_temp_c?: number;
+	glassware?: string;
+	to_style?: boolean;
+	style_deviation_notes?: string;
 	created_at: string;
 	updated_at: string;
 }
@@ -548,6 +553,11 @@ export interface TastingNoteCreate {
 	mouthfeel_body?: number;
 	mouthfeel_carbonation?: number;
 	mouthfeel_warmth?: number;
+	// Context & style conformance
+	serving_temp_c?: number;
+	glassware?: string;
+	to_style?: boolean;
+	style_deviation_notes?: string;
 }
 
 export interface TastingNoteUpdate {
@@ -580,6 +590,11 @@ export interface TastingNoteUpdate {
 	mouthfeel_body?: number;
 	mouthfeel_carbonation?: number;
 	mouthfeel_warmth?: number;
+	// Context & style conformance
+	serving_temp_c?: number;
+	glassware?: string;
+	to_style?: boolean;
+	style_deviation_notes?: string;
 }
 
 export interface BatchResponse {

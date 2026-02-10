@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TastingNote, ScoreCategory } from '$lib/types';
-	import { SCORE_CATEGORIES, MAX_TOTAL_SCORE } from '$lib/types';
+	import { SCORE_CATEGORIES, MAX_TOTAL_SCORE, BJCP_MAX_TOTAL, BJCP_CATEGORIES, getBJCPRating } from '$lib/types';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
@@ -57,6 +57,24 @@
 		return note[key] as string | undefined;
 	}
 
+	function getBJCPScoreColor(score: number | undefined): 'outstanding' | 'excellent' | 'verygood' | 'good' | 'fair' | 'none' {
+		if (score === undefined || score === null) return 'none';
+		if (score >= 45) return 'outstanding';
+		if (score >= 38) return 'excellent';
+		if (score >= 30) return 'verygood';
+		if (score >= 21) return 'good';
+		return 'fair';
+	}
+
+	function getBJCPCategoryTotal(note: TastingNote, category: string): number {
+		if (category === 'aroma') return (note.aroma_malt || 0) + (note.aroma_hops || 0) + (note.aroma_fermentation || 0) + (note.aroma_other || 0);
+		if (category === 'appearance') return (note.appearance_color || 0) + (note.appearance_clarity || 0) + (note.appearance_head || 0);
+		if (category === 'flavor') return (note.flavor_malt || 0) + (note.flavor_hops || 0) + (note.flavor_bitterness || 0) + (note.flavor_fermentation || 0) + (note.flavor_balance || 0) + (note.flavor_finish || 0);
+		if (category === 'mouthfeel') return (note.mouthfeel_body || 0) + (note.mouthfeel_carbonation || 0) + (note.mouthfeel_warmth || 0);
+		if (category === 'overall') return note.overall_score || 0;
+		return 0;
+	}
+
 	function hasAnyNotes(note: TastingNote): boolean {
 		return (
 			!!note.appearance_notes ||
@@ -70,7 +88,7 @@
 	}
 </script>
 
-<BatchCard title="Tasting Notes" icon="🍺">
+<BatchCard title="Tasting Notes" icon="&#127866;">
 	<div class="tasting-content">
 		<!-- Header with Add button -->
 		<div class="tasting-header">
@@ -97,7 +115,7 @@
 			<div class="notes-list">
 				{#each sortedNotes as note (note.id)}
 					{@const isExpanded = expandedNoteId === note.id}
-					{@const scoreColor = getScoreColor(note.total_score)}
+					{@const scoreColor = note.scoring_version === 2 ? getBJCPScoreColor(note.total_score) : getScoreColor(note.total_score)}
 
 					<div class="note-item" class:expanded={isExpanded}>
 						<!-- Note Summary Row -->
@@ -116,20 +134,45 @@
 								</div>
 
 								<!-- Score badges row -->
-								<div class="score-badges">
-									{#each Object.entries(SCORE_CATEGORIES) as [category, info]}
-										{@const score = getScoreValue(note, category as ScoreCategory)}
-										<span
-											class="score-badge"
-											class:score-high={getIndividualScoreColor(score) === 'high'}
-											class:score-medium={getIndividualScoreColor(score) === 'medium'}
-											class:score-low={getIndividualScoreColor(score) === 'low'}
-											class:score-none={getIndividualScoreColor(score) === 'none'}
-										>
-											{info.abbrev}:{score ?? '-'}
-										</span>
-									{/each}
-								</div>
+								{#if note.scoring_version === 2}
+									<div class="bjcp-scores">
+										<div class="bjcp-category">
+											<span class="category-label">Aroma</span>
+											<span class="category-score">{getBJCPCategoryTotal(note, 'aroma')}/12</span>
+										</div>
+										<div class="bjcp-category">
+											<span class="category-label">Appear</span>
+											<span class="category-score">{getBJCPCategoryTotal(note, 'appearance')}/3</span>
+										</div>
+										<div class="bjcp-category">
+											<span class="category-label">Flavor</span>
+											<span class="category-score">{getBJCPCategoryTotal(note, 'flavor')}/20</span>
+										</div>
+										<div class="bjcp-category">
+											<span class="category-label">Mouth</span>
+											<span class="category-score">{getBJCPCategoryTotal(note, 'mouthfeel')}/5</span>
+										</div>
+										<div class="bjcp-category overall">
+											<span class="category-label">Overall</span>
+											<span class="category-score">{note.overall_score || 0}/10</span>
+										</div>
+									</div>
+								{:else}
+									<div class="score-badges">
+										{#each Object.entries(SCORE_CATEGORIES) as [category, info]}
+											{@const score = getScoreValue(note, category as ScoreCategory)}
+											<span
+												class="score-badge"
+												class:score-high={getIndividualScoreColor(score) === 'high'}
+												class:score-medium={getIndividualScoreColor(score) === 'medium'}
+												class:score-low={getIndividualScoreColor(score) === 'low'}
+												class:score-none={getIndividualScoreColor(score) === 'none'}
+											>
+												{info.abbrev}:{score ?? '-'}
+											</span>
+										{/each}
+									</div>
+								{/if}
 							</div>
 
 							<div class="summary-right">
@@ -164,10 +207,18 @@
 								{/if}
 
 								<!-- Total score -->
-								<div class="total-score" class:excellent={scoreColor === 'excellent'} class:good={scoreColor === 'good'} class:poor={scoreColor === 'poor'}>
-									<span class="score-value">{note.total_score ?? '-'}</span>
-									<span class="score-max">/{MAX_TOTAL_SCORE}</span>
-								</div>
+								{#if note.scoring_version === 2}
+									<div class="bjcp-total" class:bjcp-outstanding={scoreColor === 'outstanding'} class:bjcp-excellent={scoreColor === 'excellent'} class:bjcp-verygood={scoreColor === 'verygood'} class:bjcp-good={scoreColor === 'good'} class:bjcp-fair={scoreColor === 'fair'}>
+										<span class="total-score-value">{note.total_score || 0}</span>
+										<span class="total-score-max">/{BJCP_MAX_TOTAL}</span>
+										<span class="total-rating">{getBJCPRating(note.total_score || 0)}</span>
+									</div>
+								{:else}
+									<div class="total-score" class:excellent={scoreColor === 'excellent'} class:good={scoreColor === 'good'} class:poor={scoreColor === 'poor'}>
+										<span class="score-value">{note.total_score ?? '-'}</span>
+										<span class="score-max">/{MAX_TOTAL_SCORE}</span>
+									</div>
+								{/if}
 
 								<!-- Expand chevron -->
 								<svg
@@ -195,13 +246,13 @@
 									<div class="context-row">
 										{#if note.serving_temp_c}
 											<span class="context-item">
-												<span class="context-icon">🌡️</span>
-												{note.serving_temp_c}°C
+												<span class="context-icon">&#127777;&#65039;</span>
+												{note.serving_temp_c}&deg;C
 											</span>
 										{/if}
 										{#if note.glassware}
 											<span class="context-item">
-												<span class="context-icon">🍺</span>
+												<span class="context-icon">&#127866;</span>
 												{note.glassware}
 											</span>
 										{/if}
@@ -209,41 +260,78 @@
 								{/if}
 
 								<!-- Score breakdown with notes -->
-								<div class="scores-section">
-									<h4 class="section-title">Scores</h4>
-									<div class="scores-grid">
-										{#each Object.entries(SCORE_CATEGORIES) as [category, info]}
-											{@const score = getScoreValue(note, category as ScoreCategory)}
-											{@const notes = getNoteValue(note, category as ScoreCategory)}
-											<div class="score-item">
-												<div class="score-header">
-													<span class="score-name">{info.name}</span>
-													<span
-														class="score-display"
-														class:score-high={getIndividualScoreColor(score) === 'high'}
-														class:score-medium={getIndividualScoreColor(score) === 'medium'}
-														class:score-low={getIndividualScoreColor(score) === 'low'}
-													>
-														{score ?? '-'}/{info.maxScore}
-													</span>
+								{#if note.scoring_version === 2}
+									<div class="scores-section">
+										<h4 class="section-title">BJCP Scores</h4>
+										<div class="bjcp-detail-grid">
+											{#each BJCP_CATEGORIES as cat}
+												{@const catTotal = getBJCPCategoryTotal(note, cat.key)}
+												{@const catNotes = getNoteValue(note, cat.key as ScoreCategory)}
+												<div class="bjcp-detail-item">
+													<div class="bjcp-detail-header">
+														<span class="bjcp-detail-name">{cat.name}</span>
+														<span class="bjcp-detail-score">{catTotal}/{cat.maxScore}</span>
+													</div>
+													<div class="score-bar-container">
+														<div
+															class="score-bar bjcp-bar"
+															style="width: {cat.maxScore > 0 ? (catTotal / cat.maxScore) * 100 : 0}%"
+														></div>
+													</div>
+													{#if cat.subcategories.length > 0}
+														<div class="bjcp-subcategories">
+															{#each cat.subcategories as sub}
+																{@const subVal = (note[sub.key as keyof TastingNote] as number) || 0}
+																<span class="bjcp-sub-badge">
+																	{sub.name}: {subVal}/{sub.maxScore}
+																</span>
+															{/each}
+														</div>
+													{/if}
+													{#if catNotes}
+														<p class="score-notes">{catNotes}</p>
+													{/if}
 												</div>
-												<!-- Score bar visualization -->
-												<div class="score-bar-container">
-													<div
-														class="score-bar"
-														class:score-high={getIndividualScoreColor(score) === 'high'}
-														class:score-medium={getIndividualScoreColor(score) === 'medium'}
-														class:score-low={getIndividualScoreColor(score) === 'low'}
-														style="width: {score ? (score / info.maxScore) * 100 : 0}%"
-													></div>
-												</div>
-												{#if notes}
-													<p class="score-notes">{notes}</p>
-												{/if}
-											</div>
-										{/each}
+											{/each}
+										</div>
 									</div>
-								</div>
+								{:else}
+									<div class="scores-section">
+										<h4 class="section-title">Scores</h4>
+										<div class="scores-grid">
+											{#each Object.entries(SCORE_CATEGORIES) as [category, info]}
+												{@const score = getScoreValue(note, category as ScoreCategory)}
+												{@const notes = getNoteValue(note, category as ScoreCategory)}
+												<div class="score-item">
+													<div class="score-header">
+														<span class="score-name">{info.name}</span>
+														<span
+															class="score-display"
+															class:score-high={getIndividualScoreColor(score) === 'high'}
+															class:score-medium={getIndividualScoreColor(score) === 'medium'}
+															class:score-low={getIndividualScoreColor(score) === 'low'}
+														>
+															{score ?? '-'}/{info.maxScore}
+														</span>
+													</div>
+													<!-- Score bar visualization -->
+													<div class="score-bar-container">
+														<div
+															class="score-bar"
+															class:score-high={getIndividualScoreColor(score) === 'high'}
+															class:score-medium={getIndividualScoreColor(score) === 'medium'}
+															class:score-low={getIndividualScoreColor(score) === 'low'}
+															style="width: {score ? (score / info.maxScore) * 100 : 0}%"
+														></div>
+													</div>
+													{#if notes}
+														<p class="score-notes">{notes}</p>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/if}
 
 								<!-- Style conformance section -->
 								{#if note.to_style !== undefined || note.style_deviation_notes}
@@ -294,7 +382,7 @@
 		{:else}
 			<!-- Empty state -->
 			<div class="empty-state">
-				<div class="empty-icon">🍺</div>
+				<div class="empty-icon">&#127866;</div>
 				<p class="empty-text">No tasting notes yet</p>
 				<p class="empty-subtext">Record your first tasting to track how your beer develops over time.</p>
 				{#if onAddTasting}
@@ -424,7 +512,7 @@
 		border-radius: 9999px;
 	}
 
-	/* Score badges */
+	/* Legacy score badges */
 	.score-badges {
 		display: flex;
 		gap: 0.25rem;
@@ -453,6 +541,142 @@
 
 	.score-badge.score-low {
 		background: rgba(239, 68, 68, 0.15);
+		color: var(--negative);
+	}
+
+	/* BJCP summary scores (compact badges in summary row) */
+	.bjcp-scores {
+		display: flex;
+		gap: 0.25rem;
+		flex-wrap: wrap;
+	}
+
+	.bjcp-category {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.125rem 0.375rem;
+		border-radius: 0.25rem;
+		background: var(--bg-surface);
+		min-width: 2.5rem;
+	}
+
+	.bjcp-category.overall {
+		background: rgba(99, 102, 241, 0.12);
+	}
+
+	.category-label {
+		font-size: 0.5625rem;
+		font-weight: 500;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		line-height: 1;
+	}
+
+	.bjcp-category.overall .category-label {
+		color: var(--accent);
+	}
+
+	.category-score {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 700;
+		color: var(--text-primary);
+		line-height: 1.2;
+	}
+
+	.bjcp-category.overall .category-score {
+		color: var(--accent);
+	}
+
+	/* BJCP total score (in summary-right) */
+	.bjcp-total {
+		display: flex;
+		align-items: baseline;
+		gap: 0.125rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.375rem;
+		background: var(--bg-surface);
+	}
+
+	.bjcp-total.bjcp-outstanding {
+		background: rgba(234, 179, 8, 0.15);
+	}
+
+	.bjcp-total.bjcp-excellent {
+		background: rgba(34, 197, 94, 0.15);
+	}
+
+	.bjcp-total.bjcp-verygood {
+		background: rgba(59, 130, 246, 0.15);
+	}
+
+	.bjcp-total.bjcp-good {
+		background: rgba(245, 158, 11, 0.15);
+	}
+
+	.bjcp-total.bjcp-fair {
+		background: rgba(239, 68, 68, 0.15);
+	}
+
+	.total-score-value {
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.bjcp-total.bjcp-outstanding .total-score-value {
+		color: rgb(202, 138, 4);
+	}
+
+	.bjcp-total.bjcp-excellent .total-score-value {
+		color: var(--positive);
+	}
+
+	.bjcp-total.bjcp-verygood .total-score-value {
+		color: rgb(59, 130, 246);
+	}
+
+	.bjcp-total.bjcp-good .total-score-value {
+		color: var(--recipe-accent);
+	}
+
+	.bjcp-total.bjcp-fair .total-score-value {
+		color: var(--negative);
+	}
+
+	.total-score-max {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+	}
+
+	.total-rating {
+		font-size: 0.625rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin-left: 0.25rem;
+	}
+
+	.bjcp-total.bjcp-outstanding .total-rating {
+		color: rgb(202, 138, 4);
+	}
+
+	.bjcp-total.bjcp-excellent .total-rating {
+		color: var(--positive);
+	}
+
+	.bjcp-total.bjcp-verygood .total-rating {
+		color: rgb(59, 130, 246);
+	}
+
+	.bjcp-total.bjcp-good .total-rating {
+		color: var(--recipe-accent);
+	}
+
+	.bjcp-total.bjcp-fair .total-rating {
 		color: var(--negative);
 	}
 
@@ -487,7 +711,7 @@
 		color: var(--negative);
 	}
 
-	/* Total score */
+	/* Legacy total score */
 	.total-score {
 		display: flex;
 		align-items: baseline;
@@ -584,7 +808,7 @@
 		margin: 0 0 0.5rem 0;
 	}
 
-	/* Scores section */
+	/* Legacy scores section */
 	.scores-section {
 		padding-top: 0.5rem;
 	}
@@ -659,6 +883,10 @@
 		background: var(--negative);
 	}
 
+	.score-bar.bjcp-bar {
+		background: var(--accent);
+	}
+
 	.score-notes {
 		font-size: 0.75rem;
 		color: var(--text-secondary);
@@ -666,6 +894,55 @@
 		margin: 0.25rem 0 0 0;
 		padding-left: 0.5rem;
 		border-left: 2px solid var(--border-subtle);
+	}
+
+	/* BJCP expanded detail grid */
+	.bjcp-detail-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.bjcp-detail-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.bjcp-detail-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.bjcp-detail-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.bjcp-detail-score {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: var(--accent);
+	}
+
+	.bjcp-subcategories {
+		display: flex;
+		gap: 0.25rem;
+		flex-wrap: wrap;
+		margin-top: 0.125rem;
+	}
+
+	.bjcp-sub-badge {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		padding: 0.0625rem 0.25rem;
+		border-radius: 0.1875rem;
+		background: var(--bg-surface);
+		color: var(--text-muted);
 	}
 
 	/* Style section */
@@ -830,8 +1107,20 @@
 			padding: 0.25rem 0.375rem;
 		}
 
+		.bjcp-total {
+			padding: 0.25rem 0.375rem;
+		}
+
 		.score-value {
 			font-size: 0.875rem;
+		}
+
+		.total-score-value {
+			font-size: 0.875rem;
+		}
+
+		.total-rating {
+			display: none;
 		}
 	}
 </style>

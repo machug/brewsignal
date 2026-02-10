@@ -1114,10 +1114,27 @@ async def create_tasting_note(
     # Verify batch exists and user owns it
     batch = await get_user_batch(batch_id, user, db)
 
-    # Calculate total score if any scores provided
-    scores = [note.appearance_score, note.aroma_score, note.flavor_score,
-              note.mouthfeel_score, note.overall_score]
-    total = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
+    # Calculate total score based on scoring version
+    scoring_version = note.scoring_version or 1
+    if scoring_version == 2:
+        # BJCP: sum of all subcategory scores + overall (max 50)
+        total = sum(filter(None, [
+            note.aroma_malt, note.aroma_hops,
+            note.aroma_fermentation, note.aroma_other,
+            note.appearance_color, note.appearance_clarity,
+            note.appearance_head,
+            note.flavor_malt, note.flavor_hops,
+            note.flavor_bitterness, note.flavor_fermentation,
+            note.flavor_balance, note.flavor_finish,
+            note.mouthfeel_body, note.mouthfeel_carbonation,
+            note.mouthfeel_warmth,
+            note.overall_score,
+        ]))
+    else:
+        # Legacy: sum of 5 category scores (max 25)
+        scores = [note.appearance_score, note.aroma_score, note.flavor_score,
+                  note.mouthfeel_score, note.overall_score]
+        total = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
 
     db_note = TastingNote(
         batch_id=batch_id,
@@ -1137,8 +1154,26 @@ async def create_tasting_note(
         overall_score=note.overall_score,
         overall_notes=note.overall_notes,
         total_score=total,
+        scoring_version=scoring_version,
         to_style=note.to_style,
         style_deviation_notes=note.style_deviation_notes,
+        # BJCP v2 subcategory scores
+        aroma_malt=note.aroma_malt,
+        aroma_hops=note.aroma_hops,
+        aroma_fermentation=note.aroma_fermentation,
+        aroma_other=note.aroma_other,
+        appearance_color=note.appearance_color,
+        appearance_clarity=note.appearance_clarity,
+        appearance_head=note.appearance_head,
+        flavor_malt=note.flavor_malt,
+        flavor_hops=note.flavor_hops,
+        flavor_bitterness=note.flavor_bitterness,
+        flavor_fermentation=note.flavor_fermentation,
+        flavor_balance=note.flavor_balance,
+        flavor_finish=note.flavor_finish,
+        mouthfeel_body=note.mouthfeel_body,
+        mouthfeel_carbonation=note.mouthfeel_carbonation,
+        mouthfeel_warmth=note.mouthfeel_warmth,
     )
     db.add(db_note)
     await db.commit()
@@ -1200,10 +1235,27 @@ async def update_tasting_note(
     for key, value in update_data.items():
         setattr(note, key, value)
 
-    # Recalculate total_score from current scores (including any updates)
-    scores = [note.appearance_score, note.aroma_score, note.flavor_score,
-              note.mouthfeel_score, note.overall_score]
-    note.total_score = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
+    # Recalculate total_score based on scoring version (including any updates)
+    scoring_version = note.scoring_version or 1
+    if scoring_version == 2:
+        # BJCP: sum of all subcategory scores + overall (max 50)
+        note.total_score = sum(filter(None, [
+            note.aroma_malt, note.aroma_hops,
+            note.aroma_fermentation, note.aroma_other,
+            note.appearance_color, note.appearance_clarity,
+            note.appearance_head,
+            note.flavor_malt, note.flavor_hops,
+            note.flavor_bitterness, note.flavor_fermentation,
+            note.flavor_balance, note.flavor_finish,
+            note.mouthfeel_body, note.mouthfeel_carbonation,
+            note.mouthfeel_warmth,
+            note.overall_score,
+        ]))
+    else:
+        # Legacy: sum of 5 category scores (max 25)
+        scores = [note.appearance_score, note.aroma_score, note.flavor_score,
+                  note.mouthfeel_score, note.overall_score]
+        note.total_score = sum(s for s in scores if s is not None) if any(s is not None for s in scores) else None
 
     await db.commit()
     await db.refresh(note)

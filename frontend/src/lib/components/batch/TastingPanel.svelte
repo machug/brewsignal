@@ -197,7 +197,7 @@
 
 		<!-- Messages area -->
 		<div class="tasting-panel-messages" bind:this={messagesContainer}>
-			{#each agent.messages as message (message.id)}
+			{#each agent.messages.slice(1) as message (message.id)}
 				<div class="tp-message {message.role}">
 					{#if message.role === 'user'}
 						<div class="tp-message-bubble tp-user-bubble">

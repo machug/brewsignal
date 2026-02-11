@@ -45,6 +45,10 @@ _batch_overrides: dict[int, dict] = {}
 # Keys are batch_id, values are True if notification already sent
 _pitch_ready_sent: dict[int, bool] = {}
 
+# Track chamber idle heater/cooler state
+_idle_heater_state: dict = {}   # {"state": "on"/"off", "last_change": datetime}
+_idle_cooler_state: dict = {}
+
 # Track HA config to detect changes
 
 
@@ -206,6 +210,20 @@ async def get_latest_ambient_temp(db) -> Optional[float]:
     )
     row = result.scalar_one_or_none()
     return row
+
+
+async def get_latest_chamber_temp(db) -> Optional[float]:
+    """Get the most recent chamber temperature reading."""
+    from sqlalchemy import desc
+    from .models import ChamberReading
+
+    result = await db.execute(
+        select(ChamberReading.temperature)
+        .where(ChamberReading.temperature.isnot(None))
+        .order_by(desc(ChamberReading.timestamp))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def log_control_event(
@@ -548,6 +566,173 @@ async def control_batch_temperature(
             )
 
 
+async def control_chamber_idle(
+    router: DeviceControlRouter,
+    db,
+    target_temp: float,
+    hysteresis: float,
+    ambient_temp: Optional[float],
+) -> None:
+    """Control chamber temperature when no batches are actively being controlled.
+
+    Uses the chamber sensor (not wort sensor) to maintain a target temperature
+    in the fermentation chamber when idle. This prevents the chamber from
+    getting too hot or cold between batches.
+    """
+    global _idle_heater_state, _idle_cooler_state
+
+    # Get heater entity from global config
+    heater_entity = await get_config_value(db, "ha_heater_entity_id")
+
+    # Get cooler entity: check most recent batch that had one configured
+    cooler_entity = None
+    result = await db.execute(
+        select(Batch.cooler_entity_id)
+        .where(
+            Batch.deleted_at.is_(None),
+            Batch.cooler_entity_id.isnot(None),
+        )
+        .order_by(Batch.updated_at.desc())
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        cooler_entity = row
+
+    if not heater_entity and not cooler_entity:
+        logger.debug("Chamber idle: no heater or cooler entity configured")
+        return
+
+    # Read chamber temperature
+    chamber_temp = await get_latest_chamber_temp(db)
+    if chamber_temp is None:
+        logger.debug("Chamber idle: no chamber temperature available")
+        return
+
+    # Sync cached idle heater state with actual device state
+    if heater_entity:
+        actual_heater_state = await router.get_state(heater_entity)
+        if actual_heater_state in ("on", "off"):
+            if _idle_heater_state:
+                if _idle_heater_state.get("state") != actual_heater_state:
+                    logger.debug(f"Chamber idle: Syncing heater cache: {_idle_heater_state.get('state')} -> {actual_heater_state}")
+                _idle_heater_state["state"] = actual_heater_state
+            else:
+                _idle_heater_state = {"state": actual_heater_state}
+        elif actual_heater_state is None:
+            logger.warning(f"Chamber idle: Heater entity {heater_entity} is unavailable")
+            return
+
+    # Sync cached idle cooler state with actual device state
+    if cooler_entity:
+        actual_cooler_state = await router.get_state(cooler_entity)
+        if actual_cooler_state in ("on", "off"):
+            if _idle_cooler_state:
+                if _idle_cooler_state.get("state") != actual_cooler_state:
+                    logger.debug(f"Chamber idle: Syncing cooler cache: {_idle_cooler_state.get('state')} -> {actual_cooler_state}")
+                _idle_cooler_state["state"] = actual_cooler_state
+            else:
+                _idle_cooler_state = {"state": actual_cooler_state}
+        elif actual_cooler_state is None:
+            logger.warning(f"Chamber idle: Cooler entity {cooler_entity} is unavailable")
+            return
+
+    current_heater = _idle_heater_state.get("state")
+    current_cooler = _idle_cooler_state.get("state")
+
+    # Asymmetric hysteresis thresholds (same logic as control_batch_temperature)
+    heat_on_threshold = round(target_temp - hysteresis, 1)
+    heat_off_threshold = round(target_temp, 1)
+    cool_on_threshold = round(target_temp + hysteresis, 1)
+    cool_off_threshold = round(target_temp, 1)
+
+    logger.debug(
+        f"Chamber idle: chamber={chamber_temp:.1f}C, target={target_temp:.1f}C, "
+        f"hysteresis={hysteresis:.1f}C, heater={current_heater}, cooler={current_cooler}"
+    )
+
+    # Helper to check minimum cycle time for idle state changes
+    def _can_change_idle(state_dict: dict) -> bool:
+        last_change = state_dict.get("last_change")
+        if last_change is None:
+            return True
+        elapsed = datetime.now(timezone.utc) - last_change
+        return elapsed >= timedelta(minutes=MIN_CYCLE_MINUTES)
+
+    # Helper to set idle heater state
+    async def _set_idle_heater(state: str) -> bool:
+        if not _can_change_idle(_idle_heater_state):
+            logger.debug(f"Chamber idle: Skipping heater change to '{state}' - min cycle time not met")
+            return False
+        success = await router.set_state(heater_entity, state)
+        if success:
+            old_state = _idle_heater_state.get("state")
+            _idle_heater_state["state"] = state
+            _idle_heater_state["last_change"] = datetime.now(timezone.utc)
+            logger.info(f"Chamber idle: Heater state changed: {old_state} -> {state}")
+            action = "heat_on" if state == "on" else "heat_off"
+            await log_control_event(db, action, chamber_temp, ambient_temp, target_temp, None, batch_id=None)
+        else:
+            logger.error(f"Chamber idle: Failed to set heater to '{state}'")
+        return success
+
+    # Helper to set idle cooler state
+    async def _set_idle_cooler(state: str) -> bool:
+        if not _can_change_idle(_idle_cooler_state):
+            logger.debug(f"Chamber idle: Skipping cooler change to '{state}' - min cycle time not met")
+            return False
+        success = await router.set_state(cooler_entity, state)
+        if success:
+            old_state = _idle_cooler_state.get("state")
+            _idle_cooler_state["state"] = state
+            _idle_cooler_state["last_change"] = datetime.now(timezone.utc)
+            logger.info(f"Chamber idle: Cooler state changed: {old_state} -> {state}")
+            action = "cool_on" if state == "on" else "cool_off"
+            await log_control_event(db, action, chamber_temp, ambient_temp, target_temp, None, batch_id=None)
+        else:
+            logger.error(f"Chamber idle: Failed to set cooler to '{state}'")
+        return success
+
+    # Control logic with mutual exclusion (same pattern as control_batch_temperature)
+    if chamber_temp <= heat_on_threshold:
+        # Need heating - FIRST ensure cooler is OFF
+        if cooler_entity and current_cooler == "on":
+            logger.info("Chamber idle: Turning cooler OFF (heater needs to run)")
+            await _set_idle_cooler("off")
+            current_cooler = _idle_cooler_state.get("state")
+
+        # THEN turn heater ON
+        if heater_entity and current_heater != "on":
+            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/below threshold {heat_on_threshold:.1f}C, turning heater ON")
+            await _set_idle_heater("on")
+
+    elif chamber_temp >= cool_on_threshold:
+        # Need cooling - FIRST ensure heater is OFF
+        if heater_entity and current_heater == "on":
+            logger.info("Chamber idle: Turning heater OFF (cooler needs to run)")
+            await _set_idle_heater("off")
+            current_heater = _idle_heater_state.get("state")
+
+        # THEN turn cooler ON
+        if cooler_entity and current_cooler != "on":
+            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/above threshold {cool_on_threshold:.1f}C, turning cooler ON")
+            await _set_idle_cooler("on")
+
+    else:
+        # Within deadband - turn off at target to prevent overshoot
+        if chamber_temp >= heat_off_threshold and heater_entity and current_heater == "on":
+            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C reached target {heat_off_threshold:.1f}C, turning heater OFF")
+            await _set_idle_heater("off")
+        elif chamber_temp <= cool_off_threshold and cooler_entity and current_cooler == "on":
+            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C reached target {cool_off_threshold:.1f}C, turning cooler OFF")
+            await _set_idle_cooler("off")
+        else:
+            logger.debug(
+                f"Chamber idle: Within hysteresis band ({heat_on_threshold:.1f}C-{cool_on_threshold:.1f}C), "
+                f"maintaining states: heater={current_heater}, cooler={current_cooler}"
+            )
+
+
 async def temperature_control_loop() -> None:
     """Main temperature control loop - handles multiple batches with their own heaters."""
     global _last_ha_url, _last_ha_token, _wake_event
@@ -637,6 +822,22 @@ async def temperature_control_loop() -> None:
                         for batch in batches
                     ], return_exceptions=True)
 
+                # Chamber idle mode: control when no batches are active
+                if not batches:
+                    idle_enabled = await get_config_value(db, "chamber_idle_enabled")
+                    if idle_enabled:
+                        idle_target = await get_config_value(db, "chamber_idle_target") or 59.0
+                        idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 3.6
+                        await control_chamber_idle(
+                            router, db, idle_target, idle_hysteresis, ambient_temp
+                        )
+                else:
+                    # Batches active - clear idle state
+                    if _idle_heater_state or _idle_cooler_state:
+                        logger.info("Chamber idle: batch control active, clearing idle state")
+                        _idle_heater_state.clear()
+                        _idle_cooler_state.clear()
+
                 # Cleanup old batch entries from in-memory state dictionaries
                 active_batch_ids = {b.id for b in batches}
                 planning_batch_ids = {b.id for b in batches if b.status == "planning"}
@@ -715,6 +916,14 @@ def get_batch_control_status(batch_id: int) -> dict:
         "hysteresis": None,  # Would need to query DB for batch.temp_hysteresis
         "wort_temp": None,  # Would need to get from latest_readings
         "state_available": state_available,
+    }
+
+
+def get_chamber_idle_status() -> dict:
+    """Get current chamber idle control status."""
+    return {
+        "heater_state": _idle_heater_state.get("state"),
+        "cooler_state": _idle_cooler_state.get("state"),
     }
 
 

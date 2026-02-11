@@ -1304,6 +1304,10 @@ class ConfigUpdate(BaseModel):
     temp_target: Optional[float] = None
     temp_hysteresis: Optional[float] = None
     ha_heater_entity_id: Optional[str] = None
+    # Chamber idle mode
+    chamber_idle_enabled: Optional[bool] = None
+    chamber_idle_target: Optional[float] = None
+    chamber_idle_hysteresis: Optional[float] = None
     # Device control backend (ha or shelly)
     device_control_backend: Optional[str] = None  # "ha" or "shelly"
     shelly_enabled: Optional[bool] = None
@@ -1452,6 +1456,10 @@ class ConfigResponse(BaseModel):
     temp_target: float = 68.0
     temp_hysteresis: float = 1.0
     ha_heater_entity_id: str = ""
+    # Chamber idle mode
+    chamber_idle_enabled: bool = False
+    chamber_idle_target: float = 59.0
+    chamber_idle_hysteresis: float = 3.6
     # Device control backend
     device_control_backend: str = "ha"  # "ha" or "shelly"
     shelly_enabled: bool = False

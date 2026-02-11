@@ -111,8 +111,8 @@
 
 	// Chamber idle mode state
 	let chamberIdleEnabled = $state(false);
-	let chamberIdleTarget = $state(59.0);
-	let chamberIdleHysteresis = $state(3.6);
+	let chamberIdleTarget = $state(15.0);
+	let chamberIdleHysteresis = $state(2.0);
 
 	// Device Control Backend state
 	let deviceControlBackend = $state<'ha' | 'shelly'>('ha');
@@ -396,12 +396,14 @@
 		tempHysteresis = configState.config.temp_units === 'C'
 			? Math.round(configState.config.temp_hysteresis * (5 / 9) * 100) / 100
 			: configState.config.temp_hysteresis;
-		// Chamber idle mode - convert from Fahrenheit to display units
+		// Chamber idle mode - stored in Celsius, convert to display units
 		chamberIdleEnabled = configState.config.chamber_idle_enabled;
-		chamberIdleTarget = Math.round(fromFahrenheit(configState.config.chamber_idle_target) * 2) / 2;
-		chamberIdleHysteresis = configState.config.temp_units === 'C'
-			? Math.round(configState.config.chamber_idle_hysteresis * (5 / 9) * 100) / 100
-			: configState.config.chamber_idle_hysteresis;
+		chamberIdleTarget = useCelsius
+			? configState.config.chamber_idle_target
+			: Math.round(celsiusToFahrenheit(configState.config.chamber_idle_target) * 2) / 2;
+		chamberIdleHysteresis = useCelsius
+			? configState.config.chamber_idle_hysteresis
+			: Math.round(configState.config.chamber_idle_hysteresis * (9 / 5) * 100) / 100;
 		// Device Control Backend
 		deviceControlBackend = (configState.config.device_control_backend as 'ha' | 'shelly') ?? 'ha';
 		shellyEnabled = configState.config.shelly_enabled ?? false;
@@ -657,16 +659,17 @@
 			// Hysteresis delta: convert from display units to Fahrenheit
 			const hysteresisF = useCelsius ? tempHysteresis * (9 / 5) : tempHysteresis;
 
-			const idleTargetF = toFahrenheit(chamberIdleTarget);
-			const idleHysteresisF = useCelsius ? chamberIdleHysteresis * (9 / 5) : chamberIdleHysteresis;
+			// Chamber idle: convert display units back to Celsius for storage
+			const idleTargetC = useCelsius ? chamberIdleTarget : fahrenheitToCelsius(chamberIdleTarget);
+			const idleHysteresisC = useCelsius ? chamberIdleHysteresis : chamberIdleHysteresis * (5 / 9);
 
 			const result = await updateConfig({
 				temp_control_enabled: tempControlEnabled,
 				temp_target: targetF,
 				temp_hysteresis: hysteresisF,
 				chamber_idle_enabled: chamberIdleEnabled,
-				chamber_idle_target: idleTargetF,
-				chamber_idle_hysteresis: idleHysteresisF,
+				chamber_idle_target: idleTargetC,
+				chamber_idle_hysteresis: idleHysteresisC,
 			});
 			if (result.success) {
 				controlSuccess = true;

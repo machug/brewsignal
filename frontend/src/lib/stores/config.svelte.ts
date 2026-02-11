@@ -77,8 +77,8 @@ const DEFAULT_CONFIG: AppConfig = {
 	ha_heater_entity_id: '',
 	// Chamber idle mode
 	chamber_idle_enabled: false,
-	chamber_idle_target: 59.0,
-	chamber_idle_hysteresis: 3.6,
+	chamber_idle_target: 15.0,
+	chamber_idle_hysteresis: 2.0,
 	// Weather
 	ha_weather_entity_id: '',
 	// Alerts

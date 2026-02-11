@@ -45,8 +45,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ha_heater_entity_id": "",
     # Chamber idle mode (control chamber when no batches active)
     "chamber_idle_enabled": False,
-    "chamber_idle_target": 59.0,    # 15°C in Fahrenheit
-    "chamber_idle_hysteresis": 3.6,  # 2°C in Fahrenheit
+    "chamber_idle_target": 15.0,    # Celsius
+    "chamber_idle_hysteresis": 2.0,  # Celsius
     # Weather
     "ha_weather_entity_id": "",
     # Alerts (threshold in Celsius)

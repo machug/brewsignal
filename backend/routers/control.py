@@ -241,8 +241,8 @@ async def get_chamber_idle_status_endpoint(db: AsyncSession = Depends(get_db)):
 
     idle_enabled = await get_config_value(db, "chamber_idle_enabled") or False
     temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
-    idle_target = await get_config_value(db, "chamber_idle_target") or 59.0
-    idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 3.6
+    idle_target = await get_config_value(db, "chamber_idle_target") or 15.0
+    idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 2.0
 
     # Check if any batches are being controlled (idle only active if none)
     from ..models import Batch

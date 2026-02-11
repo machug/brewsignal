@@ -826,8 +826,8 @@ async def temperature_control_loop() -> None:
                 if not batches:
                     idle_enabled = await get_config_value(db, "chamber_idle_enabled")
                     if idle_enabled:
-                        idle_target = await get_config_value(db, "chamber_idle_target") or 59.0
-                        idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 3.6
+                        idle_target = await get_config_value(db, "chamber_idle_target") or 15.0
+                        idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 2.0
                         await control_chamber_idle(
                             router, db, idle_target, idle_hysteresis, ambient_temp
                         )

@@ -1458,8 +1458,8 @@ class ConfigResponse(BaseModel):
     ha_heater_entity_id: str = ""
     # Chamber idle mode
     chamber_idle_enabled: bool = False
-    chamber_idle_target: float = 59.0
-    chamber_idle_hysteresis: float = 3.6
+    chamber_idle_target: float = 15.0
+    chamber_idle_hysteresis: float = 2.0
     # Device control backend
     device_control_backend: str = "ha"  # "ha" or "shelly"
     shelly_enabled: bool = False

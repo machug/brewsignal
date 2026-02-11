@@ -581,23 +581,23 @@ async def control_chamber_idle(
     """
     global _idle_heater_state, _idle_cooler_state
 
-    # Get heater entity from global config
-    heater_entity = await get_config_value(db, "ha_heater_entity_id")
-
-    # Get cooler entity: check most recent batch that had one configured
+    # Get heater/cooler entities from the most recent batch that had them configured
+    # (entities are assigned per-batch, not in global settings)
+    heater_entity = None
     cooler_entity = None
     result = await db.execute(
-        select(Batch.cooler_entity_id)
+        select(Batch.heater_entity_id, Batch.cooler_entity_id)
         .where(
             Batch.deleted_at.is_(None),
-            Batch.cooler_entity_id.isnot(None),
+            (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
         )
         .order_by(Batch.updated_at.desc())
         .limit(1)
     )
-    row = result.scalar_one_or_none()
+    row = result.first()
     if row:
-        cooler_entity = row
+        heater_entity = row[0]
+        cooler_entity = row[1]
 
     if not heater_entity and not cooler_entity:
         logger.debug("Chamber idle: no heater or cooler entity configured")
@@ -620,8 +620,8 @@ async def control_chamber_idle(
             else:
                 _idle_heater_state = {"state": actual_heater_state}
         elif actual_heater_state is None:
-            logger.warning(f"Chamber idle: Heater entity {heater_entity} is unavailable")
-            return
+            logger.warning(f"Chamber idle: Heater entity {heater_entity} is unavailable, skipping heater")
+            heater_entity = None  # Skip heater but continue with cooler
 
     # Sync cached idle cooler state with actual device state
     if cooler_entity:
@@ -634,8 +634,12 @@ async def control_chamber_idle(
             else:
                 _idle_cooler_state = {"state": actual_cooler_state}
         elif actual_cooler_state is None:
-            logger.warning(f"Chamber idle: Cooler entity {cooler_entity} is unavailable")
-            return
+            logger.warning(f"Chamber idle: Cooler entity {cooler_entity} is unavailable, skipping cooler")
+            cooler_entity = None  # Skip cooler but continue with heater
+
+    # If both unavailable, nothing to do
+    if not heater_entity and not cooler_entity:
+        return
 
     current_heater = _idle_heater_state.get("state")
     current_cooler = _idle_cooler_state.get("state")

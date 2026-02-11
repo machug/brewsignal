@@ -109,6 +109,11 @@
 	let controlError = $state<string | null>(null);
 	let controlSuccess = $state(false);
 
+	// Chamber idle mode state
+	let chamberIdleEnabled = $state(false);
+	let chamberIdleTarget = $state(59.0);
+	let chamberIdleHysteresis = $state(3.6);
+
 	// Device Control Backend state
 	let deviceControlBackend = $state<'ha' | 'shelly'>('ha');
 	let shellyEnabled = $state(false);
@@ -391,6 +396,12 @@
 		tempHysteresis = configState.config.temp_units === 'C'
 			? Math.round(configState.config.temp_hysteresis * (5 / 9) * 100) / 100
 			: configState.config.temp_hysteresis;
+		// Chamber idle mode - convert from Fahrenheit to display units
+		chamberIdleEnabled = configState.config.chamber_idle_enabled;
+		chamberIdleTarget = Math.round(fromFahrenheit(configState.config.chamber_idle_target) * 2) / 2;
+		chamberIdleHysteresis = configState.config.temp_units === 'C'
+			? Math.round(configState.config.chamber_idle_hysteresis * (5 / 9) * 100) / 100
+			: configState.config.chamber_idle_hysteresis;
 		// Device Control Backend
 		deviceControlBackend = (configState.config.device_control_backend as 'ha' | 'shelly') ?? 'ha';
 		shellyEnabled = configState.config.shelly_enabled ?? false;
@@ -646,10 +657,16 @@
 			// Hysteresis delta: convert from display units to Fahrenheit
 			const hysteresisF = useCelsius ? tempHysteresis * (9 / 5) : tempHysteresis;
 
+			const idleTargetF = toFahrenheit(chamberIdleTarget);
+			const idleHysteresisF = useCelsius ? chamberIdleHysteresis * (9 / 5) : chamberIdleHysteresis;
+
 			const result = await updateConfig({
 				temp_control_enabled: tempControlEnabled,
 				temp_target: targetF,
-				temp_hysteresis: hysteresisF
+				temp_hysteresis: hysteresisF,
+				chamber_idle_enabled: chamberIdleEnabled,
+				chamber_idle_target: idleTargetF,
+				chamber_idle_hysteresis: idleHysteresisF,
 			});
 			if (result.success) {
 				controlSuccess = true;
@@ -1308,6 +1325,53 @@
 										</div>
 									{/if}
 								</div>
+								{#if tempControlEnabled}
+									<div class="subsection">
+										<h3>Chamber Idle Mode</h3>
+										<div class="toggle-setting">
+											<div class="toggle-info">
+												<span class="toggle-label">Enable Idle Control</span>
+												<span class="toggle-desc">Control chamber temp when no batches are active</span>
+											</div>
+											<button
+												type="button"
+												class="switch"
+												class:on={chamberIdleEnabled}
+												onclick={() => (chamberIdleEnabled = !chamberIdleEnabled)}
+												aria-pressed={chamberIdleEnabled}
+											>
+												<span class="switch-thumb"></span>
+											</button>
+										</div>
+										{#if chamberIdleEnabled}
+											<div class="control-defaults">
+												<div class="inline-setting">
+													<label>Idle target</label>
+													<div class="input-group compact">
+														<input type="number" bind:value={chamberIdleTarget} min={useCelsius ? 0 : 32} max={useCelsius ? 30 : 86} step="0.5" class="num-input" />
+														<span class="input-unit">{tempUnitSymbol}</span>
+													</div>
+												</div>
+												<div class="inline-setting">
+													<label>Hysteresis</label>
+													<div class="input-group compact">
+														<input type="number" bind:value={chamberIdleHysteresis} min={useCelsius ? 0.5 : 1} max={useCelsius ? 5.5 : 10} step={useCelsius ? 0.25 : 0.5} class="num-input" />
+														<span class="input-unit">±{tempUnitSymbol}</span>
+													</div>
+												</div>
+											</div>
+										{/if}
+									</div>
+								{/if}
+								{#if tempControlEnabled}
+									<div class="section-actions" style="margin-top: 0.75rem;">
+										<button type="button" class="save-btn" onclick={saveControlConfig} disabled={controlSaving}>
+											{controlSaving ? 'Saving...' : 'Save Temperature Settings'}
+										</button>
+										{#if controlError}<span class="error-msg">{controlError}</span>{/if}
+										{#if controlSuccess}<span class="success-msg">Saved</span>{/if}
+									</div>
+								{/if}
 							{/if}
 						{/if}
 

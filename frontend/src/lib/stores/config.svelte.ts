@@ -25,6 +25,10 @@ export interface AppConfig {
 	temp_target: number;
 	temp_hysteresis: number;
 	ha_heater_entity_id: string;
+	// Chamber idle mode
+	chamber_idle_enabled: boolean;
+	chamber_idle_target: number;
+	chamber_idle_hysteresis: number;
 	// Weather
 	ha_weather_entity_id: string;
 	// Alerts
@@ -71,6 +75,10 @@ const DEFAULT_CONFIG: AppConfig = {
 	temp_target: 68.0,
 	temp_hysteresis: 1.0,
 	ha_heater_entity_id: '',
+	// Chamber idle mode
+	chamber_idle_enabled: false,
+	chamber_idle_target: 59.0,
+	chamber_idle_hysteresis: 3.6,
 	// Weather
 	ha_weather_entity_id: '',
 	// Alerts

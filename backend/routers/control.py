@@ -17,6 +17,7 @@ from ..temp_controller import (
     set_manual_override,
     get_device_temp,
     sync_cached_state,
+    get_chamber_idle_status,
 )
 from ..services.ha_client import get_ha_client, init_ha_client
 from .config import get_config_value
@@ -52,6 +53,16 @@ class BatchControlStatusResponse(BaseModel):
     hysteresis: Optional[float]
     wort_temp: Optional[float]
     state_available: bool  # True if runtime state exists, False if cleaned up (batch completed/archived)
+
+
+class ChamberIdleStatusResponse(BaseModel):
+    enabled: bool
+    active: bool  # True if idle mode is currently controlling
+    chamber_temp: Optional[float]
+    target_temp: Optional[float]
+    hysteresis: Optional[float]
+    heater_state: Optional[str]
+    cooler_state: Optional[str]
 
 
 class OverrideRequest(BaseModel):
@@ -220,6 +231,45 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
         hysteresis=batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis,
         wort_temp=wort_temp,
         state_available=batch_status["state_available"],
+    )
+
+
+@router.get("/chamber-idle/status", response_model=ChamberIdleStatusResponse)
+async def get_chamber_idle_status_endpoint(db: AsyncSession = Depends(get_db)):
+    """Get chamber idle mode status."""
+    from ..temp_controller import get_latest_chamber_temp
+
+    idle_enabled = await get_config_value(db, "chamber_idle_enabled") or False
+    temp_control_enabled = await get_config_value(db, "temp_control_enabled") or False
+    idle_target = await get_config_value(db, "chamber_idle_target") or 59.0
+    idle_hysteresis = await get_config_value(db, "chamber_idle_hysteresis") or 3.6
+
+    # Check if any batches are being controlled (idle only active if none)
+    from ..models import Batch
+    result = await db.execute(
+        select(Batch.id).where(
+            Batch.deleted_at.is_(None),
+            Batch.device_id.isnot(None),
+            Batch.temp_target.isnot(None),
+            Batch.status.in_(["fermenting", "conditioning", "planning"]),
+            (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
+        ).limit(1)
+    )
+    has_active_batches = result.scalar_one_or_none() is not None
+
+    idle_status = get_chamber_idle_status()
+    chamber_temp = await get_latest_chamber_temp(db)
+
+    is_active = idle_enabled and temp_control_enabled and not has_active_batches
+
+    return ChamberIdleStatusResponse(
+        enabled=idle_enabled,
+        active=is_active,
+        chamber_temp=chamber_temp,
+        target_temp=idle_target,
+        hysteresis=idle_hysteresis,
+        heater_state=idle_status["heater_state"] if is_active else None,
+        cooler_state=idle_status["cooler_state"] if is_active else None,
     )
 
 

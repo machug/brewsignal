@@ -16,6 +16,18 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
+	// Chamber idle state
+	interface ChamberIdleStatus {
+		enabled: boolean;
+		active: boolean;
+		chamber_temp: number | null;
+		target_temp: number | null;
+		hysteresis: number | null;
+		heater_state: string | null;
+		cooler_state: string | null;
+	}
+	let chamberIdle = $state<ChamberIdleStatus | null>(null);
+
 	onMount(async () => {
 		// Load alert dismissal state from localStorage
 		const dismissed = localStorage.getItem('brewsignal_alerts_dismissed');
@@ -32,6 +44,8 @@
 		// This ensures auth token is available for Cloud Sync users
 		onConfigLoaded(() => {
 			loadBatches();
+			loadChamberIdleStatus();
+			setInterval(loadChamberIdleStatus, 30000);
 		});
 	});
 
@@ -64,6 +78,17 @@
 			error = e instanceof Error ? e.message : 'Failed to load batches';
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadChamberIdleStatus() {
+		try {
+			const response = await fetch('/api/control/chamber-idle/status');
+			if (response.ok) {
+				chamberIdle = await response.json();
+			}
+		} catch {
+			// Silently ignore - not critical
 		}
 	}
 
@@ -169,6 +194,32 @@
 				{alertsCollapsed ? `Show ${weatherState.alerts.length} alerts` : 'Show less'}
 			</button>
 		{/if}
+	</div>
+{/if}
+
+<!-- Chamber Idle Status -->
+{#if chamberIdle?.active}
+	<div class="idle-card">
+		<div class="idle-header">
+			<span class="idle-icon">🏠</span>
+			<span class="idle-title">Chamber Idle</span>
+			{#if chamberIdle.heater_state === 'on'}
+				<span class="idle-badge heating">🔥 Heating</span>
+			{:else if chamberIdle.cooler_state === 'on'}
+				<span class="idle-badge cooling">❄️ Cooling</span>
+			{:else}
+				<span class="idle-badge idle">🎯 Idle</span>
+			{/if}
+		</div>
+		<div class="idle-temps">
+			{#if chamberIdle.chamber_temp != null}
+				<span class="idle-current">{chamberIdle.chamber_temp.toFixed(1)}°</span>
+			{/if}
+			<span class="idle-arrow">→</span>
+			{#if chamberIdle.target_temp != null}
+				<span class="idle-target">{chamberIdle.target_temp.toFixed(1)}°</span>
+			{/if}
+		</div>
 	</div>
 {/if}
 
@@ -441,5 +492,78 @@
 
 	.show-more-btn:hover {
 		text-decoration: underline;
+	}
+
+	/* Chamber Idle Status Card */
+	.idle-card {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		padding: 1rem 1.25rem;
+		margin-bottom: 1.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.idle-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.idle-icon {
+		font-size: 1.125rem;
+	}
+
+	.idle-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.idle-badge {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		padding: 0.125rem 0.5rem;
+		border-radius: 9999px;
+	}
+
+	.idle-badge.heating {
+		background: color-mix(in srgb, var(--negative) 15%, transparent);
+		color: var(--negative);
+	}
+
+	.idle-badge.cooling {
+		background: color-mix(in srgb, var(--accent) 15%, transparent);
+		color: var(--accent);
+	}
+
+	.idle-badge.idle {
+		background: var(--bg-elevated);
+		color: var(--text-secondary);
+	}
+
+	.idle-temps {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.idle-current {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.idle-arrow {
+		color: var(--text-muted);
+		font-size: 0.875rem;
+	}
+
+	.idle-target {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
 	}
 </style>

@@ -44,11 +44,8 @@ def user_owns_recipe(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            Recipe.user_id == user.user_id,
-            Recipe.user_id == "local",
-            Recipe.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return Recipe.user_id == user.user_id
 
 

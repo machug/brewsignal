@@ -26,11 +26,8 @@ def _user_owns_batch_condition(user_id: Optional[str]):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            Batch.user_id == user_id,
-            Batch.user_id == "local",
-            Batch.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return Batch.user_id == user_id
 
 

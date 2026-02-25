@@ -32,11 +32,8 @@ def user_owns_hop(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            HopInventory.user_id == user.user_id,
-            HopInventory.user_id == "local",
-            HopInventory.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return HopInventory.user_id == user.user_id
 
 

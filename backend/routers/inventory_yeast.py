@@ -37,11 +37,8 @@ def user_owns_yeast(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            YeastInventory.user_id == user.user_id,
-            YeastInventory.user_id == "local",
-            YeastInventory.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return YeastInventory.user_id == user.user_id
 
 

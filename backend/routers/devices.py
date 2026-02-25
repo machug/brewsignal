@@ -38,11 +38,8 @@ def user_owns_device(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            Device.user_id == user.user_id,
-            Device.user_id == "local",
-            Device.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return Device.user_id == user.user_id
 
 

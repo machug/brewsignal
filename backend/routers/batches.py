@@ -54,13 +54,8 @@ def user_owns_batch(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        # LOCAL mode: include owned + dummy "local" user + unclaimed batches
-        # Allows authenticated users to see all local data
-        return or_(
-            Batch.user_id == user.user_id,
-            Batch.user_id == "local",
-            Batch.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     # Cloud mode: strict user isolation
     return Batch.user_id == user.user_id
 

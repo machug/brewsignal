@@ -31,11 +31,8 @@ def user_owns_equipment(user: AuthUser):
     """
     settings = get_settings()
     if settings.is_local:
-        return or_(
-            Equipment.user_id == user.user_id,
-            Equipment.user_id == "local",
-            Equipment.user_id.is_(None),
-        )
+        # LOCAL mode: single-user Pi, no ownership filtering needed
+        return True
     return Equipment.user_id == user.user_id
 
 

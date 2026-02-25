@@ -1811,11 +1811,23 @@ class RecipeResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
-    fermentables: list["FermentableResponse"] = []
+    fermentables: list["RecipeFermentableSummary"] = []
 
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt)
+
+
+class RecipeFermentableSummary(BaseModel):
+    """Lightweight fermentable for recipe/batch contexts (name + amount only)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    amount_kg: Optional[float] = None
+
+
+RecipeResponse.model_rebuild()
 
 
 class FermentableResponse(BaseModel):

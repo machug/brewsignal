@@ -158,7 +158,13 @@ async def get_batch(
     """Get a specific batch by ID."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
+        .options(
+            selectinload(Batch.recipe).selectinload(Recipe.style),
+            selectinload(Batch.recipe).selectinload(Recipe.fermentables),
+            selectinload(Batch.yeast_strain),
+            selectinload(Batch.tasting_notes),
+            selectinload(Batch.reflections),
+        )
         .where(Batch.id == batch_id, user_owns_batch(user))  # User isolation
     )
     result = await db.execute(query)

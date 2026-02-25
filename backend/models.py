@@ -1805,9 +1805,13 @@ class RecipeResponse(BaseModel):
     color_srm: Optional[float] = None
     abv: Optional[float] = None
     batch_size_liters: Optional[float] = None
+    boil_size_l: Optional[float] = None
+    boil_time_minutes: Optional[int] = None
+    efficiency_percent: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     style: Optional[StyleResponse] = None
+    fermentables: list["FermentableResponse"] = []
 
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:

@@ -330,6 +330,7 @@ export interface RecipeResponse {
 	ibu?: number;
 	color_srm?: number;
 	batch_size_liters?: number;
+	boil_size_l?: number;
 	boil_time_minutes?: number;
 	efficiency_percent?: number;
 	mash_temp?: number;

@@ -17,6 +17,35 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 
+	// Water volume calculations from grain bill and batch size
+	// Equipment defaults — these are estimates; actual values depend on your system
+	const GRAIN_ABSORPTION = 0.96; // L/kg absorbed by grain
+	const MASH_RATIO = 2.43; // L/kg water-to-grain ratio
+	const BOIL_OFF_RATE = 4.0; // L/hr evaporation
+	const TRUB_LOSS = 0.5; // L lost to trub/hops in kettle
+	const GRAIN_DISPLACEMENT = 0.67; // L/kg grain volume in mash
+
+	let waterVolumes = $derived.by(() => {
+		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
+
+		const totalGrainKg = recipe.fermentables.reduce(
+			(sum, f) => sum + (f.amount_kg ?? 0),
+			0
+		);
+		if (totalGrainKg <= 0) return null;
+
+		const boilTimeHrs = (recipe.boil_time_minutes ?? 60) / 60;
+		const mashWater = totalGrainKg * MASH_RATIO;
+		const grainAbsorption = totalGrainKg * GRAIN_ABSORPTION;
+		const preboilVolume = recipe.boil_size_l
+			?? (recipe.batch_size_liters + (boilTimeHrs * BOIL_OFF_RATE) + TRUB_LOSS);
+		const spargeWater = Math.max(0, preboilVolume - mashWater + grainAbsorption);
+		const totalWater = mashWater + spargeWater;
+		const mashVolume = mashWater + totalGrainKg * GRAIN_DISPLACEMENT;
+
+		return { mashWater, spargeWater, totalWater, mashVolume };
+	});
+
 	let recipeId = $derived.by(() => {
 		const id = parseInt($page.params.id || '', 10);
 		return isNaN(id) || id <= 0 ? null : id;
@@ -205,6 +234,36 @@
 						waterProfiles={recipe.water_profiles || []}
 						waterAdjustments={recipe.water_adjustments || []}
 					/>
+				</section>
+			{/if}
+
+			<!-- Water Volumes (calculated from grain bill + batch size) -->
+			{#if waterVolumes}
+				<section class="content-card">
+					<h2 class="section-title">
+						<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
+						</svg>
+						Water
+					</h2>
+					<div class="water-volumes">
+						<div class="water-item">
+							<span class="water-value">{waterVolumes.mashWater.toFixed(2)} L</span>
+							<span class="water-label">mash water</span>
+						</div>
+						<div class="water-item">
+							<span class="water-value">{waterVolumes.spargeWater.toFixed(2)} L</span>
+							<span class="water-label">sparge water</span>
+						</div>
+						<div class="water-item total">
+							<span class="water-value">{waterVolumes.totalWater.toFixed(2)} L</span>
+							<span class="water-label">total water</span>
+						</div>
+						<div class="water-item">
+							<span class="water-value">{waterVolumes.mashVolume.toFixed(2)} L</span>
+							<span class="water-label">mash volume (water + grain)</span>
+						</div>
+					</div>
 				</section>
 			{/if}
 
@@ -628,6 +687,35 @@
 		font-family: var(--font-measurement);
 		font-size: 18px;
 		color: var(--text-primary);
+	}
+
+	/* Water Volumes */
+	.water-volumes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-4);
+	}
+
+	.water-item {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.water-value {
+		font-family: var(--font-measurement);
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.water-item.total .water-value {
+		color: var(--recipe-accent);
+	}
+
+	.water-label {
+		font-size: 12px;
+		color: var(--text-secondary);
 	}
 
 	/* Notes */

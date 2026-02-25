@@ -10,6 +10,7 @@
 	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
+	import { calculateWaterVolumes } from '$lib/utils/water';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -17,33 +18,10 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 
-	// Water volume calculations from grain bill and batch size
-	// Equipment defaults — these are estimates; actual values depend on your system
-	const GRAIN_ABSORPTION = 0.96; // L/kg absorbed by grain
-	const MASH_RATIO = 2.43; // L/kg water-to-grain ratio
-	const BOIL_OFF_RATE = 4.0; // L/hr evaporation
-	const TRUB_LOSS = 0.5; // L lost to trub/hops in kettle
-	const GRAIN_DISPLACEMENT = 0.67; // L/kg grain volume in mash
-
 	let waterVolumes = $derived.by(() => {
 		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
-
-		const totalGrainKg = recipe.fermentables.reduce(
-			(sum, f) => sum + (f.amount_kg ?? 0),
-			0
-		);
-		if (totalGrainKg <= 0) return null;
-
-		const boilTimeHrs = (recipe.boil_time_minutes ?? 60) / 60;
-		const mashWater = totalGrainKg * MASH_RATIO;
-		const grainAbsorption = totalGrainKg * GRAIN_ABSORPTION;
-		const preboilVolume = recipe.boil_size_l
-			?? (recipe.batch_size_liters + (boilTimeHrs * BOIL_OFF_RATE) + TRUB_LOSS);
-		const spargeWater = Math.max(0, preboilVolume - mashWater + grainAbsorption);
-		const totalWater = mashWater + spargeWater;
-		const mashVolume = mashWater + totalGrainKg * GRAIN_DISPLACEMENT;
-
-		return { mashWater, spargeWater, totalWater, mashVolume };
+		const totalGrainKg = recipe.fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
+		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
 	});
 
 	let recipeId = $derived.by(() => {

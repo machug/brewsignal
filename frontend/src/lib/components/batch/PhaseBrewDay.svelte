@@ -7,6 +7,7 @@
 	import BrewDayObservations from './BrewDayObservations.svelte';
 	import BatchDeviceCard from './BatchDeviceCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
+	import BrewDayWaterCard from './BrewDayWaterCard.svelte';
 
 	interface Props {
 		batch: BatchResponse;
@@ -184,7 +185,10 @@
 	{/if}
 
 	{#if batch.recipe}
-		<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+		<div class="brewday-ref-grid">
+			<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+			<BrewDayWaterCard recipe={batch.recipe} />
+		</div>
 	{/if}
 </div>
 
@@ -313,8 +317,15 @@
 		gap: 1rem;
 	}
 
+	.brewday-ref-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
 	@media (max-width: 900px) {
-		.brewday-tools-grid {
+		.brewday-tools-grid,
+		.brewday-ref-grid {
 			grid-template-columns: 1fr;
 		}
 	}

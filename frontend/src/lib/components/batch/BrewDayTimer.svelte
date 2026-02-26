@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { RecipeResponse, BatchResponse, BatchUpdate } from '$lib/api';
 	import { updateBatch } from '$lib/api';
 
@@ -179,7 +180,8 @@
 			// Pausing - save current state with pause timestamp
 			await saveTimerState(timerPhase, secondsRemaining, true);
 		} else {
-			// Resuming - update start time to resume from current remaining
+			// Resuming - ensure interval is running and save updated start time
+			startTimer();
 			await saveTimerState(timerPhase, secondsRemaining, false);
 		}
 	}
@@ -198,11 +200,13 @@
 
 	function addMinute() {
 		secondsRemaining += 60;
+		saveTimerState(timerPhase, secondsRemaining, isPaused);
 	}
 
 	function subtractMinute() {
 		if (secondsRemaining >= 60) {
 			secondsRemaining -= 60;
+			saveTimerState(timerPhase, secondsRemaining, isPaused);
 		}
 	}
 
@@ -243,23 +247,25 @@
 		}
 	}
 
-	// Initialize from server state on mount
+	// Initialize from server state on mount (untrack prevents re-runs from batch prop changes)
 	$effect(() => {
 		// Request notification permission
 		if ('Notification' in window && Notification.permission === 'default') {
 			Notification.requestPermission();
 		}
 
-		// Restore timer state from batch
-		if (batch.timer_phase && batch.timer_phase !== 'idle' && batch.timer_phase !== 'complete') {
-			timerPhase = batch.timer_phase as 'mash' | 'boil';
-			secondsRemaining = calculateRemainingFromServer();
-			isPaused = batch.timer_paused_at != null;
+		untrack(() => {
+			// Restore timer state from batch
+			if (batch.timer_phase && batch.timer_phase !== 'idle' && batch.timer_phase !== 'complete') {
+				timerPhase = batch.timer_phase as 'mash' | 'boil';
+				secondsRemaining = calculateRemainingFromServer();
+				isPaused = batch.timer_paused_at != null;
 
-			if (!isPaused && secondsRemaining > 0) {
-				startTimer();
+				if (secondsRemaining > 0) {
+					startTimer();
+				}
 			}
-		}
+		});
 
 		// Cleanup on unmount
 		return () => {

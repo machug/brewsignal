@@ -26,6 +26,9 @@ from ..models import (
     ControlEventResponse,
     FermentationAlert,
     FermentationAlertResponse,
+    HopInventory,
+    InventoryDeduction,
+    InventoryDeductionResponse,
     Reading,
     ReadingResponse,
     Recipe,
@@ -33,6 +36,7 @@ from ..models import (
     TastingNoteCreate,
     TastingNoteUpdate,
     TastingNoteResponse,
+    YeastInventory,
     YeastStrain,
 )
 from ..services.inventory import deduct_inventory_for_batch, reverse_inventory_deductions
@@ -527,6 +531,77 @@ async def update_batch(
     batch = result.scalar_one()
 
     return batch
+
+
+@router.get("/{batch_id}/inventory-check")
+async def check_batch_inventory(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if inventory has sufficient ingredients for this batch's recipe."""
+    from ..services.inventory import check_inventory_availability
+
+    # Fetch batch
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, user_owns_batch(user))
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not batch.recipe_id:
+        return {"hops": [], "yeast": [], "all_sufficient": True, "message": "No recipe linked"}
+
+    # Load recipe with ingredients
+    recipe_result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.hops), selectinload(Recipe.cultures))
+        .where(Recipe.id == batch.recipe_id)
+    )
+    recipe = recipe_result.scalar_one_or_none()
+    if not recipe:
+        return {"hops": [], "yeast": [], "all_sufficient": True, "message": "Recipe not found"}
+
+    # Load user's inventory
+    settings = get_settings()
+    hop_query = select(HopInventory).where(HopInventory.amount_grams > 0)
+    yeast_query = select(YeastInventory).options(selectinload(YeastInventory.yeast_strain)).where(YeastInventory.quantity > 0)
+
+    if not settings.is_local:
+        hop_query = hop_query.where(HopInventory.user_id == user.user_id)
+        yeast_query = yeast_query.where(YeastInventory.user_id == user.user_id)
+
+    hop_result = await db.execute(hop_query)
+    yeast_result = await db.execute(yeast_query)
+
+    return check_inventory_availability(
+        recipe.hops,
+        recipe.cultures,
+        hop_result.scalars().all(),
+        yeast_result.scalars().all(),
+    )
+
+
+@router.get("/{batch_id}/inventory-deductions", response_model=list[InventoryDeductionResponse])
+async def get_batch_deductions(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get inventory deductions for a batch."""
+    # Verify batch ownership
+    batch_result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, user_owns_batch(user))
+    )
+    if not batch_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    result = await db.execute(
+        select(InventoryDeduction)
+        .where(InventoryDeduction.batch_id == batch_id)
+        .order_by(InventoryDeduction.created_at)
+    )
+    return result.scalars().all()
 
 
 @router.post("/{batch_id}/delete")

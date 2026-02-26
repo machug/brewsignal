@@ -23,7 +23,7 @@ async def list_learnings(
     user: AuthUser = Depends(require_auth),
 ):
     """List all brewing learnings, optionally filtered by category."""
-    query = select(BrewingLearning).where(BrewingLearning.user_id == user.id)
+    query = select(BrewingLearning).where(BrewingLearning.user_id == user.user_id)
     if category:
         if category not in LEARNING_CATEGORIES:
             raise HTTPException(400, f"Invalid category. Must be one of: {', '.join(LEARNING_CATEGORIES)}")
@@ -45,7 +45,7 @@ async def update_learning(
     result = await db.execute(
         select(BrewingLearning).where(
             BrewingLearning.id == learning_id,
-            BrewingLearning.user_id == user.id,
+            BrewingLearning.user_id == user.user_id,
         )
     )
     learning = result.scalar_one_or_none()
@@ -71,7 +71,7 @@ async def delete_learning(
     result = await db.execute(
         select(BrewingLearning).where(
             BrewingLearning.id == learning_id,
-            BrewingLearning.user_id == user.id,
+            BrewingLearning.user_id == user.user_id,
         )
     )
     learning = result.scalar_one_or_none()

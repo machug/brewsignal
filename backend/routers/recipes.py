@@ -265,7 +265,7 @@ async def list_recipes(
     """List all recipes owned by the current user."""
     query = (
         select(Recipe)
-        .options(selectinload(Recipe.style))
+        .options(selectinload(Recipe.style), selectinload(Recipe.fermentables))
         .where(user_owns_recipe(user))
         .order_by(Recipe.created_at.desc())
         .offset(offset)

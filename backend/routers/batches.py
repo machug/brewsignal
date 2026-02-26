@@ -365,6 +365,7 @@ async def update_batch(
         batch.status = update.status
         # Auto-deduct inventory when entering brewing status
         if update.status == "brewing" and old_status != "brewing":
+            batch.brewing_started_at = datetime.now(timezone.utc)
             if batch.recipe_id:
                 # Load recipe with ingredients
                 recipe_result = await db.execute(
@@ -386,7 +387,7 @@ async def update_batch(
                             batch_id, len(deduction_report),
                         )
         # Reverse inventory deductions if batch moves back to planning
-        if update.status == "planning" and old_status == "brewing":
+        elif update.status == "planning" and old_status == "brewing":
             restored = await reverse_inventory_deductions(db, batch_id)
             if restored:
                 logger.info(

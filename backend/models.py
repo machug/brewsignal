@@ -1154,6 +1154,21 @@ class BatchReflection(Base):
     batch: Mapped["Batch"] = relationship(back_populates="reflections")
 
 
+class BrewingLearning(Base):
+    """Proactive brewing insights saved by the AI assistant."""
+    __tablename__ = "brewing_learnings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)  # equipment|technique|recipe|ingredient|correction
+    learning: Mapped[str] = mapped_column(Text, nullable=False)
+    source_context: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    mem0_memory_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 # Pydantic Schemas
 class TiltReading(BaseModel):
     id: str
@@ -2439,6 +2454,39 @@ class BatchReflectionResponse(BaseModel):
     @field_serializer('created_at', 'updated_at', 'ai_generated_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
+
+
+LEARNING_CATEGORIES = ["equipment", "technique", "recipe", "ingredient", "correction"]
+
+
+class BrewingLearningResponse(BaseModel):
+    """Response schema for a brewing learning."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    learning: str
+    source_context: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
+        return serialize_datetime_to_utc(dt)
+
+
+class BrewingLearningUpdate(BaseModel):
+    """Update schema for a brewing learning."""
+    learning: Optional[str] = None
+    category: Optional[str] = None
+    source_context: Optional[str] = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in LEARNING_CATEGORIES:
+            raise ValueError(f"category must be one of: {', '.join(LEARNING_CATEGORIES)}")
+        return v
 
 
 # =============================================================================

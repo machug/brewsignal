@@ -158,6 +158,7 @@ You have `save_brewing_learning` to save insights to long-term memory. Use it PR
 - Include specific numbers (3.5 L/hr, not "lower than expected")
 - Choose the most specific category: equipment, technique, recipe, ingredient, or correction
 - Include source_context so the learning is traceable
+- **Do NOT save the same learning twice** — if you already saved an insight earlier in this conversation, do not save it again on subsequent messages. One save per insight.
 
 ### Examples
 - User says boil-off was less than predicted on Gen 1 Grainfather

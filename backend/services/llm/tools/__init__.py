@@ -7,6 +7,7 @@ for yeast strains, beer styles, and other brewing information.
 import logging
 from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import all tool implementations from submodules
@@ -130,6 +131,26 @@ async def save_brewing_learning(
         return {"success": False, "error": f"Invalid category. Must be one of: {', '.join(LEARNING_CATEGORIES)}"}
 
     try:
+        # Check for duplicate learnings (same category, significant word overlap)
+        existing = await db.execute(
+            select(BrewingLearning).where(
+                BrewingLearning.user_id == user_id,
+                BrewingLearning.category == category,
+            )
+        )
+        new_words = set(learning.lower().split()) - {'the', 'a', 'an', 'is', 'are', 'was', 'to', 'of', 'in', 'for', 'and', 'or', 'not', 'than', 'also', 'much', 'very', 'from', 'with', 'has', 'have', 'be', 'it', 'its', 'this', 'that', '-'}
+        for existing_learning in existing.scalars().all():
+            existing_words = set(existing_learning.learning.lower().split()) - {'the', 'a', 'an', 'is', 'are', 'was', 'to', 'of', 'in', 'for', 'and', 'or', 'not', 'than', 'also', 'much', 'very', 'from', 'with', 'has', 'have', 'be', 'it', 'its', 'this', 'that', '-'}
+            if new_words and existing_words:
+                overlap = len(new_words & existing_words) / min(len(new_words), len(existing_words))
+                if overlap > 0.5:
+                    return {
+                        "success": False,
+                        "already_exists": True,
+                        "existing_id": existing_learning.id,
+                        "message": f"Similar learning already saved: {existing_learning.learning[:80]}..."
+                    }
+
         # 1. Save to structured table
         record = BrewingLearning(
             user_id=user_id,

@@ -1,14 +1,32 @@
-"""Unit tests for inventory deduction service - check_inventory_availability.
+"""Unit and integration tests for inventory deduction service.
 
-Tests the pure function that checks whether inventory has sufficient
-ingredients for a recipe. Uses MagicMock objects since the function
-has no DB access.
+Unit tests for the pure function check_inventory_availability (using MagicMock).
+Integration tests for deduct_inventory_for_batch and reverse_inventory_deductions
+using a real async SQLite database.
 """
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from backend.services.inventory import check_inventory_availability
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
+
+from backend.models import (
+    Base,
+    Batch,
+    Recipe,
+    RecipeHop,
+    RecipeCulture,
+    HopInventory,
+    YeastInventory,
+    InventoryDeduction,
+)
+from backend.services.inventory import (
+    check_inventory_availability,
+    deduct_inventory_for_batch,
+    reverse_inventory_deductions,
+)
 
 
 def _make_recipe_hop(name: str, form: str, amount_grams: float) -> MagicMock:
@@ -320,3 +338,269 @@ class TestAllSufficientFlag:
         assert result["all_sufficient"] is False
         assert result["hops"][0]["sufficient"] is False
         assert result["yeast"][0]["sufficient"] is False
+
+
+# ============================================================================
+# Integration tests - deduct_inventory_for_batch & reverse_inventory_deductions
+# ============================================================================
+
+
+@pytest.fixture
+async def async_db():
+    """Create an in-memory async SQLite database for testing."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        yield session
+
+    await engine.dispose()
+
+
+@pytest.fixture
+async def seeded_db(async_db):
+    """Seed the database with a recipe, inventory, and batch for testing.
+
+    Creates:
+    - Recipe with 2 hops (Citra 60g, Mosaic 30g) and 1 yeast (US-05, 1 pkg)
+    - Hop inventory: Citra 100g (crop_year=2024), Citra 50g (crop_year=2025),
+      Mosaic 40g (crop_year=2025)
+    - Yeast inventory: US-05 with quantity=3
+    - Batch in 'planning' status linked to the recipe
+    """
+    db = async_db
+
+    # Create recipe
+    recipe = Recipe(name="Test IPA", type="All Grain")
+    db.add(recipe)
+    await db.flush()
+
+    # Add recipe hops
+    hop_citra = RecipeHop(
+        recipe_id=recipe.id,
+        name="Citra",
+        form="pellet",
+        alpha_acid_percent=12.0,
+        amount_grams=60.0,
+    )
+    hop_mosaic = RecipeHop(
+        recipe_id=recipe.id,
+        name="Mosaic",
+        form="pellet",
+        alpha_acid_percent=11.5,
+        amount_grams=30.0,
+    )
+    db.add_all([hop_citra, hop_mosaic])
+
+    # Add recipe culture
+    culture = RecipeCulture(
+        recipe_id=recipe.id,
+        name="US-05",
+        producer="Fermentis",
+        product_id="US-05",
+        form="dry",
+        amount=1.0,
+        amount_unit="pkg",
+    )
+    db.add(culture)
+
+    # Add hop inventory (Citra 2024 lot, Citra 2025 lot, Mosaic 2025 lot)
+    inv_citra_2024 = HopInventory(
+        variety="Citra",
+        amount_grams=100.0,
+        alpha_acid_percent=12.0,
+        crop_year=2024,
+        form="pellet",
+    )
+    inv_citra_2025 = HopInventory(
+        variety="Citra",
+        amount_grams=50.0,
+        alpha_acid_percent=13.0,
+        crop_year=2025,
+        form="pellet",
+    )
+    inv_mosaic_2025 = HopInventory(
+        variety="Mosaic",
+        amount_grams=40.0,
+        alpha_acid_percent=11.5,
+        crop_year=2025,
+        form="pellet",
+    )
+    db.add_all([inv_citra_2024, inv_citra_2025, inv_mosaic_2025])
+
+    # Add yeast inventory
+    inv_yeast = YeastInventory(
+        custom_name="US-05",
+        quantity=3,
+        form="dry",
+    )
+    db.add(inv_yeast)
+
+    # Create batch linked to recipe
+    batch = Batch(
+        name="Test IPA Batch #1",
+        status="planning",
+        recipe_id=recipe.id,
+    )
+    db.add(batch)
+
+    await db.flush()
+    await db.commit()
+
+    return {
+        "db": db,
+        "recipe_id": recipe.id,
+        "batch_id": batch.id,
+        "citra_2024_id": inv_citra_2024.id,
+        "citra_2025_id": inv_citra_2025.id,
+        "mosaic_2025_id": inv_mosaic_2025.id,
+        "yeast_id": inv_yeast.id,
+    }
+
+
+async def _load_recipe(db: AsyncSession, recipe_id: int) -> Recipe:
+    """Load a recipe with eagerly-loaded hops and cultures."""
+    result = await db.execute(
+        select(Recipe)
+        .where(Recipe.id == recipe_id)
+        .options(selectinload(Recipe.hops), selectinload(Recipe.cultures))
+    )
+    return result.scalar_one()
+
+
+@patch("backend.services.inventory.get_settings")
+class TestInventoryDeductionIntegration:
+    """Integration tests for inventory deduction with real async SQLite."""
+
+    @pytest.mark.asyncio
+    async def test_deduction_fifo_oldest_first(self, mock_settings, seeded_db):
+        """Deduction uses FIFO: Citra deducts from 2024 lot first."""
+        mock_settings.return_value.is_local = True
+        db = seeded_db["db"]
+
+        recipe = await _load_recipe(db, seeded_db["recipe_id"])
+        await deduct_inventory_for_batch(db, seeded_db["batch_id"], recipe, "test-user")
+        await db.commit()
+
+        # Reload inventory items to check amounts
+        citra_2024 = await db.get(HopInventory, seeded_db["citra_2024_id"])
+        await db.refresh(citra_2024)
+        citra_2025 = await db.get(HopInventory, seeded_db["citra_2025_id"])
+        await db.refresh(citra_2025)
+        mosaic_2025 = await db.get(HopInventory, seeded_db["mosaic_2025_id"])
+        await db.refresh(mosaic_2025)
+        yeast = await db.get(YeastInventory, seeded_db["yeast_id"])
+        await db.refresh(yeast)
+
+        # Citra needed 60g: 2024 lot (100g) deducted first -> 40g remaining
+        assert citra_2024.amount_grams == 40.0
+        # 2025 lot untouched since 2024 had enough
+        assert citra_2025.amount_grams == 50.0
+        # Mosaic needed 30g: 40g -> 10g
+        assert mosaic_2025.amount_grams == 10.0
+        # Yeast needed 1 pkg: 3 -> 2
+        assert yeast.quantity == 2
+
+    @pytest.mark.asyncio
+    async def test_deduction_records_created(self, mock_settings, seeded_db):
+        """After deduction, InventoryDeduction records are created."""
+        mock_settings.return_value.is_local = True
+        db = seeded_db["db"]
+
+        recipe = await _load_recipe(db, seeded_db["recipe_id"])
+        await deduct_inventory_for_batch(db, seeded_db["batch_id"], recipe, "test-user")
+        await db.commit()
+
+        # Query all deduction records for this batch
+        result = await db.execute(
+            select(InventoryDeduction).where(
+                InventoryDeduction.batch_id == seeded_db["batch_id"]
+            )
+        )
+        deductions = result.scalars().all()
+
+        # Should have 3 records: 1 Citra hop + 1 Mosaic hop + 1 US-05 yeast
+        assert len(deductions) == 3
+
+        # Verify deduction details
+        hop_deductions = [d for d in deductions if d.ingredient_type == "hop"]
+        yeast_deductions = [d for d in deductions if d.ingredient_type == "yeast"]
+        assert len(hop_deductions) == 2
+        assert len(yeast_deductions) == 1
+
+        # Check hop names
+        hop_names = {d.ingredient_name for d in hop_deductions}
+        assert hop_names == {"Citra", "Mosaic"}
+
+        # Check yeast deduction
+        assert yeast_deductions[0].ingredient_name == "US-05"
+        assert yeast_deductions[0].amount_deducted == 1.0
+        assert yeast_deductions[0].amount_unit == "pkg"
+
+    @pytest.mark.asyncio
+    async def test_reversal_restores_inventory(self, mock_settings, seeded_db):
+        """Deduct then reverse: all inventory quantities restored to original values."""
+        mock_settings.return_value.is_local = True
+        db = seeded_db["db"]
+
+        recipe = await _load_recipe(db, seeded_db["recipe_id"])
+        await deduct_inventory_for_batch(db, seeded_db["batch_id"], recipe, "test-user")
+        await db.commit()
+
+        # Now reverse
+        restorations = await reverse_inventory_deductions(db, seeded_db["batch_id"])
+        await db.commit()
+
+        assert len(restorations) == 3
+
+        # Reload and verify original values are restored
+        citra_2024 = await db.get(HopInventory, seeded_db["citra_2024_id"])
+        await db.refresh(citra_2024)
+        citra_2025 = await db.get(HopInventory, seeded_db["citra_2025_id"])
+        await db.refresh(citra_2025)
+        mosaic_2025 = await db.get(HopInventory, seeded_db["mosaic_2025_id"])
+        await db.refresh(mosaic_2025)
+        yeast = await db.get(YeastInventory, seeded_db["yeast_id"])
+        await db.refresh(yeast)
+
+        assert citra_2024.amount_grams == 100.0
+        assert citra_2025.amount_grams == 50.0
+        assert mosaic_2025.amount_grams == 40.0
+        assert yeast.quantity == 3
+
+    @pytest.mark.asyncio
+    async def test_double_reversal_is_noop(self, mock_settings, seeded_db):
+        """Deduct, reverse, reverse again: second reversal is a no-op."""
+        mock_settings.return_value.is_local = True
+        db = seeded_db["db"]
+
+        recipe = await _load_recipe(db, seeded_db["recipe_id"])
+        await deduct_inventory_for_batch(db, seeded_db["batch_id"], recipe, "test-user")
+        await db.commit()
+
+        # First reversal
+        first_restorations = await reverse_inventory_deductions(db, seeded_db["batch_id"])
+        await db.commit()
+        assert len(first_restorations) == 3
+
+        # Second reversal - should be no-op
+        second_restorations = await reverse_inventory_deductions(db, seeded_db["batch_id"])
+        await db.commit()
+        assert second_restorations == []
+
+        # Inventory should still be at original values (unchanged from first reversal)
+        citra_2024 = await db.get(HopInventory, seeded_db["citra_2024_id"])
+        await db.refresh(citra_2024)
+        citra_2025 = await db.get(HopInventory, seeded_db["citra_2025_id"])
+        await db.refresh(citra_2025)
+        mosaic_2025 = await db.get(HopInventory, seeded_db["mosaic_2025_id"])
+        await db.refresh(mosaic_2025)
+        yeast = await db.get(YeastInventory, seeded_db["yeast_id"])
+        await db.refresh(yeast)
+
+        assert citra_2024.amount_grams == 100.0
+        assert citra_2025.amount_grams == 50.0
+        assert mosaic_2025.amount_grams == 40.0
+        assert yeast.quantity == 3

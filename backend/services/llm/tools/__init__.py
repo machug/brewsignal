@@ -108,6 +108,66 @@ async def search_brewing_memories(
         logger.warning(f"Memory search failed: {e}")
         return {"count": 0, "memories": [], "error": str(e)}
 
+
+async def save_brewing_learning(
+    db: AsyncSession,
+    learning: str,
+    category: str,
+    source_context: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> dict:
+    """Save a brewing learning/insight to long-term memory.
+
+    Dual-writes to:
+    1. brewing_learnings table (structured, for UI browsing)
+    2. Mem0 semantic memory (for contextual recall in future conversations)
+    """
+    from backend.models import BrewingLearning, LEARNING_CATEGORIES
+    from backend.services.memory import add_memory
+    from backend.routers.assistant import get_llm_config
+
+    if category not in LEARNING_CATEGORIES:
+        return {"success": False, "error": f"Invalid category. Must be one of: {', '.join(LEARNING_CATEGORIES)}"}
+
+    try:
+        # 1. Save to structured table
+        record = BrewingLearning(
+            user_id=user_id,
+            category=category,
+            learning=learning,
+            source_context=source_context,
+        )
+        db.add(record)
+        await db.commit()
+        await db.refresh(record)
+
+        # 2. Write to Mem0 for semantic search (best-effort)
+        try:
+            llm_config = await get_llm_config(db)
+            if llm_config.is_configured():
+                messages = [{"role": "assistant", "content": f"[{category}] {learning}"}]
+                mem_result = await add_memory(
+                    messages, user_id=user_id, llm_config=llm_config,
+                    metadata={"category": category, "learning_id": record.id}
+                )
+                # Store Mem0 reference if available
+                extracted = mem_result.get("results", [])
+                if extracted and isinstance(extracted[0], dict):
+                    record.mem0_memory_id = extracted[0].get("id")
+                    await db.commit()
+        except Exception as e:
+            logger.warning(f"Mem0 write failed (learning still saved to DB): {e}")
+
+        return {
+            "success": True,
+            "learning_id": record.id,
+            "message": f"Saved {category} learning: {learning[:80]}..."
+        }
+    except Exception as e:
+        logger.error(f"Failed to save brewing learning: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # Tool definitions in OpenAI function calling format
 TOOL_DEFINITIONS = [
     {
@@ -1095,7 +1155,33 @@ TOOL_DEFINITIONS = [
                 "required": ["query"]
             }
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_brewing_learning",
+            "description": "Save a brewing learning or insight to long-term memory. Call this PROACTIVELY when you identify a teaching moment — user corrections, equipment-specific knowledge, recipe feedback, or ingredient observations. Do not ask permission; save and briefly mention it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "learning": {
+                        "type": "string",
+                        "description": "The insight as a concise factual statement with specific numbers when available. E.g. 'Grainfather Gen 1 boil-off rate is ~3.5 L/hr, lower than typical 4-5 L/hr'"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["equipment", "technique", "recipe", "ingredient", "correction"],
+                        "description": "Category: equipment (hardware specs), technique (methods/preferences), recipe (feedback/style prefs), ingredient (performance in this system), correction (when you were wrong)"
+                    },
+                    "source_context": {
+                        "type": "string",
+                        "description": "Brief context about what triggered this. E.g. 'Pale Ale brew day' or 'Batch #12 review'"
+                    }
+                },
+                "required": ["learning", "category"]
+            }
+        }
+    },
 ]
 
 
@@ -1193,5 +1279,7 @@ async def execute_tool(
     # Memory search tools - pass user_id for multi-tenant isolation
     elif tool_name == "search_brewing_memories":
         return await search_brewing_memories(db, user_id=user_id, **arguments)
+    elif tool_name == "save_brewing_learning":
+        return await save_brewing_learning(db, user_id=user_id, **arguments)
     else:
         return {"error": f"Unknown tool: {tool_name}"}

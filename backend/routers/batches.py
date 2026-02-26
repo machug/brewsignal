@@ -39,7 +39,7 @@ from ..models import (
     YeastInventory,
     YeastStrain,
 )
-from ..services.inventory import deduct_inventory_for_batch, reverse_inventory_deductions
+from ..services.inventory import check_inventory_availability, deduct_inventory_for_batch, reverse_inventory_deductions
 from ..state import latest_readings
 from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
 
@@ -540,8 +540,6 @@ async def check_batch_inventory(
     db: AsyncSession = Depends(get_db),
 ):
     """Check if inventory has sufficient ingredients for this batch's recipe."""
-    from ..services.inventory import check_inventory_availability
-
     # Fetch batch
     result = await db.execute(
         select(Batch).where(Batch.id == batch_id, user_owns_batch(user))

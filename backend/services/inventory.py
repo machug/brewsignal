@@ -78,7 +78,7 @@ def check_inventory_availability(
         }
 
         if not sufficient:
-            entry["shortage"] = round(needed - available, 2)
+            entry["shortage"] = round(needed - available, 1)
             all_sufficient = False
 
         hop_results.append(entry)
@@ -116,7 +116,7 @@ def check_inventory_availability(
         }
 
         if not sufficient:
-            entry["shortage"] = round(needed - available, 2)
+            entry["shortage"] = round(needed - available, 1)
             all_sufficient = False
 
         yeast_results.append(entry)

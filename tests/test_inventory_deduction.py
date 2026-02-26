@@ -604,3 +604,80 @@ class TestInventoryDeductionIntegration:
         assert citra_2025.amount_grams == 50.0
         assert mosaic_2025.amount_grams == 40.0
         assert yeast.quantity == 3
+
+    @pytest.mark.asyncio
+    async def test_cross_lot_fifo_split(self, mock_settings, async_db):
+        """When one lot is insufficient, deduction spans to the next lot."""
+        mock_settings.return_value.is_local = True
+        db = async_db
+
+        # Recipe needs 120g Citra — more than any single lot
+        recipe = Recipe(name="Big IPA", type="All Grain")
+        db.add(recipe)
+        await db.flush()
+
+        hop = RecipeHop(
+            recipe_id=recipe.id, name="Citra", form="pellet",
+            alpha_acid_percent=12.0, amount_grams=120.0,
+        )
+        db.add(hop)
+
+        # Two lots: 2024 has 100g, 2025 has 50g
+        inv1 = HopInventory(variety="Citra", amount_grams=100.0, crop_year=2024, form="pellet")
+        inv2 = HopInventory(variety="Citra", amount_grams=50.0, crop_year=2025, form="pellet")
+        db.add_all([inv1, inv2])
+
+        batch = Batch(name="Big IPA #1", status="planning", recipe_id=recipe.id)
+        db.add(batch)
+        await db.flush()
+        await db.commit()
+
+        recipe = await _load_recipe(db, recipe.id)
+        report = await deduct_inventory_for_batch(db, batch.id, recipe, "test-user")
+        await db.commit()
+
+        # Should have 2 deduction records (split across lots)
+        assert len(report) == 2
+
+        await db.refresh(inv1)
+        await db.refresh(inv2)
+        # 2024 lot fully consumed: 100 - 100 = 0
+        assert inv1.amount_grams == 0.0
+        # 2025 lot partially consumed: 50 - 20 = 30
+        assert inv2.amount_grams == 30.0
+
+    @pytest.mark.asyncio
+    async def test_insufficient_inventory_partial_deduction(self, mock_settings, async_db):
+        """When total inventory is less than needed, deducts what's available."""
+        mock_settings.return_value.is_local = True
+        db = async_db
+
+        # Recipe needs 80g Citra but only 50g available
+        recipe = Recipe(name="Short IPA", type="All Grain")
+        db.add(recipe)
+        await db.flush()
+
+        hop = RecipeHop(
+            recipe_id=recipe.id, name="Citra", form="pellet",
+            alpha_acid_percent=12.0, amount_grams=80.0,
+        )
+        db.add(hop)
+
+        inv = HopInventory(variety="Citra", amount_grams=50.0, crop_year=2024, form="pellet")
+        db.add(inv)
+
+        batch = Batch(name="Short IPA #1", status="planning", recipe_id=recipe.id)
+        db.add(batch)
+        await db.flush()
+        await db.commit()
+
+        recipe = await _load_recipe(db, recipe.id)
+        report = await deduct_inventory_for_batch(db, batch.id, recipe, "test-user")
+        await db.commit()
+
+        # Should deduct what's available (50g), not fail
+        assert len(report) == 1
+        assert report[0]["amount_deducted"] == 50.0
+
+        await db.refresh(inv)
+        assert inv.amount_grams == 0.0

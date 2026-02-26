@@ -10,11 +10,11 @@ Three main functions:
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import (
@@ -198,8 +198,8 @@ async def deduct_inventory_for_batch(
                 break
 
             deduct_amount = min(inv_item.amount_grams, remaining_needed)
-            inv_item.amount_grams -= deduct_amount
-            remaining_needed -= deduct_amount
+            inv_item.amount_grams = round(inv_item.amount_grams - deduct_amount, 1)
+            remaining_needed = round(remaining_needed - deduct_amount, 1)
 
             deduction = InventoryDeduction(
                 batch_id=batch_id,
@@ -228,7 +228,9 @@ async def deduct_inventory_for_batch(
         # Query matching yeast inventory, FIFO by expiry_date then created_at
         # Match by case-insensitive name against custom_name or yeast_strain.name
         # We need to check both fields, so use a subquery approach
-        query = select(YeastInventory).where(
+        query = select(YeastInventory).options(
+            selectinload(YeastInventory.yeast_strain)
+        ).where(
             YeastInventory.quantity > 0,
         )
 

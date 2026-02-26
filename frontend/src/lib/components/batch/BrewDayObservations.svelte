@@ -49,9 +49,9 @@
 
 	// Auto-calculate efficiency when OG changes
 	$effect(() => {
-		if (measuredOg && !actualEfficiency) {
+		if (measuredOg) {
 			const calc = calculateEfficiency();
-			if (calc) actualEfficiency = Math.round(calc * 10) / 10;
+			if (calc !== null) actualEfficiency = Math.round(calc * 10) / 10;
 		}
 	});
 

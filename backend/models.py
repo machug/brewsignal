@@ -2639,6 +2639,21 @@ class YeastInventory(Base):
     source_batch: Mapped[Optional["Batch"]] = relationship()
 
 
+class InventoryDeduction(Base):
+    """Tracks inventory deducted when a batch moves to brewing status."""
+    __tablename__ = "inventory_deductions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False, index=True)
+    ingredient_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "hop" or "yeast"
+    inventory_item_id: Mapped[int] = mapped_column(nullable=False)  # FK to hop_inventory.id or yeast_inventory.id
+    ingredient_name: Mapped[str] = mapped_column(String(100), nullable=False)  # For display/audit
+    amount_deducted: Mapped[float] = mapped_column(nullable=False)  # grams for hops, packages for yeast
+    amount_unit: Mapped[str] = mapped_column(String(10), nullable=False)  # "g" or "pkg"
+    reversed: Mapped[bool] = mapped_column(default=False)  # True if deduction was undone
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Gateway(Base):
     """ESP32 gateway device that relays Tilt readings to cloud."""
     __tablename__ = "gateways"
@@ -2992,3 +3007,17 @@ class YeastInventoryResponse(BaseModel):
     @field_serializer('created_at', 'updated_at', 'manufacture_date', 'expiry_date')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
+
+
+class InventoryDeductionResponse(BaseModel):
+    """Schema for inventory deduction API responses."""
+    id: int
+    batch_id: int
+    ingredient_type: str
+    inventory_item_id: int
+    ingredient_name: str
+    amount_deducted: float
+    amount_unit: str
+    reversed: bool
+
+    model_config = ConfigDict(from_attributes=True)

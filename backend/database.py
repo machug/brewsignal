@@ -485,6 +485,8 @@ async def init_db():
         await conn.run_sync(_migrate_add_ag_ui_thread_title_locked)
         # Add user_id column to ag_ui_threads for multi-tenant isolation
         await conn.run_sync(_migrate_add_ag_ui_thread_user_id)
+        # Create inventory_deductions table for brew-day deduction tracking
+        await conn.run_sync(_migrate_create_inventory_deductions_table)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
 
@@ -1971,6 +1973,31 @@ def _migrate_add_batch_timer_columns(conn):
 
     if added:
         print(f"Migration: Added batch timer columns: {', '.join(added)}")
+
+
+def _migrate_create_inventory_deductions_table(conn):
+    """Create inventory_deductions table for tracking brew-day inventory deductions."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "inventory_deductions" in inspector.get_table_names():
+        return  # Table already exists
+
+    conn.execute(text("""
+        CREATE TABLE inventory_deductions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+            ingredient_type VARCHAR(20) NOT NULL,
+            inventory_item_id INTEGER NOT NULL,
+            ingredient_name VARCHAR(100) NOT NULL,
+            amount_deducted REAL NOT NULL,
+            amount_unit VARCHAR(10) NOT NULL,
+            reversed BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT (datetime('now'))
+        )
+    """))
+    conn.execute(text("CREATE INDEX ix_inventory_deductions_batch_id ON inventory_deductions(batch_id)"))
+    print("Migration: Created inventory_deductions table")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

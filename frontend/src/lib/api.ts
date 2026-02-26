@@ -2279,6 +2279,21 @@ export interface BatchReflectionUpdate {
 	next_time_changes?: string;
 }
 
+export interface BrewingLearningResponse {
+	id: number;
+	category: 'equipment' | 'technique' | 'recipe' | 'ingredient' | 'correction';
+	learning: string;
+	source_context?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface BrewingLearningUpdate {
+	learning?: string;
+	category?: 'equipment' | 'technique' | 'recipe' | 'ingredient' | 'correction';
+	source_context?: string;
+}
+
 /**
  * Fetch all reflections for a batch
  */
@@ -2357,6 +2372,41 @@ export async function regenerateReflectionInsights(batchId: number, reflectionId
 		throw new Error(`Failed to regenerate insights: ${response.statusText}`);
 	}
 	return response.json();
+}
+
+// ============================================================================
+// Brewing Learnings API
+// ============================================================================
+
+/**
+ * Fetch all brewing learnings, optionally filtered by category
+ */
+export async function getLearnings(category?: string): Promise<BrewingLearningResponse[]> {
+	const params = category ? `?category=${category}` : '';
+	const response = await authFetch(`${BASE_URL}/learnings${params}`);
+	if (!response.ok) throw new Error(`Failed to fetch learnings: ${response.statusText}`);
+	return response.json();
+}
+
+/**
+ * Update an existing brewing learning
+ */
+export async function updateLearning(id: number, update: BrewingLearningUpdate): Promise<BrewingLearningResponse> {
+	const response = await authFetch(`${BASE_URL}/learnings/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(update),
+	});
+	if (!response.ok) throw new Error(`Failed to update learning: ${response.statusText}`);
+	return response.json();
+}
+
+/**
+ * Delete a brewing learning
+ */
+export async function deleteLearning(id: number): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/learnings/${id}`, { method: 'DELETE' });
+	if (!response.ok) throw new Error(`Failed to delete learning: ${response.statusText}`);
 }
 
 // ============================================================================

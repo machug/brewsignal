@@ -157,7 +157,7 @@
 	let navLinks = $derived([
 		...baseNavLinks,
 		// Only show Assistant when AI is enabled
-		...(configState.config.ai_enabled ? [{ href: '/assistant', label: 'Assistant' }] : []),
+		...(configState.config.ai_enabled ? [{ href: '/assistant', label: 'Assistant' }, { href: '/knowledge', label: 'Knowledge' }] : []),
 		{ href: '/system', label: 'System' }
 	]);
 

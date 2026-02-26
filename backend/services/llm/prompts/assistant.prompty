@@ -55,6 +55,8 @@ You have access to tools to search the BrewSignal database:
 - **get_yeast_fermentation_advice**: Get yeast-specific fermentation recommendations
 
 ### Recipe Management
+- **list_recipes**: List recipes from the user's library, optionally search by name
+- **get_recipe**: Get full recipe details by ID (ingredients, stats, notes)
 - **save_recipe**: Save a completed recipe to the user's library
 
 ### Long-Term Memory & Conversation History

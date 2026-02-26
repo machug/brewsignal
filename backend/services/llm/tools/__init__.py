@@ -41,6 +41,8 @@ from .recipe import (
     calculate_recipe_stats,
     save_recipe,
     review_recipe_style,
+    get_recipe,
+    list_recipes,
 )
 from .utility import (
     get_current_datetime,
@@ -562,6 +564,45 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["yeast_query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recipe",
+            "description": "Get a recipe from the user's recipe library by ID. Returns the full recipe with all ingredients (fermentables, hops, cultures), stats (OG, FG, ABV, IBU, SRM), and brewing notes. Use this when the user references a specific recipe by name or ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {
+                        "type": "integer",
+                        "description": "The recipe ID to retrieve"
+                    }
+                },
+                "required": ["recipe_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_recipes",
+            "description": "List recipes from the user's recipe library. Optionally search by name or notes. Use this when the user asks about their recipes, wants to find a recipe, or references a recipe by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": "Optional search term to filter recipes by name or notes"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of recipes to return (default 20)",
+                        "default": 20
+                    }
+                },
+                "required": []
             }
         }
     },
@@ -1261,6 +1302,10 @@ async def execute_tool(
     elif tool_name == "get_yeast_fermentation_advice":
         return await get_yeast_fermentation_advice(db, user_id=user_id, **arguments)
     # Recipe tools - pass user_id for multi-tenant isolation
+    elif tool_name == "get_recipe":
+        return await get_recipe(db, user_id=user_id, **arguments)
+    elif tool_name == "list_recipes":
+        return await list_recipes(db, user_id=user_id, **arguments)
     elif tool_name == "save_recipe":
         return await save_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":

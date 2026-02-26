@@ -14,6 +14,129 @@ from backend.models import Recipe, Style
 logger = logging.getLogger(__name__)
 
 
+async def get_recipe(
+    db: AsyncSession,
+    recipe_id: int,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Get a recipe by ID with full ingredient details."""
+    stmt = select(Recipe).options(
+        selectinload(Recipe.style),
+        selectinload(Recipe.fermentables),
+        selectinload(Recipe.hops),
+        selectinload(Recipe.cultures),
+    ).where(Recipe.id == recipe_id)
+
+    if user_id:
+        settings = get_settings()
+        if not settings.is_local:
+            stmt = stmt.where(Recipe.user_id == user_id)
+
+    result = await db.execute(stmt)
+    recipe = result.scalar_one_or_none()
+
+    if not recipe:
+        return {"error": f"Recipe with ID {recipe_id} not found"}
+
+    # Build ingredient lists
+    fermentables = [
+        {
+            "name": f.name,
+            "amount_kg": f.amount_kg,
+            "color_srm": f.color_srm,
+            "type": f.type,
+        }
+        for f in recipe.fermentables
+    ]
+    hops = [
+        {
+            "name": h.name,
+            "amount_g": h.amount_g,
+            "time_minutes": h.time_minutes,
+            "use": h.use,
+            "alpha_acid": h.alpha_acid,
+        }
+        for h in recipe.hops
+    ]
+    cultures = [
+        {
+            "name": c.name,
+            "producer": c.producer,
+            "product_id": c.product_id,
+            "attenuation": c.attenuation,
+        }
+        for c in recipe.cultures
+    ]
+
+    return {
+        "id": recipe.id,
+        "name": recipe.name,
+        "style": recipe.style.name if recipe.style else None,
+        "type": recipe.type,
+        "batch_size_liters": recipe.batch_size_liters,
+        "boil_time_minutes": recipe.boil_time_minutes,
+        "efficiency_percent": recipe.efficiency_percent,
+        "og": recipe.og,
+        "fg": recipe.fg,
+        "abv": recipe.abv,
+        "ibu": recipe.ibu,
+        "color_srm": recipe.color_srm,
+        "notes": recipe.notes,
+        "fermentables": fermentables,
+        "hops": hops,
+        "cultures": cultures,
+    }
+
+
+async def list_recipes(
+    db: AsyncSession,
+    search: Optional[str] = None,
+    limit: int = 20,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """List recipes from the user's library, optionally filtered by search term."""
+    stmt = select(Recipe).options(
+        selectinload(Recipe.style),
+    )
+
+    settings = get_settings()
+    if not settings.is_local and user_id:
+        stmt = stmt.where(Recipe.user_id == user_id)
+
+    if search:
+        term = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                Recipe.name.ilike(term),
+                Recipe.notes.ilike(term),
+            )
+        )
+
+    stmt = stmt.order_by(Recipe.created_at.desc()).limit(limit)
+
+    result = await db.execute(stmt)
+    recipes = result.scalars().all()
+
+    return {
+        "count": len(recipes),
+        "recipes": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "style": r.style.name if r.style else None,
+                "type": r.type,
+                "og": r.og,
+                "fg": r.fg,
+                "abv": r.abv,
+                "ibu": r.ibu,
+                "color_srm": r.color_srm,
+                "batch_size_liters": r.batch_size_liters,
+            }
+            for r in recipes
+        ],
+    }
+
+
 def _user_owns_recipe_condition(user_id: Optional[str]):
     """Create a SQLAlchemy condition for recipe ownership.
 

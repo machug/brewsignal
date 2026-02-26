@@ -35,6 +35,7 @@ from ..models import (
     TastingNoteResponse,
     YeastStrain,
 )
+from ..services.inventory import deduct_inventory_for_batch, reverse_inventory_deductions
 from ..state import latest_readings
 from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
 
@@ -362,6 +363,36 @@ async def update_batch(
     if update.status is not None:
         old_status = batch.status
         batch.status = update.status
+        # Auto-deduct inventory when entering brewing status
+        if update.status == "brewing" and old_status != "brewing":
+            if batch.recipe_id:
+                # Load recipe with ingredients
+                recipe_result = await db.execute(
+                    select(Recipe)
+                    .options(
+                        selectinload(Recipe.hops),
+                        selectinload(Recipe.cultures),
+                    )
+                    .where(Recipe.id == batch.recipe_id)
+                )
+                recipe = recipe_result.scalar_one_or_none()
+                if recipe:
+                    deduction_report = await deduct_inventory_for_batch(
+                        db, batch_id, recipe, user_id=getattr(user, 'user_id', None)
+                    )
+                    if deduction_report:
+                        logger.info(
+                            "Batch %d: deducted %d inventory items",
+                            batch_id, len(deduction_report),
+                        )
+        # Reverse inventory deductions if batch moves back to planning
+        if update.status == "planning" and old_status == "brewing":
+            restored = await reverse_inventory_deductions(db, batch_id)
+            if restored:
+                logger.info(
+                    "Batch %d: reversed %d inventory deductions",
+                    batch_id, len(restored),
+                )
         # Auto-set timestamps on status change
         if update.status == "fermenting" and old_status != "fermenting":
             batch.start_time = datetime.now(timezone.utc)

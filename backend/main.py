@@ -690,6 +690,11 @@ if _serve_frontend:
         """Serve the AI assistant page."""
         return FileResponse(static_dir / "assistant.html")
 
+    @app.get("/knowledge", response_class=FileResponse)
+    async def serve_knowledge():
+        """Serve the brewing knowledge page."""
+        return FileResponse(static_dir / "knowledge.html")
+
     @app.get("/inventory", response_class=FileResponse)
     async def serve_inventory():
         """Serve the inventory page."""

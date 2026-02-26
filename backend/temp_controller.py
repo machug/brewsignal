@@ -581,23 +581,29 @@ async def control_chamber_idle(
     """
     global _idle_heater_state, _idle_cooler_state
 
-    # Get heater/cooler entities from the most recent batch that had them configured
-    # (entities are assigned per-batch, not in global settings)
-    heater_entity = None
-    cooler_entity = None
-    result = await db.execute(
-        select(Batch.heater_entity_id, Batch.cooler_entity_id)
+    # Get heater/cooler entities independently from the most recent batch that had each
+    # (a single batch may not have both configured, so query separately)
+    heater_result = await db.execute(
+        select(Batch.heater_entity_id)
         .where(
             Batch.deleted_at.is_(None),
-            (Batch.heater_entity_id.isnot(None)) | (Batch.cooler_entity_id.isnot(None)),
+            Batch.heater_entity_id.isnot(None),
         )
         .order_by(Batch.updated_at.desc())
         .limit(1)
     )
-    row = result.first()
-    if row:
-        heater_entity = row[0]
-        cooler_entity = row[1]
+    heater_entity = heater_result.scalar_one_or_none()
+
+    cooler_result = await db.execute(
+        select(Batch.cooler_entity_id)
+        .where(
+            Batch.deleted_at.is_(None),
+            Batch.cooler_entity_id.isnot(None),
+        )
+        .order_by(Batch.updated_at.desc())
+        .limit(1)
+    )
+    cooler_entity = cooler_result.scalar_one_or_none()
 
     if not heater_entity and not cooler_entity:
         logger.debug("Chamber idle: no heater or cooler entity configured")

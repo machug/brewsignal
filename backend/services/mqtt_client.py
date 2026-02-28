@@ -96,16 +96,18 @@ class MQTTClient:
             password=self._config.get("password"),
         )
 
-    async def publish_discovery(self, batch_id: int, batch_name: str, device_id: Optional[str] = None) -> bool:
-        """Publish Home Assistant auto-discovery configs for a batch.
+    # Stable entity IDs — all sensors share these fixed identifiers
+    SENSOR_SUFFIXES = ["gravity", "temperature", "abv", "status", "days"]
+    BINARY_SENSOR_SUFFIXES = ["heater", "cooler"]
 
-        Creates sensors for: gravity, temperature, abv, status
-        Creates binary sensors for: heater_active, cooler_active
+    async def publish_discovery(self, batch_name: str) -> bool:
+        """Publish Home Assistant auto-discovery configs with stable entity IDs.
+
+        Uses fixed unique_ids (brewsignal_active_*) so entities persist across
+        batches. The device name updates to reflect the current batch.
 
         Args:
-            batch_id: Database batch ID
-            batch_name: Human-readable batch name
-            device_id: Optional device identifier
+            batch_name: Human-readable batch name (shown in HA device)
 
         Returns:
             True if discovery published successfully
@@ -118,8 +120,9 @@ class MQTTClient:
             return False
 
         prefix = self._config.get("topic_prefix", "brewsignal")
+        availability_topic = f"{prefix}/active/available"
         device_info = {
-            "identifiers": [f"brewsignal_batch_{batch_id}"],
+            "identifiers": ["brewsignal_active"],
             "name": f"BrewSignal: {batch_name}",
             "manufacturer": "BrewSignal",
             "model": "Fermentation Monitor",
@@ -129,8 +132,8 @@ class MQTTClient:
         sensors = [
             {
                 "name": "Gravity",
-                "unique_id": f"brewsignal_{batch_id}_gravity",
-                "state_topic": f"{prefix}/batch/{batch_id}/gravity",
+                "unique_id": "brewsignal_active_gravity",
+                "state_topic": f"{prefix}/active/gravity",
                 "unit_of_measurement": "SG",
                 "icon": "mdi:flask-outline",
                 "device_class": None,
@@ -138,16 +141,16 @@ class MQTTClient:
             },
             {
                 "name": "Temperature",
-                "unique_id": f"brewsignal_{batch_id}_temperature",
-                "state_topic": f"{prefix}/batch/{batch_id}/temperature",
+                "unique_id": "brewsignal_active_temperature",
+                "state_topic": f"{prefix}/active/temperature",
                 "unit_of_measurement": "°C",
                 "device_class": "temperature",
                 "value_template": "{{ value }}",
             },
             {
                 "name": "ABV",
-                "unique_id": f"brewsignal_{batch_id}_abv",
-                "state_topic": f"{prefix}/batch/{batch_id}/abv",
+                "unique_id": "brewsignal_active_abv",
+                "state_topic": f"{prefix}/active/abv",
                 "unit_of_measurement": "%",
                 "icon": "mdi:percent",
                 "device_class": None,
@@ -155,16 +158,16 @@ class MQTTClient:
             },
             {
                 "name": "Status",
-                "unique_id": f"brewsignal_{batch_id}_status",
-                "state_topic": f"{prefix}/batch/{batch_id}/status",
+                "unique_id": "brewsignal_active_status",
+                "state_topic": f"{prefix}/active/status",
                 "icon": "mdi:information-outline",
                 "device_class": None,
                 "value_template": "{{ value }}",
             },
             {
                 "name": "Days Fermenting",
-                "unique_id": f"brewsignal_{batch_id}_days",
-                "state_topic": f"{prefix}/batch/{batch_id}/days_fermenting",
+                "unique_id": "brewsignal_active_days",
+                "state_topic": f"{prefix}/active/days_fermenting",
                 "unit_of_measurement": "days",
                 "icon": "mdi:calendar-clock",
                 "device_class": None,
@@ -176,16 +179,16 @@ class MQTTClient:
         binary_sensors = [
             {
                 "name": "Heater",
-                "unique_id": f"brewsignal_{batch_id}_heater",
-                "state_topic": f"{prefix}/batch/{batch_id}/heater_active",
+                "unique_id": "brewsignal_active_heater",
+                "state_topic": f"{prefix}/active/heater_active",
                 "payload_on": "ON",
                 "payload_off": "OFF",
                 "device_class": "heat",
             },
             {
                 "name": "Cooler",
-                "unique_id": f"brewsignal_{batch_id}_cooler",
-                "state_topic": f"{prefix}/batch/{batch_id}/cooler_active",
+                "unique_id": "brewsignal_active_cooler",
+                "state_topic": f"{prefix}/active/cooler_active",
                 "payload_on": "ON",
                 "payload_off": "OFF",
                 "device_class": "cold",
@@ -201,6 +204,7 @@ class MQTTClient:
                         "unique_id": sensor["unique_id"],
                         "state_topic": sensor["state_topic"],
                         "device": device_info,
+                        "availability_topic": availability_topic,
                         "value_template": sensor.get("value_template", "{{ value }}"),
                     }
                     if sensor.get("unit_of_measurement"):
@@ -220,6 +224,7 @@ class MQTTClient:
                         "unique_id": sensor["unique_id"],
                         "state_topic": sensor["state_topic"],
                         "device": device_info,
+                        "availability_topic": availability_topic,
                         "payload_on": sensor["payload_on"],
                         "payload_off": sensor["payload_off"],
                     }
@@ -229,22 +234,58 @@ class MQTTClient:
                     topic = f"homeassistant/binary_sensor/{sensor['unique_id']}/config"
                     await client.publish(topic, json.dumps(config), retain=True)
 
-                logger.info("MQTT discovery published for batch %d (%s)", batch_id, batch_name)
+                # Mark device as online
+                await client.publish(availability_topic, "online", retain=True)
+
+                logger.info("MQTT discovery published for %s (stable IDs)", batch_name)
                 self._connected = True
                 return True
 
         except Exception as e:
-            logger.error("Failed to publish MQTT discovery for batch %d: %s", batch_id, e)
+            logger.error("Failed to publish MQTT discovery: %s", e)
             self._connected = False
             return False
 
-    async def remove_discovery(self, batch_id: int) -> bool:
-        """Remove Home Assistant auto-discovery configs for a batch.
+    async def publish_unavailable(self) -> bool:
+        """Mark HA entities as unavailable (batch completed/deleted).
 
-        Publishes empty payloads to discovery topics to remove entities.
+        Publishes "offline" to the availability topic so entities show
+        "unavailable" in Home Assistant instead of being destroyed.
+
+        Returns:
+            True if published successfully
+        """
+        if not AIOMQTT_AVAILABLE:
+            return False
+
+        client = await self._get_client()
+        if not client:
+            return False
+
+        prefix = self._config.get("topic_prefix", "brewsignal")
+
+        try:
+            async with client:
+                await client.publish(
+                    f"{prefix}/active/available", "offline", retain=True
+                )
+                logger.info("MQTT entities marked unavailable")
+                self._connected = True
+                return True
+
+        except Exception as e:
+            logger.error("Failed to mark MQTT unavailable: %s", e)
+            self._connected = False
+            return False
+
+    async def remove_old_discovery(self, batch_id: int) -> bool:
+        """Remove legacy per-batch discovery configs (one-time migration).
+
+        Publishes empty payloads to old homeassistant/.../brewsignal_{batch_id}_*/config
+        topics to clean up orphaned entities from the old per-batch scheme.
 
         Args:
-            batch_id: Database batch ID
+            batch_id: Old batch ID whose entities should be removed
 
         Returns:
             True if removal published successfully
@@ -256,43 +297,27 @@ class MQTTClient:
         if not client:
             return False
 
-        # All entity unique_ids to remove
-        sensor_ids = [
-            f"brewsignal_{batch_id}_gravity",
-            f"brewsignal_{batch_id}_temperature",
-            f"brewsignal_{batch_id}_abv",
-            f"brewsignal_{batch_id}_status",
-            f"brewsignal_{batch_id}_days",
-        ]
-        binary_sensor_ids = [
-            f"brewsignal_{batch_id}_heater",
-            f"brewsignal_{batch_id}_cooler",
-        ]
-
         try:
             async with client:
-                # Remove sensors by publishing empty config
-                for unique_id in sensor_ids:
-                    topic = f"homeassistant/sensor/{unique_id}/config"
+                for suffix in self.SENSOR_SUFFIXES:
+                    topic = f"homeassistant/sensor/brewsignal_{batch_id}_{suffix}/config"
                     await client.publish(topic, "", retain=True)
 
-                # Remove binary sensors
-                for unique_id in binary_sensor_ids:
-                    topic = f"homeassistant/binary_sensor/{unique_id}/config"
+                for suffix in self.BINARY_SENSOR_SUFFIXES:
+                    topic = f"homeassistant/binary_sensor/brewsignal_{batch_id}_{suffix}/config"
                     await client.publish(topic, "", retain=True)
 
-                logger.info("MQTT discovery removed for batch %d", batch_id)
+                logger.info("Removed old MQTT discovery for batch %d", batch_id)
                 self._connected = True
                 return True
 
         except Exception as e:
-            logger.error("Failed to remove MQTT discovery for batch %d: %s", batch_id, e)
+            logger.error("Failed to remove old MQTT discovery for batch %d: %s", batch_id, e)
             self._connected = False
             return False
 
     async def publish_reading(
         self,
-        batch_id: int,
         gravity: Optional[float] = None,
         temperature: Optional[float] = None,
         abv: Optional[float] = None,
@@ -301,12 +326,11 @@ class MQTTClient:
         heater_active: Optional[bool] = None,
         cooler_active: Optional[bool] = None,
     ) -> bool:
-        """Publish sensor values for a batch.
+        """Publish sensor values to stable active topics.
 
         Fire-and-forget style - failures are logged but don't block.
 
         Args:
-            batch_id: Database batch ID
             gravity: Current gravity reading (SG)
             temperature: Current temperature in Celsius
             abv: Current calculated ABV percentage
@@ -332,43 +356,43 @@ class MQTTClient:
                 # Publish each value that was provided
                 if gravity is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/gravity",
+                        f"{prefix}/active/gravity",
                         f"{gravity:.4f}",
                     )
 
                 if temperature is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/temperature",
+                        f"{prefix}/active/temperature",
                         f"{temperature:.1f}",
                     )
 
                 if abv is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/abv",
+                        f"{prefix}/active/abv",
                         f"{abv:.1f}",
                     )
 
                 if status is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/status",
+                        f"{prefix}/active/status",
                         status,
                     )
 
                 if days_fermenting is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/days_fermenting",
+                        f"{prefix}/active/days_fermenting",
                         f"{days_fermenting:.1f}",
                     )
 
                 if heater_active is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/heater_active",
+                        f"{prefix}/active/heater_active",
                         "ON" if heater_active else "OFF",
                     )
 
                 if cooler_active is not None:
                     await client.publish(
-                        f"{prefix}/batch/{batch_id}/cooler_active",
+                        f"{prefix}/active/cooler_active",
                         "ON" if cooler_active else "OFF",
                     )
 
@@ -376,7 +400,7 @@ class MQTTClient:
                 return True
 
         except Exception as e:
-            logger.warning("Failed to publish MQTT reading for batch %d: %s", batch_id, e)
+            logger.warning("Failed to publish MQTT reading: %s", e)
             self._connected = False
             return False
 

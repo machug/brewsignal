@@ -41,7 +41,7 @@ from ..models import (
 )
 from ..services.inventory import check_inventory_availability, deduct_inventory_for_batch, reverse_inventory_deductions
 from ..state import latest_readings
-from ..mqtt_manager import publish_batch_discovery, remove_batch_discovery
+from ..mqtt_manager import publish_batch_discovery, mark_batch_unavailable
 
 router = APIRouter(prefix="/api/batches", tags=["batches"])
 
@@ -275,9 +275,7 @@ async def create_batch(
     # Publish MQTT discovery if batch starts in fermenting status
     if batch.status == "fermenting":
         await publish_batch_discovery(
-            batch_id=db_batch.id,
             batch_name=db_batch.name or f"Batch #{db_batch.batch_number}",
-            device_id=db_batch.device_id,
         )
 
     # Always load relationships for response (tasting_notes, reflections need eager load)
@@ -412,13 +410,11 @@ async def update_batch(
         # MQTT: Publish discovery when entering fermenting status
         if update.status == "fermenting" and old_status != "fermenting":
             await publish_batch_discovery(
-                batch_id=batch_id,
                 batch_name=batch.name or f"Batch #{batch.batch_number}",
-                device_id=batch.device_id,
             )
-        # MQTT: Remove discovery when completing/archiving batch
+        # MQTT: Mark unavailable when completing/archiving batch
         elif update.status in ["completed", "archived"]:
-            await remove_batch_discovery(batch_id)
+            await mark_batch_unavailable()
 
         # Auto-populate measured_fg from last reading when completing (if not already set)
         if update.status == "completed" and batch.measured_fg is None and batch.measured_og:
@@ -616,8 +612,8 @@ async def soft_delete_batch(
     """
     batch = await get_user_batch(batch_id, user, db)
 
-    # Remove MQTT discovery before deleting
-    await remove_batch_discovery(batch_id)
+    # Mark MQTT entities unavailable before deleting
+    await mark_batch_unavailable()
 
     if hard_delete:
         # Hard delete: cascade removes readings via relationship

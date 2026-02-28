@@ -286,7 +286,6 @@ class IngestManager:
                 batch = await db.get(Batch, batch_id)
                 if batch:
                     await publish_batch_reading(
-                        batch_id=batch_id,
                         gravity=reading.gravity,
                         temperature=reading.temperature,
                         og=batch.measured_og,

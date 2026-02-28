@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from .database import async_session_factory
 from .models import Batch
 from .services.mqtt_client import get_mqtt_client, init_mqtt_client
-from .routers.config import get_config_value
+from .routers.config import get_config_value, set_config_value
 
 logger = logging.getLogger(__name__)
 
@@ -39,27 +39,60 @@ async def _load_mqtt_config(db: AsyncSession) -> dict:
 
 
 async def _publish_active_batches_discovery(db: AsyncSession) -> None:
-    """Publish discovery for all currently fermenting batches."""
+    """Publish discovery for the active fermenting batch (stable IDs).
+
+    With stable entity IDs there is one HA device. If a fermenting batch
+    exists, publish discovery with its name. Otherwise mark unavailable.
+    """
     client = get_mqtt_client()
     if not client:
         return
 
-    # Get all fermenting batches
+    # Get the first fermenting batch (stable IDs support one active batch)
     result = await db.execute(
         select(Batch).where(
             Batch.status == "fermenting",
             Batch.deleted_at.is_(None),
-        )
+        ).limit(1)
     )
-    batches = result.scalars().all()
+    batch = result.scalar_one_or_none()
 
-    for batch in batches:
+    if batch:
         await client.publish_discovery(
-            batch_id=batch.id,
             batch_name=batch.name or f"Batch #{batch.batch_number}",
-            device_id=batch.device_id,
         )
         logger.info("Published MQTT discovery for active batch %d", batch.id)
+    else:
+        await client.publish_unavailable()
+        logger.info("No active batch — MQTT entities marked unavailable")
+
+
+async def _migrate_old_discovery(db: AsyncSession) -> None:
+    """One-time migration: remove old per-batch MQTT discovery configs.
+
+    Queries all batches and publishes empty configs to their old per-batch
+    discovery topics. Tracked via 'mqtt_stable_ids_migrated' config key.
+    """
+    already_migrated = await get_config_value(db, "mqtt_stable_ids_migrated")
+    if already_migrated:
+        return
+
+    client = get_mqtt_client()
+    if not client:
+        return
+
+    logger.info("Running one-time MQTT stable IDs migration...")
+
+    # Get all batch IDs to clean up their old discovery topics
+    result = await db.execute(select(Batch.id))
+    batch_ids = [row[0] for row in result.all()]
+
+    for bid in batch_ids:
+        await client.remove_old_discovery(bid)
+
+    await set_config_value(db, "mqtt_stable_ids_migrated", True)
+    await db.commit()
+    logger.info("MQTT stable IDs migration complete — cleaned %d old batches", len(batch_ids))
 
 
 async def mqtt_connection_loop() -> None:
@@ -108,7 +141,11 @@ async def mqtt_connection_loop() -> None:
                 logger.info("MQTT connection established")
                 backoff = 1  # Reset backoff on success
 
-                # Publish discovery for all active batches
+                # One-time migration: clean up old per-batch discovery topics
+                async with async_session_factory() as db:
+                    await _migrate_old_discovery(db)
+
+                # Publish discovery for the active batch
                 async with async_session_factory() as db:
                     await _publish_active_batches_discovery(db)
 
@@ -169,7 +206,6 @@ def is_mqtt_enabled() -> bool:
 
 
 async def publish_batch_reading(
-    batch_id: int,
     gravity: Optional[float] = None,
     temperature: Optional[float] = None,
     og: Optional[float] = None,
@@ -178,12 +214,11 @@ async def publish_batch_reading(
     heater_active: Optional[bool] = None,
     cooler_active: Optional[bool] = None,
 ) -> None:
-    """Convenience function to publish a batch reading via MQTT.
+    """Publish a batch reading via MQTT to stable active topics.
 
     Fire-and-forget - doesn't block on failures.
 
     Args:
-        batch_id: Database batch ID
         gravity: Current gravity (SG)
         temperature: Current temperature (Celsius)
         og: Original gravity for ABV calculation
@@ -216,7 +251,6 @@ async def publish_batch_reading(
     # Fire-and-forget publish
     asyncio.create_task(
         client.publish_reading(
-            batch_id=batch_id,
             gravity=gravity,
             temperature=temperature,
             abv=abv,
@@ -228,15 +262,13 @@ async def publish_batch_reading(
     )
 
 
-async def publish_batch_discovery(batch_id: int, batch_name: str, device_id: Optional[str] = None) -> None:
-    """Publish MQTT auto-discovery for a batch.
+async def publish_batch_discovery(batch_name: str) -> None:
+    """Publish MQTT auto-discovery with stable entity IDs.
 
     Fire-and-forget - doesn't block on failures.
 
     Args:
-        batch_id: Database batch ID
         batch_name: Human-readable batch name
-        device_id: Optional device identifier
     """
     if not _mqtt_enabled:
         return
@@ -246,17 +278,14 @@ async def publish_batch_discovery(batch_id: int, batch_name: str, device_id: Opt
         return
 
     asyncio.create_task(
-        client.publish_discovery(batch_id, batch_name, device_id)
+        client.publish_discovery(batch_name)
     )
 
 
-async def remove_batch_discovery(batch_id: int) -> None:
-    """Remove MQTT auto-discovery for a batch.
+async def mark_batch_unavailable() -> None:
+    """Mark MQTT entities as unavailable (batch completed/deleted).
 
     Fire-and-forget - doesn't block on failures.
-
-    Args:
-        batch_id: Database batch ID
     """
     if not _mqtt_enabled:
         return
@@ -266,5 +295,5 @@ async def remove_batch_discovery(batch_id: int) -> None:
         return
 
     asyncio.create_task(
-        client.remove_discovery(batch_id)
+        client.publish_unavailable()
     )

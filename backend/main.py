@@ -322,7 +322,6 @@ async def handle_tilt_reading(reading: TiltReading):
             batch = await session.get(models.Batch, batch_id)
             if batch:
                 await publish_batch_reading(
-                    batch_id=batch_id,
                     gravity=sg_calibrated,
                     temperature=temp_calibrated_c,
                     og=batch.measured_og,  # Use measured OG only to avoid lazy load issues

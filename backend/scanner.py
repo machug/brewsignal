@@ -192,22 +192,25 @@ class BLEScanner:
 
     def _detection_callback(self, device, advertisement_data):
         """Called by Bleak for each BLE advertisement."""
-        # Check for RAPT Pill (manufacturer ID 0x5241 = 16722)
-        if 16722 in advertisement_data.manufacturer_data:
+        # Check for RAPT Pill (manufacturer ID 0x4152)
+        # BLE transmits manufacturer IDs little-endian: bytes 'R','A' (0x52,0x41)
+        # become 0x4152 when decoded by Bleak. The "RA" prefix is consumed by
+        # the manufacturer ID, so the payload starts with "PT" (rest of "RAPT").
+        if 0x4152 in advertisement_data.manufacturer_data:
             try:
-                data = advertisement_data.manufacturer_data[16722]
-                if len(data) < 25:
+                data = advertisement_data.manufacturer_data[0x4152]
+                if len(data) < 23:
                     return
-                prefix = data[:4]
-                if prefix != b"RAPT":
+                prefix = data[:2]
+                if prefix != b"PT":
                     return
-                version = data[4]
+                version = data[2]
                 if version > 2:
                     logger.debug("Unknown RAPT Pill version: %d", version)
                     return
 
                 _prefix, _ver, mac_bytes, temp_raw, gravity_raw, _ax, _ay, _az, battery_raw = struct.unpack(
-                    ">4sB6sHfhhhH", data[:25]
+                    ">2sB6sHfhhhH", data[:23]
                 )
 
                 temp_c = temp_raw / 128.0 - 273.15

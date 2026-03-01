@@ -216,17 +216,19 @@ class BLEScanner:
                 temp_c = temp_raw / 128.0 - 273.15
                 sg = gravity_raw / 1000.0
                 battery_pct = battery_raw / 256.0
-                mac_str = ":".join(f"{b:02X}" for b in mac_bytes)
+                # Use the BLE adapter address as stable identifier, not the
+                # payload MAC bytes which change per broadcast
+                ble_addr = device.address.upper()
 
                 self._latest_rapt_reading = RAPTPillReading(
-                    mac=mac_str,
+                    mac=ble_addr,
                     temp_c=round(temp_c, 2),
                     sg=round(sg, 4),
                     battery_percent=round(battery_pct, 1),
                     rssi=advertisement_data.rssi,
                     timestamp=datetime.now(timezone.utc),
                 )
-                print(f"BLE: Detected RAPT Pill ({mac_str}) - {temp_c:.1f}C, SG {sg:.4f}, Battery {battery_pct:.0f}%")
+                print(f"BLE: Detected RAPT Pill ({ble_addr}) - {temp_c:.1f}C, SG {sg:.4f}, Battery {battery_pct:.0f}%")
             except Exception as e:
                 logger.debug("Error parsing RAPT Pill packet: %s", e)
             return

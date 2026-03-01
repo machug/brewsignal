@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import random
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,21 @@ class TiltReading:
             "rssi": self.rssi,
             "timestamp": serialize_datetime_to_utc(self.timestamp),
         }
+
+
+@dataclass
+class RAPTPillReading:
+    mac: str
+    temp_c: float
+    sg: float
+    battery_percent: float
+    rssi: int
+    timestamp: datetime
+
+    @property
+    def id(self) -> str:
+        """Device identifier from formatted MAC address."""
+        return self.mac.upper()
 
 
 class MockScanner:
@@ -169,12 +185,49 @@ class BLEScanner:
 
     def __init__(self):
         self._latest_reading: Optional[TiltReading] = None
+        self._latest_rapt_reading: Optional[RAPTPillReading] = None
         self._running = False
         self._scanner = None
         self._scan_task: Optional[asyncio.Task] = None
 
     def _detection_callback(self, device, advertisement_data):
         """Called by Bleak for each BLE advertisement."""
+        # Check for RAPT Pill (manufacturer ID 0x5241 = 16722)
+        if 16722 in advertisement_data.manufacturer_data:
+            try:
+                data = advertisement_data.manufacturer_data[16722]
+                if len(data) < 25:
+                    return
+                prefix = data[:4]
+                if prefix != b"RAPT":
+                    return
+                version = data[4]
+                if version > 2:
+                    logger.debug("Unknown RAPT Pill version: %d", version)
+                    return
+
+                _prefix, _ver, mac_bytes, temp_raw, gravity_raw, _ax, _ay, _az, battery_raw = struct.unpack(
+                    ">4sB6sHfhhhH", data[:25]
+                )
+
+                temp_c = temp_raw / 128.0 - 273.15
+                sg = gravity_raw / 1000.0
+                battery_pct = battery_raw / 256.0
+                mac_str = ":".join(f"{b:02X}" for b in mac_bytes)
+
+                self._latest_rapt_reading = RAPTPillReading(
+                    mac=mac_str,
+                    temp_c=round(temp_c, 2),
+                    sg=round(sg, 4),
+                    battery_percent=round(battery_pct, 1),
+                    rssi=advertisement_data.rssi,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                print(f"BLE: Detected RAPT Pill ({mac_str}) - {temp_c:.1f}C, SG {sg:.4f}, Battery {battery_pct:.0f}%")
+            except Exception as e:
+                logger.debug("Error parsing RAPT Pill packet: %s", e)
+            return
+
         # Only process Apple manufacturer data (ID 76 = 0x004C)
         if 76 not in advertisement_data.manufacturer_data:
             return
@@ -257,6 +310,12 @@ class BLEScanner:
         self._latest_reading = None
         return reading
 
+    async def scan_rapt(self) -> Optional[RAPTPillReading]:
+        """Return latest RAPT Pill reading and clear it."""
+        reading = self._latest_rapt_reading
+        self._latest_rapt_reading = None
+        return reading
+
     async def stop(self):
         """Stop BLE scanning."""
         self._running = False
@@ -270,8 +329,13 @@ class BLEScanner:
 class TiltScanner:
     """Main scanner that selects mode based on environment."""
 
-    def __init__(self, on_reading: Callable[[TiltReading], None]):
+    def __init__(
+        self,
+        on_reading: Callable[[TiltReading], None],
+        on_rapt_reading: Optional[Callable[["RAPTPillReading"], None]] = None,
+    ):
         self.on_reading = on_reading
+        self.on_rapt_reading = on_rapt_reading
         self._running = False
         self._scanner: MockScanner | FileScanner | RelayScanner | BLEScanner
 
@@ -306,6 +370,12 @@ class TiltScanner:
                 reading = await self._scanner.scan()
                 if reading:
                     await self.on_reading(reading)
+
+                # Check for RAPT Pill readings (BLE mode only)
+                if self.on_rapt_reading and isinstance(self._scanner, BLEScanner):
+                    rapt_reading = await self._scanner.scan_rapt()
+                    if rapt_reading:
+                        await self.on_rapt_reading(rapt_reading)
             except Exception as e:
                 logger.exception("Scanner error: %s", e)
 

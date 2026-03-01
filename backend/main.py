@@ -26,7 +26,7 @@ from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
 from .mqtt_manager import start_mqtt_manager, stop_mqtt_manager, publish_batch_reading  # noqa: E402
 from .cleanup import CleanupService  # noqa: E402
-from .scanner import TiltReading, TiltScanner  # noqa: E402
+from .scanner import RAPTPillReading, TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
 from .services.alert_service import detect_and_persist_alerts  # noqa: E402
@@ -366,6 +366,163 @@ async def handle_tilt_reading(reading: TiltReading):
         await manager.broadcast(payload)
 
 
+async def handle_rapt_reading(reading: RAPTPillReading):
+    """Process RAPT Pill BLE reading and store if paired."""
+    async with async_session_factory() as session:
+        device = await session.get(Device, reading.id)
+        if not device:
+            device = Device(
+                id=reading.id,
+                device_type='rapt',
+                name=f"RAPT Pill {reading.mac[-5:]}",
+                native_temp_unit='c',
+                native_gravity_unit='sg',
+                calibration_type='linear',
+                paired=False,
+            )
+            session.add(device)
+
+        # Update device metadata
+        timestamp = datetime.now(timezone.utc)
+        device.last_seen = timestamp
+        device.mac = reading.mac
+        device.battery_percent = int(reading.battery_percent)
+
+        await session.commit()
+
+        # Temperature already in Celsius from RAPT Pill
+        temp_raw_c = reading.temp_c
+
+        # Apply calibration
+        sg_calibrated, temp_calibrated_c = await calibration_service.calibrate_reading(
+            session, reading.id, reading.sg, temp_raw_c
+        )
+
+        # Validate reading
+        status = "valid"
+        if not (0.500 <= sg_calibrated <= 1.200) or not (0.0 <= temp_calibrated_c <= 100.0):
+            status = "invalid"
+
+        # Link reading to active batch
+        batch_id = await link_reading_to_batch(session, reading.id)
+
+        # Rate limiting (same as Tilt)
+        interval_minutes = await get_config_value(session, "local_interval_minutes") or 15
+        last_stored = _last_tilt_storage.get(reading.id)
+        should_store = (
+            last_stored is None or
+            (timestamp - last_stored).total_seconds() >= interval_minutes * 60
+        )
+
+        ml_outputs = {}
+
+        if device.paired and batch_id is not None and should_store:
+            time_hours = await calculate_time_since_batch_start(session, batch_id, reading.id)
+
+            if ml_pipeline_manager:
+                try:
+                    ml_outputs = ml_pipeline_manager.process_reading(
+                        device_id=reading.id,
+                        sg=sg_calibrated,
+                        temp=temp_calibrated_c,
+                        rssi=reading.rssi,
+                        time_hours=time_hours,
+                    )
+                except Exception as e:
+                    logging.error(f"ML pipeline failed for {reading.id}: {e}")
+
+            db_reading = Reading(
+                device_id=reading.id,
+                batch_id=batch_id,
+                timestamp=timestamp,
+                sg_raw=reading.sg,
+                sg_calibrated=sg_calibrated,
+                temp_raw=temp_raw_c,
+                temp_calibrated=temp_calibrated_c,
+                rssi=reading.rssi,
+                status=status,
+                sg_filtered=ml_outputs.get("sg_filtered"),
+                temp_filtered=ml_outputs.get("temp_filtered"),
+                confidence=ml_outputs.get("confidence"),
+                sg_rate=ml_outputs.get("sg_rate"),
+                temp_rate=ml_outputs.get("temp_rate"),
+                is_anomaly=ml_outputs.get("is_anomaly", False),
+                anomaly_score=ml_outputs.get("anomaly_score"),
+                anomaly_reasons=json.dumps(ml_outputs.get("anomaly_reasons", [])) if ml_outputs.get("anomaly_reasons") else None,
+            )
+            session.add(db_reading)
+            await session.flush()
+
+            # Detect and persist alerts
+            try:
+                live_reading = {
+                    "temp": temp_calibrated_c,
+                    "sg": sg_calibrated,
+                    "sg_rate": ml_outputs.get("sg_rate"),
+                    "is_anomaly": ml_outputs.get("is_anomaly", False),
+                    "anomaly_score": ml_outputs.get("anomaly_score"),
+                    "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
+                }
+                alert_context = await get_alert_context(session, batch_id, sg_calibrated)
+                await detect_and_persist_alerts(
+                    db=session,
+                    batch_id=batch_id,
+                    device_id=reading.id,
+                    reading=db_reading,
+                    live_reading=live_reading,
+                    yeast_temp_min=alert_context.get("yeast_temp_min"),
+                    yeast_temp_max=alert_context.get("yeast_temp_max"),
+                    progress_percent=alert_context.get("progress_percent"),
+                )
+            except Exception as e:
+                logging.warning("Alert detection failed: %s", e)
+
+            await session.commit()
+
+            # MQTT publish
+            batch = await session.get(models.Batch, batch_id)
+            if batch:
+                await publish_batch_reading(
+                    gravity=sg_calibrated,
+                    temperature=temp_calibrated_c,
+                    og=batch.measured_og,
+                    start_time=batch.start_time,
+                    status=batch.status,
+                )
+
+            _last_tilt_storage[reading.id] = timestamp
+
+        # Always broadcast (so unpaired RAPT Pills show on dashboard)
+        payload = {
+            "id": reading.id,
+            "device_id": reading.id,
+            "device_type": "rapt",
+            "beer_name": device.beer_name or "Untitled",
+            "original_gravity": device.original_gravity,
+            "sg": sg_calibrated,
+            "sg_raw": reading.sg,
+            "temp": temp_calibrated_c,
+            "temp_raw": temp_raw_c,
+            "rssi": reading.rssi,
+            "battery_percent": reading.battery_percent,
+            "timestamp": serialize_datetime_to_utc(timestamp),
+            "last_seen": serialize_datetime_to_utc(timestamp),
+            "paired": device.paired,
+            "mac": reading.mac,
+            "sg_filtered": ml_outputs.get("sg_filtered"),
+            "temp_filtered": ml_outputs.get("temp_filtered"),
+            "confidence": ml_outputs.get("confidence"),
+            "sg_rate": ml_outputs.get("sg_rate"),
+            "temp_rate": ml_outputs.get("temp_rate"),
+            "is_anomaly": ml_outputs.get("is_anomaly", False),
+            "anomaly_score": ml_outputs.get("anomaly_score"),
+            "anomaly_reasons": ml_outputs.get("anomaly_reasons", []),
+        }
+
+        update_reading(reading.id, payload)
+        await manager.broadcast(payload)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global scanner, scanner_task, cleanup_service, ml_pipeline_manager
@@ -385,7 +542,7 @@ async def lifespan(app: FastAPI):
     if settings.is_enabled("scanner"):
         load_readings_cache()
         print(f"Loaded {len(latest_readings)} cached device readings")
-        scanner = TiltScanner(on_reading=handle_tilt_reading)
+        scanner = TiltScanner(on_reading=handle_tilt_reading, on_rapt_reading=handle_rapt_reading)
         scanner_task = asyncio.create_task(scanner.start())
         print("Scanner started")
 

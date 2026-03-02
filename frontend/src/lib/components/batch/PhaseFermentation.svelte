@@ -113,34 +113,19 @@
 
 				{#if !tempControlCollapsed}
 				<!-- Device status indicators -->
-				<div class="device-status-grid">
+				<div class="device-status-row">
 					{#if batch.heater_entity_id}
-						<div class="device-status heater">
-							<div class="device-icon-wrap" class:active={controlStatus?.heater_state === 'on'}>
-								🔥
-							</div>
-							<div class="device-info">
-								<span class="device-label">Heater</span>
-								<span class="device-state" class:on={controlStatus?.heater_state === 'on'}>
-									{controlStatus?.heater_state === 'on' ? 'ON' : 'OFF'}
-								</span>
-								<span class="device-entity">{batch.heater_entity_id}</span>
-							</div>
+						<div class="device-chip heater" class:active={controlStatus?.heater_state === 'on'} title={batch.heater_entity_id}>
+							<span class="chip-icon">🔥</span>
+							<span class="chip-label">Heater</span>
+							<span class="chip-state">{controlStatus?.heater_state === 'on' ? 'ON' : 'OFF'}</span>
 						</div>
 					{/if}
-
 					{#if batch.cooler_entity_id}
-						<div class="device-status cooler">
-							<div class="device-icon-wrap" class:active={controlStatus?.cooler_state === 'on'}>
-								❄️
-							</div>
-							<div class="device-info">
-								<span class="device-label">Cooler</span>
-								<span class="device-state" class:on={controlStatus?.cooler_state === 'on'}>
-									{controlStatus?.cooler_state === 'on' ? 'ON' : 'OFF'}
-								</span>
-								<span class="device-entity">{batch.cooler_entity_id}</span>
-							</div>
+						<div class="device-chip cooler" class:active={controlStatus?.cooler_state === 'on'} title={batch.cooler_entity_id}>
+							<span class="chip-icon">❄️</span>
+							<span class="chip-label">Cooler</span>
+							<span class="chip-state">{controlStatus?.cooler_state === 'on' ? 'ON' : 'OFF'}</span>
 						</div>
 					{/if}
 				</div>
@@ -398,42 +383,65 @@
 		border-color: rgba(59, 130, 246, 0.3);
 	}
 
-	.device-status-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+	.device-status-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
 	}
 
-	.device-status {
+	.device-chip {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.device-icon-wrap {
-		width: 2.5rem;
-		height: 2.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 0.5rem;
+		gap: 0.375rem;
+		flex: 1;
+		padding: 0.375rem 0.625rem;
 		background: var(--bg-elevated);
-		font-size: 1.25rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
 		transition: all 0.3s ease;
+	}
+
+	.device-chip .chip-icon {
+		font-size: 0.875rem;
 		filter: grayscale(100%) opacity(0.5);
+		transition: filter 0.3s ease;
 	}
 
-	.device-status.heater .device-icon-wrap.active {
-		background: rgba(239, 68, 68, 0.2);
-		animation: pulse-glow-red 2s ease-in-out infinite;
+	.device-chip.active .chip-icon {
 		filter: none;
 	}
 
-	.device-status.cooler .device-icon-wrap.active {
-		background: rgba(59, 130, 246, 0.2);
-		animation: pulse-glow-blue 2s ease-in-out infinite;
-		filter: none;
+	.device-chip .chip-label {
+		font-weight: 500;
+		color: var(--text-secondary);
+	}
+
+	.device-chip .chip-state {
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-weight: 600;
+		font-size: 0.6875rem;
+		color: var(--text-muted);
+	}
+
+	.device-chip.heater.active {
+		border-color: rgba(239, 68, 68, 0.3);
+		background: rgba(239, 68, 68, 0.08);
+	}
+
+	.device-chip.heater.active .chip-state {
+		color: var(--tilt-red);
+	}
+
+	.device-chip.cooler.active {
+		border-color: rgba(59, 130, 246, 0.3);
+		background: rgba(59, 130, 246, 0.08);
+	}
+
+	.device-chip.cooler.active .chip-state {
+		color: var(--tilt-blue);
 	}
 
 	@keyframes pulse-glow-red {
@@ -444,41 +452,6 @@
 	@keyframes pulse-glow-blue {
 		0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
 		50% { box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.3); }
-	}
-
-	.device-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.device-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.device-state {
-		font-size: 1rem;
-		font-weight: 700;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-secondary);
-	}
-
-	.device-status.heater .device-state.on {
-		color: var(--tilt-red);
-	}
-
-	.device-status.cooler .device-state.on {
-		color: var(--tilt-blue);
-	}
-
-	.device-entity {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.control-details {

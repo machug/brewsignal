@@ -8,7 +8,7 @@
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import { onConfigLoaded } from '$lib/config';
 	import BatchForm from '$lib/components/BatchForm.svelte';
-	import LifecycleStepper from '$lib/components/batch/LifecycleStepper.svelte';
+
 	import PhaseRecipe from '$lib/components/batch/PhaseRecipe.svelte';
 	import PhaseBrewDay from '$lib/components/batch/PhaseBrewDay.svelte';
 	import PhaseFermentation from '$lib/components/batch/PhaseFermentation.svelte';
@@ -540,22 +540,30 @@
 			</div>
 		{/if}
 
-		<!-- Lifecycle Stepper -->
-		<LifecycleStepper currentStatus={batch.status} onPhaseClick={(status) => activeTab = (status === 'archived' ? 'completed' : status) as PhaseTab} />
-
 		<!-- Phase Tab Bar -->
 		<div class="phase-tabs" role="tablist" aria-label="Batch phase tabs">
 			{#each tabs as tab}
 				{@const future = isTabFuture(tab.id)}
+				{@const completed = phaseOrder[tab.id] < currentPhaseIndex}
+				{@const current = phaseOrder[tab.id] === currentPhaseIndex}
 				<button
 					type="button"
 					role="tab"
 					class="phase-tab"
 					class:active={activeTab === tab.id}
 					class:future
+					class:phase-completed={completed}
+					class:phase-current={current}
 					aria-selected={activeTab === tab.id}
 					onclick={() => activeTab = tab.id}
 				>
+					{#if completed}
+						<svg class="tab-check" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+							<path d="M3.5 8.5L6.5 11.5L12.5 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+						</svg>
+					{:else if current}
+						<span class="tab-dot"></span>
+					{/if}
 					{tab.label}
 				</button>
 			{/each}
@@ -1080,6 +1088,10 @@
 		transition: all 0.15s ease;
 		white-space: nowrap;
 		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
 	}
 
 	.phase-tab:hover:not(.active) {
@@ -1100,6 +1112,34 @@
 
 	.phase-tab.future:hover:not(.active) {
 		opacity: 0.6;
+	}
+
+	.phase-tab.phase-completed {
+		color: var(--positive);
+	}
+
+	.phase-tab.phase-completed.active {
+		color: var(--positive);
+	}
+
+	.tab-check {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+
+	.tab-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--accent);
+		flex-shrink: 0;
+		animation: pulse-tab-dot 2.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse-tab-dot {
+		0%, 100% { box-shadow: 0 0 0 2px var(--accent-muted); }
+		50% { box-shadow: 0 0 0 4px var(--accent-muted); }
 	}
 
 	.phase-content {

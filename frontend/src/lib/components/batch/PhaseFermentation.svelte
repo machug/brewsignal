@@ -60,6 +60,11 @@
 		{#if batch.recipe}
 			<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
 		{/if}
+
+		<!-- Notes Card (only if notes exist) -->
+		{#if batch.notes}
+			<BatchNotesCard notes={batch.notes} />
+		{/if}
 	</div>
 
 	<!-- Right column -->
@@ -236,10 +241,6 @@
 			</div>
 		{/if}
 
-		<!-- Notes Card (only if notes exist) -->
-		{#if batch.notes}
-			<BatchNotesCard notes={batch.notes} />
-		{/if}
 	</div>
 </div>
 

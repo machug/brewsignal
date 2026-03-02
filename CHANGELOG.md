@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-03-02
+
 ### Fixed
 - **Yeast Override Clear Button** - Fixed clear selection button not working on batch edit page
   - The `$effect` that initializes yeast from batch data was re-running on every clear, immediately re-setting the value

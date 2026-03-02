@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 class TestUnitConversion:
     """Test unit conversion in calibration service."""
 
-    def test_convert_celsius_to_fahrenheit(self):
+    def test_celsius_passthrough(self):
+        """Celsius input should pass through unchanged (internal unit is Celsius)."""
         service = CalibrationService()
         reading = HydrometerReading(
             device_id="test",
@@ -25,9 +26,10 @@ class TestUnitConversion:
 
         result = service.convert_units(reading)
 
-        assert result.temperature == pytest.approx(68.0, abs=0.1)
+        assert result.temperature == pytest.approx(20.0, abs=0.1)
 
-    def test_fahrenheit_unchanged(self):
+    def test_fahrenheit_converted_to_celsius(self):
+        """Fahrenheit input should be converted to Celsius (internal unit)."""
         service = CalibrationService()
         reading = HydrometerReading(
             device_id="test",
@@ -39,7 +41,7 @@ class TestUnitConversion:
 
         result = service.convert_units(reading)
 
-        assert result.temperature == 68.0
+        assert result.temperature == pytest.approx(20.0, abs=0.1)  # 68°F = 20°C
 
     def test_convert_plato_to_sg(self):
         service = CalibrationService()

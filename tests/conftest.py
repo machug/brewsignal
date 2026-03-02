@@ -1,7 +1,15 @@
 """Shared test fixtures for Tilt UI tests."""
 
+import os
 import pytest
 from datetime import datetime, timezone
+
+# Force LOCAL deployment mode for tests BEFORE importing backend modules
+# This ensures tests use SQLite, not cloud PostgreSQL
+os.environ["DEPLOYMENT_MODE"] = "local"
+# Override DATABASE_URL to empty so get_database_url() falls back to SQLite
+# Env vars take priority over .env file in Pydantic BaseSettings
+os.environ["DATABASE_URL"] = ""
 
 
 @pytest.fixture

@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Force LOCAL deployment mode for tests BEFORE importing backend modules
 # This ensures require_auth returns dummy "local" user instead of requiring JWT
 os.environ["DEPLOYMENT_MODE"] = "local"
+# Override DATABASE_URL to empty so get_database_url() falls back to SQLite
+# Must SET (not pop) so Pydantic BaseSettings doesn't read .env file's PostgreSQL URL
+os.environ["DATABASE_URL"] = ""
 
 # Ensure backend package is importable
 backend_path = Path(__file__).parent.parent.parent

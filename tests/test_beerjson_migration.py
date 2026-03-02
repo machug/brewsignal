@@ -195,11 +195,17 @@ async def test_hop_timing_data_migration():
     """Test that hop timing is correctly migrated from BeerXML use/time to BeerJSON timing JSON."""
     # Create old schema with BeerXML hop columns
     async with engine.begin() as conn:
-        # Create minimal recipes table
+        # Create minimal recipes table (must include yeast columns for migration)
         await conn.execute(text("""
             CREATE TABLE recipes (
                 id INTEGER PRIMARY KEY,
-                name VARCHAR(200) NOT NULL
+                name VARCHAR(200) NOT NULL,
+                yeast_name VARCHAR(100),
+                yeast_lab VARCHAR(100),
+                yeast_product_id VARCHAR(50),
+                yeast_temp_min REAL,
+                yeast_temp_max REAL,
+                yeast_attenuation REAL
             )
         """))
 

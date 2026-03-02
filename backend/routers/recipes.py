@@ -443,8 +443,13 @@ async def create_recipe(
         db.add(culture)
 
     await db.commit()
-    await db.refresh(db_recipe)
-    return db_recipe
+    # Re-query with eager loading for response serialization
+    result = await db.execute(
+        select(Recipe)
+        .options(selectinload(Recipe.style), selectinload(Recipe.fermentables))
+        .where(Recipe.id == db_recipe.id)
+    )
+    return result.scalar_one()
 
 
 @router.post("/import", response_model=RecipeResponse, status_code=201)
@@ -573,9 +578,18 @@ async def update_recipe(
     )
 
     await db.commit()
-    await db.refresh(existing_recipe)
-
-    return existing_recipe
+    # Re-query with eager loading for response serialization
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        )
+        .where(Recipe.id == existing_recipe.id)
+    )
+    return result.scalar_one()
 
 
 @router.post("/{recipe_id}/recalculate", response_model=RecipeResponse)
@@ -617,9 +631,18 @@ async def recalculate_recipe_stats(
     recipe.color_srm = stats["color_srm"]
 
     await db.commit()
-    await db.refresh(recipe)
-
-    return recipe
+    # Re-query with eager loading for response serialization
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        )
+        .where(Recipe.id == recipe.id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/{recipe_id}")

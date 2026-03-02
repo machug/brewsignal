@@ -243,8 +243,8 @@ class CalibrationRequest(BaseModel):
             # Validate SG points if present and not null
             if has_points:
                 points = cal_data["points"]
-                if not isinstance(points, list) or len(points) < 1:
-                    raise ValueError("linear calibration requires at least 1 point")
+                if not isinstance(points, list) or len(points) < 2:
+                    raise ValueError("linear calibration requires at least 2 points")
                 # Validate point structure: [[raw1, actual1], [raw2, actual2], ...]
                 for point in points:
                     if not isinstance(point, list) or len(point) != 2:
@@ -258,8 +258,8 @@ class CalibrationRequest(BaseModel):
             # Validate temp_points if present and not null
             if has_temp_points:
                 temp_points = cal_data["temp_points"]
-                if not isinstance(temp_points, list) or len(temp_points) < 1:
-                    raise ValueError("linear calibration requires at least 1 temp_point")
+                if not isinstance(temp_points, list) or len(temp_points) < 2:
+                    raise ValueError("linear calibration requires at least 2 temp_points")
                 for point in temp_points:
                     if not isinstance(point, list) or len(point) != 2:
                         raise ValueError("each temp point must be [raw_value, actual_value]")

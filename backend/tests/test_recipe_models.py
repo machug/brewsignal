@@ -11,7 +11,8 @@ async def test_style_model_exists(test_db):
     """Style model should exist and be queryable."""
     result = await test_db.execute(select(Style))
     styles = result.scalars().all()
-    assert styles == []  # Empty but table exists
+    # Table exists and is queryable (may be seeded with BJCP styles)
+    assert isinstance(styles, list)
 
 
 @pytest.mark.asyncio

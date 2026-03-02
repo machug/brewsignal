@@ -33,7 +33,8 @@ class TestFermentationAnomalyDetector:
         """Detector identifies stuck fermentation (flat SG curve)."""
         detector = FermentationAnomalyDetector(
             min_history=10,
-            sg_rate_threshold=0.001  # 0.001 SG/hour = 0.024 SG/day
+            sg_rate_threshold=0.001,  # 0.001 SG/hour = 0.024 SG/day
+            min_hours_for_stuck=5.0,  # Lower threshold for test (default 24h)
         )
 
         # Simulate normal fermentation

@@ -37,9 +37,9 @@
 </script>
 
 <div class="recipe-strip">
-	<span class="item"><span class="lbl">OG</span> {formatSG(recipe.og)}</span>
-	<span class="item"><span class="lbl">FG</span> {formatSG(recipe.fg)}</span>
-	<span class="item"><span class="lbl">ABV</span> {calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span>
+	<span class="item"><span class="lbl">OG</span> <span class="val">{formatSG(recipe.og)}</span></span>
+	<span class="item"><span class="lbl">FG</span> <span class="val">{formatSG(recipe.fg)}</span></span>
+	<span class="item"><span class="lbl">ABV</span> <span class="val">{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span></span>
 	{#if yeastDisplay}
 		<span class="sep"></span>
 		<span class="item yeast">{yeastDisplay}</span>
@@ -78,7 +78,7 @@
 		text-transform: uppercase;
 	}
 
-	.item :global(.lbl) + * {
+	.val {
 		font-family: var(--font-mono);
 	}
 

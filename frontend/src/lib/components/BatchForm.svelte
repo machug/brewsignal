@@ -265,10 +265,12 @@
 		}
 	});
 
-	// Initialize selectedYeast when editing batch with yeast_strain
+	// Initialize selectedYeast when editing batch with yeast_strain (once only)
+	let yeastInitialized = false;
 	$effect(() => {
-		if (isEditMode && batch?.yeast_strain && !selectedYeast) {
+		if (isEditMode && batch?.yeast_strain && !yeastInitialized) {
 			selectedYeast = batch.yeast_strain;
+			yeastInitialized = true;
 		}
 	});
 

@@ -28,11 +28,12 @@ async def test_unpaired_tilt_does_not_store_reading():
         mock_tilt.original_gravity = None
         mock_session.get.return_value = mock_tilt
 
-        # Mock calibration service and batch linker
+        # Mock calibration service, batch linker, and config value
         with patch('backend.main.calibration_service.calibrate_reading',
                    return_value=(1.050, 68.0)):
             with patch('backend.main.link_reading_to_batch', return_value=None):
-                await handle_tilt_reading(reading)
+                with patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=15):
+                    await handle_tilt_reading(reading)
 
         # Verify that a Reading object was NOT added to session
         # (Note: The Tilt object itself might be added if it's new, but we check that no Reading was added)
@@ -73,9 +74,10 @@ async def test_paired_tilt_stores_reading():
                    return_value=(1.048, 66.0)):
             # Mock link_reading_to_batch to return a batch_id (active batch exists)
             with patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=1):
-                # Mock calculate_time_since_batch_start
-                with patch('backend.main.calculate_time_since_batch_start', new_callable=AsyncMock, return_value=24.0):
-                    await handle_tilt_reading(reading)
+                with patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=15):
+                    # Mock calculate_time_since_batch_start
+                    with patch('backend.main.calculate_time_since_batch_start', new_callable=AsyncMock, return_value=24.0):
+                        await handle_tilt_reading(reading)
 
         # Verify that a Reading object WAS added to session
         from backend.models import Reading

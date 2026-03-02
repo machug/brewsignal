@@ -10,10 +10,20 @@ from backend.models import Reading, Device
 from backend.ml.pipeline_manager import MLPipelineManager
 
 
+@pytest.fixture(autouse=True)
+def clear_rate_limiter():
+    """Clear the rate limiter between tests so all readings are stored."""
+    import backend.main
+    backend.main._last_tilt_storage.clear()
+    yield
+    backend.main._last_tilt_storage.clear()
+
+
 @pytest.mark.asyncio
 @patch('backend.main.manager')
+@patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=0.0001)
 @patch('backend.main.link_reading_to_batch', new_callable=AsyncMock)
-async def test_ml_integration_end_to_end(mock_link, mock_ws):
+async def test_ml_integration_end_to_end(mock_link, mock_config, mock_ws):
     """Full ML pipeline integration test.
 
     Tests the complete flow:
@@ -124,8 +134,9 @@ async def test_ml_integration_end_to_end(mock_link, mock_ws):
 
 @pytest.mark.asyncio
 @patch('backend.main.manager')
+@patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=0.0001)
 @patch('backend.main.link_reading_to_batch', new_callable=AsyncMock)
-async def test_anomaly_detection_in_production(mock_link, mock_ws):
+async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
     """ML pipeline processes readings and detects anomalies in production flow.
 
     Tests:

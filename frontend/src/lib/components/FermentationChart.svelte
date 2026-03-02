@@ -496,20 +496,20 @@
 					// Linear path (no spline for trend line)
 				},
 				{
-					// Anomaly markers series - show points only, no line
+					// Anomaly markers series - points only, no connecting line
 					label: 'Anomaly',
 					scale: 'sg',
-					stroke: chartColors.anomaly,
-					width: 2, // Non-zero width required for point rendering
+					stroke: 'transparent',
+					width: 0,
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) + ' ⚠️' : '--',
 					points: {
 						show: true,
-						size: 10,
+						size: 12,
+						space: 0,
 						fill: chartColors.anomaly,
 						stroke: '#ffffff',
 						width: 2
 					},
-					paths: () => null, // Don't draw line path, only points
 					show: showAnomalies
 				},
 				{
@@ -1141,6 +1141,24 @@ onMount(async () => {
 		{/if}
 	</div>
 
+	<!-- Anomaly Details -->
+	{#if showAnomalies && anomalyData.length > 0}
+		<div class="anomaly-details">
+			{#each anomalyData as anomaly}
+				<div class="anomaly-item">
+					<span class="anomaly-dot"></span>
+					<span class="anomaly-time">{formatTimeInTz(anomaly.timestamp, systemTimezone, false)} {formatTimeInTz(anomaly.timestamp, systemTimezone, true)}</span>
+					<span class="anomaly-sg">{formatGravity(anomaly.sg)}</span>
+					{#if anomaly.reasons.length > 0}
+						<span class="anomaly-reasons">{anomaly.reasons.join(', ')}</span>
+					{:else}
+						<span class="anomaly-reasons">Unknown reason</span>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
+
 	<!-- Fermentation Stats -->
 	{#if readings.length > 0}
 		<FermentationStats
@@ -1419,6 +1437,51 @@ onMount(async () => {
 
 	.chart-empty {
 		text-align: center;
+	}
+
+	/* Anomaly details strip */
+	.anomaly-details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.5rem 0.75rem;
+		background: rgba(239, 68, 68, 0.06);
+		border: 1px solid rgba(239, 68, 68, 0.15);
+		border-radius: 0.375rem;
+		margin-top: 0.5rem;
+	}
+
+	.anomaly-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.anomaly-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--chart-anomaly, #ef4444);
+		flex-shrink: 0;
+	}
+
+	.anomaly-time {
+		color: var(--text-secondary);
+		font-family: var(--font-mono);
+		white-space: nowrap;
+	}
+
+	.anomaly-sg {
+		color: var(--text-secondary);
+		font-family: var(--font-mono);
+		font-weight: 600;
+	}
+
+	.anomaly-reasons {
+		color: var(--text-muted);
+		font-style: italic;
 	}
 
 	/* Screen reader only - visually hidden but accessible */

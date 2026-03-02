@@ -1,6 +1,6 @@
 """End-to-end ML integration tests."""
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from sqlalchemy import text
 from backend.main import handle_tilt_reading
@@ -187,7 +187,8 @@ async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
     # Mock batch linking to return the actual batch ID we created
     mock_link.return_value = batch_id
 
-    # Send normal readings
+    # Send normal readings with spaced timestamps to avoid rate limiting
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=20)
     for i in range(10):
         reading = TiltReading(
             color="ANOMALY",
@@ -195,7 +196,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
             sg=1.050 - i * 0.001,  # Normal fermentation (SG decreasing)
             temp_f=68.0,  # Stable temperature
             rssi=-60,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=base_time + timedelta(minutes=i)
         )
         await handle_tilt_reading(reading)
 
@@ -206,7 +207,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
         sg=1.060,  # SG spike
         temp_f=68.0,
         rssi=-60,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=base_time + timedelta(minutes=10)
     )
     await handle_tilt_reading(reading)
 

@@ -132,7 +132,8 @@ class MLPipelineManager:
             anomaly = nested_result["anomaly"]
             flat_result["is_anomaly"] = anomaly.get("is_anomaly", False)
             flat_result["anomaly_score"] = anomaly.get("score")
-            flat_result["anomaly_reasons"] = anomaly.get("reasons", [])
+            reason = anomaly.get("reason")
+            flat_result["anomaly_reasons"] = [reason] if reason and reason not in ("normal", "insufficient_history") else []
         else:
             flat_result["is_anomaly"] = False
             flat_result["anomaly_reasons"] = []

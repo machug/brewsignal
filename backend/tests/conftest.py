@@ -9,7 +9,7 @@ from typing import AsyncGenerator, Generator
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Force LOCAL deployment mode for tests BEFORE importing backend modules
 # This ensures require_auth returns dummy "local" user instead of requiring JWT
@@ -47,17 +47,21 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
     # Run migrations to set up schema (same as production)
-    # We need to temporarily swap the engine so migrations run on test DB
+    # We need to temporarily swap the engine AND session factory so migrations
+    # and seeding both run on the test DB
     import backend.database as db_module
     original_engine = db_module.engine
+    original_session_factory = db_module.async_session_factory
     db_module.engine = engine
+    db_module.async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
         # This runs all migrations in the correct order
         await db_module.init_db()
     finally:
-        # Restore original engine
+        # Restore originals
         db_module.engine = original_engine
+        db_module.async_session_factory = original_session_factory
 
     # Create session factory
     async_session = async_sessionmaker(engine, expire_on_commit=False)

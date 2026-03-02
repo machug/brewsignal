@@ -50,6 +50,10 @@ export interface AppConfig {
 	mqtt_username: string;
 	mqtt_password: string;
 	mqtt_topic_prefix: string;
+	// Device control backend
+	device_control_backend: string;
+	shelly_enabled: boolean;
+	shelly_devices: string;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -99,7 +103,11 @@ const DEFAULT_CONFIG: AppConfig = {
 	mqtt_port: 1883,
 	mqtt_username: '',
 	mqtt_password: '',
-	mqtt_topic_prefix: 'brewsignal'
+	mqtt_topic_prefix: 'brewsignal',
+	// Device control backend
+	device_control_backend: 'ha',
+	shelly_enabled: false,
+	shelly_devices: ''
 };
 
 export const configState = $state<{ config: AppConfig; loaded: boolean }>({

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Yeast Override Clear Button** - Fixed clear selection button not working on batch edit page
+  - The `$effect` that initializes yeast from batch data was re-running on every clear, immediately re-setting the value
+  - Added initialization guard so it only runs once on page load
+- **Anomaly Reasons Not Stored** - Fixed anomaly detection reasons never being saved to database
+  - Key mismatch: detector returned `reason` (singular) but pipeline manager read `reasons` (plural)
+  - Existing anomalies showed "Unknown reason" because the field was always null
+  - New anomalies now correctly store reasons like `unusual_increase` or `stuck_fermentation`
+- **Anomaly Markers Not Rendering on Chart** - Fixed uPlot series config that suppressed point rendering
+  - `paths: () => null` was preventing all rendering including points
+  - Replaced with `stroke: transparent` and `width: 0` for proper points-only rendering
+  - Added `space: 0` to ensure sparse anomaly points are not skipped
+
+### Changed
+- **Merged Lifecycle Stepper into Phase Tabs** - Removed redundant stepper row above tab bar
+  - Tabs now show green checkmarks for completed phases and a pulsing blue dot for current phase
+  - Saves vertical space on batch detail page
+- **Compact Recipe Targets** - Replaced full card with single inline strip
+  - Shows OG, FG, ABV, yeast, and recipe name in one row with dividers
+  - Saves significant vertical space on all phase views
+- **Balanced Fermentation Layout** - Moved notes card to left column under recipe strip
+  - Eliminates large empty space next to temperature control and sidebar cards
+- **Compact Temperature Control** - Heater/cooler status now uses inline chips instead of stacked cards
+  - Side-by-side chips: `🔥 Heater OFF | ❄️ Cooler ON`
+  - Entity IDs available on hover as tooltips
+
+### Added
+- **Anomaly Details Strip** - New section below chart showing detected anomalies
+  - Displays timestamp, gravity value, and reason for each anomaly
+  - Toggles visibility with the existing anomaly legend button
+
 ## [2.11.0] - 2026-01-25
 
 ### Added

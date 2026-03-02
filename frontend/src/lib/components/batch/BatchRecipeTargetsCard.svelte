@@ -2,7 +2,6 @@
 	import type { RecipeResponse, YeastStrainResponse } from '$lib/api';
 	import { formatGravity } from '$lib/stores/config.svelte';
 	import { ABV_MULTIPLIER } from '$lib/constants';
-	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
 		recipe: RecipeResponse;
@@ -16,133 +15,85 @@
 		return formatGravity(value);
 	}
 
-	// Calculate ABV from recipe targets if not provided
 	let calculatedABV = $derived.by(() => {
-		if (recipe.abv != null) return recipe.abv; // Already stored as percentage
+		if (recipe.abv != null) return recipe.abv;
 		if (recipe.og && recipe.fg) {
 			return (recipe.og - recipe.fg) * ABV_MULTIPLIER;
 		}
 		return null;
 	});
+
+	let yeastDisplay = $derived.by(() => {
+		if (yeastStrain) {
+			let text = yeastStrain.name;
+			if (yeastStrain.producer) text += ` (${yeastStrain.producer})`;
+			if (yeastStrain.temp_low && yeastStrain.temp_high) {
+				text += ` ${yeastStrain.temp_low.toFixed(0)}-${yeastStrain.temp_high.toFixed(0)}°C`;
+			}
+			return text;
+		}
+		return recipe.yeast_name || null;
+	});
 </script>
 
-<BatchCard title="Recipe Targets" compact>
-	<div class="targets-row">
-		<div class="target">
-			<span class="target-label">OG</span>
-			<span class="target-value">{formatSG(recipe.og)}</span>
-		</div>
-		<div class="target">
-			<span class="target-label">FG</span>
-			<span class="target-value">{formatSG(recipe.fg)}</span>
-		</div>
-		<div class="target">
-			<span class="target-label">ABV</span>
-			<span class="target-value">
-				{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}
-			</span>
-		</div>
-	</div>
-	{#if yeastStrain || recipe.yeast_name}
-		<div class="yeast-section">
-			{#if yeastStrain}
-				<div class="yeast-row actual">
-					<span class="yeast-label">Yeast</span>
-					<span class="yeast-value">{yeastStrain.name}</span>
-					{#if yeastStrain.producer}
-						<span class="yeast-producer">({yeastStrain.producer})</span>
-					{/if}
-					{#if yeastStrain.temp_low && yeastStrain.temp_high}
-						<span class="yeast-temp">{yeastStrain.temp_low.toFixed(0)}-{yeastStrain.temp_high.toFixed(0)}°C</span>
-					{/if}
-				</div>
-				{#if recipe.yeast_name}
-					<div class="yeast-row recipe">
-						<span class="yeast-label">Recipe</span>
-						<span class="yeast-value muted">{recipe.yeast_name}</span>
-					</div>
-				{/if}
-			{:else if recipe.yeast_name}
-				<div class="yeast-row">
-					<span class="yeast-label">Yeast</span>
-					<span class="yeast-value">{recipe.yeast_name}</span>
-				</div>
-			{/if}
-		</div>
+<div class="recipe-strip">
+	<span class="item"><span class="lbl">OG</span> {formatSG(recipe.og)}</span>
+	<span class="item"><span class="lbl">FG</span> {formatSG(recipe.fg)}</span>
+	<span class="item"><span class="lbl">ABV</span> {calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span>
+	{#if yeastDisplay}
+		<span class="sep"></span>
+		<span class="item yeast">{yeastDisplay}</span>
 	{/if}
-</BatchCard>
+	{#if recipe.name}
+		<span class="sep"></span>
+		<span class="item recipe-name">{recipe.name}</span>
+	{/if}
+</div>
 
 <style>
-	.targets-row {
-		display: flex;
-		gap: 1.5rem;
-	}
-
-	.target {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.target-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-	}
-
-	.target-value {
-		font-family: var(--font-mono);
-		font-size: 0.9375rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-	}
-
-	.yeast-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		margin-top: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--border-subtle);
-	}
-
-	.yeast-row {
+	.recipe-strip {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-
-	.yeast-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		min-width: 2.5rem;
-	}
-
-	.yeast-value {
-		font-size: 0.8125rem;
+		gap: 0.25rem 0.75rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-subtle);
+		border-radius: 0.5rem;
+		font-size: 0.75rem;
 		color: var(--text-secondary);
 	}
 
-	.yeast-value.muted {
-		color: var(--text-muted);
-		font-size: 0.75rem;
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		white-space: nowrap;
 	}
 
-	.yeast-producer {
-		font-size: 0.75rem;
+	.lbl {
+		font-size: 0.625rem;
+		font-weight: 600;
 		color: var(--text-muted);
+		text-transform: uppercase;
 	}
 
-	.yeast-temp {
-		font-size: 0.6875rem;
+	.item :global(.lbl) + * {
 		font-family: var(--font-mono);
+	}
+
+	.sep {
+		width: 1px;
+		height: 0.75rem;
+		background: var(--border-subtle);
+	}
+
+	.yeast {
+		color: var(--text-secondary);
+	}
+
+	.recipe-name {
 		color: var(--text-muted);
-		padding: 0.125rem 0.375rem;
-		background: var(--bg-elevated);
-		border-radius: 0.25rem;
+		font-style: italic;
 	}
 </style>

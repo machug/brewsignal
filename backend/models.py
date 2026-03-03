@@ -2527,6 +2527,7 @@ class AgUiMessage(Base):
     role: Mapped[str] = mapped_column(String(20))  # user, assistant, tool
     content: Mapped[str] = mapped_column(Text)
     tool_calls: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of tool calls
+    tool_call_id: Mapped[Optional[str]] = mapped_column(String(100))  # Links tool results to their calls
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
@@ -2687,6 +2688,7 @@ class AgUiMessageResponse(BaseModel):
     role: str
     content: str
     tool_calls: Optional[list[dict[str, Any]]] = None
+    tool_call_id: Optional[str] = None
     created_at: datetime
 
     @field_serializer('created_at')

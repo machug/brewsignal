@@ -485,6 +485,8 @@ async def init_db():
         await conn.run_sync(_migrate_add_ag_ui_thread_title_locked)
         # Add user_id column to ag_ui_threads for multi-tenant isolation
         await conn.run_sync(_migrate_add_ag_ui_thread_user_id)
+        # Add tool_call_id column to ag_ui_messages for tool history persistence
+        await conn.run_sync(_migrate_add_tool_call_id_to_ag_ui_messages)
         # Create inventory_deductions table for brew-day deduction tracking
         await conn.run_sync(_migrate_create_inventory_deductions_table)
         # Recreate the table with correct schema
@@ -1973,6 +1975,20 @@ def _migrate_add_batch_timer_columns(conn):
 
     if added:
         print(f"Migration: Added batch timer columns: {', '.join(added)}")
+
+
+def _migrate_add_tool_call_id_to_ag_ui_messages(conn):
+    """Add tool_call_id column to ag_ui_messages for linking tool results to their calls."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+
+    if "ag_ui_messages" not in inspector.get_table_names():
+        return  # Fresh install, create_all will handle it
+
+    columns = [c["name"] for c in inspector.get_columns("ag_ui_messages")]
+    if "tool_call_id" not in columns:
+        conn.execute(text("ALTER TABLE ag_ui_messages ADD COLUMN tool_call_id VARCHAR(100)"))
+        print("Migration: Added tool_call_id column to ag_ui_messages table")
 
 
 def _migrate_create_inventory_deductions_table(conn):

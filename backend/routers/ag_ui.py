@@ -29,6 +29,7 @@ from backend.auth import AuthUser, require_auth
 from backend.routers.assistant import get_llm_config
 from backend.services.llm import LLMService
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
+from backend.services.llm.context import prune_messages_if_needed, context_usage_info, get_token_budget, count_context_tokens
 from backend.services.memory import search_memories, add_memory, format_memories_for_context
 from backend.models import (
     AgUiThread, AgUiMessage,
@@ -138,13 +139,36 @@ async def generate_ag_ui_events(
         existing_message_contents: set[str] = set()
 
         if not is_new_thread:
-            # Load history from database
+            # Load full history from database (including tool calls and results)
             db_messages = await _get_thread_messages(db, thread_id)
             for msg in db_messages:
-                if msg.role in ("user", "assistant"):
-                    llm_messages.append({"role": msg.role, "content": msg.content})
-                    # Track existing message contents to avoid re-saving
+                if msg.role == "user":
+                    llm_messages.append({"role": "user", "content": msg.content})
                     existing_message_contents.add(msg.content)
+                elif msg.role == "assistant":
+                    assistant_msg = {"role": "assistant", "content": msg.content}
+                    # Restore tool_calls if present (backward compatible)
+                    tc_data = msg.tool_calls_data
+                    if tc_data:
+                        assistant_msg["tool_calls"] = [
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": tc.get("arguments", "{}"),
+                                }
+                            }
+                            for tc in tc_data
+                        ]
+                    llm_messages.append(assistant_msg)
+                    existing_message_contents.add(msg.content)
+                elif msg.role == "tool" and msg.tool_call_id:
+                    llm_messages.append({
+                        "role": "tool",
+                        "tool_call_id": msg.tool_call_id,
+                        "content": msg.content,
+                    })
 
         # Add new messages from request (only save truly new ones)
         for m in request.messages:
@@ -180,6 +204,23 @@ async def generate_ag_ui_events(
                     system_prompt = f"{system_prompt}\n\n{memory_context}"
 
         llm_messages.insert(0, {"role": "system", "content": system_prompt})
+
+        # Pre-flight context check: prune if needed before entering agent loop
+        model = service.config.effective_model
+        llm_messages, token_count, was_pruned = prune_messages_if_needed(
+            model, llm_messages, TOOL_DEFINITIONS
+        )
+        if was_pruned:
+            logger.info(f"AG-UI: Context pruned before agent loop ({token_count} tokens)")
+
+        # Emit context usage info for frontend
+        usage = context_usage_info(model, llm_messages, TOOL_DEFINITIONS)
+        yield AGUIEvent(
+            "STATE_DELTA",
+            delta=[
+                {"op": "add", "path": "/contextUsage", "value": usage},
+            ],
+        ).to_sse()
 
         # Run agent loop (handles tool calls) - collect final response
         final_response = ""
@@ -315,7 +356,8 @@ async def _save_message(
     thread_id: str,
     role: str,
     content: str,
-    tool_calls: Optional[list[dict]] = None
+    tool_calls: Optional[list[dict]] = None,
+    tool_call_id: Optional[str] = None,
 ) -> AgUiMessage:
     """Save a message to the database."""
     message = AgUiMessage(
@@ -325,6 +367,8 @@ async def _save_message(
     )
     if tool_calls:
         message.tool_calls_data = tool_calls
+    if tool_call_id:
+        message.tool_call_id = tool_call_id
     db.add(message)
     await db.commit()
     return message
@@ -492,6 +536,41 @@ async def _run_agent_loop(
         iteration += 1
         message_id = str(uuid.uuid4())
 
+        # Per-iteration context guard: prune or bail if over budget
+        model = service.config.effective_model
+        budget = get_token_budget(model)
+        current_tokens = count_context_tokens(model, messages, TOOL_DEFINITIONS)
+        if current_tokens > budget:
+            messages, current_tokens, was_pruned = prune_messages_if_needed(
+                model, messages, TOOL_DEFINITIONS
+            )
+            if current_tokens > budget:
+                # Even after pruning, still over budget - graceful stop
+                logger.warning(
+                    f"AG-UI: Context limit reached after pruning "
+                    f"({current_tokens}/{budget} tokens), stopping"
+                )
+                yield AGUIEvent(
+                    "TEXT_MESSAGE_START",
+                    messageId=message_id,
+                    role="assistant",
+                ).to_sse()
+                limit_msg = (
+                    "I've reached the context limit for this conversation. "
+                    "Please start a new thread to continue."
+                )
+                yield AGUIEvent(
+                    "TEXT_MESSAGE_CONTENT",
+                    messageId=message_id,
+                    delta=limit_msg,
+                ).to_sse()
+                yield AGUIEvent(
+                    "TEXT_MESSAGE_END",
+                    messageId=message_id,
+                ).to_sse()
+                await _save_message(db, thread_id, "assistant", limit_msg)
+                break
+
         # Build kwargs for LLM call
         kwargs = {
             "model": service.config.effective_model,
@@ -613,6 +692,13 @@ async def _run_agent_loop(
         }
         messages.append(assistant_msg)
 
+        # Persist assistant message with tool calls
+        tc_data = [
+            {"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]}
+            for tc in tool_calls if tc.get("id")
+        ]
+        await _save_message(db, thread_id, "assistant", full_content or "", tool_calls=tc_data)
+
         # Execute each tool call
         for tc in tool_calls:
             if not tc.get("id"):
@@ -683,6 +769,9 @@ async def _run_agent_loop(
                 "tool_call_id": tool_call_id,
                 "content": result_str
             })
+
+            # Persist tool result to database
+            await _save_message(db, thread_id, "tool", result_str, tool_call_id=tool_call_id)
 
     if iteration >= max_iterations:
         logger.warning(f"AG-UI: Hit max iterations ({max_iterations})")

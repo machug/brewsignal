@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Repeated `save_brewing_learning` on Thread Resume** - Assistant no longer re-saves the same brewing insights every time a conversation is resumed
+  - Root cause: tool call history was stripped during thread reload, so the LLM couldn't see its prior tool invocations
+  - Now persists assistant tool calls and tool result messages to the database
+  - Full message history (user, assistant with tool_calls, tool results) restored on resume
+  - Existing DB-level duplicate guard (>50% word overlap) serves as safety net
+
+### Added
+- **Context Window Management** - Prevents hard failures on long conversations
+  - Token counting using litellm's tokenizer (includes tool definitions in budget)
+  - Pre-flight context check before entering agent loop
+  - Per-iteration guard with sliding-window pruning when context exceeds budget
+  - Graceful "context limit reached" message instead of silent API failure
+  - `contextUsage` emitted via STATE_DELTA for frontend visibility
+
 ## [2.12.0] - 2026-03-02
 
 ### Fixed

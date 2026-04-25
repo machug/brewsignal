@@ -44,9 +44,12 @@
 		const lovibondToSrm = (lov: number | undefined) =>
 			lov != null ? 1.3546 * lov - 0.76 : undefined;
 		let missingColor = false;
+		// Explicit empty array in format_extensions is a deletion intent
+		// (user removed all items); fall back to recipe.fermentables only
+		// when format_extensions has no fermentables key at all.
 		const fermentables: Fermentable[] = (
-			ext?.fermentables?.length
-				? ext.fermentables.map((f) => {
+			Array.isArray(ext?.fermentables)
+				? ext!.fermentables!.map((f) => {
 						const srm =
 							(f as { color_srm?: number }).color_srm ??
 							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond);
@@ -66,8 +69,8 @@
 		) as Fermentable[];
 		if (fermentables.length === 0) return null;
 
-		const rawHops: Array<Hop & { use?: string }> = ext?.hops?.length
-			? ext.hops
+		const rawHops: Array<Hop & { use?: string }> = Array.isArray(ext?.hops)
+			? ext!.hops!
 			: (recipe.hops ?? []).map((h) => {
 					const timing = h.timing || {};
 					const tv = timing.duration?.value ?? timing.time?.value ?? 0;

@@ -279,7 +279,12 @@
 				}
 			};
 
-			await updateRecipe(recipeId, recipeUpdate, { recalculate: true });
+			// Stats sent in recipeUpdate (og/fg/abv/ibu/color_srm) come from the
+			// form, which carries either the user's typed values or imported
+			// targets. Don't auto-recalculate — that would silently overwrite
+			// both. A separate "Recalculate from ingredients" action calls
+			// POST /recipes/{id}/recalculate when the user wants that.
+			await updateRecipe(recipeId, recipeUpdate);
 			goto(`/recipes/${recipeId}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to update recipe';

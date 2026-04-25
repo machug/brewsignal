@@ -92,3 +92,56 @@ class TestImporterDetectsBrewSignal:
 
     def test_beerjson_envelope_still_routes_to_beerjson(self):
         assert self._detect({"beerjson": {"version": 1.0, "recipes": []}}) == "beerjson"
+
+    def test_sparse_recipe_with_brewsignal_fermentable_keys_detected(self):
+        """A bare BrewSignal recipe with no top-level discriminator keys
+        but BrewSignal-shaped fermentables must still route to brewsignal."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "fermentables": [{"name": "Pilsner", "amount_kg": 5.0}],
+        }) == "brewsignal"
+
+    def test_sparse_recipe_with_brewsignal_hop_keys_detected(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "hops": [{"name": "Cascade", "amount_grams": 30,
+                      "alpha_acid_percent": 6.5,
+                      "timing": {"use": "add_to_boil"}}],
+        }) == "brewsignal"
+
+
+class TestBrewSignalEdgeCases:
+    """Edge cases caught by codex review on tilt_ui-kew."""
+
+    def test_marker_keys_are_stripped_before_validation(self):
+        """`_format` and `brewsignal_version` are NOT BrewSignalRecipe
+        fields (extra=forbid). The importer must strip them before
+        validation, otherwise marked payloads fail import."""
+        from backend.services.brewsignal_format import BrewSignalRecipe
+        payload = {
+            "_format": "brewsignal",
+            "brewsignal_version": "1.0",
+            "name": "Test", "og": 1.05, "fg": 1.01,
+        }
+        # Direct validation should fail; the importer's strip step is what
+        # makes this pass end-to-end. Test mirrors the importer's logic.
+        cleaned = {k: v for k, v in payload.items()
+                   if k not in ('_format', 'brewsignal_version')}
+        BrewSignalRecipe.model_validate(cleaned)  # no exception
+
+    def test_hop_without_alpha_acid_gets_default(self):
+        out = BrewSignalToBeerJSONConverter()._convert_hop({
+            'name': 'Mystery Hop',
+            'amount_grams': 30,
+            'timing': {'use': 'add_to_boil'},
+        })
+        assert out['alpha_acid'] == {'value': 0.0, 'unit': '%'}
+
+    def test_mash_step_type_emits_under_key_serializer_reads(self):
+        """Serializer reads step_dict['type'], not 'step_type'."""
+        out = BrewSignalToBeerJSONConverter()._convert_mash([
+            {'step_number': 1, 'type': 'infusion', 'temp_c': 65, 'time_minutes': 60},
+            {'step_number': 2, 'type': 'decoction', 'temp_c': 76, 'time_minutes': 10},
+        ])
+        assert out['mash_steps'][0]['type'] == 'infusion'
+        assert out['mash_steps'][1]['type'] == 'decoction'

@@ -117,11 +117,20 @@ class RecipeImporter:
                     # _brewfather_water itself; no extra step needed.
                     beerjson_dict = self.brewfather_converter.convert(parsed_dict)
                 elif detected_format == "brewsignal":
-                    # Validate against BrewSignal schema, then convert to
-                    # BeerJSON so the rest of the pipeline (serializer,
-                    # persist) is shared with all other formats (tilt_ui-kew).
-                    BrewSignalRecipe.model_validate(parsed_dict)
-                    beerjson_dict = self.brewsignal_converter.convert(parsed_dict)
+                    # Strip envelope/markers before strict validation
+                    # (BrewSignalRecipe sets extra=forbid). Recipe payloads
+                    # may carry _format / brewsignal_version metadata or
+                    # be wrapped under a "recipe" key.
+                    bs_payload = parsed_dict
+                    if isinstance(bs_payload, dict) and 'recipe' in bs_payload \
+                            and isinstance(bs_payload['recipe'], dict):
+                        bs_payload = bs_payload['recipe']
+                    bs_payload = {
+                        k: v for k, v in bs_payload.items()
+                        if k not in ('_format', 'brewsignal_version')
+                    }
+                    BrewSignalRecipe.model_validate(bs_payload)
+                    beerjson_dict = self.brewsignal_converter.convert(bs_payload)
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:
@@ -233,6 +242,20 @@ class RecipeImporter:
             brewsignal_keys = {'batch_size_liters', 'color_srm', 'boil_time_minutes',
                                'fermentation_steps', 'mash_steps'}
             if any(k in data for k in brewsignal_keys):
+                return "brewsignal"
+
+            # Nested fingerprints — a sparse BrewSignal recipe may not
+            # have any of the top-level snake_case keys but still uses
+            # BrewSignal-only ingredient field names like amount_kg /
+            # amount_grams / alpha_acid_percent (Brewfather uses amount
+            # in kg with a unit string, and alpha at the hop root).
+            ferms = data.get('fermentables') or []
+            if isinstance(ferms, list) and ferms and isinstance(ferms[0], dict) \
+                    and 'amount_kg' in ferms[0]:
+                return "brewsignal"
+            hops = data.get('hops') or []
+            if isinstance(hops, list) and hops and isinstance(hops[0], dict) \
+                    and ('amount_grams' in hops[0] or 'alpha_acid_percent' in hops[0]):
                 return "brewsignal"
 
             # Otherwise assume Brewfather JSON

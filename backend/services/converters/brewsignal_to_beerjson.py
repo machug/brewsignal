@@ -108,17 +108,20 @@ class BrewSignalToBeerJSONConverter:
         return out
 
     def _convert_hop(self, h: Dict[str, Any]) -> Dict[str, Any]:
+        # alpha_acid_percent is optional in the BrewSignal schema but the
+        # underlying RecipeHop column is non-nullable. Default missing AA
+        # to 0 so the import flushes; users can edit later.
+        alpha = h.get('alpha_acid_percent')
         out: Dict[str, Any] = {
             'name': h.get('name', ''),
             'amount': {'value': float(h['amount_grams']), 'unit': 'g'},
             'timing': h.get('timing') or {'use': 'add_to_boil'},
+            'alpha_acid': {'value': float(alpha) if alpha is not None else 0.0, 'unit': '%'},
         }
         if h.get('origin'):
             out['origin'] = h['origin']
         if h.get('form'):
             out['form'] = h['form']
-        if h.get('alpha_acid_percent') is not None:
-            out['alpha_acid'] = {'value': float(h['alpha_acid_percent']), 'unit': '%'}
         if h.get('beta_acid_percent') is not None:
             out['beta_acid'] = {'value': float(h['beta_acid_percent']), 'unit': '%'}
         return out
@@ -157,12 +160,15 @@ class BrewSignalToBeerJSONConverter:
         return out
 
     def _convert_mash(self, steps: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # The serializer reads step_dict['type'] (not 'step_type'), so we
+        # emit BrewSignal step type values directly under that key. Names
+        # mirror the type for clarity in the editor.
         return {
             'name': 'Mash',
             'mash_steps': [
                 {
                     'name': f"Step {s['step_number']}",
-                    'step_type': s.get('type', 'infusion'),
+                    'type': s.get('type', 'infusion'),
                     'step_temperature': {'value': float(s['temp_c']), 'unit': 'C'},
                     'step_time': {'value': int(s['time_minutes']), 'unit': 'min'},
                 }

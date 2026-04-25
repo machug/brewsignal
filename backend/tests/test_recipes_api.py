@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from backend.models import Recipe
+from backend.models import Recipe, RecipeFermentable, RecipeHop
 
 
 @pytest_asyncio.fixture
@@ -403,3 +403,112 @@ async def test_update_recipe_valid_partial_update(
     })
     assert response.status_code == 200
     assert response.json()["og"] == 1.055
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
+    client, test_db
+):
+    """PUT must not silently recalculate brewing stats from ingredients.
+
+    Regression test for tilt_ui-5no: imported recipes carry brewer-declared
+    target stats (OG/FG/ABV/IBU/SRM) that disagree with naive recalculation
+    from the ingredient list. PUT used to overwrite those targets whenever
+    fermentables or hops were present, even when the update payload did not
+    touch ingredients. Recalculation must now be opt-in.
+    """
+    recipe = Recipe(
+        name="Imported IPA",
+        og=1.067,
+        fg=1.013,
+        abv=6.9,
+        ibu=60.0,
+        color_srm=4.0,
+        batch_size_liters=23.0,
+    )
+    test_db.add(recipe)
+    await test_db.commit()
+    await test_db.refresh(recipe)
+
+    test_db.add_all([
+        RecipeFermentable(
+            recipe_id=recipe.id,
+            name="Pilsner Malt",
+            type="grain",
+            amount_kg=5.0,
+            yield_percent=80.0,
+            color_srm=2.0,
+        ),
+        RecipeHop(
+            recipe_id=recipe.id,
+            name="Columbus Cryo",
+            alpha_acid_percent=20.0,
+            amount_grams=5.0,
+            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
+        ),
+    ])
+    await test_db.commit()
+
+    response = await client.put(
+        f"/api/recipes/{recipe.id}", json={"name": "Renamed Only"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Renamed Only"
+    assert data["og"] == 1.067
+    assert data["fg"] == 1.013
+    assert data["abv"] == 6.9
+    assert data["ibu"] == 60.0
+    assert data["color_srm"] == 4.0
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_recalculates_when_explicitly_requested(
+    client, test_db
+):
+    """PUT ?recalculate=true must recompute stats from ingredients.
+
+    Opt-in path used by recipe edit UI when the user changes ingredients
+    and wants the stat fields refreshed in the same request.
+    """
+    recipe = Recipe(
+        name="Imported IPA",
+        og=1.067,
+        ibu=60.0,
+        batch_size_liters=23.0,
+    )
+    test_db.add(recipe)
+    await test_db.commit()
+    await test_db.refresh(recipe)
+
+    test_db.add_all([
+        RecipeFermentable(
+            recipe_id=recipe.id,
+            name="Pilsner Malt",
+            type="grain",
+            amount_kg=5.0,
+            yield_percent=80.0,
+            color_srm=2.0,
+        ),
+        RecipeHop(
+            recipe_id=recipe.id,
+            name="Columbus Cryo",
+            alpha_acid_percent=20.0,
+            amount_grams=5.0,
+            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
+        ),
+    ])
+    await test_db.commit()
+
+    response = await client.put(
+        f"/api/recipes/{recipe.id}?recalculate=true",
+        json={"name": "Recalc Me"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Recalc Me"
+    # Calculator should drive these away from the imported targets.
+    assert data["og"] != 1.067
+    assert data["ibu"] != 60.0

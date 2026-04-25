@@ -536,6 +536,14 @@ async def import_recipe(
 async def update_recipe(
     recipe_id: int,
     recipe_update: RecipeUpdate,
+    recalculate: bool = Query(
+        False,
+        description=(
+            "If true, server recomputes og/fg/abv/ibu/color_srm from "
+            "ingredients and overwrites those fields on save. Default false "
+            "preserves brewer-declared targets from imported recipes."
+        ),
+    ),
     user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
@@ -560,8 +568,10 @@ async def update_recipe(
     for field, value in recipe_update.model_dump(exclude_unset=True).items():
         setattr(existing_recipe, field, value)
 
-    # Recalculate stats from ingredients if we have any
-    if existing_recipe.fermentables or existing_recipe.hops:
+    # Recalculation is opt-in via ?recalculate=true. Without this gate,
+    # imported recipes lose brewer-declared OG/FG/ABV/IBU/SRM targets on
+    # any subsequent PUT (tilt_ui-5no).
+    if recalculate and (existing_recipe.fermentables or existing_recipe.hops):
         stats = calculate_recipe_stats(existing_recipe)
         existing_recipe.og = stats["og"]
         existing_recipe.fg = stats["fg"]

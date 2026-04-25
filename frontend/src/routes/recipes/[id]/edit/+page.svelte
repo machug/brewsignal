@@ -279,7 +279,7 @@
 				}
 			};
 
-			await updateRecipe(recipeId, recipeUpdate);
+			await updateRecipe(recipeId, recipeUpdate, { recalculate: true });
 			goto(`/recipes/${recipeId}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to update recipe';

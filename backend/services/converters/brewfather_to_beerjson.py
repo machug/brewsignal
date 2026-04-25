@@ -165,14 +165,19 @@ class BrewfatherToBeerJSONConverter:
         use = bf_hop.get('use', 'Boil')
         time = bf_hop.get('time', 0)
 
-        # Map use to BeerJSON
+        # Map use to BeerJSON. add_to_whirlpool is a BrewSignal extension —
+        # BeerJSON 1.0 has no whirlpool kind, but mapping Whirlpool to
+        # add_to_boil collapses hop-stand additions into zero-time boil
+        # additions, which the IBU calculator (correctly) credits with zero
+        # utilization. The downstream calculator and serializer already
+        # accept add_to_whirlpool (tilt_ui-53n).
         use_mapping = {
             'Boil': 'add_to_boil',
             'Dry Hop': 'add_to_fermentation',
             'Mash': 'add_to_mash',
             'First Wort': 'add_to_boil',
             'Aroma': 'add_to_boil',
-            'Whirlpool': 'add_to_boil'
+            'Whirlpool': 'add_to_whirlpool',
         }
 
         timing = {

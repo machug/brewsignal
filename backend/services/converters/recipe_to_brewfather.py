@@ -154,6 +154,7 @@ class RecipeToBrewfatherConverter:
 
         use_mapping = {
             "add_to_boil": "Boil",
+            "add_to_whirlpool": "Whirlpool",
             "add_to_fermentation": "Dry Hop",
             "add_to_mash": "Mash",
             "add_to_package": "Bottling",

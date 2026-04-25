@@ -4,6 +4,30 @@
 	export type HopUse = 'boil' | 'whirlpool' | 'dry_hop' | 'first_wort' | 'mash';
 	export type HopForm = 'pellet' | 'whole' | 'plug';
 
+	/**
+	 * Normalize a timing.use value from any source (BeerJSON `add_to_*`,
+	 * Brewfather "Dry Hop", or already-short `whirlpool`) into the short
+	 * HopUse form used by editor components and the IBU calculator.
+	 * Imports persist BeerJSON-style keys (e.g. `add_to_whirlpool`) — without
+	 * this normalization, the editor would silently treat them as `boil`.
+	 */
+	export function normalizeHopUse(raw: string | undefined): HopUse {
+		if (!raw) return 'boil';
+		const lookup: Record<string, HopUse> = {
+			add_to_boil: 'boil',
+			add_to_whirlpool: 'whirlpool',
+			add_to_fermentation: 'dry_hop',
+			add_to_mash: 'mash',
+			boil: 'boil',
+			whirlpool: 'whirlpool',
+			dry_hop: 'dry_hop',
+			first_wort: 'first_wort',
+			mash: 'mash',
+		};
+		const key = raw.toLowerCase().replace(/ /g, '_');
+		return lookup[key] ?? 'boil';
+	}
+
 	export interface RecipeFermentable extends FermentableResponse {
 		amount_kg: number;
 	}
@@ -167,7 +191,7 @@
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: boilMinutes,
-						use: (timing.use?.replace(' ', '_') || 'boil') as HopUse,
+						use: normalizeHopUse(timing.use),
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,

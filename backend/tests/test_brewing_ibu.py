@@ -74,7 +74,9 @@ class TestWhirlpoolStandModel:
 
 
 class TestDryHopUnchanged:
-    """Dry hops must continue to contribute zero IBU."""
+    """Dry hops must contribute zero IBU and not get credited by any other
+    branch (no double-counting). Pins the audit conclusion for tilt_ui-4te.
+    """
 
     def test_dry_hop_contributes_zero(self):
         hop = RecipeHop(
@@ -85,3 +87,77 @@ class TestDryHopUnchanged:
         )
         ibu = calculate_ibu_from_hops([hop], batch_liters=20, og=1.060)
         assert ibu == 0
+
+    def test_short_form_dry_hop_use_also_contributes_zero(self):
+        """Frontend / legacy data uses 'dry_hop' short form — still 0."""
+        hop = RecipeHop(
+            name="Citra",
+            amount_grams=50.0,
+            alpha_acid_percent=12.0,
+            timing={"use": "dry_hop", "duration": {"value": 4, "unit": "day"}},
+        )
+        ibu = calculate_ibu_from_hops([hop], batch_liters=20, og=1.060)
+        assert ibu == 0
+
+    def test_recipe21_full_dry_hop_charge_contributes_zero(self):
+        """Recipe 21 has 4 dry hop additions totaling ~140g of high-alpha
+        cryo hops. Total dry-hop IBU contribution must be exactly 0."""
+        dry_hops = [
+            RecipeHop(name="Mosaic Cryo", amount_grams=40, alpha_acid_percent=22.0,
+                      timing={"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}),
+            RecipeHop(name="Krush Cryo", amount_grams=40, alpha_acid_percent=18.0,
+                      timing={"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}),
+            RecipeHop(name="Columbus Cryo", amount_grams=30, alpha_acid_percent=20.0,
+                      timing={"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}),
+            RecipeHop(name="Riwaka", amount_grams=30, alpha_acid_percent=5.0,
+                      timing={"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}),
+        ]
+        ibu = calculate_ibu_from_hops(dry_hops, batch_liters=23.0, og=1.067)
+        assert ibu == 0
+
+    def test_dry_hop_alongside_whirlpool_and_boil_does_not_inflate_total(self):
+        """Total IBU must equal sum of boil + whirlpool only, with the dry
+        hops adding 0. Defends against any future regression where the
+        dry-hop branch starts crediting through whirlpool or boil paths."""
+        boil_hop = RecipeHop(
+            name="Columbus", amount_grams=30, alpha_acid_percent=20.0,
+            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
+        )
+        whirlpool_hop = RecipeHop(
+            name="Mosaic", amount_grams=40, alpha_acid_percent=12.5,
+            timing={"use": "add_to_whirlpool", "duration": {"value": 20, "unit": "min"}},
+        )
+        dry_hop = RecipeHop(
+            name="Mosaic Cryo", amount_grams=50, alpha_acid_percent=22.0,
+            timing={"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}},
+        )
+
+        without_dry = calculate_ibu_from_hops([boil_hop, whirlpool_hop], batch_liters=23, og=1.060)
+        with_dry = calculate_ibu_from_hops([boil_hop, whirlpool_hop, dry_hop], batch_liters=23, og=1.060)
+        assert with_dry == without_dry
+
+
+class TestLLMToolsCalculatorAgreesOnZero:
+    """The LLM-tools recipe calculator is a separate code path used when
+    the assistant saves recipes. It must agree that dry hops produce 0 IBU."""
+
+    def test_llm_calculator_credits_zero_ibu_to_dry_hops(self):
+        from backend.services.llm.tools.recipe import calculate_recipe_stats
+
+        normalized = {
+            "batch_size": {"value": 23, "unit": "l"},
+            "ingredients": {
+                "fermentable_additions": [
+                    {"name": "Pilsner", "amount": {"value": 5, "unit": "kg"},
+                     "yield": {"fine_grind": {"value": 80, "unit": "%"}}}
+                ],
+                "hop_additions": [
+                    {"name": "Mosaic Cryo", "amount": {"value": 0.05, "unit": "kg"},
+                     "alpha_acid": {"value": 22, "unit": "%"},
+                     "timing": {"use": "add_to_fermentation",
+                                "duration": {"value": 4, "unit": "day"}}}
+                ],
+            },
+        }
+        stats = calculate_recipe_stats(normalized)
+        assert stats["ibu"] == 0

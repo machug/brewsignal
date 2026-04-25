@@ -145,3 +145,54 @@ class TestBrewSignalEdgeCases:
         ])
         assert out['mash_steps'][0]['type'] == 'infusion'
         assert out['mash_steps'][1]['type'] == 'decoction'
+
+    def test_yeast_attenuation_uses_range_shape_serializer_consumes(self):
+        """Serializer reads attenuation.minimum/maximum, not value/unit."""
+        out = BrewSignalToBeerJSONConverter()._convert_yeast({
+            'name': 'US-05', 'type': 'ale', 'form': 'dry',
+            'attenuation_percent': 78,
+        })
+        assert out['attenuation_range'] == {
+            'minimum': {'value': 78.0, 'unit': '%'},
+            'maximum': {'value': 78.0, 'unit': '%'},
+        }
+
+    def test_fermentable_supplier_maps_to_producer_key(self):
+        """Serializer reads fermentable.producer (not supplier)."""
+        out = BrewSignalToBeerJSONConverter()._convert_fermentable({
+            'name': 'Pilsner', 'type': 'grain', 'amount_kg': 5.0,
+            'supplier': 'Weyermann',
+        })
+        assert out['producer'] == 'Weyermann'
+        assert 'supplier' not in out
+
+
+class TestImporterDetectsSparseBrewSignal:
+    """Codex review: a BrewSignal recipe with only stats + a singular
+    yeast or a miscs list (no fermentables/hops, no top-level
+    discriminator keys) was misdetected as Brewfather."""
+
+    def _detect(self, payload: dict) -> str | None:
+        import json
+        return RecipeImporter()._detect_format(json.dumps(payload))
+
+    def test_singular_yeast_with_attenuation_percent_detected(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "yeast": {"name": "US-05", "type": "ale",
+                      "form": "dry", "attenuation_percent": 78},
+        }) == "brewsignal"
+
+    def test_singular_yeast_with_temp_celsius_detected(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "yeast": {"name": "US-05", "type": "ale",
+                      "form": "dry", "temp_min_c": 18, "temp_max_c": 22},
+        }) == "brewsignal"
+
+    def test_miscs_with_amount_grams_detected(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "miscs": [{"name": "Whirlfloc", "amount_grams": 1,
+                        "timing": {"use": "add_to_boil"}}],
+        }) == "brewsignal"

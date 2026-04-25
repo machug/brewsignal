@@ -257,6 +257,20 @@ class RecipeImporter:
             if isinstance(hops, list) and hops and isinstance(hops[0], dict) \
                     and ('amount_grams' in hops[0] or 'alpha_acid_percent' in hops[0]):
                 return "brewsignal"
+            # Singular `yeast` object is BrewSignal-specific (Brewfather
+            # uses a `yeasts` array). attenuation_percent / temp_min_c
+            # / temp_max_c are BrewSignal-only field names.
+            yeast = data.get('yeast')
+            if isinstance(yeast, dict) and (
+                'attenuation_percent' in yeast
+                or 'temp_min_c' in yeast
+                or 'temp_max_c' in yeast
+            ):
+                return "brewsignal"
+            miscs = data.get('miscs') or []
+            if isinstance(miscs, list) and miscs and isinstance(miscs[0], dict) \
+                    and 'amount_grams' in miscs[0]:
+                return "brewsignal"
 
             # Otherwise assume Brewfather JSON
             return "brewfather"

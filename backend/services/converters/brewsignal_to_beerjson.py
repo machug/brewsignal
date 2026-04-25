@@ -103,8 +103,10 @@ class BrewSignalToBeerJSONConverter:
             out['color'] = {'value': float(f['color_srm']), 'unit': 'SRM'}
         if f.get('origin'):
             out['origin'] = f['origin']
+        # Serializer reads `producer` for the maltster/supplier column;
+        # `supplier` would silently drop.
         if f.get('supplier'):
-            out['supplier'] = f['supplier']
+            out['producer'] = f['supplier']
         return out
 
     def _convert_hop(self, h: Dict[str, Any]) -> Dict[str, Any]:
@@ -137,7 +139,15 @@ class BrewSignalToBeerJSONConverter:
         if y.get('product_id'):
             out['product_id'] = y['product_id']
         if y.get('attenuation_percent') is not None:
-            out['attenuation'] = {'value': float(y['attenuation_percent']), 'unit': '%'}
+            # Serializer extracts attenuation from minimum/maximum keys,
+            # not a flat {value, unit}. Mirror the value into both ends
+            # of the range so downstream calculations land on the
+            # brewer-declared attenuation.
+            atten = float(y['attenuation_percent'])
+            out['attenuation_range'] = {
+                'minimum': {'value': atten, 'unit': '%'},
+                'maximum': {'value': atten, 'unit': '%'},
+            }
         if y.get('temp_min_c') is not None or y.get('temp_max_c') is not None:
             tr: Dict[str, Any] = {}
             if y.get('temp_min_c') is not None:

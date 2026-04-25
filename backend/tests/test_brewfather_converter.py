@@ -68,6 +68,35 @@ class TestHopTimingConversion:
         assert hop['timing']['duration'] == {'value': 4, 'unit': 'day'}
 
 
+class TestBoilFields:
+    """Brewfather boilTime + boilSize must both reach BeerJSON `boil` (tilt_ui-u19)."""
+
+    def test_boil_size_is_mapped_to_beerjson(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'Test',
+            'batchSize': 23.0,
+            'boilTime': 60,
+            'boilSize': 28.5,
+        })
+        recipe = result['beerjson']['recipes'][0]
+        assert 'boil' in recipe
+        assert recipe['boil']['boil_size'] == {'value': 28.5, 'unit': 'l'}
+        assert recipe['boil']['boil_time'] == {'value': 60, 'unit': 'min'}
+
+    def test_boil_size_present_even_when_boil_time_absent(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({'name': 'Test', 'boilSize': 28.5})
+        recipe = result['beerjson']['recipes'][0]
+        assert recipe['boil']['boil_size'] == {'value': 28.5, 'unit': 'l'}
+
+    def test_boil_block_omitted_when_neither_field_present(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({'name': 'Test'})
+        recipe = result['beerjson']['recipes'][0]
+        assert 'boil' not in recipe
+
+
 class TestHopTimingRoundTrip:
     """Reverse converter must understand add_to_whirlpool emitted by the
     forward Brewfather converter, otherwise round-trip export loses the

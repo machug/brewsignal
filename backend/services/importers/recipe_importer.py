@@ -274,8 +274,24 @@ class RecipeImporter:
                     and 'amount_grams' in miscs[0]:
                 return "brewsignal"
 
-            # Otherwise assume Brewfather JSON
-            return "brewfather"
+            # `{"recipe": {...}}` envelope is BrewSignal (Brewfather has
+            # no such wrapper).
+            if isinstance(data.get('recipe'), dict):
+                return "brewsignal"
+
+            # Brewfather positive markers: distinct camelCase top-level
+            # keys and the _type sentinel exports always carry. If any
+            # are present, route to brewfather; otherwise prefer
+            # brewsignal so its strict Pydantic validation surfaces
+            # malformed payloads instead of the Brewfather parser
+            # silently producing a near-empty recipe.
+            brewfather_markers = {
+                '_type', 'batchSize', 'boilTime', 'boilSize',
+                'mashAdjustments', 'spargeAdjustments', 'yeasts',
+            }
+            if any(k in data for k in brewfather_markers):
+                return "brewfather"
+            return "brewsignal"
 
         except json.JSONDecodeError:
             # Not JSON, not XML - unknown format

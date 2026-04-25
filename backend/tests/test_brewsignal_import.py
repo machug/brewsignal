@@ -191,6 +191,25 @@ class TestImporterDetectsSparseBrewSignal:
             "yeast": {"name": "US-05", "type": "ale", "form": "dry"},
         }) == "brewsignal"
 
+    def test_recipe_wrapper_envelope_detected(self):
+        """{"recipe": {...}} is a BrewSignal envelope; Brewfather has no
+        such wrapper."""
+        assert self._detect({
+            "recipe": {"name": "X", "og": 1.05, "fg": 1.01},
+        }) == "brewsignal"
+
+    def test_minimal_flat_recipe_without_brewfather_markers_routes_to_brewsignal(self):
+        """A minimal flat payload without any camelCase Brewfather
+        markers (_type, batchSize, etc) prefers BrewSignal so strict
+        validation surfaces malformed input rather than the Brewfather
+        parser quietly producing a near-empty recipe."""
+        assert self._detect({"name": "X", "og": 1.05, "fg": 1.01}) == "brewsignal"
+
+    def test_brewfather_minimal_export_with_type_marker_still_routes_to_brewfather(self):
+        assert self._detect({
+            "_type": "recipe", "name": "X", "og": 1.05, "fg": 1.01,
+        }) == "brewfather"
+
     def test_singular_yeast_with_temp_celsius_detected(self):
         assert self._detect({
             "name": "X", "og": 1.05, "fg": 1.01,

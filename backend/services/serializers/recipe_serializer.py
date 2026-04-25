@@ -564,18 +564,30 @@ class RecipeSerializer:
         return mapping.get(use, 'boil')
 
     def _infer_fermentation_type(self, step_dict: Dict[str, Any]) -> str:
-        """Infer fermentation step type from step name or properties."""
+        """Infer fermentation step type from step name or properties.
+
+        Order matters: diacetyl rest and cold crash patterns are checked
+        before the generic primary/secondary/conditioning matches because
+        a step name like 'Cold Crash to 2C' should not first match on
+        'cold' (it doesn't, but the precedence keeps the rules robust to
+        future additions). Recipe 21 in production lost diacetyl rest and
+        cold crash intent because this function only knew the three
+        original types (tilt_ui-psa).
+        """
         name = step_dict.get('name', '').lower()
 
+        if 'diacetyl' in name or 'd-rest' in name or 'd rest' in name:
+            return 'diacetyl_rest'
+        if 'crash' in name:
+            return 'cold_crash'
         if 'primary' in name:
             return 'primary'
-        elif 'secondary' in name:
+        if 'secondary' in name:
             return 'secondary'
-        elif 'conditioning' in name or 'bottle' in name or 'keg' in name:
+        if 'conditioning' in name or 'bottle' in name or 'keg' in name:
             return 'conditioning'
-        else:
-            # Default to primary
-            return 'primary'
+        # Default to primary
+        return 'primary'
 
     def _serialize_brewfather_water(self, recipe: Recipe, water_data: Dict[str, Any]) -> None:
         """Serialize water profiles and adjustments from Brewfather's water object.

@@ -27,30 +27,45 @@ logger = logging.getLogger(__name__)
 
 
 def _is_zero_min_boil_timing(timing: dict) -> bool:
+    """Match rows with an EXPLICIT duration of 0 — missing duration is
+    ambiguous (legacy First Wort additions stored as add_to_boil rely
+    on the recipe-level boil duration and would be corrupted by retag).
+    """
     if not isinstance(timing, dict):
         return False
     use = (timing.get('use') or '').lower()
     if use not in ('add_to_boil', 'boil'):
         return False
-    duration = timing.get('duration') or {}
+    duration = timing.get('duration')
+    if duration is None:
+        return False
     if isinstance(duration, dict):
-        value = duration.get('value')
+        if 'value' not in duration:
+            return False
+        value = duration['value']
     else:
         value = duration
     try:
-        return float(value or 0) == 0.0
+        return float(value) == 0.0
     except (TypeError, ValueError):
         return False
 
 
 def _is_zero_min_boil_ext_hop(hop: dict) -> bool:
+    """Match only when boil_time_minutes is explicitly 0 — a missing
+    field is not an unambiguous zero (see _is_zero_min_boil_timing)."""
     if not isinstance(hop, dict):
         return False
     use = (hop.get('use') or '').lower()
     if use not in ('add_to_boil', 'boil'):
         return False
+    if 'boil_time_minutes' not in hop:
+        return False
+    value = hop['boil_time_minutes']
+    if value is None:
+        return False
     try:
-        return float(hop.get('boil_time_minutes') or 0) == 0.0
+        return float(value) == 0.0
     except (TypeError, ValueError):
         return False
 

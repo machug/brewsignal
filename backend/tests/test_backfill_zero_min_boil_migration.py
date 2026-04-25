@@ -14,15 +14,22 @@ class TestZeroMinBoilDetectors:
     on deploy and inspecting affected recipes."""
 
     @pytest.mark.parametrize("timing,expected", [
+        # Explicit zero -> retag.
         ({"use": "add_to_boil", "duration": {"value": 0, "unit": "min"}}, True),
         ({"use": "boil", "duration": {"value": 0, "unit": "min"}}, True),
         ({"use": "Add_To_Boil", "duration": {"value": 0, "unit": "min"}}, True),
-        ({"use": "add_to_boil", "duration": 0}, True),  # legacy scalar
+        ({"use": "add_to_boil", "duration": 0}, True),  # legacy scalar zero
+        # Non-zero or non-boil -> leave alone.
         ({"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}}, False),
         ({"use": "add_to_whirlpool", "duration": {"value": 0, "unit": "min"}}, False),
         ({"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}, False),
-        ({"use": "add_to_boil"}, True),  # missing duration treated as 0
-        ({}, False),  # no use
+        # Ambiguous: missing duration could mean legacy First Wort that
+        # implies the recipe boil — must not retag.
+        ({"use": "add_to_boil"}, False),
+        ({"use": "add_to_boil", "duration": {"unit": "min"}}, False),
+        ({"use": "add_to_boil", "duration": None}, False),
+        # Junk -> no.
+        ({}, False),
         (None, False),
         ("not a dict", False),
     ])
@@ -36,7 +43,9 @@ class TestZeroMinBoilDetectors:
         ({"use": "add_to_boil", "boil_time_minutes": 60}, False),
         ({"use": "add_to_whirlpool", "boil_time_minutes": 0}, False),
         ({"use": "dry_hop", "boil_time_minutes": 5760}, False),
-        ({"use": "add_to_boil"}, True),  # missing boil_time_minutes treated as 0
+        # Ambiguous: missing field is not an explicit zero.
+        ({"use": "add_to_boil"}, False),
+        ({"use": "add_to_boil", "boil_time_minutes": None}, False),
         ({}, False),
         ("not a dict", False),
     ])

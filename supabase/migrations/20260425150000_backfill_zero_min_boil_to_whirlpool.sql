@@ -7,21 +7,55 @@
 -- ambiguous (legacy First Wort additions imply the recipe boil time).
 
 -- 1. recipe_hops.timing
-UPDATE "public"."recipe_hops"
-SET "timing" = jsonb_set("timing"::jsonb, '{use}', '"add_to_whirlpool"')
-WHERE "timing" IS NOT NULL
-  AND lower(coalesce("timing"->>'use', '')) IN ('add_to_boil', 'boil')
-  AND "timing" ? 'duration'
-  AND (
-    -- duration as object: {value: 0, unit: ...}
-    (jsonb_typeof("timing"->'duration') = 'object'
-     AND "timing"->'duration' ? 'value'
-     AND ("timing"->'duration'->>'value')::numeric = 0)
-    OR
-    -- duration as scalar: 0
-    (jsonb_typeof("timing"->'duration') = 'number'
-     AND ("timing"->>'duration')::numeric = 0)
-  );
+-- The cloud schema may use the legacy scalar `use` / `time_min` columns
+-- OR a newer `timing` jsonb column depending on schema state. Update
+-- whichever exists. Wrap in DO blocks so a deployment with neither
+-- column (fresh install with no hops) still succeeds.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'recipe_hops'
+          AND column_name = 'timing'
+    ) THEN
+        UPDATE "public"."recipe_hops"
+        SET "timing" = jsonb_set("timing"::jsonb, '{use}', '"add_to_whirlpool"')
+        WHERE "timing" IS NOT NULL
+          AND lower(coalesce("timing"::jsonb->>'use', '')) IN ('add_to_boil', 'boil')
+          AND "timing"::jsonb ? 'duration'
+          AND (
+            (jsonb_typeof("timing"::jsonb->'duration') = 'object'
+             AND "timing"::jsonb->'duration' ? 'value'
+             AND ("timing"::jsonb->'duration'->>'value')::numeric = 0)
+            OR
+            (jsonb_typeof("timing"::jsonb->'duration') = 'number'
+             AND ("timing"::jsonb->>'duration')::numeric = 0)
+          );
+    END IF;
+END $$;
+
+-- Legacy scalar shape: use + time_min columns. Same explicit-zero gate.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'recipe_hops'
+          AND column_name = 'time_min'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'recipe_hops'
+          AND column_name = 'use'
+    ) THEN
+        UPDATE "public"."recipe_hops"
+        SET "use" = 'add_to_whirlpool'
+        WHERE lower(coalesce("use", '')) IN ('add_to_boil', 'boil')
+          AND "time_min" IS NOT NULL
+          AND "time_min" = 0;
+    END IF;
+END $$;
 
 -- 2. recipes.format_extensions.hops[*].use
 -- Postgres jsonb path mutation requires walking the array. Build a new

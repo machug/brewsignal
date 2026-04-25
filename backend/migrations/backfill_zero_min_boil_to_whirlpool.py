@@ -2,27 +2,19 @@
 
 Pre-2.13.0 imports of Brewfather Whirlpool hops landed as
 `use=add_to_boil` with `duration.value=0` (the converter mismapped
-Whirlpool, fixed in tilt_ui-53n). The IBU calculator correctly returns
-zero utilization for a 0-minute boil, so those hops contribute nothing
-even though they were the source recipe's flameout/whirlpool additions.
+Whirlpool, fixed in tilt_ui-53n). Some legacy BeerXML imports went
+through hop_timing_converter.convert_hop_timing_safe, which omits the
+duration field when time_min == 0, leaving rows with no explicit zero.
 
-Heuristic: a `use=add_to_boil` (or short-form `boil`) hop with an
-EXPLICIT duration of 0 minutes is a flameout/whirlpool addition — no
-real recipe boils for 0 minutes. Retag to `add_to_whirlpool`.
-
-SCOPE LIMITATION (deliberate). Brewfather imports preserve duration
-through the BeerJSON converter, so 0-min Whirlpool additions land with
-`duration: {"value": 0}` and this migration catches them.
-
-Older BeerXML imports went through enhance_ingredient_tables ->
-hop_timing_converter.convert_hop_timing_safe, which drops the duration
-field when time_min == 0. After that conversion, a legacy
-`use="Boil", time_min=0` hop is indistinguishable from a legacy
-`use="First Wort", time_min=N` hop (both become
-`{"use": "add_to_boil", "continuous": false}`). Retagging missing-
-duration rows would corrupt First Wort additions, so this migration
-deliberately skips them. Users with affected legacy BeerXML data
-should re-import the source file to recover whirlpool tagging.
+Heuristic (aggressive — single-tenant deployment, owner-acknowledged
+trade-off): retag any `use=add_to_boil` / short-form `boil` hop whose
+duration is either explicitly 0 OR missing. The downside: legacy First
+Wort additions converted by the same helper also become
+`{"use":"add_to_boil"}` with no duration and will be retagged as
+whirlpool. For BrewSignal's actual data set that's the right call —
+the Brewfather Whirlpool case dominates and First Wort additions are
+rare here. Documented so a future contributor with multi-user data can
+narrow the rule.
 
 Touches:
 - recipe_hops.timing (BeerJSON-shaped JSON column)
@@ -40,10 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 def _is_zero_min_boil_timing(timing: dict) -> bool:
-    """Match rows with an EXPLICIT duration of 0 — missing duration is
-    ambiguous (legacy First Wort additions stored as add_to_boil rely
-    on the recipe-level boil duration and would be corrupted by retag).
-    """
+    """Match `use=add_to_boil`/`boil` rows whose duration is either
+    explicitly 0 or absent. See module docstring for the trade-off."""
     if not isinstance(timing, dict):
         return False
     use = (timing.get('use') or '').lower()
@@ -51,10 +41,10 @@ def _is_zero_min_boil_timing(timing: dict) -> bool:
         return False
     duration = timing.get('duration')
     if duration is None:
-        return False
+        return True  # missing duration: treat as zero (aggressive)
     if isinstance(duration, dict):
         if 'value' not in duration:
-            return False
+            return True  # no value: treat as zero
         value = duration['value']
     else:
         value = duration
@@ -65,18 +55,16 @@ def _is_zero_min_boil_timing(timing: dict) -> bool:
 
 
 def _is_zero_min_boil_ext_hop(hop: dict) -> bool:
-    """Match only when boil_time_minutes is explicitly 0 — a missing
-    field is not an unambiguous zero (see _is_zero_min_boil_timing)."""
+    """Match `use=add_to_boil`/`boil` editor-shape hops whose
+    boil_time_minutes is explicitly 0, missing, or null."""
     if not isinstance(hop, dict):
         return False
     use = (hop.get('use') or '').lower()
     if use not in ('add_to_boil', 'boil'):
         return False
-    if 'boil_time_minutes' not in hop:
-        return False
-    value = hop['boil_time_minutes']
+    value = hop.get('boil_time_minutes')
     if value is None:
-        return False
+        return True  # missing or null: treat as zero
     try:
         return float(value) == 0.0
     except (TypeError, ValueError):

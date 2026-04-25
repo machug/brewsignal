@@ -18,16 +18,15 @@ class TestZeroMinBoilDetectors:
         ({"use": "add_to_boil", "duration": {"value": 0, "unit": "min"}}, True),
         ({"use": "boil", "duration": {"value": 0, "unit": "min"}}, True),
         ({"use": "Add_To_Boil", "duration": {"value": 0, "unit": "min"}}, True),
-        ({"use": "add_to_boil", "duration": 0}, True),  # legacy scalar zero
+        ({"use": "add_to_boil", "duration": 0}, True),
+        # Missing / null duration -> retag (aggressive single-tenant policy).
+        ({"use": "add_to_boil"}, True),
+        ({"use": "add_to_boil", "duration": None}, True),
+        ({"use": "add_to_boil", "duration": {"unit": "min"}}, True),
         # Non-zero or non-boil -> leave alone.
         ({"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}}, False),
         ({"use": "add_to_whirlpool", "duration": {"value": 0, "unit": "min"}}, False),
         ({"use": "add_to_fermentation", "duration": {"value": 4, "unit": "day"}}, False),
-        # Ambiguous: missing duration could mean legacy First Wort that
-        # implies the recipe boil — must not retag.
-        ({"use": "add_to_boil"}, False),
-        ({"use": "add_to_boil", "duration": {"unit": "min"}}, False),
-        ({"use": "add_to_boil", "duration": None}, False),
         # Junk -> no.
         ({}, False),
         (None, False),
@@ -43,9 +42,9 @@ class TestZeroMinBoilDetectors:
         ({"use": "add_to_boil", "boil_time_minutes": 60}, False),
         ({"use": "add_to_whirlpool", "boil_time_minutes": 0}, False),
         ({"use": "dry_hop", "boil_time_minutes": 5760}, False),
-        # Ambiguous: missing field is not an explicit zero.
-        ({"use": "add_to_boil"}, False),
-        ({"use": "add_to_boil", "boil_time_minutes": None}, False),
+        # Missing / null boil_time_minutes -> retag.
+        ({"use": "add_to_boil"}, True),
+        ({"use": "add_to_boil", "boil_time_minutes": None}, True),
         ({}, False),
         ("not a dict", False),
     ])

@@ -23,14 +23,19 @@ BEGIN
         SET "timing" = jsonb_set("timing"::jsonb, '{use}', '"add_to_whirlpool"')
         WHERE "timing" IS NOT NULL
           AND lower(coalesce("timing"::jsonb->>'use', '')) IN ('add_to_boil', 'boil')
-          AND "timing"::jsonb ? 'duration'
           AND (
-            (jsonb_typeof("timing"::jsonb->'duration') = 'object'
-             AND "timing"::jsonb->'duration' ? 'value'
-             AND ("timing"::jsonb->'duration'->>'value')::numeric = 0)
-            OR
-            (jsonb_typeof("timing"::jsonb->'duration') = 'number'
-             AND ("timing"::jsonb->>'duration')::numeric = 0)
+            -- missing or null duration: treat as zero
+            NOT ("timing"::jsonb ? 'duration')
+            OR jsonb_typeof("timing"::jsonb->'duration') = 'null'
+            -- duration as object: {value: 0, ...} or no value key
+            OR (jsonb_typeof("timing"::jsonb->'duration') = 'object'
+                AND (
+                    NOT ("timing"::jsonb->'duration' ? 'value')
+                    OR ("timing"::jsonb->'duration'->>'value')::numeric = 0
+                ))
+            -- duration as scalar: 0
+            OR (jsonb_typeof("timing"::jsonb->'duration') = 'number'
+                AND ("timing"::jsonb->>'duration')::numeric = 0)
           );
     END IF;
 END $$;
@@ -52,8 +57,7 @@ BEGIN
         UPDATE "public"."recipe_hops"
         SET "use" = 'add_to_whirlpool'
         WHERE lower(coalesce("use", '')) IN ('add_to_boil', 'boil')
-          AND "time_min" IS NOT NULL
-          AND "time_min" = 0;
+          AND ("time_min" IS NULL OR "time_min" = 0);
     END IF;
 END $$;
 
@@ -69,8 +73,11 @@ SET "format_extensions" = jsonb_set(
         SELECT jsonb_agg(
             CASE
                 WHEN lower(coalesce(hop->>'use', '')) IN ('add_to_boil', 'boil')
-                     AND hop ? 'boil_time_minutes'
-                     AND (hop->>'boil_time_minutes')::numeric = 0
+                     AND (
+                         NOT (hop ? 'boil_time_minutes')
+                         OR jsonb_typeof(hop->'boil_time_minutes') = 'null'
+                         OR (hop->>'boil_time_minutes')::numeric = 0
+                     )
                 THEN jsonb_set(hop, '{use}', '"add_to_whirlpool"')
                 ELSE hop
             END
@@ -86,6 +93,9 @@ WHERE "format_extensions" IS NOT NULL
       SELECT 1
       FROM jsonb_array_elements(r."format_extensions"::jsonb->'hops') AS hop
       WHERE lower(coalesce(hop->>'use', '')) IN ('add_to_boil', 'boil')
-        AND hop ? 'boil_time_minutes'
-        AND (hop->>'boil_time_minutes')::numeric = 0
+        AND (
+            NOT (hop ? 'boil_time_minutes')
+            OR jsonb_typeof(hop->'boil_time_minutes') = 'null'
+            OR (hop->>'boil_time_minutes')::numeric = 0
+        )
   );

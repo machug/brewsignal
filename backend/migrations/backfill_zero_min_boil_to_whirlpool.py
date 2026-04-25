@@ -71,6 +71,9 @@ def _is_zero_min_boil_ext_hop(hop: dict) -> bool:
         return False
 
 
+_FLAG_KEY = 'backfill_zero_min_boil_to_whirlpool_complete'
+
+
 async def migrate_backfill_zero_min_boil_to_whirlpool(conn: AsyncConnection) -> None:
     logger.info("Running migration: backfill_zero_min_boil_to_whirlpool")
 
@@ -81,6 +84,24 @@ async def migrate_backfill_zero_min_boil_to_whirlpool(conn: AsyncConnection) -> 
     if not result.fetchone():
         logger.info("recipe_hops table doesn't exist yet, skipping migration")
         return
+
+    # Gate on a config flag — this is a one-time historical backfill. Re-running
+    # on every startup would catch fresh post-upgrade rows that look like
+    # legacy ones (e.g. BeerXML First Wort imports where the converter omits
+    # duration), which would corrupt new data.
+    result = await conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
+    ))
+    config_exists = result.fetchone() is not None
+    if config_exists:
+        result = await conn.execute(
+            text("SELECT value FROM config WHERE key = :k"),
+            {"k": _FLAG_KEY},
+        )
+        row = result.fetchone()
+        if row and row[0] == 'true':
+            logger.info("Backfill already applied (flag set), skipping")
+            return
 
     # 1. recipe_hops.timing
     result = await conn.execute(text("SELECT id, timing FROM recipe_hops WHERE timing IS NOT NULL"))
@@ -135,4 +156,12 @@ async def migrate_backfill_zero_min_boil_to_whirlpool(conn: AsyncConnection) -> 
 
     if not retagged_hops and not retagged_recipes:
         logger.info("No zero-min boil hops to retag — nothing to do")
+
+    # Persist the completion flag so subsequent startups skip this work.
+    if config_exists:
+        await conn.execute(
+            text("INSERT OR REPLACE INTO config (key, value) VALUES (:k, 'true')"),
+            {"k": _FLAG_KEY},
+        )
+
     logger.info("Migration backfill_zero_min_boil_to_whirlpool completed")

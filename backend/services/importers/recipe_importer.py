@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.services.parsers.beerxml_parser import BeerXMLParser
 from backend.services.converters.beerxml_to_beerjson import BeerXMLToBeerJSONConverter
 from backend.services.converters.brewfather_to_beerjson import BrewfatherToBeerJSONConverter
+from backend.services.converters.brewsignal_to_beerjson import BrewSignalToBeerJSONConverter
 from backend.services.validators.beerjson_validator import BeerJSONValidator
 from backend.services.serializers.recipe_serializer import RecipeSerializer
+from backend.services.brewsignal_format import BrewSignalRecipe
 from backend.models import Recipe
 
 
@@ -29,6 +31,7 @@ class RecipeImporter:
         self.beerxml_parser = BeerXMLParser()
         self.beerxml_converter = BeerXMLToBeerJSONConverter()
         self.brewfather_converter = BrewfatherToBeerJSONConverter()
+        self.brewsignal_converter = BrewSignalToBeerJSONConverter()
         self.validator = BeerJSONValidator()
         self.serializer = RecipeSerializer()
 
@@ -78,9 +81,7 @@ class RecipeImporter:
             try:
                 if detected_format == "beerxml":
                     parsed_dict = self.beerxml_parser.parse(content)
-                elif detected_format == "brewfather":
-                    parsed_dict = json.loads(content)
-                elif detected_format == "beerjson":
+                elif detected_format in ("brewfather", "beerjson", "brewsignal"):
                     parsed_dict = json.loads(content)
                 else:
                     await session.rollback()
@@ -115,6 +116,12 @@ class RecipeImporter:
                     # Converter attaches Brewfather water under
                     # _brewfather_water itself; no extra step needed.
                     beerjson_dict = self.brewfather_converter.convert(parsed_dict)
+                elif detected_format == "brewsignal":
+                    # Validate against BrewSignal schema, then convert to
+                    # BeerJSON so the rest of the pipeline (serializer,
+                    # persist) is shared with all other formats (tilt_ui-kew).
+                    BrewSignalRecipe.model_validate(parsed_dict)
+                    beerjson_dict = self.brewsignal_converter.convert(parsed_dict)
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:
@@ -210,10 +217,23 @@ class RecipeImporter:
         # Try parsing as JSON
         try:
             data = json.loads(content)
+            if not isinstance(data, dict):
+                return None
 
-            # Check for BeerJSON structure
-            if isinstance(data, dict) and 'beerjson' in data:
+            # Check for BeerJSON structure (wrapped envelope)
+            if 'beerjson' in data:
                 return "beerjson"
+
+            # Native BrewSignal: flat JSON, no wrapper, but uses snake_case
+            # keys like batch_size_liters/color_srm/boil_time_minutes that
+            # Brewfather (camelCase) does not. _format/brewsignal_version
+            # are explicit markers when present.
+            if data.get('_format') == 'brewsignal' or 'brewsignal_version' in data:
+                return "brewsignal"
+            brewsignal_keys = {'batch_size_liters', 'color_srm', 'boil_time_minutes',
+                               'fermentation_steps', 'mash_steps'}
+            if any(k in data for k in brewsignal_keys):
+                return "brewsignal"
 
             # Otherwise assume Brewfather JSON
             return "brewfather"

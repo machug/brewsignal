@@ -455,17 +455,27 @@ async def create_recipe(
 @router.post("/import", response_model=RecipeResponse, status_code=201)
 async def import_recipe(
     file: UploadFile = File(...),
+    source_format: Optional[str] = Query(
+        None,
+        description=(
+            "Optional explicit format hint: beerxml, brewfather, beerjson, "
+            "brewsignal. When omitted, format is auto-detected from content."
+        ),
+    ),
     user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Import recipe from BeerXML, Brewfather JSON, or BeerJSON file.
+    """Import recipe from BeerXML, Brewfather JSON, BeerJSON, or native
+    BrewSignal JSON file.
 
     Supports:
     - BeerXML 1.0 (.xml)
     - Brewfather JSON (.json)
     - BeerJSON 1.0 (.json)
+    - BrewSignal native (.json)
 
-    Format is auto-detected from file content.
+    Format is auto-detected from file content. Pass ?source_format=brewsignal
+    to skip detection (tilt_ui-kew).
     """
     from backend.services.importers.recipe_importer import RecipeImporter
 
@@ -477,6 +487,19 @@ async def import_recipe(
                 status_code=400,
                 detail="Invalid file type. Only .xml and .json files are supported"
             )
+
+    # Validate source_format hint if provided
+    if source_format is not None:
+        normalized = source_format.lower()
+        if normalized not in ("beerxml", "brewfather", "beerjson", "brewsignal"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Invalid source_format. Must be one of: "
+                    "beerxml, brewfather, beerjson, brewsignal"
+                ),
+            )
+        source_format = normalized
 
     # Read file content with size validation
     content = await file.read()
@@ -491,9 +514,9 @@ async def import_recipe(
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
 
-    # Import using new orchestrator (auto-detects format)
+    # Import using new orchestrator (auto-detects format unless overridden)
     importer = RecipeImporter()
-    result = await importer.import_recipe(content_str, None, db)
+    result = await importer.import_recipe(content_str, source_format, db)
 
     # Handle import failure
     if not result.success:

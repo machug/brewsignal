@@ -329,6 +329,13 @@ export interface RecipeResponse {
 	abv?: number;
 	ibu?: number;
 	color_srm?: number;
+	// Brewer-declared targets from imported recipes (tilt_ui-ak6).
+	// Mirror og/fg/... at import; never overwritten by recalculation.
+	target_og?: number;
+	target_fg?: number;
+	target_abv?: number;
+	target_ibu?: number;
+	target_srm?: number;
 	batch_size_liters?: number;
 	boil_size_l?: number;
 	boil_time_minutes?: number;

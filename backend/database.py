@@ -451,6 +451,10 @@ async def init_db():
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
         await migrate_add_readings_paused(conn)
 
+        # Add target_* stat columns to recipes (imported brewer-declared values)
+        from backend.migrations.add_recipe_target_stats import migrate_add_recipe_target_stats
+        await migrate_add_recipe_target_stats(conn)
+
         # Add user_id columns for multi-tenant support
         await conn.run_sync(_migrate_add_user_id_columns)
 

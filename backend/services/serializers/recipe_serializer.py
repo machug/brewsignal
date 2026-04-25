@@ -68,30 +68,47 @@ class RecipeSerializer:
         return recipe
 
     def _extract_recipe_vitals(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:
-        """Extract gravity, ABV, IBU, color from BeerJSON unit objects."""
+        """Extract gravity, ABV, IBU, color from BeerJSON unit objects.
+
+        Imported brewer-declared values populate BOTH the canonical column
+        (og/fg/abv/ibu/color_srm) and the target_* mirror. The calculator
+        will later overwrite the canonical values when explicitly asked
+        (PUT ?recalculate=true), but target_* persists so the UI can
+        always surface the imported source-of-truth (tilt_ui-ak6).
+        """
         # Batch size
         if 'batch_size' in beerjson_recipe:
             recipe.batch_size_liters = self._extract_volume(beerjson_recipe['batch_size'])
 
         # Original gravity
         if 'original_gravity' in beerjson_recipe:
-            recipe.og = self._extract_gravity(beerjson_recipe['original_gravity'])
+            og = self._extract_gravity(beerjson_recipe['original_gravity'])
+            recipe.og = og
+            recipe.target_og = og
 
         # Final gravity
         if 'final_gravity' in beerjson_recipe:
-            recipe.fg = self._extract_gravity(beerjson_recipe['final_gravity'])
+            fg = self._extract_gravity(beerjson_recipe['final_gravity'])
+            recipe.fg = fg
+            recipe.target_fg = fg
 
         # ABV (stored as decimal 0-1)
         if 'alcohol_by_volume' in beerjson_recipe:
-            recipe.abv = self._extract_percent(beerjson_recipe['alcohol_by_volume'])
+            abv = self._extract_percent(beerjson_recipe['alcohol_by_volume'])
+            recipe.abv = abv
+            recipe.target_abv = abv
 
         # IBU
         if 'ibu_estimate' in beerjson_recipe:
-            recipe.ibu = self._extract_dimensionless(beerjson_recipe['ibu_estimate'])
+            ibu = self._extract_dimensionless(beerjson_recipe['ibu_estimate'])
+            recipe.ibu = ibu
+            recipe.target_ibu = ibu
 
         # Color (SRM)
         if 'color_estimate' in beerjson_recipe:
-            recipe.color_srm = self._extract_color(beerjson_recipe['color_estimate'])
+            srm = self._extract_color(beerjson_recipe['color_estimate'])
+            recipe.color_srm = srm
+            recipe.target_srm = srm
 
     def _extract_boil_info(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:
         """Extract boil time and size from BeerJSON."""

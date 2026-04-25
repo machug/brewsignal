@@ -139,6 +139,11 @@
 			ibu={recipe.ibu ?? 30}
 			colorSrm={recipe.color_srm ?? 8}
 			batchSizeLiters={recipe.batch_size_liters ?? 20}
+			targetOg={recipe.target_og}
+			targetFg={recipe.target_fg}
+			targetAbv={recipe.target_abv}
+			targetIbu={recipe.target_ibu}
+			targetSrm={recipe.target_srm}
 		/>
 
 		<div class="recipe-content">

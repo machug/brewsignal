@@ -171,9 +171,16 @@
 				})) as RecipeFermentable[];
 			}
 
-			// Load hops - prefer format_extensions, fall back to API response
+			// Load hops - prefer format_extensions, fall back to API response.
+			// Older saves stored use as the BeerJSON full form
+			// ('add_to_boil' / 'add_to_fermentation' / 'add_to_whirlpool')
+			// which the editor and IBU calculator don't recognise — normalise
+			// to the short HopUse form on load.
 			if (ext?.hops && ext.hops.length > 0) {
-				hops = ext.hops;
+				hops = ext.hops.map((h: RecipeHop) => ({
+					...h,
+					use: normalizeHopUse(h.use as unknown as string),
+				}));
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
 				// BeerJSON uses 'duration', some sources use 'time' - check both

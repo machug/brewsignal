@@ -68,6 +68,32 @@ class TestHopTimingConversion:
         assert hop['timing']['duration'] == {'value': 4, 'unit': 'day'}
 
 
+class TestHopTimingRoundTrip:
+    """Reverse converter must understand add_to_whirlpool emitted by the
+    forward Brewfather converter, otherwise round-trip export loses the
+    Whirlpool tag (tilt_ui-53n)."""
+
+    def test_whirlpool_use_round_trips_to_brewfather(self):
+        from backend.models import RecipeHop
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+
+        hop = RecipeHop(
+            name='Mosaic',
+            amount_grams=40.0,
+            alpha_acid_percent=12.5,
+            timing={
+                'use': 'add_to_whirlpool',
+                'duration': {'value': 20.0, 'unit': 'min'},
+            },
+        )
+        converter = RecipeToBrewfatherConverter()
+        bf_use, bf_time = converter._extract_hop_timing(hop.timing)
+        assert bf_use == 'Whirlpool'
+        assert bf_time == 20.0
+
+
 class TestMiscTimingConversion:
     """Tests for misc ingredient timing conversion."""
 

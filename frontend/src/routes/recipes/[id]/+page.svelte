@@ -10,7 +10,9 @@
 	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
+	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
+	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -22,6 +24,94 @@
 		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
 		const totalGrainKg = recipe.fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
 		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
+	});
+
+	// Compute recipe stats live from ingredients so the detail page
+	// matches the editor (and reflects the post-2.13.0 IBU model)
+	// instead of showing stale stored DB values that may have been
+	// computed under an older formula. Falls back to recipe.* when the
+	// ingredient list is empty.
+	let liveStats = $derived.by(() => {
+		if (!recipe) return null;
+		const ext = recipe.format_extensions as
+			| { fermentables?: Fermentable[]; hops?: Array<Hop & { use?: string }> }
+			| undefined;
+		// format_extensions saves carry color_lovibond rather than
+		// color_srm; calculateSRM needs color_srm and returns NaN
+		// without it. Track whether ANY fermentable came in without a
+		// usable color value so we can fall back to stored stats rather
+		// than synthesizing a 0-SRM live result.
+		const lovibondToSrm = (lov: number | undefined) =>
+			lov != null ? 1.3546 * lov - 0.76 : undefined;
+		let missingColor = false;
+		// Explicit empty array in format_extensions is a deletion intent
+		// (user removed all items); fall back to recipe.fermentables only
+		// when format_extensions has no fermentables key at all.
+		const fermentables: Fermentable[] = (
+			Array.isArray(ext?.fermentables)
+				? ext!.fermentables!.map((f) => {
+						const srm =
+							(f as { color_srm?: number }).color_srm ??
+							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond);
+						if (srm == null) missingColor = true;
+						return { ...f, color_srm: srm ?? 0 };
+					})
+				: (recipe.fermentables ?? []).map((f) => {
+						if (f.color_srm == null) missingColor = true;
+						return {
+							name: f.name,
+							amount_kg: f.amount_kg ?? 0,
+							color_srm: f.color_srm ?? 0,
+							type: f.type,
+							potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
+						};
+					})
+		) as Fermentable[];
+		if (fermentables.length === 0) return null;
+
+		const rawHops: Array<Hop & { use?: string }> = Array.isArray(ext?.hops)
+			? ext!.hops!
+			: (recipe.hops ?? []).map((h) => {
+					const timing = h.timing || {};
+					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
+					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
+					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
+					return {
+						name: h.name,
+						amount_grams: h.amount_grams || 0,
+						alpha_acid_percent: h.alpha_acid_percent || 0,
+						boil_time_minutes: minutes,
+						use: normalizeHopUse(timing.use),
+						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
+					};
+				});
+		const hops = rawHops.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
+
+		const yeast: Yeast = {
+			name: recipe.yeast_name || '',
+			attenuation_percent: recipe.yeast_attenuation ?? 75,
+			temp_min_c: recipe.yeast_temp_min ?? 18,
+			temp_max_c: recipe.yeast_temp_max ?? 22,
+		};
+		const batch: BatchParams = {
+			batch_size_liters: recipe.batch_size_liters ?? 20,
+			efficiency_percent: recipe.efficiency_percent ?? 72,
+			boil_time_minutes: recipe.boil_time_minutes ?? 60,
+		};
+		const stats = calculateRecipeStats(fermentables, hops, yeast, batch);
+		// If anything came back NaN (missing data, exotic units), fall
+		// back to the stored stats rather than rendering NaN in the UI.
+		// Also fall back on SRM if any fermentable was missing color
+		// info — synthesizing 0 SRM would override valid stored color.
+		const finite = (n: number | undefined) =>
+			typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+		return {
+			og: finite(stats.og),
+			fg: finite(stats.fg),
+			abv: finite(stats.abv),
+			ibu: finite(stats.ibu),
+			srm: missingColor ? undefined : finite(stats.srm),
+		};
 	});
 
 	let recipeId = $derived.by(() => {
@@ -133,11 +223,11 @@
 
 		<!-- Stats Panel with Beer Glass -->
 		<RecipeStatsPanel
-			og={recipe.og ?? 1.050}
-			fg={recipe.fg ?? 1.010}
-			abv={recipe.abv ?? 5.0}
-			ibu={recipe.ibu ?? 30}
-			colorSrm={recipe.color_srm ?? 8}
+			og={liveStats?.og ?? recipe.og ?? 1.050}
+			fg={liveStats?.fg ?? recipe.fg ?? 1.010}
+			abv={liveStats?.abv ?? recipe.abv ?? 5.0}
+			ibu={liveStats?.ibu ?? recipe.ibu ?? 30}
+			colorSrm={liveStats?.srm ?? recipe.color_srm ?? 8}
 			batchSizeLiters={recipe.batch_size_liters ?? 20}
 			targetOg={recipe.target_og}
 			targetFg={recipe.target_fg}

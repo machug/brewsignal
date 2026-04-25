@@ -1130,8 +1130,13 @@ export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse
 	return response.json();
 }
 
-export async function updateRecipe(id: number, recipe: RecipeUpdateData): Promise<RecipeResponse> {
-	const response = await authFetch(`${BASE_URL}/recipes/${id}`, {
+export async function updateRecipe(
+	id: number,
+	recipe: RecipeUpdateData,
+	options: { recalculate?: boolean } = {}
+): Promise<RecipeResponse> {
+	const qs = options.recalculate ? '?recalculate=true' : '';
+	const response = await authFetch(`${BASE_URL}/recipes/${id}${qs}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(recipe)

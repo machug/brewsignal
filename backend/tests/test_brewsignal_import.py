@@ -183,6 +183,14 @@ class TestImporterDetectsSparseBrewSignal:
                       "form": "dry", "attenuation_percent": 78},
         }) == "brewsignal"
 
+    def test_singular_yeast_with_only_name_type_form_detected(self):
+        """Any singular `yeast` dict is BrewSignal — Brewfather uses
+        the `yeasts` array, so a `yeast` dict has no Brewfather meaning."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "yeast": {"name": "US-05", "type": "ale", "form": "dry"},
+        }) == "brewsignal"
+
     def test_singular_yeast_with_temp_celsius_detected(self):
         assert self._detect({
             "name": "X", "og": 1.05, "fg": 1.01,

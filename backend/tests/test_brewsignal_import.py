@@ -210,6 +210,22 @@ class TestImporterDetectsSparseBrewSignal:
             "_type": "recipe", "name": "X", "og": 1.05, "fg": 1.01,
         }) == "brewfather"
 
+    def test_trimmed_brewfather_with_color_routes_to_brewfather(self):
+        """Brewfather uses `color`; BrewSignal uses `color_srm`. A trimmed
+        Brewfather payload missing _type but carrying `color` must not
+        misroute to brewsignal (its strict validation would reject)."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01, "abv": 5,
+            "ibu": 30, "color": 8,
+        }) == "brewfather"
+
+    def test_brewfather_style_object_routes_to_brewfather(self):
+        """Brewfather embeds style as an object; BrewSignal uses style_id string."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "style": {"name": "American IPA", "category": "21"},
+        }) == "brewfather"
+
     def test_singular_yeast_with_temp_celsius_detected(self):
         assert self._detect({
             "name": "X", "og": 1.05, "fg": 1.01,

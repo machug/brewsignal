@@ -279,17 +279,24 @@ class RecipeImporter:
             if isinstance(data.get('recipe'), dict):
                 return "brewsignal"
 
-            # Brewfather positive markers: distinct camelCase top-level
-            # keys and the _type sentinel exports always carry. If any
-            # are present, route to brewfather; otherwise prefer
-            # brewsignal so its strict Pydantic validation surfaces
-            # malformed payloads instead of the Brewfather parser
-            # silently producing a near-empty recipe.
+            # Brewfather positive markers. Distinct camelCase top-level
+            # keys, the _type sentinel exports always carry, and a few
+            # scalar field names that Brewfather uses but BrewSignal
+            # does not (BrewSignal uses color_srm, not color; style as
+            # an object vs. style_id string).
             brewfather_markers = {
                 '_type', 'batchSize', 'boilTime', 'boilSize',
                 'mashAdjustments', 'spargeAdjustments', 'yeasts',
             }
             if any(k in data for k in brewfather_markers):
+                return "brewfather"
+            # `color` at root without BrewSignal's `color_srm` is a
+            # Brewfather-shaped trimmed export.
+            if 'color' in data and 'color_srm' not in data:
+                return "brewfather"
+            # Brewfather embeds style as an object; BrewSignal uses a
+            # `style_id` string instead.
+            if isinstance(data.get('style'), dict):
                 return "brewfather"
             return "brewsignal"
 

@@ -38,25 +38,31 @@
 			| undefined;
 		// format_extensions saves carry color_lovibond rather than
 		// color_srm; calculateSRM needs color_srm and returns NaN
-		// without it. Normalise both load paths to the calculator shape.
+		// without it. Track whether ANY fermentable came in without a
+		// usable color value so we can fall back to stored stats rather
+		// than synthesizing a 0-SRM live result.
 		const lovibondToSrm = (lov: number | undefined) =>
 			lov != null ? 1.3546 * lov - 0.76 : undefined;
+		let missingColor = false;
 		const fermentables: Fermentable[] = (
 			ext?.fermentables?.length
-				? ext.fermentables.map((f) => ({
-						...f,
-						color_srm:
+				? ext.fermentables.map((f) => {
+						const srm =
 							(f as { color_srm?: number }).color_srm ??
-							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond) ??
-							0,
-					}))
-				: (recipe.fermentables ?? []).map((f) => ({
-						name: f.name,
-						amount_kg: f.amount_kg ?? 0,
-						color_srm: f.color_srm ?? 0,
-						type: f.type,
-						potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
-					}))
+							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond);
+						if (srm == null) missingColor = true;
+						return { ...f, color_srm: srm ?? 0 };
+					})
+				: (recipe.fermentables ?? []).map((f) => {
+						if (f.color_srm == null) missingColor = true;
+						return {
+							name: f.name,
+							amount_kg: f.amount_kg ?? 0,
+							color_srm: f.color_srm ?? 0,
+							type: f.type,
+							potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
+						};
+					})
 		) as Fermentable[];
 		if (fermentables.length === 0) return null;
 
@@ -92,6 +98,8 @@
 		const stats = calculateRecipeStats(fermentables, hops, yeast, batch);
 		// If anything came back NaN (missing data, exotic units), fall
 		// back to the stored stats rather than rendering NaN in the UI.
+		// Also fall back on SRM if any fermentable was missing color
+		// info — synthesizing 0 SRM would override valid stored color.
 		const finite = (n: number | undefined) =>
 			typeof n === 'number' && Number.isFinite(n) ? n : undefined;
 		return {
@@ -99,7 +107,7 @@
 			fg: finite(stats.fg),
 			abv: finite(stats.abv),
 			ibu: finite(stats.ibu),
-			srm: finite(stats.srm),
+			srm: missingColor ? undefined : finite(stats.srm),
 		};
 	});
 

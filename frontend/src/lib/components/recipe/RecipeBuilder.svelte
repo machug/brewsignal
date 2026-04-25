@@ -127,11 +127,13 @@
 	let fermentables = $state<RecipeFermentable[]>([]);
 	let hops = $state<RecipeHop[]>([]);
 	let selectedYeast = $state<YeastStrainResponse | null>(null);
-	// Tracks whether the user has edited ingredients since the recipe
-	// loaded. Used to decide whether AI review should send the brewer-
-	// declared target_* stats (clean) or the live calculator output
-	// (edited). Reset to false during initial load via $effect.
+	// Tracks whether the user has edited any inputs that influence the
+	// calculated recipe stats (ingredients OR batch params) since the
+	// recipe loaded. Used to decide whether AI review should send the
+	// brewer-declared target_* stats (clean) or the live calculator
+	// output (edited).
 	let ingredientsDirty = $state(false);
+	let inputsInitialized = $state(false);
 	let showYeastModal = $state(false);
 
 	// AI Review state
@@ -143,7 +145,9 @@
 	// Validation error state
 	let validationError = $state<string | null>(null);
 
-	// Initialize from existing recipe data (edit mode)
+	// Initialize from existing recipe data (edit mode). Always sets
+	// inputsInitialized = true at the end so the batch-param watcher
+	// below activates even in create mode (where initialData is null).
 	$effect(() => {
 		if (initialData) {
 			name = initialData.name || '';
@@ -245,6 +249,23 @@
 					updated_at: new Date().toISOString()
 				};
 			}
+		}
+		// Mark inputs as initialised AFTER load (or immediately in create
+		// mode with no initialData) so the batch-param watcher below
+		// doesn't trip on the seed assignments.
+		inputsInitialized = true;
+	});
+
+	// Watch batch-param edits (these don't go through the handle*Update
+	// callbacks because they're bound directly via bind:value). Once
+	// inputs are initialised, any change here should invalidate target_*
+	// fallback in the AI review payload (codex review staleness fix).
+	$effect(() => {
+		void batchSizeLiters;
+		void efficiencyPercent;
+		void boilTimeMinutes;
+		if (inputsInitialized) {
+			ingredientsDirty = true;
 		}
 	});
 

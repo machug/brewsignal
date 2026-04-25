@@ -142,6 +142,11 @@ class TestLLMToolsCalculatorAgreesOnZero:
     the assistant saves recipes. It must agree that dry hops produce 0 IBU."""
 
     def test_llm_calculator_credits_zero_ibu_to_dry_hops(self):
+        """The LLM calculator reads amount.value as grams. Use a charge
+        that would visibly inflate IBU if the dry-hop branch were ever
+        miswired into boil or whirlpool — 50g of 22% AA cryo hops would
+        yield ~10+ IBU through the whirlpool branch and ~50+ through the
+        boil branch."""
         from backend.services.llm.tools.recipe import calculate_recipe_stats
 
         normalized = {
@@ -152,7 +157,7 @@ class TestLLMToolsCalculatorAgreesOnZero:
                      "yield": {"fine_grind": {"value": 80, "unit": "%"}}}
                 ],
                 "hop_additions": [
-                    {"name": "Mosaic Cryo", "amount": {"value": 0.05, "unit": "kg"},
+                    {"name": "Mosaic Cryo", "amount": {"value": 50, "unit": "g"},
                      "alpha_acid": {"value": 22, "unit": "%"},
                      "timing": {"use": "add_to_fermentation",
                                 "duration": {"value": 4, "unit": "day"}}}

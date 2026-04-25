@@ -186,19 +186,15 @@
 			// which the editor and IBU calculator don't recognise — normalise
 			// to the short HopUse form on load.
 			if (ext?.hops && ext.hops.length > 0) {
-				hops = ext.hops.map((h: RecipeHop) => {
-					const normalizedUse = normalizeHopUse(h.use as unknown as string);
-					// boil_time_minutes is the IBU-time field, not a generic
-					// duration. Older saves stored a dry hop's day count
-					// converted to minutes (4 days -> 5760), which is
-					// nonsensical as a boil time and confuses both the IBU
-					// calc and the LLM review payload.
-					const boilMinutes =
-						normalizedUse === 'dry_hop' || normalizedUse === 'mash'
-							? 0
-							: h.boil_time_minutes;
-					return { ...h, use: normalizedUse, boil_time_minutes: boilMinutes };
-				});
+				// Preserve the stored boil_time_minutes verbatim — even when
+				// it encodes a dry-hop day count as minutes (4 days -> 5760)
+				// it's the only persisted copy of that duration. The IBU
+				// calc and review payload guard against treating it as a
+				// boil time when use is dry_hop / mash.
+				hops = ext.hops.map((h: RecipeHop) => ({
+					...h,
+					use: normalizeHopUse(h.use as unknown as string),
+				}));
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
 				// BeerJSON uses 'duration', some sources use 'time' - check both
@@ -207,13 +203,13 @@
 					const timeValue = timing.duration?.value ?? timing.time?.value ?? 0;
 					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
 					const normalizedUse = normalizeHopUse(timing.use);
-					// Dry-hop duration is in days; mash additions don't have
-					// a meaningful IBU-time. Both should land at 0 boil_min
-					// rather than being smuggled in as inflated minutes.
+					// Convert to minutes for boil_time_minutes. Day units
+					// (dry hop) are stored as minutes here so the editor's
+					// dual-purpose field round-trips losslessly; the IBU
+					// calc and review payload zero this out for dry_hop /
+					// mash so it never feeds into utilization math.
 					const boilMinutes =
-						normalizedUse === 'dry_hop' || normalizedUse === 'mash'
-							? 0
-							: timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
+						timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
 
 					return {
 						id: h.id,
@@ -257,13 +253,19 @@
 	});
 
 	// Watch batch-param edits (these don't go through the handle*Update
-	// callbacks because they're bound directly via bind:value). Once
-	// inputs are initialised, any change here should invalidate target_*
-	// fallback in the AI review payload (codex review staleness fix).
+	// callbacks because they're bound directly via bind:value). Skip the
+	// first run (which fires after the load effect seeds the values) and
+	// then flip ingredientsDirty on any subsequent change, so the AI
+	// review payload stops trusting target_* once edits begin.
+	let batchParamsWatcherFirstRun = true;
 	$effect(() => {
 		void batchSizeLiters;
 		void efficiencyPercent;
 		void boilTimeMinutes;
+		if (batchParamsWatcherFirstRun) {
+			batchParamsWatcherFirstRun = false;
+			return;
+		}
 		if (inputsInitialized) {
 			ingredientsDirty = true;
 		}
@@ -583,7 +585,14 @@
 				hops: hops.map((h) => ({
 					name: h.name,
 					amount_grams: h.amount_grams,
-					boil_time_minutes: h.boil_time_minutes,
+					// Don't expose dry-hop / mash duration as an IBU-time
+					// to the LLM — it stores a day count converted to
+					// minutes (4 days -> 5760) which the review prompt
+					// would misread as an absurd boil duration.
+					boil_time_minutes:
+						h.use === 'dry_hop' || h.use === 'mash'
+							? 0
+							: h.boil_time_minutes,
 					alpha_acid_percent: h.alpha_acid_percent,
 					use: h.use
 				})),

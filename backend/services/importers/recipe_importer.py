@@ -298,6 +298,26 @@ class RecipeImporter:
             # `style_id` string instead.
             if isinstance(data.get('style'), dict):
                 return "brewfather"
+            # Brewfather uses scalar `efficiency` and `carbonation`
+            # (BrewSignal uses efficiency_percent / carbonation_vols).
+            for bf_scalar, bs_scalar in (
+                ('efficiency', 'efficiency_percent'),
+                ('carbonation', 'carbonation_vols'),
+            ):
+                if bf_scalar in data and bs_scalar not in data:
+                    return "brewfather"
+            # Brewfather ingredient items use raw `amount` numbers and
+            # `alpha` at hop root; BrewSignal uses amount_kg /
+            # amount_grams / alpha_acid_percent. We already routed the
+            # BrewSignal cases above, so any leftover ingredient that
+            # has `amount` / `alpha` without the BrewSignal-specific
+            # field is a Brewfather signature.
+            if isinstance(ferms, list) and ferms and isinstance(ferms[0], dict) \
+                    and 'amount' in ferms[0]:
+                return "brewfather"
+            if isinstance(hops, list) and hops and isinstance(hops[0], dict) \
+                    and ('alpha' in hops[0] or 'amount' in hops[0]):
+                return "brewfather"
             return "brewsignal"
 
         except json.JSONDecodeError:

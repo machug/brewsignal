@@ -226,6 +226,32 @@ class TestImporterDetectsSparseBrewSignal:
             "style": {"name": "American IPA", "category": "21"},
         }) == "brewfather"
 
+    def test_brewfather_scalar_efficiency_routes_to_brewfather(self):
+        """Brewfather uses scalar `efficiency`; BrewSignal uses efficiency_percent."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01, "efficiency": 75,
+        }) == "brewfather"
+
+    def test_brewfather_scalar_carbonation_routes_to_brewfather(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01, "carbonation": 2.4,
+        }) == "brewfather"
+
+    def test_brewfather_ingredient_shape_routes_to_brewfather(self):
+        """Brewfather hops use `amount` + `alpha`; BrewSignal uses
+        amount_grams + alpha_acid_percent."""
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "hops": [{"name": "Cascade", "amount": 0.030, "alpha": 6.5,
+                       "time": 60, "use": "Boil"}],
+        }) == "brewfather"
+
+    def test_brewfather_fermentable_shape_routes_to_brewfather(self):
+        assert self._detect({
+            "name": "X", "og": 1.05, "fg": 1.01,
+            "fermentables": [{"name": "Pilsner", "amount": 5.0, "yield": 80}],
+        }) == "brewfather"
+
     def test_singular_yeast_with_temp_celsius_detected(self):
         assert self._detect({
             "name": "X", "og": 1.05, "fg": 1.01,

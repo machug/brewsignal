@@ -1,6 +1,8 @@
 """Tests for Brewfather to BeerJSON converter."""
 import pytest
+from backend.models import Recipe
 from backend.services.converters.brewfather_to_beerjson import BrewfatherToBeerJSONConverter
+from backend.services.serializers.recipe_serializer import RecipeSerializer
 
 
 def _convert_single_hop(bf_hop: dict) -> dict:
@@ -95,6 +97,79 @@ class TestBoilFields:
         result = converter.convert({'name': 'Test'})
         recipe = result['beerjson']['recipes'][0]
         assert 'boil' not in recipe
+
+
+class TestWaterAdjustmentImport:
+    """Brewfather water.{mash,sparge}Adjustments must persist as
+    RecipeWaterAdjustment rows with volume + salts + acids (tilt_ui-2br).
+
+    Production Recipe 21 has zero adjustment rows even though the path
+    works for fresh imports — these tests pin that path so a future
+    refactor cannot silently regress it."""
+
+    def _bf_water(self) -> dict:
+        return {
+            'source': {
+                'name': 'RO Water', 'calcium': 1, 'magnesium': 0,
+                'sodium': 0, 'chloride': 1, 'sulfate': 1, 'bicarbonate': 0,
+            },
+            'target': {
+                'name': 'Sulfate-Forward IPA', 'calcium': 130, 'magnesium': 10,
+                'sodium': 20, 'chloride': 70, 'sulfate': 225, 'bicarbonate': 0,
+            },
+            'mashAdjustments': {
+                'volume': 13.29,
+                'calciumSulfate': 1.5,
+                'calciumChloride': 1.7,
+                'sodiumChloride': 0.4,
+                'acids': [{'type': 'lactic', 'amount': 1.0, 'concentration': 88}],
+            },
+            'spargeAdjustments': {
+                'volume': 14.75,
+                'calciumSulfate': 1.66,
+                'calciumChloride': 1.89,
+                'acids': [{'type': 'lactic', 'amount': 0.22, 'concentration': 80}],
+            },
+        }
+
+    def test_mash_adjustment_creates_row_with_volume_salts_and_acid(self):
+        recipe = Recipe(name='Test')
+        RecipeSerializer()._serialize_brewfather_water(recipe, self._bf_water())
+        mash = next(a for a in recipe.water_adjustments if a.stage == 'mash')
+        assert mash.volume_liters == 13.29
+        assert mash.calcium_sulfate_g == 1.5
+        assert mash.calcium_chloride_g == 1.7
+        assert mash.sodium_chloride_g == 0.4
+        assert mash.acid_type == 'lactic'
+        assert mash.acid_ml == 1.0
+        assert mash.acid_concentration_percent == 88
+
+    def test_sparge_adjustment_creates_row_with_volume_salts_and_acid(self):
+        recipe = Recipe(name='Test')
+        RecipeSerializer()._serialize_brewfather_water(recipe, self._bf_water())
+        sparge = next(a for a in recipe.water_adjustments if a.stage == 'sparge')
+        assert sparge.volume_liters == 14.75
+        assert sparge.calcium_sulfate_g == 1.66
+        assert sparge.calcium_chloride_g == 1.89
+        assert sparge.acid_type == 'lactic'
+
+    def test_converter_emits_brewfather_water_extension(self):
+        """The converter is the single source of truth for attaching the
+        Brewfather water object. Importers and any other caller can rely on
+        _brewfather_water being present in the BeerJSON dict whenever the
+        source had a water section — no extra augmentation step required."""
+        bf_recipe = {'name': 'Test', 'water': self._bf_water()}
+        beerjson_recipe = BrewfatherToBeerJSONConverter().convert(bf_recipe)[
+            'beerjson'
+        ]['recipes'][0]
+        assert beerjson_recipe['_brewfather_water'] == bf_recipe['water']
+
+    def test_converter_omits_brewfather_water_when_absent(self):
+        bf_recipe = {'name': 'Test'}
+        beerjson_recipe = BrewfatherToBeerJSONConverter().convert(bf_recipe)[
+            'beerjson'
+        ]['recipes'][0]
+        assert '_brewfather_water' not in beerjson_recipe
 
 
 class TestHopTimingRoundTrip:

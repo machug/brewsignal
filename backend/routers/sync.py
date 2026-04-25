@@ -256,6 +256,13 @@ async def _sync_recipe(
         "abv": recipe.abv,
         "ibu": recipe.ibu,
         "color_srm": recipe.color_srm,
+        # Imported brewer-declared targets (tilt_ui-ak6) — sync through
+        # so cloud rows preserve the imported-vs-calculated delta.
+        "target_og": recipe.target_og,
+        "target_fg": recipe.target_fg,
+        "target_abv": recipe.target_abv,
+        "target_ibu": recipe.target_ibu,
+        "target_srm": recipe.target_srm,
         "carbonation_vols": recipe.carbonation_vols,
         "style_id": recipe.style_id,
         "yeast_name": recipe.yeast_name,

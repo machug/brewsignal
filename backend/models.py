@@ -417,13 +417,25 @@ class Recipe(Base):
     boil_time_minutes: Mapped[Optional[int]] = mapped_column()
     efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
-    # Gravity targets (renamed from *_target)
+    # Gravity targets (renamed from *_target). These are the canonical /
+    # displayed values; recipe edit form binds to them; recipe stat
+    # recalculation overwrites them when ?recalculate=true.
     og: Mapped[Optional[float]] = mapped_column()
     fg: Mapped[Optional[float]] = mapped_column()
     abv: Mapped[Optional[float]] = mapped_column()
     ibu: Mapped[Optional[float]] = mapped_column()
     color_srm: Mapped[Optional[float]] = mapped_column()  # renamed from srm_target
     carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
+
+    # Brewer-declared targets from imported recipes (BeerXML/Brewfather/
+    # BeerJSON). Populated by importers, never overwritten by the
+    # calculator. Lets the UI show "imported X / calculated Y" deltas
+    # without the two values fighting for the same column (tilt_ui-ak6).
+    target_og: Mapped[Optional[float]] = mapped_column()
+    target_fg: Mapped[Optional[float]] = mapped_column()
+    target_abv: Mapped[Optional[float]] = mapped_column()
+    target_ibu: Mapped[Optional[float]] = mapped_column()
+    target_srm: Mapped[Optional[float]] = mapped_column()
 
     # Style reference
     style_id: Mapped[Optional[str]] = mapped_column(ForeignKey("styles.id"))
@@ -1819,6 +1831,13 @@ class RecipeResponse(BaseModel):
     ibu: Optional[float] = None
     color_srm: Optional[float] = None
     abv: Optional[float] = None
+    # Imported brewer-declared targets (tilt_ui-ak6). Mirror calculated
+    # values at import time but never get overwritten by recalculation.
+    target_og: Optional[float] = None
+    target_fg: Optional[float] = None
+    target_abv: Optional[float] = None
+    target_ibu: Optional[float] = None
+    target_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
     boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None
@@ -1988,6 +2007,11 @@ class RecipeDetailResponse(BaseModel):
     ibu: Optional[float] = None
     color_srm: Optional[float] = None
     abv: Optional[float] = None
+    target_og: Optional[float] = None
+    target_fg: Optional[float] = None
+    target_abv: Optional[float] = None
+    target_ibu: Optional[float] = None
+    target_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
     boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None

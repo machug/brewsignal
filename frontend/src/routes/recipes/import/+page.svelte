@@ -13,8 +13,9 @@
 
 		// Validate file extension
 		const filename = file.name.toLowerCase();
-		if (!filename.endsWith('.xml') && !filename.endsWith('.json')) {
-			error = 'Please upload a .xml or .json recipe file';
+		const allowed = ['.xml', '.json', '.brewsignal'];
+		if (!allowed.some((ext) => filename.endsWith(ext))) {
+			error = 'Please upload a .xml, .json, or .brewsignal recipe file';
 			return;
 		}
 
@@ -119,7 +120,7 @@
 				<p class="drop-subtext">or click to browse</p>
 				<input
 					type="file"
-					accept=".xml,.json"
+					accept=".xml,.json,.brewsignal"
 					onchange={handleFileInput}
 					class="file-input"
 					disabled={uploading}
@@ -128,7 +129,7 @@
 		</div>
 
 		<div class="file-info">
-			<p class="info-text">Supported: BeerXML (.xml), BeerJSON (.json), Brewfather JSON (.json) - max 1MB</p>
+			<p class="info-text">Supported: BeerXML (.xml), BeerJSON (.json), Brewfather JSON (.json), BrewSignal (.brewsignal) - max 1MB</p>
 		</div>
 
 		{#if error}

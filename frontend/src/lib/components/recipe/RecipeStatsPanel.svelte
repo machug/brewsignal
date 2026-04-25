@@ -8,9 +8,25 @@
 		ibu?: number;
 		colorSrm?: number;
 		batchSizeLiters?: number;
+		// Imported brewer-declared targets. When present and meaningfully
+		// different from the calculated value, displayed as a small "src N"
+		// hint under the stat (tilt_ui-ak6).
+		targetOg?: number;
+		targetFg?: number;
+		targetAbv?: number;
+		targetIbu?: number;
+		targetSrm?: number;
 	}
 
-	let { og = 1.050, fg = 1.010, abv = 5.0, ibu = 30, colorSrm = 8, batchSizeLiters = 20 }: Props = $props();
+	let {
+		og = 1.050, fg = 1.010, abv = 5.0, ibu = 30, colorSrm = 8, batchSizeLiters = 20,
+		targetOg, targetFg, targetAbv, targetIbu, targetSrm,
+	}: Props = $props();
+
+	function showDelta(target: number | undefined, actual: number, threshold: number): boolean {
+		if (target == null) return false;
+		return Math.abs(target - actual) >= threshold;
+	}
 
 	// Derived calculations
 	let colorHex = $derived(srmToHex(colorSrm));
@@ -55,6 +71,9 @@
 			<span class="stat-label">Color</span>
 			<span class="stat-value">{colorSrm.toFixed(0)} SRM</span>
 			<span class="stat-sub">{colorDesc}</span>
+			{#if showDelta(targetSrm, colorSrm, 1)}
+				<span class="stat-sub target-hint">src {targetSrm!.toFixed(0)}</span>
+			{/if}
 		</div>
 	</div>
 
@@ -63,14 +82,23 @@
 			<div class="stat">
 				<span class="stat-label">OG</span>
 				<span class="stat-value">{og.toFixed(3)}</span>
+				{#if showDelta(targetOg, og, 0.002)}
+					<span class="stat-sub target-hint">src {targetOg!.toFixed(3)}</span>
+				{/if}
 			</div>
 			<div class="stat">
 				<span class="stat-label">FG</span>
 				<span class="stat-value">{fg.toFixed(3)}</span>
+				{#if showDelta(targetFg, fg, 0.002)}
+					<span class="stat-sub target-hint">src {targetFg!.toFixed(3)}</span>
+				{/if}
 			</div>
 			<div class="stat">
 				<span class="stat-label">ABV</span>
 				<span class="stat-value">{abv.toFixed(1)}%</span>
+				{#if showDelta(targetAbv, abv, 0.2)}
+					<span class="stat-sub target-hint">src {targetAbv!.toFixed(1)}%</span>
+				{/if}
 			</div>
 		</div>
 
@@ -78,6 +106,9 @@
 			<div class="stat">
 				<span class="stat-label">IBU</span>
 				<span class="stat-value">{ibu.toFixed(0)}</span>
+				{#if showDelta(targetIbu, ibu, 3)}
+					<span class="stat-sub target-hint">src {targetIbu!.toFixed(0)}</span>
+				{/if}
 			</div>
 			<div class="stat">
 				<span class="stat-label">BU:GU</span>
@@ -350,6 +381,11 @@
 		font-size: 10px;
 		color: var(--text-tertiary);
 		font-weight: 500;
+	}
+
+	.target-hint {
+		font-style: italic;
+		opacity: 0.85;
 	}
 
 	/* Responsive */

@@ -172,6 +172,54 @@ class TestWaterAdjustmentImport:
         assert '_brewfather_water' not in beerjson_recipe
 
 
+class TestImportPopulatesTargetStats:
+    """Imported brewer-declared OG/FG/ABV/IBU/SRM must populate target_*
+    columns in addition to the canonical og/fg/... columns. The canonical
+    fields are subject to recalculation; target_* preserves the imported
+    source-of-truth (tilt_ui-ak6)."""
+
+    def test_brewfather_import_sets_both_canonical_and_target_stats(self):
+        from backend.models import Recipe
+        from backend.services.serializers.recipe_serializer import RecipeSerializer
+        bf = {
+            'name': 'Project Alpha 81 Clone',
+            'og': 1.067,
+            'fg': 1.013,
+            'abv': 6.9,
+            'ibu': 60,
+            'color': 4.0,
+        }
+        beerjson = BrewfatherToBeerJSONConverter().convert(bf)['beerjson']
+        recipe = Recipe(name='temp')
+        RecipeSerializer()._extract_recipe_vitals(recipe, beerjson['recipes'][0])
+
+        assert recipe.og == 1.067
+        assert recipe.target_og == 1.067
+        assert recipe.fg == 1.013
+        assert recipe.target_fg == 1.013
+        assert abs((recipe.abv or 0) - 6.9) < 0.01
+        assert abs((recipe.target_abv or 0) - 6.9) < 0.01
+        assert recipe.ibu == 60
+        assert recipe.target_ibu == 60
+        assert recipe.color_srm == 4.0
+        assert recipe.target_srm == 4.0
+
+    def test_target_stats_unset_when_source_omits_them(self):
+        from backend.models import Recipe
+        from backend.services.serializers.recipe_serializer import RecipeSerializer
+        beerjson = BrewfatherToBeerJSONConverter().convert(
+            {'name': 'Bare Recipe'}
+        )['beerjson']
+        recipe = Recipe(name='temp')
+        RecipeSerializer()._extract_recipe_vitals(recipe, beerjson['recipes'][0])
+        # Brewfather converter still emits zero-valued unit objects for og/fg/...
+        # (they default to None upstream). What matters is target_* tracks
+        # whatever the canonical column gets, never out of sync.
+        assert recipe.target_og == recipe.og
+        assert recipe.target_fg == recipe.fg
+        assert recipe.target_ibu == recipe.ibu
+
+
 class TestHopTimingRoundTrip:
     """Reverse converter must understand add_to_whirlpool emitted by the
     forward Brewfather converter, otherwise round-trip export loses the

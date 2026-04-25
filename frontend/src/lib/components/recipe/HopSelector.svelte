@@ -176,14 +176,14 @@
 		const updated = hops.map((hop, i) => {
 			if (i !== index) return hop;
 			const next = { ...hop, [field]: value };
-			// Reset duration when switching use class so a stale 60-min boil
-			// time doesn't get reused as a whirlpool stand or a dry-hop day
-			// count. Whirlpool defaults to 0-min flameout; dry hop to 4 days.
+			// Reset duration only for use classes whose semantics differ from
+			// boil time: whirlpool stand defaults to 0-min flameout, dry hop
+			// to 4 days. Boil / first_wort / mash all share the boil-time
+			// scale, so keep the existing value (zeroing first_wort would
+			// silently kill its IBU contribution).
 			if (field === 'use' && value !== hop.use) {
 				if (value === 'whirlpool') next.boil_time_minutes = 0;
 				else if (value === 'dry_hop') next.boil_time_minutes = 4 * 24 * 60;
-				else if (value === 'mash' || value === 'first_wort') next.boil_time_minutes = 0;
-				else if (value === 'boil') next.boil_time_minutes = 60;
 			}
 			return next;
 		});

@@ -10,7 +10,9 @@
 	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
+	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
+	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -22,6 +24,61 @@
 		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
 		const totalGrainKg = recipe.fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
 		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
+	});
+
+	// Compute recipe stats live from ingredients so the detail page
+	// matches the editor (and reflects the post-2.13.0 IBU model)
+	// instead of showing stale stored DB values that may have been
+	// computed under an older formula. Falls back to recipe.* when the
+	// ingredient list is empty.
+	let liveStats = $derived.by(() => {
+		if (!recipe) return null;
+		const ext = recipe.format_extensions as
+			| { fermentables?: Fermentable[]; hops?: Array<Hop & { use?: string }> }
+			| undefined;
+		const fermentables: Fermentable[] = (
+			ext?.fermentables?.length
+				? ext.fermentables
+				: (recipe.fermentables ?? []).map((f) => ({
+						name: f.name,
+						amount_kg: f.amount_kg ?? 0,
+						color_srm: f.color_srm,
+						type: f.type,
+						potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
+					}))
+		) as Fermentable[];
+		if (fermentables.length === 0) return null;
+
+		const rawHops: Array<Hop & { use?: string }> = ext?.hops?.length
+			? ext.hops
+			: (recipe.hops ?? []).map((h) => {
+					const timing = h.timing || {};
+					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
+					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
+					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
+					return {
+						name: h.name,
+						amount_grams: h.amount_grams || 0,
+						alpha_acid_percent: h.alpha_acid_percent || 0,
+						boil_time_minutes: minutes,
+						use: normalizeHopUse(timing.use),
+						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
+					};
+				});
+		const hops = rawHops.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
+
+		const yeast: Yeast = {
+			name: recipe.yeast_name || '',
+			attenuation_percent: recipe.yeast_attenuation ?? 75,
+			temp_min_c: recipe.yeast_temp_min ?? 18,
+			temp_max_c: recipe.yeast_temp_max ?? 22,
+		};
+		const batch: BatchParams = {
+			batch_size_liters: recipe.batch_size_liters ?? 20,
+			efficiency_percent: recipe.efficiency_percent ?? 72,
+			boil_time_minutes: recipe.boil_time_minutes ?? 60,
+		};
+		return calculateRecipeStats(fermentables, hops, yeast, batch);
 	});
 
 	let recipeId = $derived.by(() => {
@@ -133,11 +190,11 @@
 
 		<!-- Stats Panel with Beer Glass -->
 		<RecipeStatsPanel
-			og={recipe.og ?? 1.050}
-			fg={recipe.fg ?? 1.010}
-			abv={recipe.abv ?? 5.0}
-			ibu={recipe.ibu ?? 30}
-			colorSrm={recipe.color_srm ?? 8}
+			og={liveStats?.og ?? recipe.og ?? 1.050}
+			fg={liveStats?.fg ?? recipe.fg ?? 1.010}
+			abv={liveStats?.abv ?? recipe.abv ?? 5.0}
+			ibu={liveStats?.ibu ?? recipe.ibu ?? 30}
+			colorSrm={liveStats?.srm ?? recipe.color_srm ?? 8}
 			batchSizeLiters={recipe.batch_size_liters ?? 20}
 			targetOg={recipe.target_og}
 			targetFg={recipe.target_fg}

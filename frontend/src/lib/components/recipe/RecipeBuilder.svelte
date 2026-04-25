@@ -127,6 +127,13 @@
 	let fermentables = $state<RecipeFermentable[]>([]);
 	let hops = $state<RecipeHop[]>([]);
 	let selectedYeast = $state<YeastStrainResponse | null>(null);
+	// Tracks whether the user has edited any inputs that influence the
+	// calculated recipe stats (ingredients OR batch params) since the
+	// recipe loaded. Used to decide whether AI review should send the
+	// brewer-declared target_* stats (clean) or the live calculator
+	// output (edited).
+	let ingredientsDirty = $state(false);
+	let inputsInitialized = $state(false);
 	let showYeastModal = $state(false);
 
 	// AI Review state
@@ -138,7 +145,9 @@
 	// Validation error state
 	let validationError = $state<string | null>(null);
 
-	// Initialize from existing recipe data (edit mode)
+	// Initialize from existing recipe data (edit mode). Always sets
+	// inputsInitialized = true at the end so the batch-param watcher
+	// below activates even in create mode (where initialData is null).
 	$effect(() => {
 		if (initialData) {
 			name = initialData.name || '';
@@ -177,6 +186,11 @@
 			// which the editor and IBU calculator don't recognise — normalise
 			// to the short HopUse form on load.
 			if (ext?.hops && ext.hops.length > 0) {
+				// Preserve the stored boil_time_minutes verbatim — even when
+				// it encodes a dry-hop day count as minutes (4 days -> 5760)
+				// it's the only persisted copy of that duration. The IBU
+				// calc and review payload guard against treating it as a
+				// boil time when use is dry_hop / mash.
 				hops = ext.hops.map((h: RecipeHop) => ({
 					...h,
 					use: normalizeHopUse(h.use as unknown as string),
@@ -188,8 +202,14 @@
 					const timing = h.timing || {};
 					const timeValue = timing.duration?.value ?? timing.time?.value ?? 0;
 					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					// Convert to minutes for boil_time_minutes
-					const boilMinutes = timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
+					const normalizedUse = normalizeHopUse(timing.use);
+					// Convert to minutes for boil_time_minutes. Day units
+					// (dry hop) are stored as minutes here so the editor's
+					// dual-purpose field round-trips losslessly; the IBU
+					// calc and review payload zero this out for dry_hop /
+					// mash so it never feeds into utilization math.
+					const boilMinutes =
+						timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
 
 					return {
 						id: h.id,
@@ -198,7 +218,7 @@
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: boilMinutes,
-						use: normalizeHopUse(timing.use),
+						use: normalizedUse,
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,
@@ -225,6 +245,29 @@
 					updated_at: new Date().toISOString()
 				};
 			}
+		}
+		// Mark inputs as initialised AFTER load (or immediately in create
+		// mode with no initialData) so the batch-param watcher below
+		// doesn't trip on the seed assignments.
+		inputsInitialized = true;
+	});
+
+	// Watch batch-param edits (these don't go through the handle*Update
+	// callbacks because they're bound directly via bind:value). Skip the
+	// first run (which fires after the load effect seeds the values) and
+	// then flip ingredientsDirty on any subsequent change, so the AI
+	// review payload stops trusting target_* once edits begin.
+	let batchParamsWatcherFirstRun = true;
+	$effect(() => {
+		void batchSizeLiters;
+		void efficiencyPercent;
+		void boilTimeMinutes;
+		if (batchParamsWatcherFirstRun) {
+			batchParamsWatcherFirstRun = false;
+			return;
+		}
+		if (inputsInitialized) {
+			ingredientsDirty = true;
 		}
 	});
 
@@ -459,14 +502,17 @@
 
 	function handleFermentablesUpdate(updated: RecipeFermentable[]) {
 		fermentables = updated;
+		ingredientsDirty = true;
 	}
 
 	function handleHopsUpdate(updated: RecipeHop[]) {
 		hops = updated;
+		ingredientsDirty = true;
 	}
 
 	function handleYeastSelect(yeast: YeastStrainResponse | null) {
 		selectedYeast = yeast;
+		ingredientsDirty = true;
 	}
 
 	function handleSave() {
@@ -516,14 +562,20 @@
 
 		try {
 			const stats = recipeStats();
+			// Prefer brewer-declared imported targets when the user hasn't
+			// edited ingredients since load — those are the recipe the
+			// brewer wrote and the LLM should review them. Once ingredients
+			// are dirty, the live calculator is the only honest signal
+			// (tilt_ui-ak6 + codex review staleness fix).
+			const useTargets = !ingredientsDirty;
 			reviewResult = await reviewRecipe({
 				name: name || 'Untitled Recipe',
 				style: styleInput,
-				og: stats.og,
-				fg: stats.fg,
-				abv: stats.abv,
-				ibu: stats.ibu,
-				color_srm: stats.srm,
+				og: useTargets ? initialData?.target_og ?? stats.og : stats.og,
+				fg: useTargets ? initialData?.target_fg ?? stats.fg : stats.fg,
+				abv: useTargets ? initialData?.target_abv ?? stats.abv : stats.abv,
+				ibu: useTargets ? initialData?.target_ibu ?? stats.ibu : stats.ibu,
+				color_srm: useTargets ? initialData?.target_srm ?? stats.srm : stats.srm,
 				fermentables: fermentables.map((f) => ({
 					name: f.name,
 					amount_kg: f.amount_kg,
@@ -533,7 +585,14 @@
 				hops: hops.map((h) => ({
 					name: h.name,
 					amount_grams: h.amount_grams,
-					boil_time_minutes: h.boil_time_minutes,
+					// Don't expose dry-hop / mash duration as an IBU-time
+					// to the LLM — it stores a day count converted to
+					// minutes (4 days -> 5760) which the review prompt
+					// would misread as an absurd boil duration.
+					boil_time_minutes:
+						h.use === 'dry_hop' || h.use === 'mash'
+							? 0
+							: h.boil_time_minutes,
 					alpha_acid_percent: h.alpha_acid_percent,
 					use: h.use
 				})),

@@ -36,13 +36,24 @@
 		const ext = recipe.format_extensions as
 			| { fermentables?: Fermentable[]; hops?: Array<Hop & { use?: string }> }
 			| undefined;
+		// format_extensions saves carry color_lovibond rather than
+		// color_srm; calculateSRM needs color_srm and returns NaN
+		// without it. Normalise both load paths to the calculator shape.
+		const lovibondToSrm = (lov: number | undefined) =>
+			lov != null ? 1.3546 * lov - 0.76 : undefined;
 		const fermentables: Fermentable[] = (
 			ext?.fermentables?.length
-				? ext.fermentables
+				? ext.fermentables.map((f) => ({
+						...f,
+						color_srm:
+							(f as { color_srm?: number }).color_srm ??
+							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond) ??
+							0,
+					}))
 				: (recipe.fermentables ?? []).map((f) => ({
 						name: f.name,
 						amount_kg: f.amount_kg ?? 0,
-						color_srm: f.color_srm,
+						color_srm: f.color_srm ?? 0,
 						type: f.type,
 						potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
 					}))
@@ -78,7 +89,18 @@
 			efficiency_percent: recipe.efficiency_percent ?? 72,
 			boil_time_minutes: recipe.boil_time_minutes ?? 60,
 		};
-		return calculateRecipeStats(fermentables, hops, yeast, batch);
+		const stats = calculateRecipeStats(fermentables, hops, yeast, batch);
+		// If anything came back NaN (missing data, exotic units), fall
+		// back to the stored stats rather than rendering NaN in the UI.
+		const finite = (n: number | undefined) =>
+			typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+		return {
+			og: finite(stats.og),
+			fg: finite(stats.fg),
+			abv: finite(stats.abv),
+			ibu: finite(stats.ibu),
+			srm: finite(stats.srm),
+		};
 	});
 
 	let recipeId = $derived.by(() => {

@@ -5,18 +5,6 @@
 	export type HopForm = 'pellet' | 'whole' | 'plug';
 
 	/**
-	 * Normalize a stored boil_time_minutes value against a use class. Legacy
-	 * editor saves left whirlpool hops with the default boil time of 60 min
-	 * because the time field was hidden after toggling — the value was
-	 * meaningless. Treat that exact legacy default as a 0-min flameout, but
-	 * respect any other value as a deliberate stand duration.
-	 */
-	export function normalizeHopDuration(use: HopUse, durationMin: number): number {
-		if (use === 'whirlpool' && durationMin === 60) return 0;
-		return durationMin;
-	}
-
-	/**
 	 * Normalize a timing.use value from any source (BeerJSON `add_to_*`,
 	 * Brewfather "Dry Hop", or already-short `whirlpool`) into the short
 	 * HopUse form used by editor components and the IBU calculator.
@@ -185,13 +173,7 @@
 
 			// Load hops - prefer format_extensions, fall back to API response
 			if (ext?.hops && ext.hops.length > 0) {
-				// Strip legacy default boil time off whirlpool hops saved by
-				// the pre-fix editor (which left use=whirlpool with the
-				// hidden 60-min boil default).
-				hops = ext.hops.map((h: RecipeHop) => ({
-					...h,
-					boil_time_minutes: normalizeHopDuration(h.use, h.boil_time_minutes),
-				}));
+				hops = ext.hops;
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
 				// BeerJSON uses 'duration', some sources use 'time' - check both
@@ -201,7 +183,6 @@
 					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
 					// Convert to minutes for boil_time_minutes
 					const boilMinutes = timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
-					const use = normalizeHopUse(timing.use);
 
 					return {
 						id: h.id,
@@ -209,8 +190,8 @@
 						origin: h.origin,
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
-						boil_time_minutes: normalizeHopDuration(use, boilMinutes),
-						use,
+						boil_time_minutes: boilMinutes,
+						use: normalizeHopUse(timing.use),
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,

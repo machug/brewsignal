@@ -177,10 +177,19 @@
 			// which the editor and IBU calculator don't recognise — normalise
 			// to the short HopUse form on load.
 			if (ext?.hops && ext.hops.length > 0) {
-				hops = ext.hops.map((h: RecipeHop) => ({
-					...h,
-					use: normalizeHopUse(h.use as unknown as string),
-				}));
+				hops = ext.hops.map((h: RecipeHop) => {
+					const normalizedUse = normalizeHopUse(h.use as unknown as string);
+					// boil_time_minutes is the IBU-time field, not a generic
+					// duration. Older saves stored a dry hop's day count
+					// converted to minutes (4 days -> 5760), which is
+					// nonsensical as a boil time and confuses both the IBU
+					// calc and the LLM review payload.
+					const boilMinutes =
+						normalizedUse === 'dry_hop' || normalizedUse === 'mash'
+							? 0
+							: h.boil_time_minutes;
+					return { ...h, use: normalizedUse, boil_time_minutes: boilMinutes };
+				});
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
 				// BeerJSON uses 'duration', some sources use 'time' - check both
@@ -188,8 +197,14 @@
 					const timing = h.timing || {};
 					const timeValue = timing.duration?.value ?? timing.time?.value ?? 0;
 					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					// Convert to minutes for boil_time_minutes
-					const boilMinutes = timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
+					const normalizedUse = normalizeHopUse(timing.use);
+					// Dry-hop duration is in days; mash additions don't have
+					// a meaningful IBU-time. Both should land at 0 boil_min
+					// rather than being smuggled in as inflated minutes.
+					const boilMinutes =
+						normalizedUse === 'dry_hop' || normalizedUse === 'mash'
+							? 0
+							: timeUnit === 'day' ? timeValue * 24 * 60 : timeValue;
 
 					return {
 						id: h.id,
@@ -198,7 +213,7 @@
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: boilMinutes,
-						use: normalizeHopUse(timing.use),
+						use: normalizedUse,
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,
@@ -516,14 +531,19 @@
 
 		try {
 			const stats = recipeStats();
+			// Prefer brewer-declared imported targets over the live
+			// frontend-calculated values when available — the LLM should
+			// review the recipe the brewer wrote, not whatever the
+			// calculator currently computes from a possibly stale or
+			// partially-edited ingredient list (tilt_ui-ak6).
 			reviewResult = await reviewRecipe({
 				name: name || 'Untitled Recipe',
 				style: styleInput,
-				og: stats.og,
-				fg: stats.fg,
-				abv: stats.abv,
-				ibu: stats.ibu,
-				color_srm: stats.srm,
+				og: initialData?.target_og ?? stats.og,
+				fg: initialData?.target_fg ?? stats.fg,
+				abv: initialData?.target_abv ?? stats.abv,
+				ibu: initialData?.target_ibu ?? stats.ibu,
+				color_srm: initialData?.target_srm ?? stats.srm,
 				fermentables: fermentables.map((f) => ({
 					name: f.name,
 					amount_kg: f.amount_kg,

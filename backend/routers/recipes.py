@@ -482,10 +482,13 @@ async def import_recipe(
     # Validate file extension
     if file.filename:
         ext = file.filename.lower().split('.')[-1]
-        if ext not in ('xml', 'json'):
+        if ext not in ('xml', 'json', 'brewsignal'):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid file type. Only .xml and .json files are supported"
+                detail=(
+                    "Invalid file type. Only .xml, .json, and .brewsignal "
+                    "files are supported"
+                ),
             )
 
     # Validate source_format hint if provided

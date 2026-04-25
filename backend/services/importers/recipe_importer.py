@@ -62,6 +62,7 @@ class RecipeImporter:
         errors = []
         detected_format = None
         beerjson_dict = None
+        bs_payload: Optional[Dict[str, Any]] = None
 
         try:
             # Stage 1: Auto-detect format
@@ -121,12 +122,12 @@ class RecipeImporter:
                     # (BrewSignalRecipe sets extra=forbid). Recipe payloads
                     # may carry _format / brewsignal_version metadata or
                     # be wrapped under a "recipe" key.
-                    bs_payload = parsed_dict
-                    if isinstance(bs_payload, dict) and 'recipe' in bs_payload \
-                            and isinstance(bs_payload['recipe'], dict):
-                        bs_payload = bs_payload['recipe']
+                    cleaned = parsed_dict
+                    if isinstance(cleaned, dict) and 'recipe' in cleaned \
+                            and isinstance(cleaned['recipe'], dict):
+                        cleaned = cleaned['recipe']
                     bs_payload = {
-                        k: v for k, v in bs_payload.items()
+                        k: v for k, v in cleaned.items()
                         if k not in ('_format', 'brewsignal_version')
                     }
                     BrewSignalRecipe.model_validate(bs_payload)
@@ -162,6 +163,12 @@ class RecipeImporter:
                 # Extract first recipe from BeerJSON document
                 beerjson_recipe = beerjson_dict['beerjson']['recipes'][0]
                 recipe = await self.serializer.serialize(beerjson_recipe, session)
+                # The serializer doesn't carry style_id through the BeerJSON
+                # `style` object. For native BrewSignal imports, apply the
+                # original style_id directly so the FK column is populated.
+                if detected_format == "brewsignal" and bs_payload \
+                        and bs_payload.get('style_id'):
+                    recipe.style_id = bs_payload['style_id']
             except Exception as e:
                 await session.rollback()
                 return ImportResult(

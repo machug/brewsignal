@@ -455,6 +455,14 @@ async def init_db():
         from backend.migrations.add_recipe_target_stats import migrate_add_recipe_target_stats
         await migrate_add_recipe_target_stats(conn)
 
+        # Retag pre-2.13.0 zero-minute boil hops as whirlpool (data hygiene
+        # for recipes imported before the Whirlpool mapping fix in
+        # tilt_ui-53n)
+        from backend.migrations.backfill_zero_min_boil_to_whirlpool import (
+            migrate_backfill_zero_min_boil_to_whirlpool,
+        )
+        await migrate_backfill_zero_min_boil_to_whirlpool(conn)
+
         # Add user_id columns for multi-tenant support
         await conn.run_sync(_migrate_add_user_id_columns)
 

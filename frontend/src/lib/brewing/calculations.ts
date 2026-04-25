@@ -147,14 +147,26 @@ export function calculateIBU_Tinseth(
   og: number,
   batch_size_liters: number
 ): number {
+  // Recipes loaded from format_extensions can carry either the short
+  // HopUse form ('whirlpool', 'dry_hop', 'boil') or the BeerJSON full
+  // form ('add_to_whirlpool', 'add_to_fermentation', 'add_to_boil').
+  // Defensively map both to a canonical bucket — without this guard a
+  // dry-hop tagged 'add_to_fermentation' with boil_time_minutes=5760
+  // (4 days encoded as minutes) falls through into the boil branch
+  // and computes as a 96-hour boil, producing absurd IBU values.
+  const useStr = (hop.use ?? '').toString().toLowerCase();
+  const isDryHop = useStr === 'dry_hop' || useStr === 'add_to_fermentation';
+  const isWhirlpool = useStr === 'whirlpool' || useStr === 'add_to_whirlpool';
+  const isFirstWort = useStr === 'first_wort';
+
   // Dry hops contribute negligible IBU.
-  if (hop.use === 'dry_hop') return 0;
+  if (isDryHop) return 0;
 
   // Whirlpool / hop-stand additions: linear ramp from 5% (true flameout) to a
   // 20% cap reached around 30 min stand time. Mirrors backend services/brewing.py
   // (tilt_ui-23u). Stand temperature isn't carried on the hop schema, so we
   // assume hot-side stand.
-  if (hop.use === 'whirlpool') {
+  if (isWhirlpool) {
     const standMin = Math.max(0, hop.boil_time_minutes);
     const utilization = Math.min(0.05 + 0.005 * standMin, 0.20);
     const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
@@ -181,7 +193,7 @@ export function calculateIBU_Tinseth(
   }
 
   // First wort hopping adjustment (10% more utilization)
-  if (hop.use === 'first_wort') {
+  if (isFirstWort) {
     utilization *= 1.10;
   }
 

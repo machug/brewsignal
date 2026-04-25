@@ -39,11 +39,29 @@ async def migrate_add_recipe_target_stats(conn: AsyncConnection) -> None:
         logger.info("Recipes table doesn't exist yet, skipping migration")
         return
 
+    added_any = False
     for column in _NEW_COLUMNS:
         if await _check_column_exists(conn, column):
             logger.info("%s column already exists, skipping", column)
             continue
         logger.info("Adding %s column to recipes table", column)
         await conn.execute(text(f"ALTER TABLE recipes ADD COLUMN {column} REAL"))
+        added_any = True
+
+    if added_any:
+        # Backfill: existing recipes have only their canonical og/fg/abv/
+        # ibu/color_srm values. Without a backfill, the first
+        # ?recalculate=true on a pre-existing imported recipe would erase
+        # the only copy of the brewer-declared target. Seed target_* from
+        # the canonical column where target_* is currently NULL.
+        await conn.execute(text(
+            "UPDATE recipes SET "
+            "target_og = COALESCE(target_og, og), "
+            "target_fg = COALESCE(target_fg, fg), "
+            "target_abv = COALESCE(target_abv, abv), "
+            "target_ibu = COALESCE(target_ibu, ibu), "
+            "target_srm = COALESCE(target_srm, color_srm)"
+        ))
+        logger.info("Backfilled target_* from canonical stats")
 
     logger.info("Migration add_recipe_target_stats completed")

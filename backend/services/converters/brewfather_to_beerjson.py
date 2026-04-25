@@ -80,9 +80,13 @@ class BrewfatherToBeerJSONConverter:
         if 'fermentation' in bf_recipe and bf_recipe['fermentation'].get('steps'):
             recipe['fermentation'] = self._convert_fermentation(bf_recipe['fermentation'])
 
-        # NOTE: BeerJSON 1.0 schema has additionalProperties: false
-        # Extensions like _extensions and water are not allowed at recipe level
-        # They are omitted for spec compliance
+        # Brewfather water chemistry has no BeerJSON 1.0 representation.
+        # Pass it through under a private _brewfather_water key so the
+        # serializer (recipe_serializer._serialize_brewfather_water) can
+        # build RecipeWaterProfile + RecipeWaterAdjustment rows. The key
+        # is stripped before any external BeerJSON export (tilt_ui-2br).
+        if 'water' in bf_recipe and bf_recipe['water']:
+            recipe['_brewfather_water'] = bf_recipe['water']
 
         return recipe
 

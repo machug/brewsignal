@@ -6,10 +6,23 @@ Whirlpool, fixed in tilt_ui-53n). The IBU calculator correctly returns
 zero utilization for a 0-minute boil, so those hops contribute nothing
 even though they were the source recipe's flameout/whirlpool additions.
 
-Heuristic: a `use=add_to_boil` (or short-form `boil`) hop with a
-duration of 0 minutes is unambiguously a flameout/whirlpool addition —
-no real recipe boils for 0 minutes. Retag to `add_to_whirlpool` so the
-new stand-time IBU model credits them.
+Heuristic: a `use=add_to_boil` (or short-form `boil`) hop with an
+EXPLICIT duration of 0 minutes is a flameout/whirlpool addition — no
+real recipe boils for 0 minutes. Retag to `add_to_whirlpool`.
+
+SCOPE LIMITATION (deliberate). Brewfather imports preserve duration
+through the BeerJSON converter, so 0-min Whirlpool additions land with
+`duration: {"value": 0}` and this migration catches them.
+
+Older BeerXML imports went through enhance_ingredient_tables ->
+hop_timing_converter.convert_hop_timing_safe, which drops the duration
+field when time_min == 0. After that conversion, a legacy
+`use="Boil", time_min=0` hop is indistinguishable from a legacy
+`use="First Wort", time_min=N` hop (both become
+`{"use": "add_to_boil", "continuous": false}`). Retagging missing-
+duration rows would corrupt First Wort additions, so this migration
+deliberately skips them. Users with affected legacy BeerXML data
+should re-import the source file to recover whirlpool tagging.
 
 Touches:
 - recipe_hops.timing (BeerJSON-shaped JSON column)

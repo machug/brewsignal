@@ -38,11 +38,17 @@ class BrewfatherToBeerJSONConverter:
             'notes': bf_recipe.get('notes', ''),
         }
 
-        # Boil
+        # Boil — both boilTime and boilSize survive the round trip. The
+        # serializer (recipe_serializer._extract_boil_info) reads boil_size
+        # off the BeerJSON dict; without this mapping pre-boil volume would
+        # be NULL on every Brewfather import (tilt_ui-u19).
+        boil: Dict[str, Any] = {}
         if bf_recipe.get('boilTime'):
-            recipe['boil'] = {
-                'boil_time': self._make_time_minutes(bf_recipe['boilTime'])
-            }
+            boil['boil_time'] = self._make_time_minutes(bf_recipe['boilTime'])
+        if bf_recipe.get('boilSize') is not None:
+            boil['boil_size'] = self._make_volume(bf_recipe['boilSize'])
+        if boil:
+            recipe['boil'] = boil
 
         # Efficiency (required field - ensure it's always present)
         if bf_recipe.get('efficiency'):

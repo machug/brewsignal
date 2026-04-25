@@ -141,6 +141,12 @@ async def migrate_backfill_zero_min_boil_to_whirlpool(conn: AsyncConnection) -> 
         for hop in hops:
             if _is_zero_min_boil_ext_hop(hop):
                 hop['use'] = 'add_to_whirlpool'
+                # Frontend IBU calc reads h.boil_time_minutes directly; an
+                # absent value gives NaN through Math.max(0, undefined). Pin
+                # to a numeric zero so retagged recipes show a clean 0-min
+                # whirlpool stand baseline rather than NaN.
+                if hop.get('boil_time_minutes') is None:
+                    hop['boil_time_minutes'] = 0
                 changed = True
         if changed:
             await conn.execute(

@@ -147,10 +147,24 @@ export function calculateIBU_Tinseth(
   og: number,
   batch_size_liters: number
 ): number {
-  // Skip non-boil additions
-  if (hop.use === 'dry_hop' || hop.boil_time_minutes <= 0) {
-    return 0;
+  // Dry hops contribute negligible IBU.
+  if (hop.use === 'dry_hop') return 0;
+
+  // Whirlpool / hop-stand additions: linear ramp from 5% (true flameout) to a
+  // 20% cap reached around 30 min stand time. Mirrors backend services/brewing.py
+  // (tilt_ui-23u). Stand temperature isn't carried on the hop schema, so we
+  // assume hot-side stand.
+  if (hop.use === 'whirlpool') {
+    const standMin = Math.max(0, hop.boil_time_minutes);
+    const utilization = Math.min(0.05 + 0.005 * standMin, 0.20);
+    const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
+                batch_size_liters;
+    return Math.max(0, ibu);
   }
+
+  // Boil-tagged hop with no boil time: nothing to credit. True flameout
+  // additions should be tagged 'whirlpool' instead.
+  if (hop.boil_time_minutes <= 0) return 0;
 
   // Bigness factor (adjusts for wort gravity)
   const bigness = 1.65 * Math.pow(0.000125, og - 1);
@@ -169,11 +183,6 @@ export function calculateIBU_Tinseth(
   // First wort hopping adjustment (10% more utilization)
   if (hop.use === 'first_wort') {
     utilization *= 1.10;
-  }
-
-  // Whirlpool/steep adjustment (reduced utilization)
-  if (hop.use === 'whirlpool') {
-    utilization *= 0.20;  // ~20% of boil utilization
   }
 
   // IBU = (alpha * amount_grams * utilization * 1000) / batch_liters

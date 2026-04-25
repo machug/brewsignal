@@ -173,8 +173,15 @@ def calculate_ibu_from_hops(
             total_ibu += ibu_contribution
 
         elif use in ["whirlpool", "add_to_whirlpool"]:
-            # Whirlpool hops contribute ~10-20% of boil utilization
-            utilization = 0.05
+            # Hop-stand utilization: linear ramp from 5% (true flameout) to a
+            # 20% cap reached around 30 minutes of stand time. Mirrors
+            # Malowicki / Tinseth-Stone studies for ~80C whirlpool stands and
+            # avoids the prior flat 5% which made 0-min and 30-min stands
+            # indistinguishable. Stand temperature is not yet captured in the
+            # hop schema (BeerJSON 1.0 TimingType drops it), so we assume
+            # hot-side stand conditions (tilt_ui-23u).
+            stand_min = max(0.0, boil_min)
+            utilization = min(0.05 + 0.005 * stand_min, 0.20)
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
         # Dry hops (dry_hop, add_to_fermentation) don't contribute significant IBUs

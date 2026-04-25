@@ -630,7 +630,7 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
             boil_min = float(duration) if duration else 0
 
         # Only calculate IBU for boil additions
-        if use in ["boil", "first_wort"]:
+        if use in ["boil", "add_to_boil", "first_wort", "mash", "add_to_mash"]:
             # Tinseth utilization formula
             # Bigness factor = 1.65 * 0.000125^(OG - 1)
             bigness = 1.65 * (0.000125 ** (calculated_og - 1))
@@ -644,9 +644,12 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
             # IBU = (grams * alpha * utilization * 1000) / liters
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
-        elif use == "whirlpool":
-            # Whirlpool hops contribute ~10-20% of boil utilization
-            utilization = 0.05  # Rough estimate
+        elif use in ["whirlpool", "add_to_whirlpool"]:
+            # Hop-stand utilization: linear ramp from 5% (true flameout) to a
+            # 20% cap reached around 30 minutes. Mirrors services/brewing.py
+            # (tilt_ui-23u). Keep this in sync when updating the model.
+            stand_min = max(0.0, boil_min)
+            utilization = min(0.05 + 0.005 * stand_min, 0.20)
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
         # Dry hops don't contribute significant IBUs

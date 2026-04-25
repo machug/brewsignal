@@ -173,7 +173,26 @@
 	}
 
 	function updateHop(index: number, field: keyof RecipeHop, value: number | string) {
-		const updated = hops.map((hop, i) => (i === index ? { ...hop, [field]: value } : hop));
+		const updated = hops.map((hop, i) => {
+			if (i !== index) return hop;
+			const next = { ...hop, [field]: value };
+			// boil_time_minutes is overloaded across use classes (boil min /
+			// stand min / dry-hop minutes-as-days*24*60). Resetting on every
+			// use change keeps a stale duration from one class bleeding into
+			// another (e.g. dry-hop's 5760 min surviving a switch back to
+			// boil and inflating IBU).
+			if (field === 'use' && value !== hop.use) {
+				const useDefaults: Record<HopUse, number> = {
+					boil: 60,
+					whirlpool: 0,
+					dry_hop: 4 * 24 * 60,
+					first_wort: 60,
+					mash: 60,
+				};
+				next.boil_time_minutes = useDefaults[value as HopUse] ?? 0;
+			}
+			return next;
+		});
 		onUpdate(updated);
 	}
 
@@ -299,16 +318,18 @@
 										/>
 									</div>
 
-									{#if hop.use === 'boil'}
+									{#if hop.use === 'boil' || hop.use === 'whirlpool'}
 										<div class="control-group">
-											<label for="hop-time-{hopIndex}">Time</label>
+											<label for="hop-time-{hopIndex}"
+												>{hop.use === 'whirlpool' ? 'Stand' : 'Time'}</label
+											>
 											<div class="input-with-unit">
 												<input
 													id="hop-time-{hopIndex}"
 													type="number"
 													step="5"
 													min="0"
-													max="90"
+													max={hop.use === 'whirlpool' ? 60 : 90}
 													value={hop.boil_time_minutes}
 													onchange={(e) =>
 														updateHop(

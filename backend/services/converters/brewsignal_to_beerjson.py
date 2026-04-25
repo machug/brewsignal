@@ -95,6 +95,8 @@ class BrewSignalToBeerJSONConverter:
             'type': f.get('type', 'grain'),
             'amount': {'value': float(f['amount_kg']), 'unit': 'kg'},
         }
+        if f.get('grain_group'):
+            out['grain_group'] = f['grain_group']
         if f.get('yield_percent') is not None:
             out['yield'] = {
                 'fine_grind': {'value': float(f['yield_percent']), 'unit': '%'}

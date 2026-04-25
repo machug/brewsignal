@@ -127,6 +127,11 @@
 	let fermentables = $state<RecipeFermentable[]>([]);
 	let hops = $state<RecipeHop[]>([]);
 	let selectedYeast = $state<YeastStrainResponse | null>(null);
+	// Tracks whether the user has edited ingredients since the recipe
+	// loaded. Used to decide whether AI review should send the brewer-
+	// declared target_* stats (clean) or the live calculator output
+	// (edited). Reset to false during initial load via $effect.
+	let ingredientsDirty = $state(false);
 	let showYeastModal = $state(false);
 
 	// AI Review state
@@ -474,14 +479,17 @@
 
 	function handleFermentablesUpdate(updated: RecipeFermentable[]) {
 		fermentables = updated;
+		ingredientsDirty = true;
 	}
 
 	function handleHopsUpdate(updated: RecipeHop[]) {
 		hops = updated;
+		ingredientsDirty = true;
 	}
 
 	function handleYeastSelect(yeast: YeastStrainResponse | null) {
 		selectedYeast = yeast;
+		ingredientsDirty = true;
 	}
 
 	function handleSave() {
@@ -531,19 +539,20 @@
 
 		try {
 			const stats = recipeStats();
-			// Prefer brewer-declared imported targets over the live
-			// frontend-calculated values when available — the LLM should
-			// review the recipe the brewer wrote, not whatever the
-			// calculator currently computes from a possibly stale or
-			// partially-edited ingredient list (tilt_ui-ak6).
+			// Prefer brewer-declared imported targets when the user hasn't
+			// edited ingredients since load — those are the recipe the
+			// brewer wrote and the LLM should review them. Once ingredients
+			// are dirty, the live calculator is the only honest signal
+			// (tilt_ui-ak6 + codex review staleness fix).
+			const useTargets = !ingredientsDirty;
 			reviewResult = await reviewRecipe({
 				name: name || 'Untitled Recipe',
 				style: styleInput,
-				og: initialData?.target_og ?? stats.og,
-				fg: initialData?.target_fg ?? stats.fg,
-				abv: initialData?.target_abv ?? stats.abv,
-				ibu: initialData?.target_ibu ?? stats.ibu,
-				color_srm: initialData?.target_srm ?? stats.srm,
+				og: useTargets ? initialData?.target_og ?? stats.og : stats.og,
+				fg: useTargets ? initialData?.target_fg ?? stats.fg : stats.fg,
+				abv: useTargets ? initialData?.target_abv ?? stats.abv : stats.abv,
+				ibu: useTargets ? initialData?.target_ibu ?? stats.ibu : stats.ibu,
+				color_srm: useTargets ? initialData?.target_srm ?? stats.srm : stats.srm,
 				fermentables: fermentables.map((f) => ({
 					name: f.name,
 					amount_kg: f.amount_kg,

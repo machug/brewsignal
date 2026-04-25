@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-04-25
+
 ### Fixed
+- **Imported recipe stats no longer clobbered on save** (tilt_ui-5no) - PUT `/api/recipes/{id}` recalculation is now opt-in via `?recalculate=true`. Default false preserves brewer-declared OG/FG/ABV/IBU/SRM from imported recipes. Recipe edit form no longer auto-recalculates; a separate explicit action calls the existing `POST /api/recipes/{id}/recalculate` endpoint when refresh is wanted.
+- **Brewfather Whirlpool hops produce real IBU** (tilt_ui-53n, tilt_ui-23u) - Converter now maps Whirlpool to `add_to_whirlpool` instead of collapsing into `add_to_boil` with 0-min duration. New stand-time IBU model in backend, frontend, and LLM-tools calculators uses linear ramp `min(0.05 + 0.005 * stand_min, 0.20)` — 5% utilization at flameout, 20% cap at 30-min stand. Reverse converter and frontend HopUse normalization extended; HopSelector renders a "Stand" input for whirlpool hops and resets duration sensibly on use changes.
+- **Brewfather pre-boil volume preserved** (tilt_ui-u19) - Converter maps `boilSize` to BeerJSON `boil.boil_size`. Previously dropped on import, leaving `boil_size_l` NULL in the database.
+- **Brewfather water adjustments preserved** (tilt_ui-2br) - Mash and sparge volumes plus salt additions (gypsum, calcium chloride, etc.) and acid additions now persisted into `recipe_water_adjustments`. Attachment of the raw Brewfather water object as `_brewfather_water` moved into the converter so any caller (importer, future LLM tooling) gets it automatically.
+- **Fermentation step types** (tilt_ui-psa) - Step type inference now recognises diacetyl rest and cold crash patterns. Previously every step name that didn't contain `primary` / `secondary` / `conditioning` collapsed to `primary`, losing process intent in the fermentation phase UI and temp control.
+- **Dry-hop IBU contribution audited** (tilt_ui-4te) - Confirmed all three IBU calculators (backend `services/brewing.py`, LLM `services/llm/tools/recipe.py`, frontend `lib/brewing/calculations.ts`) correctly skip dry-hop additions. Pinned with regression tests covering long-form `add_to_fermentation`, short-form `dry_hop`, and mixed boil + whirlpool + dry-hop combinations.
 - **Repeated `save_brewing_learning` on Thread Resume** - Assistant no longer re-saves the same brewing insights every time a conversation is resumed
   - Root cause: tool call history was stripped during thread reload, so the LLM couldn't see its prior tool invocations
   - Now persists assistant tool calls and tool result messages to the database
@@ -15,12 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Existing DB-level duplicate guard (>50% word overlap) serves as safety net
 
 ### Added
+- **Imported brewer-declared stats stored separately** (tilt_ui-ak6) - New `target_og`, `target_fg`, `target_abv`, `target_ibu`, `target_srm` columns on `recipes`. Importers populate both target_* and canonical og/fg/abv/ibu/color_srm; the recalculator only writes the canonical fields, leaving target_* as the imported source-of-truth. Recipe detail UI shows a small "src N" hint under each stat when the imported target meaningfully differs from the calculated value (thresholds: OG/FG 0.002, ABV 0.2%, IBU 3, SRM 1). Migration backfills target_* from existing canonical values on upgrade. Sync to Supabase carries the new columns through.
+- **Native BrewSignal recipe import** (tilt_ui-kew) - `POST /api/recipes/import` now accepts native BrewSignal JSON files (`.brewsignal` extension). Auto-detection routes BrewSignal-shaped payloads through Pydantic validation against `BrewSignalRecipe`, then through a new `BrewSignalToBeerJSONConverter` that funnels into the same serializer + persist path as other formats. Detection fingerprints on `_format` / `brewsignal_version` markers, `recipe` envelope wrapper, BrewSignal-only snake_case keys (`batch_size_liters`, `color_srm`, `boil_time_minutes`, etc.), nested ingredient shape (`amount_kg`, `amount_grams`, `alpha_acid_percent`), and a singular `yeast` dict. Brewfather camelCase markers (`_type`, `batchSize`, `boilTime`, scalar `efficiency` / `carbonation`, ingredient `amount` / `alpha`) keep routing to brewfather. Explicit override available via `?source_format=brewsignal`.
+- **`?recalculate=true` query param** on `PUT /api/recipes/{id}` for explicit stat refresh (see Fixed above).
 - **Context Window Management** - Prevents hard failures on long conversations
   - Token counting using litellm's tokenizer (includes tool definitions in budget)
   - Pre-flight context check before entering agent loop
   - Per-iteration guard with sliding-window pruning when context exceeds budget
   - Graceful "context limit reached" message instead of silent API failure
   - `contextUsage` emitted via STATE_DELTA for frontend visibility
+
+### Migration
+- New SQLite migration `add_recipe_target_stats` adds and backfills target_* columns idempotently.
+- New Supabase migration `20260425124000_recipe_target_stats.sql` mirrors the change for cloud deployments. Apply via `supabase db push` or Supabase dashboard before deploying the backend.
 
 ## [2.12.0] - 2026-03-02
 

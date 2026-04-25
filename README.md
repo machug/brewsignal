@@ -466,11 +466,13 @@ The assistant uses LiteLLM for provider abstraction, supporting OpenAI, Anthropi
 | `/api/batches/{id}/restore` | POST | Restore soft-deleted batch |
 | `/api/recipes` | GET/POST | List or create recipes (BeerJSON schema) |
 | `/api/recipes/{id}` | GET/PUT/DELETE | Recipe with full ingredients (BeerJSON) |
-| `/api/recipes/import` | POST | Import BeerXML, BeerJSON, or Brewfather JSON |
+| `/api/recipes/import` | POST | Import BeerXML, BeerJSON, Brewfather JSON, or native BrewSignal (.brewsignal). Optional `?source_format=` to skip auto-detection. |
+| `/api/recipes/{id}?recalculate=true` | PUT | Update recipe; opt in to recalculate stats from ingredients (default off preserves imported targets) |
 
 **Recipe Fields (BeerJSON 1.0):**
-- Core: `og`, `fg`, `ibu`, `abv`, `color_srm`, `batch_size_liters`
-- Timing: `boil_time_minutes`, `efficiency_percent`, `carbonation_vols`
+- Core (canonical, edited/recalculated): `og`, `fg`, `ibu`, `abv`, `color_srm`, `batch_size_liters`
+- Imported targets (preserved from source, never overwritten): `target_og`, `target_fg`, `target_abv`, `target_ibu`, `target_srm`
+- Timing: `boil_time_minutes`, `boil_size_l`, `efficiency_percent`, `carbonation_vols`
 - Extensions: `format_extensions` (preserves BeerXML/Brewfather metadata)
 - Relationships: fermentables, hops, cultures (yeasts), miscs, water profiles, mash steps, fermentation steps
 

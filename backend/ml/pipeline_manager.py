@@ -236,9 +236,18 @@ class MLPipelineManager:
 
             batch_start = readings[0].timestamp
             for reading in readings:
-                # Use filtered values if available, otherwise calibrated
-                sg = reading.sg_filtered if reading.sg_filtered is not None else reading.sg_calibrated
-                temp = reading.temp_filtered if reading.temp_filtered is not None else reading.temp_calibrated
+                # Curve fitting must use calibrated (real measurement)
+                # values, not Kalman-filtered ones. The filter can take
+                # several readings to converge — until it does, the
+                # filtered SG can sit far below the actual measurement
+                # (observed: filtered ~1.005 while calibrated ~1.045).
+                # That bogus head-of-history then makes sg_drop negative
+                # and the curve fitter refuses with "insufficient
+                # fermentation progress" even though the recipe is 96%
+                # attenuated. Calibrated falls back to filtered only when
+                # missing.
+                sg = reading.sg_calibrated if reading.sg_calibrated is not None else reading.sg_filtered
+                temp = reading.temp_calibrated if reading.temp_calibrated is not None else reading.temp_filtered
 
                 if sg is None or temp is None:
                     continue  # Skip readings with missing data

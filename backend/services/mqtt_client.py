@@ -202,6 +202,7 @@ class MQTTClient:
                     config = {
                         "name": sensor["name"],
                         "unique_id": sensor["unique_id"],
+                        "object_id": sensor["unique_id"],
                         "state_topic": sensor["state_topic"],
                         "device": device_info,
                         "availability_topic": availability_topic,
@@ -222,6 +223,7 @@ class MQTTClient:
                     config = {
                         "name": sensor["name"],
                         "unique_id": sensor["unique_id"],
+                        "object_id": sensor["unique_id"],
                         "state_topic": sensor["state_topic"],
                         "device": device_info,
                         "availability_topic": availability_topic,

@@ -1078,14 +1078,35 @@
 
 	/* Responsive */
 	@media (max-width: 640px) {
+		.page-container {
+			padding: var(--space-4);
+		}
+
 		.hero-content {
 			flex-direction: column;
 			gap: var(--space-4);
+			padding: var(--space-4);
 		}
 
 		.header-actions {
 			width: 100%;
 			justify-content: flex-start;
+			flex-wrap: wrap;
+			gap: var(--space-2);
+		}
+
+		.header-actions .btn-review,
+		.header-actions .btn-secondary,
+		.header-actions .btn-primary {
+			flex: 1 1 calc(50% - var(--space-1));
+			min-width: 0;
+			justify-content: center;
+			padding: 10px 12px;
+			font-size: 13px;
+		}
+
+		.header-actions .btn-ghost-danger {
+			flex: 0 0 auto;
 		}
 
 		.recipe-title {

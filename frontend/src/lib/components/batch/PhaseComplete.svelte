@@ -8,7 +8,9 @@
 	import BJCPScoreForm from './BJCPScoreForm.svelte';
 	import TastingPanel from './TastingPanel.svelte';
 	import ReflectionCard from './ReflectionCard.svelte';
+	import ReflectionFormModal from './ReflectionFormModal.svelte';
 	import BatchNotesCard from './BatchNotesCard.svelte';
+	import type { ReflectionPhase } from '$lib/types/reflection';
 
 	interface Props {
 		batch: BatchResponse;
@@ -18,6 +20,7 @@
 		tastingLoading: boolean;
 		onBatchUpdate: (updated: BatchResponse) => void;
 		onTastingNotesReload: () => void;
+		onReflectionsReload?: () => void;
 	}
 
 	let {
@@ -28,12 +31,16 @@
 		tastingLoading,
 		onBatchUpdate,
 		onTastingNotesReload,
+		onReflectionsReload,
 	}: Props = $props();
 
 	let reflectionsExpanded = $state(true);
 	let tastingExpanded = $state(true);
 	let showBJCPForm = $state(false);
 	let showTastingPanel = $state(false);
+	let showReflectionForm = $state(false);
+
+	let existingPhases = $derived(reflections.map((r) => r.phase as ReflectionPhase));
 
 	function formatSG(value?: number | null): string {
 		if (value === undefined || value === null) return '--';
@@ -168,7 +175,11 @@
 					<div class="section-empty">
 						<p class="empty-text">No reflections recorded yet.</p>
 						<p class="empty-subtext">Reflections help you learn from each brew. Record what went well, what could improve, and lessons for next time.</p>
-						<button type="button" class="add-first-btn">
+						<button
+							type="button"
+							class="add-first-btn"
+							onclick={() => (showReflectionForm = true)}
+						>
 							<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 							</svg>
@@ -181,6 +192,18 @@
 							<ReflectionCard {reflection} />
 						{/each}
 					</div>
+					{#if existingPhases.length < 4}
+						<button
+							type="button"
+							class="add-more-btn"
+							onclick={() => (showReflectionForm = true)}
+						>
+							<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+							</svg>
+							Add Another Reflection
+						</button>
+					{/if}
 				{/if}
 			</div>
 		{/if}
@@ -258,6 +281,14 @@
 		onSaved={() => { showTastingPanel = false; onTastingNotesReload(); }}
 	/>
 {/if}
+
+<ReflectionFormModal
+	open={showReflectionForm}
+	batchId={batch.id}
+	{existingPhases}
+	onClose={() => (showReflectionForm = false)}
+	onSaved={() => onReflectionsReload?.()}
+/>
 
 <style>
 	.completed-phase {
@@ -519,7 +550,8 @@
 		line-height: 1.5;
 	}
 
-	.add-first-btn {
+	.add-first-btn,
+	.add-more-btn {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -534,11 +566,18 @@
 		transition: all 0.15s ease;
 	}
 
-	.add-first-btn:hover {
+	.add-more-btn {
+		align-self: flex-start;
+		margin-top: 0.75rem;
+	}
+
+	.add-first-btn:hover,
+	.add-more-btn:hover {
 		background: rgba(99, 102, 241, 0.1);
 	}
 
-	.add-first-btn svg {
+	.add-first-btn svg,
+	.add-more-btn svg {
 		width: 1rem;
 		height: 1rem;
 	}

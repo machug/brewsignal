@@ -633,6 +633,7 @@
 					{tastingLoading}
 					onBatchUpdate={(updated) => batch = updated}
 					onTastingNotesReload={loadTastingNotes}
+					onReflectionsReload={loadReflections}
 				/>
 			{/if}
 		</div>

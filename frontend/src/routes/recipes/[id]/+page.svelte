@@ -2,14 +2,15 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import type { RecipeResponse } from '$lib/api';
-	import { fetchRecipe, deleteRecipe } from '$lib/api';
+	import type { RecipeResponse, RecipeReviewResponse } from '$lib/api';
+	import { fetchRecipe, deleteRecipe, reviewRecipe } from '$lib/api';
 	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
 	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
 	import MashSchedule from '$lib/components/recipe/MashSchedule.svelte';
 	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
+	import RecipeReviewModal from '$lib/components/recipe/RecipeReviewModal.svelte';
 	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
 	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
@@ -19,6 +20,12 @@
 	let error = $state<string | null>(null);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+
+	// AI Review state
+	let showReviewModal = $state(false);
+	let reviewResult = $state<RecipeReviewResponse | null>(null);
+	let reviewLoading = $state(false);
+	let reviewError = $state<string | null>(null);
 
 	let waterVolumes = $derived.by(() => {
 		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
@@ -153,6 +160,90 @@
 		if (!recipe) return;
 		goto(`/batches/new?recipe_id=${recipe.id}`);
 	}
+
+	async function handleReview() {
+		if (!recipe) return;
+
+		if (!recipe.type?.trim()) {
+			reviewError = 'Recipe is missing a beer style — edit the recipe and add one to get an AI review';
+			showReviewModal = true;
+			return;
+		}
+
+		const fermentables = recipe.fermentables ?? [];
+		if (fermentables.length === 0) {
+			reviewError = 'Recipe has no fermentables to review';
+			showReviewModal = true;
+			return;
+		}
+
+		reviewLoading = true;
+		reviewError = null;
+		reviewResult = null;
+		showReviewModal = true;
+
+		try {
+			const stats = liveStats;
+			// Prefer brewer-declared imported targets when present (they
+			// reflect what the brewer wrote); otherwise fall back to live
+			// calculator output, then stored stats.
+			const og = recipe.target_og ?? stats?.og ?? recipe.og ?? 1.05;
+			const fg = recipe.target_fg ?? stats?.fg ?? recipe.fg ?? 1.01;
+			const abv = recipe.target_abv ?? stats?.abv ?? recipe.abv ?? 5.0;
+			const ibu = recipe.target_ibu ?? stats?.ibu ?? recipe.ibu ?? 30;
+			const colorSrm = recipe.target_srm ?? stats?.srm ?? recipe.color_srm ?? 8;
+
+			reviewResult = await reviewRecipe({
+				name: recipe.name || 'Untitled Recipe',
+				style: recipe.type,
+				og,
+				fg,
+				abv,
+				ibu,
+				color_srm: colorSrm,
+				fermentables: fermentables.map((f) => ({
+					name: f.name,
+					amount_kg: f.amount_kg ?? 0,
+					color_srm: f.color_srm,
+					type: f.type
+				})),
+				hops: (recipe.hops ?? []).map((h) => {
+					const timing = h.timing || {};
+					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
+					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
+					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
+					const use = normalizeHopUse(timing.use);
+					return {
+						name: h.name,
+						amount_grams: h.amount_grams ?? 0,
+						// Don't expose dry-hop / mash duration as IBU-time
+						// to the LLM — the review prompt would misread a
+						// 4-day dry hop as an absurd boil duration.
+						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : minutes,
+						alpha_acid_percent: h.alpha_acid_percent,
+						use
+					};
+				}),
+				yeast: recipe.yeast_name
+					? {
+							name: recipe.yeast_name,
+							producer: recipe.yeast_lab ?? undefined,
+							attenuation: recipe.yeast_attenuation ?? undefined
+						}
+					: undefined
+			});
+		} catch (err) {
+			reviewError = err instanceof Error ? err.message : 'Failed to get AI review';
+		} finally {
+			reviewLoading = false;
+		}
+	}
+
+	function closeReviewModal() {
+		showReviewModal = false;
+		reviewResult = null;
+		reviewError = null;
+	}
 </script>
 
 <svelte:head>
@@ -194,6 +285,22 @@
 					</div>
 				</div>
 				<div class="header-actions">
+					<button
+						type="button"
+						class="btn-review"
+						onclick={handleReview}
+						disabled={reviewLoading}
+					>
+						{#if reviewLoading}
+							<span class="btn-spinner"></span>
+							Analyzing...
+						{:else}
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+							</svg>
+							AI Review
+						{/if}
+					</button>
 					<a href="/recipes/{recipe.id}/edit" class="btn-secondary">
 						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -401,6 +508,16 @@
 	{/if}
 </div>
 
+<!-- AI Review Modal -->
+<RecipeReviewModal
+	open={showReviewModal}
+	loading={reviewLoading}
+	error={reviewError}
+	result={reviewResult}
+	styleName={recipe?.type ?? ''}
+	onClose={closeReviewModal}
+/>
+
 <!-- Delete Confirmation Modal -->
 {#if showDeleteConfirm}
 	<div
@@ -604,6 +721,30 @@
 		border-color: var(--recipe-accent);
 		color: var(--recipe-accent);
 		background: rgba(245, 158, 11, 0.05);
+	}
+
+	.btn-review {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: 9px 16px;
+		font-size: 13px;
+		font-weight: 500;
+		background: rgba(34, 197, 94, 0.08);
+		border: 1px solid var(--positive, #22c55e);
+		border-radius: 8px;
+		color: var(--positive, #22c55e);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-review:hover:not(:disabled) {
+		background: rgba(34, 197, 94, 0.15);
+	}
+
+	.btn-review:disabled {
+		opacity: 0.6;
+		cursor: wait;
 	}
 
 	.btn-primary {

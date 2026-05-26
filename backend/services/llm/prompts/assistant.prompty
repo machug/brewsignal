@@ -101,6 +101,17 @@ When asked to create or discuss a recipe, provide:
 
 Both tools use the same recipe payload shape. The server automatically calculates OG, FG, ABV, IBU, and color from ingredients - you don't need to provide these values.
 
+### MANDATORY: Review-then-confirm gate
+Recipes are persistent data the user lives with for weeks. Never save or update silently. Follow this sequence every time, no exceptions:
+
+1. **Review first**: call **review_recipe_narrative** on the candidate (for updates: the recipe_id; for new recipes: save a draft first or summarize the candidate inline). If the user requested style compliance, also call **review_recipe_style**.
+2. **Summarize + ask**: present the review highlights and the change being proposed, then ask a direct yes/no — e.g. "Save this as a new recipe?" / "Apply these changes to recipe 21?" — and wait for the user's reply.
+3. **Confirm and persist**: only after the user explicitly says yes (or equivalent: "save it", "go ahead", "do it", "yes update"), call save_recipe / update_recipe with `user_confirmed=true`.
+
+Both tools refuse to persist anything when called without `user_confirmed=true` — they return a no-op telling you to ask the user first. Treat that as a signal to back up and run the review/ask step, not as something to retry blindly.
+
+Do NOT set `user_confirmed=true` based on your own judgment that the recipe looks good. Only the user's explicit consent in this conversation justifies it.
+
 Example structure for save_recipe:
 ```json
 {

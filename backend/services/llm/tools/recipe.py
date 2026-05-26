@@ -702,10 +702,30 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_CONFIRMATION_GUIDANCE = (
+    "Do not persist this recipe yet. Required workflow: "
+    "(1) run review_recipe_narrative on the candidate (save it to a draft first "
+    "if it has no id yet, or summarize it back to the user for review); "
+    "(2) explicitly ask the user to confirm — e.g. 'Save this recipe?' or "
+    "'Apply these changes to recipe N?'; "
+    "(3) only after the user says yes, call this tool again with "
+    "user_confirmed=true."
+)
+
+
+def _confirmation_required_response(action: str) -> dict[str, Any]:
+    return {
+        "requires_confirmation": True,
+        "action": action,
+        "guidance": _CONFIRMATION_GUIDANCE,
+    }
+
+
 async def save_recipe(
     db: AsyncSession,
     recipe: dict[str, Any],
     name_override: Optional[str] = None,
+    user_confirmed: Optional[bool] = None,
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Save a BeerJSON recipe to the database."""
@@ -713,6 +733,9 @@ async def save_recipe(
 
     if not recipe:
         return {"error": "Recipe data is required"}
+
+    if user_confirmed is not True:
+        return _confirmation_required_response("save")
 
     # Check if recipe has required name field
     if not recipe.get("name") and not name_override:
@@ -797,6 +820,7 @@ async def update_recipe(
     db: AsyncSession,
     recipe_id: int,
     recipe: dict[str, Any],
+    user_confirmed: Optional[bool] = None,
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Update an existing recipe (full replacement of fields + children).
@@ -816,6 +840,9 @@ async def update_recipe(
 
     if not recipe:
         return {"error": "Recipe data is required"}
+
+    if user_confirmed is not True:
+        return _confirmation_required_response("update")
 
     stmt = select(Recipe).options(
         selectinload(Recipe.fermentables),

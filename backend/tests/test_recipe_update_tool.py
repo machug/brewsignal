@@ -36,6 +36,7 @@ async def saved_recipe(test_db: AsyncSession) -> dict:
                 {"name": "US-05", "producer": "Fermentis", "attenuation": 77},
             ],
         },
+        user_confirmed=True,
         user_id="test-user",
     )
     assert result.get("success") is True, result
@@ -60,6 +61,7 @@ class TestUpdateRecipeTool:
                           "time_minutes": 60, "use": "boil", "alpha_acid": 6.0}],
                 "cultures": [{"name": "US-05"}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         assert result.get("success") is True, result
@@ -82,6 +84,7 @@ class TestUpdateRecipeTool:
                           "time_minutes": 60, "use": "boil", "alpha_acid": 6.0}],
                 "cultures": [{"name": "US-05"}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         recipe = (
@@ -110,6 +113,7 @@ class TestUpdateRecipeTool:
                 ],
                 "cultures": [{"name": "S-04"}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         recipe = (
@@ -143,6 +147,7 @@ class TestUpdateRecipeTool:
                           "time_minutes": 60, "use": "boil", "alpha_acid": 14.0}],
                 "cultures": [{"name": "US-05", "attenuation": 77}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         assert result["og"] > saved_recipe["og"], (
@@ -162,6 +167,7 @@ class TestUpdateRecipeTool:
                           "use": "boil", "alpha_acid": 6}],
                 "cultures": [{"name": "US-05"}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         assert "error" in result
@@ -183,6 +189,7 @@ class TestUpdateRecipeTool:
                           "use": "boil", "alpha_acid": 4.0}],
                 "cultures": [{"name": "US-05"}],
             },
+            user_confirmed=True,
             user_id="test-user",
         )
         hops = (

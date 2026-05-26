@@ -612,7 +612,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_recipe",
-            "description": "Save a recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these.",
+            "description": "Save a NEW recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe_narrative on the candidate, (b) summarized it back to the user, and (c) received an explicit yes ('save it', 'yes, save', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -674,6 +674,10 @@ TOOL_DEFINITIONS = [
                     "name_override": {
                         "type": "string",
                         "description": "Optional name to use instead of the name in the recipe object"
+                    },
+                    "user_confirmed": {
+                        "type": "boolean",
+                        "description": "Set to true ONLY after the user has explicitly agreed to save this recipe in this conversation. Defaults to false; calling without true returns a no-op with guidance to ask the user first."
                     }
                 },
                 "required": ["recipe"]
@@ -684,7 +688,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "update_recipe",
-            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients.",
+            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe_narrative on the candidate edit, (b) summarized the change back to the user, and (c) received an explicit yes ('update it', 'yes apply', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -743,6 +747,10 @@ TOOL_DEFINITIONS = [
                             "mash_time": {"type": "number"}
                         },
                         "required": ["name"]
+                    },
+                    "user_confirmed": {
+                        "type": "boolean",
+                        "description": "Set to true ONLY after the user has explicitly agreed to apply this update in this conversation. Defaults to false; calling without true returns a no-op with guidance to ask the user first."
                     }
                 },
                 "required": ["recipe_id", "recipe"]

@@ -41,7 +41,8 @@ from .recipe import (
     calculate_recipe_stats,
     save_recipe,
     update_recipe,
-    review_recipe_narrative,
+    review_recipe,
+    review_recipe_narrative,  # back-compat alias for review_recipe
     review_recipe_style,
     get_recipe,
     list_recipes,
@@ -612,7 +613,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "save_recipe",
-            "description": "Save a NEW recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe_narrative on the candidate, (b) summarized it back to the user, and (c) received an explicit yes ('save it', 'yes, save', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
+            "description": "Save a NEW recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe on the candidate, (b) summarized it back to the user, and (c) received an explicit yes ('save it', 'yes, save', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -622,7 +623,7 @@ TOOL_DEFINITIONS = [
                         "properties": {
                             "name": {"type": "string", "description": "Recipe name"},
                             "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"], "description": "Brewing METHOD — not the BJCP style. Use 'style' for the BJCP name."},
-                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA', 'Czech Premium Pale Lager'). Server resolves to a BJCP Style row and sets recipe.style_id. Required for review_recipe_narrative and the recipe-detail style review to find the target. Use search_styles first if unsure of the exact name."},
+                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA', 'Czech Premium Pale Lager'). Server resolves to a BJCP Style row and sets recipe.style_id. Required for review_recipe and the recipe-detail style review to find the target. Use search_styles first if unsure of the exact name."},
                             "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
                             "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
                             "fermentables": {
@@ -689,7 +690,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "update_recipe",
-            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe_narrative on the candidate edit, (b) summarized the change back to the user, and (c) received an explicit yes ('update it', 'yes apply', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
+            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) run review_recipe on the candidate edit, (b) summarized the change back to the user, and (c) received an explicit yes ('update it', 'yes apply', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -762,8 +763,8 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "review_recipe_narrative",
-            "description": "PRIMARY recipe review tool. Run this whenever the user asks to 'review', 'critique', 'check', 'look at', or get feedback on a recipe — including phrases like 'style review', 'recipe review', 'does this fit the style', 'what do you think'. Returns a friendly BJCP-judge-style written review with Style Fit Score (X/10), Good Stuff, Heads Up, Quick Fixes, and Final Thoughts. Always prefer this over review_recipe_style for any qualitative review request — review_recipe_style is only for follow-up numeric pass/fail data. Required call before save_recipe / update_recipe (see the review-then-confirm gate in the system prompt).",
+            "name": "review_recipe",
+            "description": "THE recipe review tool. Call this for ANY user request to 'review', 'critique', 'check', 'look at', or evaluate a recipe — including 'style review', 'recipe review', 'does this fit the style', 'what do you think'. Returns BOTH a friendly BJCP-judge written review AND the numeric compliance block (OG/FG/ABV/IBU/SRM in/out of range, style_fit_score on a 0-10 scale, issues, suggestions) in ONE response. Do not call review_recipe_style for a review — review_recipe already includes its data. Required call before save_recipe / update_recipe (see the review-then-confirm gate in the system prompt).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -780,7 +781,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "review_recipe_style",
-            "description": "NUMERIC stats compliance check only — NOT a recipe review. Returns OG/FG/ABV/IBU/SRM in/out of range vs the BJCP style with a style_fit_score on a 0-10 scale (10 = every stat in range). Do NOT call this when the user asks for a 'review' or 'style review' — use review_recipe_narrative for that. Only call review_recipe_style as a follow-up when the user explicitly wants hard pass/fail numbers, or alongside review_recipe_narrative for combined narrative + numeric output. Also exposes auto_fix to mechanically adjust batch size / hop amounts.",
+            "description": "ADVANCED: numeric stats compliance against a non-default style, or with auto_fix=true to mechanically adjust the recipe. Rarely needed — review_recipe already returns the same compliance block for the recipe's declared style. Use this ONLY when (a) the user wants to compare against a different BJCP style than the one assigned (pass style_id), or (b) they want auto_fix to attempt mechanical batch-size adjustments. For any plain 'review' / 'style review' request, call review_recipe instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1408,8 +1409,8 @@ async def execute_tool(
         return await save_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "update_recipe":
         return await update_recipe(db, user_id=user_id, **arguments)
-    elif tool_name == "review_recipe_narrative":
-        return await review_recipe_narrative(db, user_id=user_id, **arguments)
+    elif tool_name in ("review_recipe", "review_recipe_narrative"):
+        return await review_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":
         return await review_recipe_style(db, user_id=user_id, **arguments)
     # Ingredient reference library tools

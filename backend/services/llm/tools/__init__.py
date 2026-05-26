@@ -621,7 +621,8 @@ TOOL_DEFINITIONS = [
                         "description": "Recipe object with structured ingredient arrays. Stats (OG/FG/ABV/IBU/SRM) are auto-calculated from ingredients.",
                         "properties": {
                             "name": {"type": "string", "description": "Recipe name"},
-                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
+                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"], "description": "Brewing METHOD — not the BJCP style. Use 'style' for the BJCP name."},
+                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA', 'Czech Premium Pale Lager'). Server resolves to a BJCP Style row and sets recipe.style_id. Required for review_recipe_narrative and the recipe-detail style review to find the target. Use search_styles first if unsure of the exact name."},
                             "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
                             "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
                             "fermentables": {
@@ -701,7 +702,8 @@ TOOL_DEFINITIONS = [
                         "description": "Full updated recipe shape. Same structure as save_recipe's recipe arg. Anything you omit is removed (full replacement).",
                         "properties": {
                             "name": {"type": "string"},
-                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
+                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"], "description": "Brewing METHOD — not the BJCP style."},
+                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA'). Server resolves to BJCP Style row."},
                             "batch_size_liters": {"type": "number"},
                             "notes": {"type": "string"},
                             "fermentables": {
@@ -761,7 +763,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "review_recipe_narrative",
-            "description": "Run a written BJCP-style review of an existing recipe. Returns a friendly judge-style review covering style fit, what the recipe gets right, concerns, quick fixes, and an encouraging wrap-up. Use this when the user wants a qualitative review or before saving/updating a recipe to confirm it fits its declared style. Complements review_recipe_style (which returns numeric stats compliance) — call review_recipe_narrative for the conversational review, review_recipe_style for hard pass/fail on OG/FG/IBU/SRM/ABV ranges.",
+            "description": "PRIMARY recipe review tool. Run this whenever the user asks to 'review', 'critique', 'check', 'look at', or get feedback on a recipe — including phrases like 'style review', 'recipe review', 'does this fit the style', 'what do you think'. Returns a friendly BJCP-judge-style written review with Style Fit Score (X/10), Good Stuff, Heads Up, Quick Fixes, and Final Thoughts. Always prefer this over review_recipe_style for any qualitative review request — review_recipe_style is only for follow-up numeric pass/fail data. Required call before save_recipe / update_recipe (see the review-then-confirm gate in the system prompt).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -778,7 +780,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "review_recipe_style",
-            "description": "Review a recipe against BJCP style guidelines. Returns detailed compliance analysis showing which stats are in/out of range, suggestions for fixes, and optionally applies automatic corrections. Use this when checking if a recipe fits its target style or when the user wants style compliance verification.",
+            "description": "NUMERIC stats compliance check only — NOT a recipe review. Returns OG/FG/ABV/IBU/SRM in/out of range vs the BJCP style with a style_fit_score on a 0-10 scale (10 = every stat in range). Do NOT call this when the user asks for a 'review' or 'style review' — use review_recipe_narrative for that. Only call review_recipe_style as a follow-up when the user explicitly wants hard pass/fail numbers, or alongside review_recipe_narrative for combined narrative + numeric output. Also exposes auto_fix to mechanically adjust batch size / hop amounts.",
             "parameters": {
                 "type": "object",
                 "properties": {

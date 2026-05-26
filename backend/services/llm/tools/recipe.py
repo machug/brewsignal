@@ -2,14 +2,19 @@
 
 import logging
 import math
+from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import or_, select
+import prompty
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
+from backend.services.llm.service import get_llm_service
+
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 logger = logging.getLogger(__name__)
 
@@ -918,6 +923,162 @@ async def update_recipe(
         await db.rollback()
         logger.exception(f"Failed to update recipe {recipe_id}: {e}")
         return {"error": f"Failed to update recipe: {str(e)}"}
+
+
+def _format_fermentables_for_review(fermentables) -> str:
+    """Build the grain-bill summary string for the review prompt."""
+    if not fermentables:
+        return "No fermentables specified"
+
+    total_kg = sum(f.amount_kg for f in fermentables if f.amount_kg)
+    lines = []
+    for f in sorted(fermentables, key=lambda x: x.amount_kg or 0, reverse=True):
+        amount = f.amount_kg or 0
+        pct = (amount / total_kg * 100) if total_kg > 0 else 0
+        color_str = f" ({f.color_srm:.0f} SRM)" if f.color_srm else ""
+        lines.append(f"- {f.name}: {amount:.2f} kg ({pct:.0f}%){color_str}")
+    return "\n".join(lines)
+
+
+def _format_hops_for_review(hops) -> str:
+    """Build the hop-schedule summary string for the review prompt."""
+    if not hops:
+        return "No hops specified"
+
+    def _time(h):
+        return h.time_min if h.time_min is not None else 0
+
+    lines = []
+    for h in sorted(hops, key=_time, reverse=True):
+        use = (h.use or "boil").lower()
+        aa = h.alpha_acid_percent
+        aa_str = f" ({aa:.1f}% AA)" if aa else ""
+        t = _time(h)
+        if "dry" in use:
+            timing = "dry hop"
+        elif "whirlpool" in use:
+            timing = "whirlpool"
+        elif t == 0:
+            timing = "flameout"
+        else:
+            timing = f"{t:.0f} min"
+        lines.append(f"- {h.name}: {h.amount_grams:.0f}g @ {timing}{aa_str}")
+    return "\n".join(lines)
+
+
+def _format_yeast_for_review(cultures) -> str:
+    """Build the yeast summary string for the review prompt."""
+    if not cultures:
+        return "No yeast specified"
+    c = cultures[0]
+    parts = [c.name]
+    if c.producer:
+        parts.append(f"by {c.producer}")
+    atten = getattr(c, "attenuation_percent", None) or getattr(
+        c, "attenuation_min_percent", None
+    )
+    if atten:
+        parts.append(f"({atten:.0f}% attenuation)")
+    return " ".join(parts)
+
+
+async def _load_style_guidelines(
+    db: AsyncSession, style: Optional[Style]
+) -> tuple[bool, str, str]:
+    """Build BJCP guidelines string from a Style ORM object.
+
+    Returns (found, style_name, guidelines_text).
+    """
+    if not style:
+        return False, "", ""
+
+    lines = [f"**{style.name}** (BJCP {style.category_number}{style.style_letter or ''})"]
+    if style.description:
+        lines.append(f"\n**Description:** {style.description}")
+
+    stats = []
+    if style.og_min and style.og_max:
+        stats.append(f"OG: {style.og_min:.3f}-{style.og_max:.3f}")
+    if style.fg_min and style.fg_max:
+        stats.append(f"FG: {style.fg_min:.3f}-{style.fg_max:.3f}")
+    if style.abv_min and style.abv_max:
+        stats.append(f"ABV: {style.abv_min:.1f}-{style.abv_max:.1f}%")
+    if style.ibu_min and style.ibu_max:
+        stats.append(f"IBU: {int(style.ibu_min)}-{int(style.ibu_max)}")
+    if style.srm_min and style.srm_max:
+        stats.append(f"SRM: {style.srm_min:.0f}-{style.srm_max:.0f}")
+    if stats:
+        lines.append(f"\n**Vital Statistics:** {', '.join(stats)}")
+    if style.comments:
+        lines.append(f"\n**Comments:** {style.comments}")
+
+    return True, style.name, "\n".join(lines)
+
+
+async def review_recipe_narrative(
+    db: AsyncSession,
+    recipe_id: int,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Run the BJCP narrative recipe review using the recipe-review prompty.
+
+    Loads the recipe (with style + ingredients), renders the
+    recipe-review.prompty template with the recipe's stats and ingredient
+    summaries, and calls the LLM service to produce a written review.
+    """
+    stmt = select(Recipe).options(
+        selectinload(Recipe.style),
+        selectinload(Recipe.fermentables),
+        selectinload(Recipe.hops),
+        selectinload(Recipe.cultures),
+    ).where(Recipe.id == recipe_id)
+
+    settings = get_settings()
+    if not settings.is_local and user_id:
+        stmt = stmt.where(Recipe.user_id == user_id)
+
+    result = await db.execute(stmt)
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        return {"error": f"Recipe with ID {recipe_id} not found"}
+
+    service = get_llm_service()
+    if service is None or not service.config.is_configured():
+        return {"error": "AI assistant is not configured. Enable it in Settings."}
+
+    style_found, style_name, style_guidelines = await _load_style_guidelines(
+        db, recipe.style
+    )
+
+    try:
+        prompt_path = PROMPTS_DIR / "recipe-review.prompty"
+        p = prompty.load(str(prompt_path))
+        rendered = prompty.prepare(p, inputs={
+            "recipe_name": recipe.name or "Untitled Recipe",
+            "style_name": style_name if style_found else (
+                recipe.style.name if recipe.style else "Unknown"
+            ),
+            "og": recipe.og or 0,
+            "fg": recipe.fg or 0,
+            "abv": recipe.abv or 0,
+            "ibu": recipe.ibu or 0,
+            "color_srm": recipe.color_srm or 0,
+            "fermentables_summary": _format_fermentables_for_review(recipe.fermentables),
+            "hops_summary": _format_hops_for_review(recipe.hops),
+            "yeast_info": _format_yeast_for_review(recipe.cultures),
+            "style_guidelines": style_guidelines if style_found else "",
+        })
+
+        review = await service.chat(messages=rendered, temperature=0.5)
+        return {
+            "review": review,
+            "style_found": style_found,
+            "style_name": style_name if style_found else None,
+            "model": service.config.effective_model,
+        }
+    except Exception as e:
+        logger.exception(f"Recipe review failed for recipe {recipe_id}: {e}")
+        return {"error": f"Recipe review failed: {str(e)}"}
 
 
 async def review_recipe_style(

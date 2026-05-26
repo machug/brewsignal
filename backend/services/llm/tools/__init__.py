@@ -41,6 +41,7 @@ from .recipe import (
     calculate_recipe_stats,
     save_recipe,
     update_recipe,
+    review_recipe_narrative,
     review_recipe_style,
     get_recipe,
     list_recipes,
@@ -751,6 +752,23 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "review_recipe_narrative",
+            "description": "Run a written BJCP-style review of an existing recipe. Returns a friendly judge-style review covering style fit, what the recipe gets right, concerns, quick fixes, and an encouraging wrap-up. Use this when the user wants a qualitative review or before saving/updating a recipe to confirm it fits its declared style. Complements review_recipe_style (which returns numeric stats compliance) — call review_recipe_narrative for the conversational review, review_recipe_style for hard pass/fail on OG/FG/IBU/SRM/ABV ranges.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {
+                        "type": "integer",
+                        "description": "ID of the existing recipe to review."
+                    }
+                },
+                "required": ["recipe_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "review_recipe_style",
             "description": "Review a recipe against BJCP style guidelines. Returns detailed compliance analysis showing which stats are in/out of range, suggestions for fixes, and optionally applies automatic corrections. Use this when checking if a recipe fits its target style or when the user wants style compliance verification.",
             "parameters": {
@@ -1380,6 +1398,8 @@ async def execute_tool(
         return await save_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "update_recipe":
         return await update_recipe(db, user_id=user_id, **arguments)
+    elif tool_name == "review_recipe_narrative":
+        return await review_recipe_narrative(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":
         return await review_recipe_style(db, user_id=user_id, **arguments)
     # Ingredient reference library tools

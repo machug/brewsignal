@@ -69,30 +69,37 @@ def _get_embedder_config(llm_config: LLMConfig) -> Optional[dict]:
             }
         }
 
-    # For OpenRouter, use their embeddings endpoint (OpenAI-compatible)
+    # OpenRouter exposes /api/v1/embeddings and includes
+    # openai/text-embedding-3-small in its catalogue. The previous code
+    # passed the bare "text-embedding-3-small" model id; OpenRouter requires
+    # the provider-prefixed form ("openai/text-embedding-3-small"), which
+    # is why the call fell through to a web-auth path ("No cookie auth
+    # credentials found, code:401"). mem0's openai embedder respects the
+    # api_key and openai_base_url config fields, so embeddings work directly
+    # — the chat (LLM) side needs the env-var fix in get_memory (see there).
     provider = llm_config._provider_str()
     if provider == "openrouter" and llm_config.api_key:
         return {
             "provider": "openai",
             "config": {
-                "model": "text-embedding-3-small",  # OpenRouter routes to OpenAI
+                "model": "openai/text-embedding-3-small",
                 "api_key": llm_config.api_key.get_secret_value(),
                 "openai_base_url": "https://openrouter.ai/api/v1",
             }
         }
 
-    # For Anthropic or other providers without embeddings, try to use OpenAI if available
     if provider == "anthropic":
         logger.warning(
-            "Anthropic doesn't provide embeddings. Set OPENAI_API_KEY for memory search. "
-            "Memory features disabled without embeddings."
+            "Anthropic doesn't provide embeddings. Set OPENAI_API_KEY for "
+            "memory features. Memory disabled."
         )
         return None
 
-    # No embedder available - memory features won't work
     logger.warning(
-        f"No embedding API available for provider '{provider}'. "
-        "Set OPENAI_API_KEY or use OpenRouter for memory features."
+        "No embedding API available for provider '%s'. Set OPENAI_API_KEY "
+        "or switch chat provider to OpenRouter for memory features. "
+        "Memory disabled.",
+        provider,
     )
     return None
 
@@ -126,12 +133,63 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
         "llm": llm_provider,
     }
 
-    # Add embedder if available
+    # Embedder is required — without it mem0 falls back to a default OpenAI
+    # config that 401s when no OPENAI_API_KEY is set. Better to disable
+    # memory cleanly than to let mem0 generate noisy auth errors on every
+    # turn.
     embedder = _get_embedder_config(llm_config)
-    if embedder:
-        config["embedder"] = embedder
+    if not embedder:
+        return None
+    config["embedder"] = embedder
 
     return config
+
+
+_PROVIDER_ENV_VARS: dict[str, str] = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "huggingface": "HUGGINGFACE_API_KEY",
+}
+
+# Track env vars THIS process seeded from the LLMConfig, so rotating the
+# key in AI Assistant settings updates them on the next memory init.
+# Vars that were already set before we touched them are treated as
+# operator-managed and left alone.
+_APP_SEEDED_PROVIDER_ENV: set[str] = set()
+
+
+def _seed_provider_env(llm_config: LLMConfig) -> None:
+    """Export the chat provider's API key to the env var LiteLLM expects.
+
+    Workaround for a mem0 limitation: mem0.llms.litellm.LiteLLM drops
+    config.api_key when calling litellm.completion(). LiteLLM then reads
+    the provider's env var (e.g. OPENROUTER_API_KEY) for auth. If that
+    var isn't set the request goes auth-less and 401s.
+
+    Update semantics:
+      - If the env var was set before we touched it, leave it alone
+        (operator-managed, e.g. systemd EnvironmentFile).
+      - If we previously seeded it, refresh from the current LLMConfig
+        so a rotated key in AI Assistant settings actually reaches mem0.
+    """
+    if not llm_config.api_key:
+        return
+    env_var = _PROVIDER_ENV_VARS.get(llm_config._provider_str())
+    if not env_var:
+        return
+    current = os.getenv(env_var)
+    if current is not None and env_var not in _APP_SEEDED_PROVIDER_ENV:
+        # Operator-set; respect it.
+        return
+    new_value = llm_config.api_key.get_secret_value()
+    if current == new_value:
+        return
+    os.environ[env_var] = new_value
+    _APP_SEEDED_PROVIDER_ENV.add(env_var)
 
 
 def get_memory(llm_config: Optional[LLMConfig] = None):
@@ -168,6 +226,15 @@ def get_memory(llm_config: Optional[LLMConfig] = None):
         config = get_memory_config(llm_config)
         if config is None:
             return None
+
+        # mem0's LiteLLM wrapper (used for chat / memory extraction) drops
+        # the api_key from its config and only honors provider-specific env
+        # vars (OPENROUTER_API_KEY, OPENAI_API_KEY, etc.). Without this,
+        # mem0's chat call to OpenRouter hits the endpoint with no auth
+        # header and OpenRouter falls back to a web-cookie path responding
+        # 'No cookie auth credentials found' on every memory add. Re-export
+        # the configured key to the matching env var so LiteLLM picks it up.
+        _seed_provider_env(llm_config)
 
         _memory_instance = Memory.from_config(config)
         _memory_config_hash = new_hash

@@ -463,7 +463,7 @@ async def _summarize_thread_title(
                 "model": fast_model,
                 "messages": rendered,
                 "temperature": 0.3,
-                "max_tokens": 30,
+                "max_tokens": 60,
                 "api_base": hailo_url,
             }
             logger.info(f"Summarizing thread {thread_id} title with hailo lite LLM")
@@ -475,7 +475,7 @@ async def _summarize_thread_title(
                 "model": fast_model,
                 "messages": rendered,
                 "temperature": 0.3,
-                "max_tokens": 30,
+                "max_tokens": 60,
             }
             if config.api_key:
                 kwargs["api_key"] = config.api_key.get_secret_value()

@@ -97,7 +97,7 @@ class TestReviewRecipeNarrativeTool:
         mock_service.config.is_configured.return_value = True
 
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=mock_service,
         ):
             result = await review_recipe_narrative(
@@ -129,7 +129,7 @@ class TestReviewRecipeNarrativeTool:
         mock_service.config.is_configured.return_value = True
 
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=mock_service,
         ):
             await review_recipe_narrative(
@@ -157,7 +157,7 @@ class TestReviewRecipeNarrativeTool:
         mock_service.config.is_configured.return_value = True
 
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=mock_service,
         ):
             result = await review_recipe_narrative(
@@ -175,7 +175,7 @@ class TestReviewRecipeNarrativeTool:
         mock_service = MagicMock()
         mock_service.config.is_configured.return_value = True
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=mock_service,
         ):
             result = await review_recipe_narrative(
@@ -191,7 +191,7 @@ class TestReviewRecipeNarrativeTool:
         mock_service = MagicMock()
         mock_service.config.is_configured.return_value = False
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=mock_service,
         ):
             result = await review_recipe_narrative(

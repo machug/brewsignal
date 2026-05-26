@@ -702,6 +702,41 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _resolve_style_id(
+    db: AsyncSession, style_name: Optional[str]
+) -> Optional[str]:
+    """Look up a BJCP style by name (exact then case-insensitive then fuzzy).
+
+    Returns Style.id when found, None otherwise. Used by save_recipe and
+    update_recipe to wire the LLM's free-text "style" field to the styles
+    table so review tools and the detail page can find the target style.
+    """
+    if not style_name or not isinstance(style_name, str):
+        return None
+    name = style_name.strip()
+    if not name:
+        return None
+
+    # .limit(1) + order keeps lookup deterministic when the styles table has
+    # duplicate names across BJCP guide versions or imported rows.
+    result = await db.execute(
+        select(Style)
+        .where(func.lower(Style.name) == name.lower())
+        .order_by(Style.guide.desc(), Style.id)
+        .limit(1)
+    )
+    style = result.scalar_one_or_none()
+    if not style:
+        result = await db.execute(
+            select(Style)
+            .where(Style.name.ilike(f"%{name}%"))
+            .order_by(Style.guide.desc(), Style.id)
+            .limit(1)
+        )
+        style = result.scalar_one_or_none()
+    return style.id if style else None
+
+
 _CONFIRMATION_GUIDANCE = (
     "Do not persist this recipe yet. Required workflow: "
     "(1) run review_recipe_narrative on the candidate (save it to a draft first "
@@ -766,6 +801,11 @@ async def save_recipe(
         # Use the RecipeSerializer to convert BeerJSON to SQLAlchemy model
         serializer = RecipeSerializer()
         db_recipe = await serializer.serialize(normalized, db)
+
+        # Resolve free-text "style" (e.g. "American IPA") to a BJCP Style row.
+        style_id = await _resolve_style_id(db, recipe.get("style"))
+        if style_id:
+            db_recipe.style_id = style_id
 
         # Set user_id for multi-tenant isolation
         if user_id:
@@ -900,6 +940,11 @@ async def update_recipe(
             existing.author = normalized["author"]
         if "notes" in normalized:
             existing.notes = normalized["notes"]
+        # Resolve free-text "style" to BJCP Style row (None on miss leaves
+        # style_id unchanged is wrong — explicit no-style intent should clear it.
+        # When the payload omits "style", leave existing.style_id alone.)
+        if "style" in recipe:
+            existing.style_id = await _resolve_style_id(db, recipe.get("style"))
         serializer._extract_recipe_vitals(existing, normalized)
         serializer._extract_boil_info(existing, normalized)
         serializer._extract_efficiency(existing, normalized)
@@ -1238,6 +1283,7 @@ async def review_recipe_style(
             "guide": target_style.guide,
         },
         "style_fit_score": score,
+        "style_fit_score_scale": "0-10 (10 = every stat in range)",
         "compliance": compliance,
         "issues": issues,
         "suggestions": suggestions,

@@ -40,6 +40,7 @@ from .recipe import (
     normalize_recipe_to_beerjson,
     calculate_recipe_stats,
     save_recipe,
+    update_recipe,
     review_recipe_style,
     get_recipe,
     list_recipes,
@@ -681,6 +682,75 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "update_recipe",
+            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {
+                        "type": "integer",
+                        "description": "ID of the existing recipe to update."
+                    },
+                    "recipe": {
+                        "type": "object",
+                        "description": "Full updated recipe shape. Same structure as save_recipe's recipe arg. Anything you omit is removed (full replacement).",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"]},
+                            "batch_size_liters": {"type": "number"},
+                            "notes": {"type": "string"},
+                            "fermentables": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "amount_kg": {"type": "number"},
+                                        "color_srm": {"type": "number"}
+                                    },
+                                    "required": ["name", "amount_kg"]
+                                }
+                            },
+                            "hops": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "amount_g": {"type": "number"},
+                                        "time_minutes": {"type": "number"},
+                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool"]},
+                                        "alpha_acid": {"type": "number"}
+                                    },
+                                    "required": ["name", "amount_g", "time_minutes"]
+                                }
+                            },
+                            "cultures": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "producer": {"type": "string"},
+                                        "product_id": {"type": "string"},
+                                        "attenuation": {"type": "number"}
+                                    },
+                                    "required": ["name"]
+                                }
+                            },
+                            "mash_temp": {"type": "number"},
+                            "mash_time": {"type": "number"}
+                        },
+                        "required": ["name"]
+                    }
+                },
+                "required": ["recipe_id", "recipe"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "review_recipe_style",
             "description": "Review a recipe against BJCP style guidelines. Returns detailed compliance analysis showing which stats are in/out of range, suggestions for fixes, and optionally applies automatic corrections. Use this when checking if a recipe fits its target style or when the user wants style compliance verification.",
             "parameters": {
@@ -1308,6 +1378,8 @@ async def execute_tool(
         return await list_recipes(db, user_id=user_id, **arguments)
     elif tool_name == "save_recipe":
         return await save_recipe(db, user_id=user_id, **arguments)
+    elif tool_name == "update_recipe":
+        return await update_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":
         return await review_recipe_style(db, user_id=user_id, **arguments)
     # Ingredient reference library tools

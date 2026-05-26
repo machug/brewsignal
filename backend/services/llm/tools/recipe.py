@@ -739,7 +739,7 @@ async def _resolve_style_id(
 
 _CONFIRMATION_GUIDANCE = (
     "Do not persist this recipe yet. Required workflow: "
-    "(1) run review_recipe_narrative on the candidate (save it to a draft first "
+    "(1) run review_recipe on the candidate (save it to a draft first "
     "if it has no id yet, or summarize it back to the user for review); "
     "(2) explicitly ask the user to confirm — e.g. 'Save this recipe?' or "
     "'Apply these changes to recipe N?'; "
@@ -1087,16 +1087,95 @@ async def _load_style_guidelines(
     return True, style.name, "\n".join(lines)
 
 
-async def review_recipe_narrative(
+def _compute_style_compliance(recipe: Recipe, target_style: Style) -> dict[str, Any]:
+    """Compute OG/FG/ABV/IBU/SRM compliance for a recipe vs a BJCP style.
+
+    Returns a dict with keys: compliance, issues, suggestions, style_fit_score,
+    style_fit_score_scale, overall_status, current_stats.
+    """
+    from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
+
+    current_stats = brewing_calculate_stats(recipe)
+    compliance: dict[str, Any] = {}
+    issues: list[str] = []
+    suggestions: list[str] = []
+
+    def check_range(stat_name, value, min_val, max_val, unit=""):
+        r = {
+            "value": value, "min": min_val, "max": max_val,
+            "unit": unit, "status": "unknown",
+        }
+        if min_val is None or max_val is None:
+            r["status"] = "no_guideline"
+            return r
+        if value < min_val:
+            r["status"] = "below"
+            r["deviation"] = round(min_val - value, 3)
+            issues.append(f"{stat_name} ({value}{unit}) is below style minimum ({min_val}{unit})")
+        elif value > max_val:
+            r["status"] = "above"
+            r["deviation"] = round(value - max_val, 3)
+            issues.append(f"{stat_name} ({value}{unit}) is above style maximum ({max_val}{unit})")
+        else:
+            r["status"] = "in_range"
+        return r
+
+    compliance["og"] = check_range("OG", current_stats["og"], target_style.og_min, target_style.og_max)
+    compliance["fg"] = check_range("FG", current_stats["fg"], target_style.fg_min, target_style.fg_max)
+    compliance["abv"] = check_range("ABV", current_stats["abv"], target_style.abv_min, target_style.abv_max, "%")
+    compliance["ibu"] = check_range("IBU", current_stats["ibu"], target_style.ibu_min, target_style.ibu_max)
+    compliance["srm"] = check_range("SRM", current_stats["color_srm"], target_style.srm_min, target_style.srm_max)
+
+    stats_checked = [c for c in compliance.values() if c["status"] != "no_guideline"]
+    in_range_count = sum(1 for c in stats_checked if c["status"] == "in_range")
+    score = round((in_range_count / len(stats_checked)) * 10, 1) if stats_checked else 0
+
+    if compliance["og"]["status"] == "below":
+        suggestions.append("Increase grain bill to raise OG, or reduce batch size")
+    elif compliance["og"]["status"] == "above":
+        suggestions.append("Reduce grain bill to lower OG, or increase batch size")
+    if compliance["ibu"]["status"] == "below":
+        suggestions.append("Add more bittering hops or increase boil time to raise IBU")
+    elif compliance["ibu"]["status"] == "above":
+        suggestions.append("Reduce hop amounts or boil times to lower IBU")
+    if compliance["srm"]["status"] == "below":
+        suggestions.append("Add specialty malts (crystal, caramel) to increase color")
+    elif compliance["srm"]["status"] == "above":
+        suggestions.append("Reduce colored malts or substitute lighter base malts")
+    if (
+        compliance["abv"]["status"] == "below"
+        and compliance["og"]["status"] == "in_range"
+    ):
+        suggestions.append("Use a higher-attenuating yeast to increase ABV")
+    elif (
+        compliance["abv"]["status"] == "above"
+        and compliance["og"]["status"] == "in_range"
+    ):
+        suggestions.append("Use a lower-attenuating yeast to reduce ABV")
+
+    return {
+        "compliance": compliance,
+        "issues": issues,
+        "suggestions": suggestions,
+        "style_fit_score": score,
+        "style_fit_score_scale": "0-10 (10 = every stat in range)",
+        "overall_status": "in_style" if not issues else "needs_adjustment",
+        "current_stats": current_stats,
+    }
+
+
+async def review_recipe(
     db: AsyncSession,
     recipe_id: int,
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Run the BJCP narrative recipe review using the recipe-review prompty.
+    """Run the BJCP recipe review — returns BOTH the narrative review text
+    and the numeric style compliance block in one call.
 
-    Loads the recipe (with style + ingredients), renders the
-    recipe-review.prompty template with the recipe's stats and ingredient
-    summaries, and calls the LLM service to produce a written review.
+    This is the primary recipe-review tool. The LLM should call this whenever
+    the user asks for a "review", "critique", "check", or "style review" on a
+    recipe. The advanced review_recipe_style tool is rarely needed since the
+    compliance block here covers the same numeric data.
     """
     stmt = select(Recipe).options(
         selectinload(Recipe.style),
@@ -1122,6 +1201,25 @@ async def review_recipe_narrative(
         db, recipe.style
     )
 
+    # Compute compliance first (when there's a style) so the narrative prompt
+    # and the bundled compliance block use the SAME recalculated stats.
+    # Otherwise stored recipe.og/fg/etc — which may be null or stale for
+    # imported recipes — would feed the narrative while the compliance block
+    # used freshly-calculated values, producing a self-contradicting response.
+    compliance_block: Optional[dict[str, Any]] = None
+    if recipe.style is not None:
+        compliance_block = _compute_style_compliance(recipe, recipe.style)
+        stats = compliance_block["current_stats"]
+    else:
+        from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
+        stats = brewing_calculate_stats(recipe) if (recipe.fermentables or recipe.hops) else {
+            "og": recipe.og or 0,
+            "fg": recipe.fg or 0,
+            "abv": recipe.abv or 0,
+            "ibu": recipe.ibu or 0,
+            "color_srm": recipe.color_srm or 0,
+        }
+
     try:
         prompt_path = PROMPTS_DIR / "recipe-review.prompty"
         p = prompty.load(str(prompt_path))
@@ -1130,27 +1228,44 @@ async def review_recipe_narrative(
             "style_name": style_name if style_found else (
                 recipe.style.name if recipe.style else "Unknown"
             ),
-            "og": recipe.og or 0,
-            "fg": recipe.fg or 0,
-            "abv": recipe.abv or 0,
-            "ibu": recipe.ibu or 0,
-            "color_srm": recipe.color_srm or 0,
+            "og": stats["og"],
+            "fg": stats["fg"],
+            "abv": stats["abv"],
+            "ibu": stats["ibu"],
+            "color_srm": stats["color_srm"],
             "fermentables_summary": _format_fermentables_for_review(recipe.fermentables),
             "hops_summary": _format_hops_for_review(recipe.hops),
             "yeast_info": _format_yeast_for_review(recipe.cultures),
             "style_guidelines": style_guidelines if style_found else "",
         })
 
-        review = await service.chat(messages=rendered, temperature=0.5)
-        return {
-            "review": review,
+        review_text = await service.chat(messages=rendered, temperature=0.5)
+
+        response: dict[str, Any] = {
+            "review": review_text,
             "style_found": style_found,
             "style_name": style_name if style_found else None,
             "model": service.config.effective_model,
         }
+
+        if compliance_block is not None:
+            response.update(compliance_block)
+            response["target_style"] = {
+                "id": recipe.style.id,
+                "name": recipe.style.name,
+                "category": recipe.style.category,
+                "guide": recipe.style.guide,
+            }
+
+        return response
     except Exception as e:
         logger.exception(f"Recipe review failed for recipe {recipe_id}: {e}")
         return {"error": f"Recipe review failed: {str(e)}"}
+
+
+# Backwards-compatible alias for older callers / tests. New code should use
+# review_recipe.
+review_recipe_narrative = review_recipe
 
 
 async def review_recipe_style(
@@ -1201,78 +1316,11 @@ async def review_recipe_style(
             "hint": "Use search_styles to find available BJCP styles."
         }
 
-    # Recalculate current stats from ingredients
-    current_stats = brewing_calculate_stats(recipe)
+    compliance_block = _compute_style_compliance(recipe, target_style)
+    current_stats = compliance_block["current_stats"]
+    compliance = compliance_block["compliance"]
+    issues = compliance_block["issues"]
 
-    # Compare against style guidelines
-    compliance = {}
-    issues = []
-    suggestions = []
-
-    def check_range(stat_name: str, value: float, min_val: Optional[float], max_val: Optional[float], unit: str = ""):
-        """Check if a value is within range and return compliance info."""
-        result = {
-            "value": value,
-            "min": min_val,
-            "max": max_val,
-            "unit": unit,
-            "status": "unknown"
-        }
-
-        if min_val is None or max_val is None:
-            result["status"] = "no_guideline"
-            return result
-
-        if value < min_val:
-            result["status"] = "below"
-            result["deviation"] = round(min_val - value, 3)
-            issues.append(f"{stat_name} ({value}{unit}) is below style minimum ({min_val}{unit})")
-        elif value > max_val:
-            result["status"] = "above"
-            result["deviation"] = round(value - max_val, 3)
-            issues.append(f"{stat_name} ({value}{unit}) is above style maximum ({max_val}{unit})")
-        else:
-            result["status"] = "in_range"
-
-        return result
-
-    # Check each stat
-    compliance["og"] = check_range("OG", current_stats["og"], target_style.og_min, target_style.og_max)
-    compliance["fg"] = check_range("FG", current_stats["fg"], target_style.fg_min, target_style.fg_max)
-    compliance["abv"] = check_range("ABV", current_stats["abv"], target_style.abv_min, target_style.abv_max, "%")
-    compliance["ibu"] = check_range("IBU", current_stats["ibu"], target_style.ibu_min, target_style.ibu_max)
-    compliance["srm"] = check_range("SRM", current_stats["color_srm"], target_style.srm_min, target_style.srm_max)
-
-    # Calculate compliance score
-    stats_checked = [c for c in compliance.values() if c["status"] != "no_guideline"]
-    in_range_count = sum(1 for c in stats_checked if c["status"] == "in_range")
-    score = round((in_range_count / len(stats_checked)) * 10, 1) if stats_checked else 0
-
-    # Generate suggestions based on issues
-    if compliance["og"]["status"] == "below":
-        suggestions.append("Increase grain bill to raise OG, or reduce batch size")
-    elif compliance["og"]["status"] == "above":
-        suggestions.append("Reduce grain bill to lower OG, or increase batch size")
-
-    if compliance["ibu"]["status"] == "below":
-        suggestions.append("Add more bittering hops or increase boil time to raise IBU")
-    elif compliance["ibu"]["status"] == "above":
-        suggestions.append("Reduce hop amounts or boil times to lower IBU")
-
-    if compliance["srm"]["status"] == "below":
-        suggestions.append("Add specialty malts (crystal, caramel) to increase color")
-    elif compliance["srm"]["status"] == "above":
-        suggestions.append("Reduce colored malts or substitute lighter base malts")
-
-    if compliance["abv"]["status"] != "in_range" and compliance["og"]["status"] != "in_range":
-        # ABV follows OG, so the OG suggestion applies
-        pass
-    elif compliance["abv"]["status"] == "below" and compliance["og"]["status"] == "in_range":
-        suggestions.append("Use a higher-attenuating yeast to increase ABV")
-    elif compliance["abv"]["status"] == "above" and compliance["og"]["status"] == "in_range":
-        suggestions.append("Use a lower-attenuating yeast to reduce ABV")
-
-    # Build response
     response = {
         "recipe_id": recipe.id,
         "recipe_name": recipe.name,
@@ -1282,13 +1330,7 @@ async def review_recipe_style(
             "category": target_style.category,
             "guide": target_style.guide,
         },
-        "style_fit_score": score,
-        "style_fit_score_scale": "0-10 (10 = every stat in range)",
-        "compliance": compliance,
-        "issues": issues,
-        "suggestions": suggestions,
-        "overall_status": "in_style" if not issues else "needs_adjustment",
-        "current_stats": current_stats,
+        **compliance_block,
     }
 
     # Auto-fix if requested (limited scope - just update batch size for OG issues)

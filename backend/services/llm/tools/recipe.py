@@ -788,6 +788,138 @@ async def save_recipe(
         }
 
 
+async def update_recipe(
+    db: AsyncSession,
+    recipe_id: int,
+    recipe: dict[str, Any],
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Update an existing recipe (full replacement of fields + children).
+
+    Loads the recipe by id, validates ownership, normalizes the supplied
+    payload, recomputes OG/FG/ABV/IBU/SRM, replaces all child rows
+    (fermentables/hops/cultures/mash/fermentation steps) and commits.
+
+    Args:
+        recipe_id: ID of the existing recipe to update.
+        recipe: Same shape as save_recipe's recipe arg. Missing top-level
+            children are treated as "remove all" (full-replacement semantics);
+            callers wanting partial edits should fetch via get_recipe, merge,
+            then pass the merged shape.
+    """
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+
+    if not recipe:
+        return {"error": "Recipe data is required"}
+
+    stmt = select(Recipe).options(
+        selectinload(Recipe.fermentables),
+        selectinload(Recipe.hops),
+        selectinload(Recipe.cultures),
+        selectinload(Recipe.miscs),
+        selectinload(Recipe.mash_steps),
+        selectinload(Recipe.fermentation_steps),
+        selectinload(Recipe.water_profiles),
+        selectinload(Recipe.water_adjustments),
+    ).where(Recipe.id == recipe_id)
+
+    settings = get_settings()
+    if not settings.is_local and user_id:
+        stmt = stmt.where(Recipe.user_id == user_id)
+
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if not existing:
+        return {"error": f"Recipe with ID {recipe_id} not found"}
+
+    try:
+        # Preserve existing name if patch omits it.
+        if not recipe.get("name"):
+            recipe["name"] = existing.name
+
+        normalized = normalize_recipe_to_beerjson(recipe)
+        calculated = calculate_recipe_stats(normalized)
+
+        normalized["original_gravity"] = {"value": calculated["og"], "unit": "sg"}
+        normalized["final_gravity"] = {"value": calculated["fg"], "unit": "sg"}
+        normalized["alcohol_by_volume"] = {"value": calculated["abv"] / 100, "unit": "%"}
+        normalized["ibu_estimate"] = {"value": calculated["ibu"], "unit": "IBUs"}
+        normalized["color_estimate"] = {"value": calculated["color_srm"], "unit": "SRM"}
+
+        # Clear all children first so delete-orphan cascade removes the old
+        # rows in a flush before new rows go in.
+        existing.fermentables.clear()
+        existing.hops.clear()
+        existing.cultures.clear()
+        existing.miscs.clear()
+        existing.mash_steps.clear()
+        existing.fermentation_steps.clear()
+        existing.water_profiles.clear()
+        existing.water_adjustments.clear()
+        await db.flush()
+
+        # Apply scalar fields from normalized dict directly onto existing.
+        serializer = RecipeSerializer()
+        existing.name = normalized["name"]
+        if "type" in normalized:
+            existing.type = normalized["type"]
+        if "author" in normalized:
+            existing.author = normalized["author"]
+        if "notes" in normalized:
+            existing.notes = normalized["notes"]
+        serializer._extract_recipe_vitals(existing, normalized)
+        serializer._extract_boil_info(existing, normalized)
+        serializer._extract_efficiency(existing, normalized)
+        serializer._extract_carbonation(existing, normalized)
+
+        if "ingredients" in normalized:
+            serializer._serialize_ingredients(existing, normalized["ingredients"])
+        if "mash" in normalized:
+            serializer._serialize_mash(existing, normalized["mash"])
+        if "fermentation" in normalized:
+            serializer._serialize_fermentation(existing, normalized["fermentation"])
+        if "waters" in normalized:
+            serializer._serialize_water(existing, normalized["waters"])
+
+        await db.commit()
+
+        stmt = select(Recipe).options(
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        ).where(Recipe.id == recipe_id)
+        saved = (await db.execute(stmt)).scalar_one()
+
+        return {
+            "success": True,
+            "recipe_id": saved.id,
+            "name": saved.name,
+            "type": saved.type,
+            "batch_size_liters": saved.batch_size_liters,
+            "og": saved.og,
+            "fg": saved.fg,
+            "abv": saved.abv,
+            "ibu": saved.ibu,
+            "color_srm": saved.color_srm,
+            "fermentables_count": len(saved.fermentables),
+            "hops_count": len(saved.hops),
+            "cultures_count": len(saved.cultures),
+            "message": f"Recipe '{saved.name}' (ID {saved.id}) updated successfully",
+        }
+
+    except KeyError as e:
+        await db.rollback()
+        return {
+            "error": f"Missing required field in recipe: {e}",
+            "hint": "Ensure recipe has at minimum: name, and optionally ingredients.fermentable_additions, ingredients.hop_additions, ingredients.culture_additions"
+        }
+    except Exception as e:
+        await db.rollback()
+        logger.exception(f"Failed to update recipe {recipe_id}: {e}")
+        return {"error": f"Failed to update recipe: {str(e)}"}
+
+
 async def review_recipe_style(
     db: AsyncSession,
     recipe_id: int,

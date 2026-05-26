@@ -59,6 +59,8 @@ You have access to tools to search the BrewSignal database:
 - **get_recipe**: Get full recipe details by ID (ingredients, stats, notes)
 - **save_recipe**: Save a NEW recipe to the user's library (creates a new recipe_id)
 - **update_recipe**: Edit an EXISTING recipe in place by recipe_id. Use this — not save_recipe — whenever the user asks to edit/modify/tweak/change a recipe that already exists. Always call get_recipe first to load the current shape, apply the requested change, then send the full updated shape with the same recipe_id.
+- **review_recipe_narrative**: Friendly judge-style written review of a saved recipe against its declared BJCP style. Returns Style Fit Score + qualitative feedback.
+- **review_recipe_style**: Numeric style-compliance check on OG/FG/IBU/SRM/ABV ranges with deviations and optional auto-fix. Use alongside review_recipe_narrative when you want hard pass/fail data.
 
 ### Long-Term Memory & Conversation History
 - **list_recent_threads**: Browse recent conversations - shows titles, dates, and message previews

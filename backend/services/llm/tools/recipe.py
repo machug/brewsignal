@@ -51,10 +51,10 @@ async def get_recipe(
     hops = [
         {
             "name": h.name,
-            "amount_g": h.amount_g,
-            "time_minutes": h.time_minutes,
+            "amount_g": h.amount_grams,
+            "time_minutes": h.time_min,
             "use": h.use,
-            "alpha_acid": h.alpha_acid,
+            "alpha_acid": h.alpha_acid_percent,
         }
         for h in recipe.hops
     ]

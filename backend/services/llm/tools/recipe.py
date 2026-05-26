@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
-from backend.services.llm.service import get_llm_service
+from backend.services.llm.service import LLMService
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -1193,8 +1193,14 @@ async def review_recipe(
     if not recipe:
         return {"error": f"Recipe with ID {recipe_id} not found"}
 
-    service = get_llm_service()
-    if service is None or not service.config.is_configured():
+    # Build LLMService from the same db-backed config the chat path uses.
+    # The global singleton from services/llm/service.py is never initialised
+    # at startup (no init_llm_service call in main.lifespan), so reading it
+    # here would always report 'not configured'.
+    from backend.routers.assistant import get_llm_config
+
+    service = LLMService(await get_llm_config(db))
+    if not service.config.is_configured():
         return {"error": "AI assistant is not configured. Enable it in Settings."}
 
     style_found, style_name, style_guidelines = await _load_style_guidelines(

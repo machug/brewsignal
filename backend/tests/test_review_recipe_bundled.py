@@ -103,7 +103,7 @@ class TestReviewRecipeBundled:
         self, test_db: AsyncSession, recipe_in_style: Recipe
     ):
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=_service("Solid APA."),
         ):
             result = await review_recipe(
@@ -125,7 +125,7 @@ class TestReviewRecipeBundled:
         self, test_db: AsyncSession, apa_style: Style, recipe_in_style: Recipe
     ):
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=_service(),
         ):
             result = await review_recipe(
@@ -145,7 +145,7 @@ class TestReviewRecipeBundled:
         self, test_db: AsyncSession, recipe_no_style: Recipe
     ):
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=_service("General feedback."),
         ):
             result = await review_recipe(
@@ -160,7 +160,7 @@ class TestReviewRecipeBundled:
     @pytest.mark.asyncio
     async def test_unknown_recipe_id_returns_error(self, test_db: AsyncSession):
         with patch(
-            "backend.services.llm.tools.recipe.get_llm_service",
+            "backend.services.llm.tools.recipe.LLMService",
             return_value=_service(),
         ):
             result = await review_recipe(

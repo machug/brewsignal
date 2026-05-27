@@ -76,8 +76,13 @@
 		) as Fermentable[];
 		if (fermentables.length === 0) return null;
 
-		const rawHops: Array<Hop & { use?: string }> = Array.isArray(ext?.hops)
-			? ext!.hops!
+		// Extract-mode hops (Abstrax Quantum-style) are cold-side and
+		// contribute no Tinseth IBU — skip them entirely so their wider
+		// `use` allowlist (add_to_fermentation / add_to_package / etc.)
+		// never has to round-trip through the IBU calculator's narrower
+		// hot-side union.
+		const rawHops: Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }> = Array.isArray(ext?.hops)
+			? (ext!.hops! as Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }>)
 			: (recipe.hops ?? []).map((h) => {
 					const timing = h.timing || {};
 					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
@@ -88,11 +93,14 @@
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: minutes,
-						use: normalizeHopUse(timing.use),
+						use: normalizeHopUse(timing.use) as string,
 						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
+						is_extract: Boolean(h.is_extract),
 					};
 				});
-		const hops = rawHops.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
+		const hops = rawHops
+			.filter((h) => !h.is_extract)
+			.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
 
 		const yeast: Yeast = {
 			name: recipe.yeast_name || '',

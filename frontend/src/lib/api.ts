@@ -211,6 +211,11 @@ export interface HopResponse {
 	alpha_acid_percent?: number;
 	beta_acid_percent?: number;
 	amount_grams?: number;
+	// Extract-mode fields (Abstrax Quantum-style hop extracts). When
+	// is_extract is true the hop is dosed by volume (amount_ml) on the
+	// cold side and alpha_acid_percent / boil-time IBU math is skipped.
+	is_extract?: boolean;
+	amount_ml?: number | null;
 	timing?: {
 		use?: string;
 		duration?: {

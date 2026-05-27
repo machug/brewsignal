@@ -1,8 +1,39 @@
 <script lang="ts" module>
 	import type { FermentableResponse, HopVarietyResponse, YeastStrainResponse, RecipeResponse } from '$lib/api';
 
-	export type HopUse = 'boil' | 'whirlpool' | 'dry_hop' | 'first_wort' | 'mash';
+	// Hop use covers both traditional hop additions (boil/whirlpool/dry_hop
+	// etc.) and Abstrax-Quantum-style extract additions which are dosed
+	// cold-side. The extract-only values (`add_to_fermentation`,
+	// `add_to_package`, `package`, `keg`, `brite`) mirror the backend
+	// allowlist for cold-side extract dosing.
+	export type HopUse =
+		| 'boil'
+		| 'whirlpool'
+		| 'dry_hop'
+		| 'first_wort'
+		| 'mash'
+		| 'add_to_fermentation'
+		| 'add_to_package'
+		| 'package'
+		| 'keg'
+		| 'brite';
 	export type HopForm = 'pellet' | 'whole' | 'plug';
+
+	/**
+	 * Cold-side hop-use values allowed for Abstrax Quantum-style extracts.
+	 * Mirrors the backend allowlist. These long-form keys are preserved
+	 * verbatim (NOT normalised to the short HopUse form) because the
+	 * extract editor surfaces them directly in the use dropdown.
+	 */
+	export const EXTRACT_USE_ALLOWLIST = [
+		'dry_hop',
+		'add_to_fermentation',
+		'add_to_package',
+		'package',
+		'keg',
+		'brite',
+	] as const;
+	export type ExtractHopUse = (typeof EXTRACT_USE_ALLOWLIST)[number];
 
 	/**
 	 * Normalize a timing.use value from any source (BeerJSON `add_to_*`,
@@ -10,9 +41,32 @@
 	 * HopUse form used by editor components and the IBU calculator.
 	 * Imports persist BeerJSON-style keys (e.g. `add_to_whirlpool`) — without
 	 * this normalization, the editor would silently treat them as `boil`.
+	 *
+	 * When `isExtract` is true the cold-side allowlist values
+	 * (`add_to_fermentation`, `add_to_package`, `package`, `keg`, `brite`)
+	 * are preserved verbatim so they round-trip through the extract editor
+	 * unchanged.
 	 */
-	export function normalizeHopUse(raw: string | undefined): HopUse {
-		if (!raw) return 'boil';
+	export function normalizeHopUse(
+		raw: string | undefined,
+		isExtract = false,
+	): HopUse {
+		if (!raw) return isExtract ? 'dry_hop' : 'boil';
+		const key = raw.toLowerCase().replace(/ /g, '_');
+		if (isExtract) {
+			// Preserve long-form cold-side keys for extracts. Anything
+			// outside the allowlist falls through to the standard
+			// normalizer (so e.g. a stale "boil" on an extract gets
+			// remapped to dry_hop below via the default).
+			if ((EXTRACT_USE_ALLOWLIST as readonly string[]).includes(key)) {
+				return key as HopUse;
+			}
+			// Already-short dry_hop survives the next lookup; anything
+			// else for an extract is coerced to dry_hop, the safest
+			// cold-side default.
+			if (key === 'dry_hop') return 'dry_hop';
+			return 'dry_hop';
+		}
 		const lookup: Record<string, HopUse> = {
 			add_to_boil: 'boil',
 			add_to_whirlpool: 'whirlpool',
@@ -24,7 +78,6 @@
 			first_wort: 'first_wort',
 			mash: 'mash',
 		};
-		const key = raw.toLowerCase().replace(/ /g, '_');
 		return lookup[key] ?? 'boil';
 	}
 
@@ -38,6 +91,12 @@
 		use: HopUse;
 		form: HopForm;
 		alpha_acid_percent: number;
+		// Extract mode (Abstrax Quantum-style hop extracts). When
+		// is_extract is true the hop is dosed by volume (amount_ml) on
+		// the cold side, alpha-acid IBU math is skipped, and `use` is
+		// restricted to the cold-side allowlist.
+		is_extract?: boolean;
+		amount_ml?: number | null;
 	}
 
 	export interface RecipeData {
@@ -217,7 +276,12 @@
 				// boil time when use is dry_hop / mash.
 				hops = ext.hops.map((h: RecipeHop) => ({
 					...h,
-					use: normalizeHopUse(h.use as unknown as string),
+					use: normalizeHopUse(
+						h.use as unknown as string,
+						Boolean(h.is_extract),
+					),
+					is_extract: Boolean(h.is_extract),
+					amount_ml: h.is_extract ? h.amount_ml ?? null : null,
 				}));
 			} else if (initialData.hops && initialData.hops.length > 0) {
 				// Map from API response format to RecipeHop format
@@ -226,7 +290,8 @@
 					const timing = h.timing || {};
 					const timeValue = timing.duration?.value ?? timing.time?.value ?? 0;
 					const timeUnit = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					const normalizedUse = normalizeHopUse(timing.use);
+					const isExtract = Boolean(h.is_extract);
+					const normalizedUse = normalizeHopUse(timing.use, isExtract);
 					// Convert to minutes for boil_time_minutes. Day units
 					// (dry hop) are stored as minutes here so the editor's
 					// dual-purpose field round-trips losslessly; the IBU
@@ -243,6 +308,8 @@
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: boilMinutes,
 						use: normalizedUse,
+						is_extract: isExtract,
+						amount_ml: isExtract ? h.amount_ml ?? null : null,
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,
@@ -317,14 +384,24 @@
 			color_srm: f.color_srm || 2
 		}));
 
-		const calcHops: Hop[] = hops.map((h) => ({
-			name: h.name,
-			amount_grams: h.amount_grams,
-			alpha_acid_percent: h.alpha_acid_percent,
-			boil_time_minutes: h.boil_time_minutes,
-			form: h.form,
-			use: h.use
-		}));
+		// Extract-mode hops (Abstrax Quantum-style) are dosed cold-side by
+		// volume and contribute no alpha-acid-based IBU, so they're
+		// excluded from the IBU calculation. Their bittering profile is
+		// captured separately on the extract spec, not via Tinseth.
+		const calcHops: Hop[] = hops
+			.filter((h) => !h.is_extract)
+			.map((h) => ({
+				name: h.name,
+				amount_grams: h.amount_grams,
+				alpha_acid_percent: h.alpha_acid_percent,
+				boil_time_minutes: h.boil_time_minutes,
+				form: h.form,
+				// `use` may carry an extract-only long-form value
+				// (e.g. add_to_package) on a stale row — cast through
+				// the calculator's narrower union here. The filter
+				// above ensures we never actually pass one through.
+				use: h.use as Hop['use']
+			}));
 
 		// Use default yeast if none selected
 		const calcYeast: Yeast = {
@@ -613,16 +690,24 @@
 				})),
 				hops: hops.map((h) => ({
 					name: h.name,
-					amount_grams: h.amount_grams,
+					amount_grams: h.is_extract ? 0 : h.amount_grams,
 					// Don't expose dry-hop / mash duration as an IBU-time
 					// to the LLM — it stores a day count converted to
 					// minutes (4 days -> 5760) which the review prompt
-					// would misread as an absurd boil duration.
+					// would misread as an absurd boil duration. Extracts
+					// are cold-side only, no boil time either.
 					boil_time_minutes:
-						h.use === 'dry_hop' || h.use === 'mash'
+						h.is_extract ||
+						h.use === 'dry_hop' ||
+						h.use === 'mash' ||
+						h.use === 'add_to_fermentation' ||
+						h.use === 'add_to_package' ||
+						h.use === 'package' ||
+						h.use === 'keg' ||
+						h.use === 'brite'
 							? 0
 							: h.boil_time_minutes,
-					alpha_acid_percent: h.alpha_acid_percent,
+					alpha_acid_percent: h.is_extract ? undefined : h.alpha_acid_percent,
 					use: h.use
 				})),
 				yeast: selectedYeast

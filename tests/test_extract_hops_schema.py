@@ -178,3 +178,75 @@ async def test_migration_recovers_orphaned_table_without_data_loss():
             assert orphan is None, "orphan table should be dropped after recovery"
     finally:
         await eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_migration_recovers_when_only_orphan_exists():
+    """Crash between RENAME and CREATE TABLE recipe_hops: orphan is the
+    only table, recipe_hops missing. Migration must rename orphan back
+    and complete normally without losing data.
+    """
+    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with eng.begin() as conn:
+            # Only the orphan exists — recipe_hops was renamed away and
+            # the process crashed before the new recipe_hops was created.
+            await conn.execute(text(
+                """
+                CREATE TABLE recipe_hops_old_alpha (
+                    id INTEGER PRIMARY KEY,
+                    recipe_id INTEGER NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    origin VARCHAR(50),
+                    form VARCHAR(20),
+                    alpha_acid_percent REAL NOT NULL,
+                    beta_acid_percent REAL,
+                    amount_grams REAL NOT NULL,
+                    timing JSON,
+                    format_extensions JSON
+                )
+                """
+            ))
+            await conn.execute(text(
+                "INSERT INTO recipe_hops_old_alpha "
+                "(id, recipe_id, name, alpha_acid_percent, amount_grams) "
+                "VALUES (1, 1, 'Rescued From Orphan', 6.5, 25.0)"
+            ))
+
+            await conn.run_sync(_migrate_add_extract_columns)
+
+            row = (await conn.execute(text(
+                "SELECT name, alpha_acid_percent, amount_grams, is_extract, amount_ml "
+                "FROM recipe_hops WHERE id = 1"
+            ))).fetchone()
+            assert row is not None, "rescued row missing after orphan-only recovery"
+            assert row[0] == "Rescued From Orphan"
+            assert row[1] == 6.5
+            assert row[2] == 25.0
+            assert row[3] == 0, f"is_extract should default to 0, got {row[3]}"
+            assert row[4] is None, f"amount_ml should default to NULL, got {row[4]}"
+
+            # Orphan must be cleaned up.
+            orphan = (await conn.execute(text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='recipe_hops_old_alpha'"
+            ))).fetchone()
+            assert orphan is None, "orphan table should be dropped after recovery"
+    finally:
+        await eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_migration_creates_index_after_full_run():
+    """Index ix_hops_recipe must exist after a fresh migration run."""
+    eng = await _make_isolated_engine_with_pre_migration_schema()
+    try:
+        async with eng.begin() as conn:
+            await conn.run_sync(_migrate_add_extract_columns)
+            idx = (await conn.execute(text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='index' AND name='ix_hops_recipe'"
+            ))).fetchone()
+            assert idx is not None, "ix_hops_recipe index should exist after migration"
+    finally:
+        await eng.dispose()

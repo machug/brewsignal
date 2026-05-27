@@ -1677,10 +1677,22 @@ def _migrate_add_extract_columns(conn) -> bool:
     SQLite cannot drop NOT NULL in place — recreate the table to relax
     alpha_acid_percent. Returns True on first run, False on subsequent
     runs (idempotent).
+
+    Crash-recovery contract: a leftover ``recipe_hops_old_alpha`` table
+    indicates a previous attempt died mid-flight. Possible mid-states:
+      a) live missing entirely (crash between RENAME and CREATE) —
+         orphan is the only copy of the data. Rename it back and fall
+         through to the normal path.
+      b) live exists in new shape but rows didn't reach it (crash between
+         CREATE and INSERT-SELECT) — copy via INSERT OR IGNORE, then drop.
+      c) live exists in some partially-migrated shape — treat the orphan
+         as authoritative, drop the partial live, rename orphan back.
+    Every non-short-circuit exit ensures ``ix_hops_recipe`` exists.
     """
     from sqlalchemy import text
     info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
     cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
+    live_exists = bool(cols)
 
     # Detect leftover from a crashed prior attempt. If present, fall through
     # to the cleanup path even when the live schema already looks migrated —
@@ -1690,43 +1702,60 @@ def _migrate_add_extract_columns(conn) -> bool:
     )).fetchone())
 
     fully_migrated = (
-        "is_extract" in cols
+        live_exists
+        and "is_extract" in cols
         and "amount_ml" in cols
         and cols.get("alpha_acid_percent", {}).get("notnull") == 0
     )
 
     # Happy-path short-circuit: already migrated, no leftover to recover.
+    # Still ensure the index exists — covers a crash right before the
+    # CREATE INDEX in a prior run.
     if fully_migrated and not has_orphan:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
         return False
 
-    # Crash-recovery path: a leftover orphan means a previous migration
-    # attempt died mid-flight. Re-copy any rows that didn't make it into
-    # the live table before we drop the orphan — otherwise we silently
-    # erase data.
-    if has_orphan:
-        if fully_migrated:
-            # New-shape live table exists. Re-copy rows that never reached
-            # it (e.g. crash between RENAME and INSERT-SELECT). INSERT OR
-            # IGNORE keys on the PRIMARY KEY id, so already-copied rows
-            # are no-ops.
-            conn.execute(text(
-                """
-                INSERT OR IGNORE INTO recipe_hops
-                    (id, recipe_id, name, origin, form,
-                     alpha_acid_percent, beta_acid_percent, amount_grams,
-                     amount_ml, is_extract, timing, format_extensions)
-                SELECT id, recipe_id, name, origin, form,
-                       alpha_acid_percent, beta_acid_percent, amount_grams,
-                       NULL, 0, timing, format_extensions
-                FROM recipe_hops_old_alpha
-                """
-            ))
-            conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
-            return True
-        # Otherwise: live table is still mid-migration shape; the normal
-        # path below recreates from the orphan as designed. Drop the
-        # orphan now so the RENAME later doesn't collide.
+    # Crash-recovery (a): post-RENAME-pre-CREATE crash. The orphan is the
+    # only table holding the data; recipe_hops does not exist. Rename the
+    # orphan back so the normal migration flow can run safely from a
+    # known starting state.
+    if has_orphan and not live_exists:
+        conn.execute(text("ALTER TABLE recipe_hops_old_alpha RENAME TO recipe_hops"))
+        info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
+        cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
+        has_orphan = False
+
+    # Crash-recovery (b): new-shape live exists but the orphan still has
+    # rows that didn't reach it (post-RENAME-post-CREATE-pre-INSERT crash).
+    # INSERT OR IGNORE on the PRIMARY KEY id makes this idempotent if some
+    # rows already made it.
+    if has_orphan and fully_migrated:
+        conn.execute(text(
+            """
+            INSERT OR IGNORE INTO recipe_hops
+                (id, recipe_id, name, origin, form,
+                 alpha_acid_percent, beta_acid_percent, amount_grams,
+                 amount_ml, is_extract, timing, format_extensions)
+            SELECT id, recipe_id, name, origin, form,
+                   alpha_acid_percent, beta_acid_percent, amount_grams,
+                   NULL, 0, timing, format_extensions
+            FROM recipe_hops_old_alpha
+            """
+        ))
         conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
+        # Index might be missing if the original crash happened pre-CREATE-INDEX.
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+        return True
+
+    # Crash-recovery (c): orphan exists AND live exists AND live is NOT
+    # fully migrated — some weird mid-state. Treat the orphan as
+    # authoritative: drop the partially migrated live, rename orphan back,
+    # fall through to the normal migration path.
+    if has_orphan:
+        conn.execute(text("DROP TABLE recipe_hops"))
+        conn.execute(text("ALTER TABLE recipe_hops_old_alpha RENAME TO recipe_hops"))
+        info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
+        cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
 
     # Additive column adds (idempotent; ALTER TABLE on existing columns is
     # safe to skip via the membership check).
@@ -1767,8 +1796,11 @@ def _migrate_add_extract_columns(conn) -> bool:
             FROM recipe_hops_old_alpha
         """))
         conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
 
+    # Ensure the index exists on every non-short-circuit exit. Covers
+    # both the additive-only path and any crash that happened before the
+    # original CREATE INDEX in a prior attempt.
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
     return True
 
 

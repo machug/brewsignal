@@ -641,17 +641,19 @@ TOOL_DEFINITIONS = [
                             },
                             "hops": {
                                 "type": "array",
-                                "description": "REQUIRED: Array of hop additions",
+                                "description": "REQUIRED: Array of hop additions. Traditional pellet/whole/cryo hops carry amount_g + alpha_acid + a boil/whirlpool/dry_hop use. Abstrax-style liquid hop extracts (Quantum series — MOS, CIT, KRU, AZA, NSN, STT, CEN etc.) carry is_extract=true + amount_ml and a cold-side use; they contribute ZERO IBU and cannot be added boil-side. Set amount_g=0 and omit alpha_acid for extracts.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "name": {"type": "string", "description": "Hop name (e.g. 'Centennial', 'Cascade')"},
-                                        "amount_g": {"type": "number", "description": "Amount in grams"},
-                                        "time_minutes": {"type": "number", "description": "Boil time in minutes (0 for flameout, -1 for dry hop)"},
-                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool"], "description": "When hop is added"},
-                                        "alpha_acid": {"type": "number", "description": "Alpha acid percentage"}
+                                        "name": {"type": "string", "description": "Hop name (e.g. 'Centennial', 'Cascade', 'Quantum MOS')"},
+                                        "amount_g": {"type": "number", "description": "Amount in grams. Use 0 for extracts (dose in amount_ml)."},
+                                        "amount_ml": {"type": "number", "description": "Extract dose in milliliters. Required when is_extract=true. Rule of thumb: 1 mL Quantum ≈ 1 oz (28g) T90 pellet equivalent. Typical batch dose 1–5 mL."},
+                                        "is_extract": {"type": "boolean", "description": "Set true for liquid hop extracts (Abstrax Quantum series, etc.). Extracts contribute zero IBU and must be added cold-side."},
+                                        "time_minutes": {"type": "number", "description": "Boil time in minutes (0 for flameout, -1 for dry hop). Always 0 for extracts."},
+                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool", "add_to_fermentation", "add_to_package", "package", "keg", "brite"], "description": "When hop is added. Extracts must use one of the cold-side values: dry_hop, add_to_fermentation, add_to_package, package, keg, brite. boil and whirlpool are hot-side only."},
+                                        "alpha_acid": {"type": "number", "description": "Alpha acid percentage. REQUIRED for non-extract hops. Omit (or set to 0) for extracts — they have no alpha."}
                                     },
-                                    "required": ["name", "amount_g", "time_minutes"]
+                                    "required": ["name", "time_minutes"]
                                 }
                             },
                             "cultures": {
@@ -721,16 +723,19 @@ TOOL_DEFINITIONS = [
                             },
                             "hops": {
                                 "type": "array",
+                                "description": "Replaces the recipe's hop bill wholesale. Mix of traditional pellet/whole/cryo hops (amount_g + alpha_acid + hot-side use) and Abstrax-style liquid extracts (is_extract=true + amount_ml + cold-side use, zero IBU, no alpha) is allowed. Same shape as save_recipe.hops.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
                                         "name": {"type": "string"},
-                                        "amount_g": {"type": "number"},
+                                        "amount_g": {"type": "number", "description": "Grams. Use 0 for extracts."},
+                                        "amount_ml": {"type": "number", "description": "mL — required when is_extract=true."},
+                                        "is_extract": {"type": "boolean", "description": "True for liquid hop extracts (Abstrax Quantum series). Zero IBU; cold-side only."},
                                         "time_minutes": {"type": "number"},
-                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool"]},
-                                        "alpha_acid": {"type": "number"}
+                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool", "add_to_fermentation", "add_to_package", "package", "keg", "brite"], "description": "Cold-side uses (dry_hop, add_to_fermentation, add_to_package, package, keg, brite) are required for extracts."},
+                                        "alpha_acid": {"type": "number", "description": "Required for non-extracts; omit for extracts."}
                                     },
-                                    "required": ["name", "amount_g", "time_minutes"]
+                                    "required": ["name", "time_minutes"]
                                 }
                             },
                             "cultures": {

@@ -336,6 +336,8 @@
 			ibu={liveStats?.ibu ?? recipe.ibu ?? 30}
 			colorSrm={liveStats?.srm ?? recipe.color_srm ?? 8}
 			batchSizeLiters={recipe.batch_size_liters ?? 20}
+			styleName={recipe.style?.name}
+			styleCategory={recipe.style?.category_number ? `${recipe.style.category_number}${recipe.style.style_letter ?? ''}` : undefined}
 			targetOg={recipe.target_og}
 			targetFg={recipe.target_fg}
 			targetAbv={recipe.target_abv}

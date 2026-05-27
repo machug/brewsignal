@@ -210,13 +210,26 @@
 	async function handleReview() {
 		if (!recipe) return;
 
-		if (!recipe.type?.trim()) {
+		// BJCP style FK now drives the style label (tilt_ui-tre);
+		// recipe.type is the BeerXML brewery-type column and may be
+		// missing entirely on UI-created recipes. Prefer the linked
+		// style name, fall back to type for legacy recipes.
+		const styleName = recipe.style?.name ?? recipe.type ?? '';
+		if (!styleName.trim()) {
 			reviewError = 'Recipe is missing a beer style — edit the recipe and add one to get an AI review';
 			showReviewModal = true;
 			return;
 		}
 
-		const fermentables = recipe.fermentables ?? [];
+		// UI editor saves fermentables under format_extensions; the
+		// recipe.fermentables table rows are only populated by import or
+		// the LLM save_recipe path. Mirror the liveStats precedence.
+		const ext = recipe.format_extensions as
+			| { fermentables?: Array<{ name?: string; amount_kg?: number; color_srm?: number; color_lovibond?: number; type?: string }> }
+			| undefined;
+		const fermentables = Array.isArray(ext?.fermentables)
+			? ext!.fermentables!
+			: recipe.fermentables ?? [];
 		if (fermentables.length === 0) {
 			reviewError = 'Recipe has no fermentables to review';
 			showReviewModal = true;
@@ -241,17 +254,25 @@
 
 			reviewResult = await reviewRecipe({
 				name: recipe.name || 'Untitled Recipe',
-				style: recipe.type,
+				style: styleName,
 				og,
 				fg,
 				abv,
 				ibu,
 				color_srm: colorSrm,
 				fermentables: fermentables.map((f) => ({
-					name: f.name,
-					amount_kg: f.amount_kg ?? 0,
-					color_srm: f.color_srm,
-					type: f.type
+					name: (f as { name?: string }).name ?? '',
+					amount_kg: (f as { amount_kg?: number }).amount_kg ?? 0,
+					// format_extensions.fermentables carries color_lovibond
+					// while recipe.fermentables uses color_srm. Convert
+					// Lovibond → SRM (1.3546*L − 0.76) when only Lovibond
+					// is available.
+					color_srm:
+						(f as { color_srm?: number }).color_srm ??
+						((f as { color_lovibond?: number }).color_lovibond != null
+							? 1.3546 * (f as { color_lovibond: number }).color_lovibond - 0.76
+							: undefined),
+					type: (f as { type?: string }).type
 				})),
 				// displayHops merges format_extensions.hops (UI editor copy
 				// with is_extract + amount_ml) with the recipe_hops table

@@ -97,3 +97,55 @@ def test_pellet_with_alpha_accepted(serializer):
     hop = serializer._create_hop(ok)
     assert hop.alpha_acid_percent is not None
     assert hop.amount_grams == 20
+
+
+def test_extract_with_add_to_fermentation_accepted(serializer):
+    ok = {
+        "name": "Quantum NSN",
+        "is_extract": True,
+        "amount_ml": 1.0,
+        "timing": {"use": "add_to_fermentation", "duration": {"value": 0}},
+    }
+    hop = serializer._create_hop(ok)
+    assert hop.is_extract is True
+
+
+def test_extract_with_add_to_package_accepted(serializer):
+    ok = {
+        "name": "Quantum STT",
+        "is_extract": True,
+        "amount_ml": 1.0,
+        "timing": {"use": "add_to_package", "duration": {"value": 0}},
+    }
+    hop = serializer._create_hop(ok)
+    assert hop.is_extract is True
+
+
+def test_non_extract_with_zero_alpha_rejected(serializer):
+    """Converters historically defaulted missing alpha to 0.0; that must not
+    bypass alpha-required validation (tilt_ui-0l5)."""
+    bad = {
+        "name": "Mosaic",
+        "alpha_acid": 0.0,
+        "amount": {"value": 20, "unit": "g"},
+        "timing": {"use": "boil", "duration": {"value": 60}},
+    }
+    with pytest.raises(ValueError, match=r"alpha"):
+        serializer._create_hop(bad)
+
+
+def test_alpha_alias_persists_to_orm(serializer):
+    """Validator accepts alpha under multiple aliases; _create_hop must
+    persist them all to alpha_acid_percent (tilt_ui-0l5)."""
+    for alias in ("alpha_acid_percent", "alpha"):
+        ok = {
+            "name": f"Test {alias}",
+            alias: {"value": 0.12, "unit": "%"},
+            "amount": {"value": 20, "unit": "g"},
+            "timing": {"use": "boil", "duration": {"value": 60}},
+        }
+        hop = serializer._create_hop(ok)
+        assert hop.alpha_acid_percent is not None, (
+            f"alias {alias!r} accepted by validator but lost during _create_hop"
+        )
+        assert hop.alpha_acid_percent > 0

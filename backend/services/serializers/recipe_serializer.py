@@ -13,7 +13,15 @@ from backend.models import (
 )
 
 
-_EXTRACT_COLD_SIDE_USES = {"dry_hop", "add_to_dry_hop", "package", "keg", "brite"}
+_EXTRACT_COLD_SIDE_USES = {
+    "dry_hop",
+    "add_to_dry_hop",
+    "add_to_fermentation",   # BeerJSON canonical for fermentation-time additions
+    "package",
+    "add_to_package",        # BeerJSON canonical for packaging additions
+    "keg",
+    "brite",
+}
 
 
 def _validate_hop_dict(hop_dict: Dict[str, Any]) -> None:
@@ -43,15 +51,24 @@ def _validate_hop_dict(hop_dict: Dict[str, Any]) -> None:
             )
         return
     # Traditional hop: alpha required.
-    has_alpha = (
-        hop_dict.get("alpha_acid_percent") is not None
-        or hop_dict.get("alpha_acid") is not None
-        or hop_dict.get("alpha") is not None
+    # Coerce alpha down to a float (under any alias) so we can reject zero
+    # values explicitly — converters historically defaulted missing alpha to
+    # 0.0 which previously slipped past presence-only checks (tilt_ui-0l5).
+    raw_alpha = (
+        hop_dict.get("alpha_acid_percent")
+        or hop_dict.get("alpha_acid")
+        or hop_dict.get("alpha")
     )
-    if not has_alpha:
+    alpha_value = None
+    if raw_alpha is not None:
+        if isinstance(raw_alpha, dict):
+            alpha_value = raw_alpha.get("value")
+        else:
+            alpha_value = raw_alpha
+    if alpha_value is None or float(alpha_value) <= 0:
         raise ValueError(
             f"Non-extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
-            f"alpha_acid_percent"
+            f"alpha_acid_percent > 0; got {alpha_value!r}"
         )
 
 
@@ -273,10 +290,19 @@ class RecipeSerializer:
             form=hop_dict.get('form')
         )
 
-        # Alpha acid (convert from 0-1 to 0-100)
-        if 'alpha_acid' in hop_dict:
-            alpha_val = self._extract_percent(hop_dict['alpha_acid'])
-            hop.alpha_acid_percent = alpha_val * 100 if alpha_val < 1 else alpha_val
+        # Alpha acid (convert from 0-1 to 0-100). Accept multiple input
+        # aliases — the validator already verifies the canonical aliases
+        # so we mirror that list here to keep accepted-but-not-persisted
+        # cases impossible (tilt_ui-0l5).
+        raw_alpha = (
+            hop_dict.get("alpha_acid_percent")
+            or hop_dict.get("alpha_acid")
+            or hop_dict.get("alpha")
+        )
+        if raw_alpha is not None:
+            alpha_val = self._extract_percent(raw_alpha)
+            if alpha_val is not None:
+                hop.alpha_acid_percent = alpha_val * 100 if alpha_val < 1 else alpha_val
 
         # Beta acid (convert from 0-1 to 0-100)
         if 'beta_acid' in hop_dict:

@@ -298,7 +298,12 @@ class RecipeHopInput(BaseModel):
     amount_grams: float
     boil_time_minutes: int
     alpha_acid_percent: Optional[float] = None
-    use: Optional[str] = None  # boil, whirlpool, dry_hop
+    use: Optional[str] = None  # boil, whirlpool, dry_hop, add_to_*
+    # Abstrax-style extract semantics (tilt_ui-0l5). When is_extract is
+    # true the hop contributes zero IBU; amount_ml carries the canonical
+    # dosage. Both nullable so traditional clients keep working.
+    is_extract: bool = False
+    amount_ml: Optional[float] = None
 
 
 class RecipeYeastInput(BaseModel):
@@ -405,10 +410,24 @@ def _format_hops(hops: list[RecipeHopInput]) -> str:
         return "No hops specified"
 
     lines = []
-    for h in sorted(hops, key=lambda x: x.boil_time_minutes, reverse=True):
+    # Sort so traditional hops appear before extracts; within each group
+    # keep the longest-contact-time first.
+    sortable = sorted(
+        hops,
+        key=lambda x: (1 if x.is_extract else 0, -x.boil_time_minutes),
+    )
+    for h in sortable:
         use = h.use or "boil"
-        aa_str = f" ({h.alpha_acid_percent:.1f}% AA)" if h.alpha_acid_percent else ""
+        # Abstrax-style extracts are dosed in mL with zero alpha; render
+        # them distinctly so the LLM doesn't confuse them with boil hops
+        # (tilt_ui-0l5).
+        if h.is_extract:
+            timing = use.replace("_", " ") if use else "cold side"
+            amount = f"{h.amount_ml:.1f} mL" if h.amount_ml is not None else "?"
+            lines.append(f"- {h.name}: {amount} extract @ {timing} (aroma-only, 0 IBU)")
+            continue
 
+        aa_str = f" ({h.alpha_acid_percent:.1f}% AA)" if h.alpha_acid_percent else ""
         if use == "dry_hop":
             timing = "dry hop"
         elif use == "whirlpool":

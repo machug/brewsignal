@@ -245,7 +245,11 @@
 			// ('add_to_boil' / 'add_to_fermentation' / 'add_to_whirlpool')
 			// which the editor and IBU calculator don't recognise — normalise
 			// to the short HopUse form on load.
-			if (ext?.hops && ext.hops.length > 0) {
+			// An explicit empty array in format_extensions is the editor's
+			// "user deleted all hops" intent; falling back to recipe.hops
+			// would resurrect stale rows. Treat any present array as
+			// authoritative — only fall through when the key is absent.
+			if (Array.isArray(ext?.hops)) {
 				// Preserve the stored boil_time_minutes verbatim — even when
 				// it encodes a dry-hop day count as minutes (4 days -> 5760)
 				// it's the only persisted copy of that duration. The IBU
@@ -685,7 +689,9 @@
 							? 0
 							: h.boil_time_minutes,
 					alpha_acid_percent: h.is_extract ? undefined : h.alpha_acid_percent,
-					use: h.use
+					use: h.use,
+					is_extract: Boolean(h.is_extract),
+					amount_ml: h.is_extract ? h.amount_ml ?? null : null
 				})),
 				yeast: selectedYeast
 					? {

@@ -268,6 +268,8 @@
 					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
 					const use = normalizeHopUse(timing.use ?? (h.use as string | undefined));
 					const alpha = h.alpha_acid_percent;
+					const isExtract = Boolean(h.is_extract);
+					const ml = h.amount_ml;
 					return {
 						name: h.name as string,
 						amount_grams: Number(h.amount_grams ?? 0),
@@ -276,7 +278,9 @@
 						// 4-day dry hop as an absurd boil duration.
 						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
 						alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
-						use
+						use,
+						is_extract: isExtract,
+						amount_ml: typeof ml === 'number' ? ml : null
 					};
 				}),
 				yeast: recipe.yeast_name

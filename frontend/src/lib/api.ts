@@ -2146,6 +2146,9 @@ export interface RecipeReviewHop {
 	boil_time_minutes: number;
 	alpha_acid_percent?: number;
 	use?: string;
+	// Abstrax-style extract semantics (tilt_ui-0l5).
+	is_extract?: boolean;
+	amount_ml?: number | null;
 }
 
 export interface RecipeReviewYeast {

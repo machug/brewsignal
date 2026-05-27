@@ -1692,6 +1692,9 @@ def _migrate_add_extract_columns(conn) -> bool:
     if "amount_ml" not in cols:
         conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN amount_ml REAL"))
     if cols.get("alpha_acid_percent", {}).get("notnull") == 1:
+        # Clean up any leftover from a prior crashed migration before renaming,
+        # otherwise the RENAME below fails with "table already exists".
+        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
         conn.execute(text("ALTER TABLE recipe_hops RENAME TO recipe_hops_old_alpha"))
         conn.execute(text("""
             CREATE TABLE recipe_hops (
@@ -1719,7 +1722,7 @@ def _migrate_add_extract_columns(conn) -> bool:
                 0, timing, format_extensions
             FROM recipe_hops_old_alpha
         """))
-        conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
+        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
     return True
 

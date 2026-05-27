@@ -60,6 +60,11 @@ async def get_recipe(
             "time_minutes": h.time_min,
             "use": h.use,
             "alpha_acid": h.alpha_acid_percent,
+            # Extract markers (tilt_ui-0l5). Surface so the frontend / agent
+            # can render extracts distinctly and so IBU recompute downstream
+            # can skip iso-alpha / lupulin doses.
+            "is_extract": bool(h.is_extract),
+            "amount_ml": h.amount_ml,
         }
         for h in recipe.hops
     ]

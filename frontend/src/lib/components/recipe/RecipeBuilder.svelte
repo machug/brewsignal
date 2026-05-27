@@ -1,39 +1,16 @@
 <script lang="ts" module>
 	import type { FermentableResponse, HopVarietyResponse, YeastStrainResponse, RecipeResponse } from '$lib/api';
+	// Shared hop types/constants live in a plain TS module to break the
+	// HopSelector ↔ RecipeBuilder ESM cycle (TDZ risk at module init).
+	import {
+		EXTRACT_USE_ALLOWLIST,
+		type ExtractHopUse,
+		type HopForm,
+		type HopUse,
+	} from './hop-types';
 
-	// Hop use covers both traditional hop additions (boil/whirlpool/dry_hop
-	// etc.) and Abstrax-Quantum-style extract additions which are dosed
-	// cold-side. The extract-only values (`add_to_fermentation`,
-	// `add_to_package`, `package`, `keg`, `brite`) mirror the backend
-	// allowlist for cold-side extract dosing.
-	export type HopUse =
-		| 'boil'
-		| 'whirlpool'
-		| 'dry_hop'
-		| 'first_wort'
-		| 'mash'
-		| 'add_to_fermentation'
-		| 'add_to_package'
-		| 'package'
-		| 'keg'
-		| 'brite';
-	export type HopForm = 'pellet' | 'whole' | 'plug';
-
-	/**
-	 * Cold-side hop-use values allowed for Abstrax Quantum-style extracts.
-	 * Mirrors the backend allowlist. These long-form keys are preserved
-	 * verbatim (NOT normalised to the short HopUse form) because the
-	 * extract editor surfaces them directly in the use dropdown.
-	 */
-	export const EXTRACT_USE_ALLOWLIST = [
-		'dry_hop',
-		'add_to_fermentation',
-		'add_to_package',
-		'package',
-		'keg',
-		'brite',
-	] as const;
-	export type ExtractHopUse = (typeof EXTRACT_USE_ALLOWLIST)[number];
+	export { EXTRACT_USE_ALLOWLIST };
+	export type { ExtractHopUse, HopForm, HopUse };
 
 	/**
 	 * Normalize a timing.use value from any source (BeerJSON `add_to_*`,

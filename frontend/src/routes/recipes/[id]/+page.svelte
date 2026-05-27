@@ -134,6 +134,39 @@
 		return isNaN(id) || id <= 0 ? null : id;
 	});
 
+	// Unified hop view that mirrors the liveStats precedence: prefer the
+	// UI editor's format_extensions.hops copy (where new/edit pages save
+	// their structured hop data including is_extract + amount_ml) and
+	// fall back to recipe.hops (rows written by the LLM tool / import
+	// path). Without this, UI-created extracts disappear from the AI
+	// review payload and the HopSchedule render. Follow-up bead covers
+	// teaching the backend POST/PUT to write recipe_hops directly.
+	let displayHops = $derived.by(() => {
+		if (!recipe) return [] as Array<Record<string, unknown>>;
+		const ext = recipe.format_extensions as
+			| { hops?: Array<Record<string, unknown>> }
+			| undefined;
+		if (Array.isArray(ext?.hops) && ext!.hops!.length > 0) {
+			return ext!.hops!.map((h) => {
+				const minutes = Number(h.boil_time_minutes ?? 0);
+				const use = String(h.use ?? '');
+				return {
+					name: h.name,
+					amount_grams: h.amount_grams ?? 0,
+					amount_ml: h.amount_ml ?? null,
+					alpha_acid_percent: h.alpha_acid_percent ?? null,
+					is_extract: Boolean(h.is_extract),
+					form: h.form ?? null,
+					origin: h.origin ?? null,
+					use,
+					boil_time_minutes: minutes,
+					timing: { use, duration: { value: minutes, unit: 'min' } },
+				};
+			});
+		}
+		return (recipe.hops ?? []) as unknown as Array<Record<string, unknown>>;
+	});
+
 	onMount(async () => {
 		if (!recipeId) {
 			error = 'Invalid recipe ID';
@@ -215,23 +248,32 @@
 					color_srm: f.color_srm,
 					type: f.type
 				})),
-				hops: (recipe.hops ?? []).map((h) => {
-					const timing = h.timing || {};
-					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
-					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-					const use = normalizeHopUse(timing.use);
-					return {
-						name: h.name,
-						amount_grams: h.amount_grams ?? 0,
-						// Don't expose dry-hop / mash duration as IBU-time
-						// to the LLM — the review prompt would misread a
-						// 4-day dry hop as an absurd boil duration.
-						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : minutes,
-						alpha_acid_percent: h.alpha_acid_percent,
-						use
-					};
-				}),
+				// displayHops merges format_extensions.hops (UI editor copy
+				// with is_extract + amount_ml) with the recipe_hops table
+				// fallback. Extracts are omitted from the LLM review
+				// payload because the existing review prompt is built
+				// around traditional hop-side IBU math; surfacing them
+				// directly would skew the agent's assessment.
+				hops: displayHops
+					.filter((h: Record<string, unknown>) => !h.is_extract)
+					.map((h: Record<string, unknown>) => {
+						const timing = (h.timing as Record<string, any>) || {};
+						const tv = timing.duration?.value ?? timing.time?.value ?? 0;
+						const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
+						const minutes = tu === 'day' ? tv * 24 * 60 : tv;
+						const use = normalizeHopUse(timing.use ?? (h.use as string | undefined));
+						const alpha = h.alpha_acid_percent;
+						return {
+							name: h.name as string,
+							amount_grams: Number(h.amount_grams ?? 0),
+							// Don't expose dry-hop / mash duration as IBU-time
+							// to the LLM — the review prompt would misread a
+							// 4-day dry hop as an absurd boil duration.
+							boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
+							alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
+							use
+						};
+					}),
 				yeast: recipe.yeast_name
 					? {
 							name: recipe.yeast_name,
@@ -396,9 +438,9 @@
 			{/if}
 
 			<!-- Hops Section -->
-			{#if recipe.hops && recipe.hops.length > 0}
+			{#if displayHops.length > 0}
 				<section class="content-card">
-					<HopSchedule hops={recipe.hops} />
+					<HopSchedule hops={displayHops as never} />
 				</section>
 			{/if}
 

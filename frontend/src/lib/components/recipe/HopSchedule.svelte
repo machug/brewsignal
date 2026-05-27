@@ -1,12 +1,17 @@
 <script lang="ts">
 	interface Hop {
-		id: number;
+		// id is only populated for recipe_hops rows; UI-editor hops merged
+		// in via format_extensions omit it. Tolerate both.
+		id?: number;
 		name: string;
-		origin?: string;
-		form?: string;
-		alpha_acid_percent?: number;
-		beta_acid_percent?: number;
-		amount_grams?: number;
+		origin?: string | null;
+		form?: string | null;
+		alpha_acid_percent?: number | null;
+		beta_acid_percent?: number | null;
+		amount_grams?: number | null;
+		// Abstrax-style extract semantics (tilt_ui-0l5).
+		amount_ml?: number | null;
+		is_extract?: boolean;
 		timing?: {
 			use?: string;
 			// BeerJSON uses 'duration', but some sources use 'time'
@@ -53,12 +58,12 @@
 		return groups;
 	});
 
-	function formatAmount(grams?: number): string {
+	function formatAmount(grams?: number | null): string {
 		if (grams === undefined || grams === null) return '--';
 		return grams.toFixed(0) + 'g';
 	}
 
-	function formatAlpha(percent?: number): string {
+	function formatAlpha(percent?: number | null): string {
 		if (percent === undefined || percent === null) return '--';
 		return percent.toFixed(1) + '%';
 	}
@@ -125,11 +130,20 @@
 									{#if hop.origin}
 										<div class="hop-type">{hop.origin}</div>
 									{/if}
+									{#if hop.is_extract}
+										<div class="hop-type">Aroma-only · no IBU</div>
+									{/if}
 								</td>
-								<td>{formatAmount(hop.amount_grams)}</td>
-								<td>{formatAlpha(hop.alpha_acid_percent)}</td>
+								<td>
+									{#if hop.is_extract}
+										{hop.amount_ml != null ? `${hop.amount_ml.toFixed(1)} mL` : '--'}
+									{:else}
+										{formatAmount(hop.amount_grams)}
+									{/if}
+								</td>
+								<td>{hop.is_extract ? '—' : formatAlpha(hop.alpha_acid_percent)}</td>
 								<td>{formatTime(hop.timing)}</td>
-								<td>{hop.form || 'Pellet'}</td>
+								<td>{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</td>
 							</tr>
 						{/each}
 					</tbody>

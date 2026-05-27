@@ -3,7 +3,8 @@
 	import type { HopVarietyResponse } from '$lib/api';
 	import { fetchHopVarieties, fetchHopOrigins } from '$lib/api';
 	import { calculateIBU_Tinseth, calculateTotalIBU, calculateBUGU, type Hop } from '$lib/brewing';
-	import { EXTRACT_USE_ALLOWLIST, type HopUse, type HopForm, type RecipeHop } from './RecipeBuilder.svelte';
+	import { EXTRACT_USE_ALLOWLIST, type HopUse, type HopForm } from './hop-types';
+	import type { RecipeHop } from './RecipeBuilder.svelte';
 
 	// Hot-side (traditional pellet/whole) use values + display labels.
 	const HOT_USE_OPTIONS: { value: HopUse; label: string }[] = [

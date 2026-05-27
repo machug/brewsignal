@@ -1681,12 +1681,27 @@ def _migrate_add_extract_columns(conn) -> bool:
     from sqlalchemy import text
     info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
     cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
-    if (
+
+    # Detect leftover from a crashed prior attempt. If present, fall through
+    # to the cleanup path even when the live schema already looks migrated —
+    # otherwise the orphan table strands data forever.
+    has_orphan = bool(conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='recipe_hops_old_alpha'"
+    )).fetchone())
+
+    fully_migrated = (
         "is_extract" in cols
         and "amount_ml" in cols
         and cols.get("alpha_acid_percent", {}).get("notnull") == 0
-    ):
+    )
+    if fully_migrated and not has_orphan:
         return False
+
+    # If we got here with a leftover orphan, drop it — re-applying the
+    # rename below would otherwise re-collide with the orphan name.
+    if has_orphan:
+        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
+
     if "is_extract" not in cols:
         conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN is_extract BOOLEAN NOT NULL DEFAULT 0"))
     if "amount_ml" not in cols:

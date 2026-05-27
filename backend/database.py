@@ -1694,22 +1694,51 @@ def _migrate_add_extract_columns(conn) -> bool:
         and "amount_ml" in cols
         and cols.get("alpha_acid_percent", {}).get("notnull") == 0
     )
+
+    # Happy-path short-circuit: already migrated, no leftover to recover.
     if fully_migrated and not has_orphan:
         return False
 
-    # If we got here with a leftover orphan, drop it — re-applying the
-    # rename below would otherwise re-collide with the orphan name.
+    # Crash-recovery path: a leftover orphan means a previous migration
+    # attempt died mid-flight. Re-copy any rows that didn't make it into
+    # the live table before we drop the orphan — otherwise we silently
+    # erase data.
     if has_orphan:
-        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
+        if fully_migrated:
+            # New-shape live table exists. Re-copy rows that never reached
+            # it (e.g. crash between RENAME and INSERT-SELECT). INSERT OR
+            # IGNORE keys on the PRIMARY KEY id, so already-copied rows
+            # are no-ops.
+            conn.execute(text(
+                """
+                INSERT OR IGNORE INTO recipe_hops
+                    (id, recipe_id, name, origin, form,
+                     alpha_acid_percent, beta_acid_percent, amount_grams,
+                     amount_ml, is_extract, timing, format_extensions)
+                SELECT id, recipe_id, name, origin, form,
+                       alpha_acid_percent, beta_acid_percent, amount_grams,
+                       NULL, 0, timing, format_extensions
+                FROM recipe_hops_old_alpha
+                """
+            ))
+            conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
+            return True
+        # Otherwise: live table is still mid-migration shape; the normal
+        # path below recreates from the orphan as designed. Drop the
+        # orphan now so the RENAME later doesn't collide.
+        conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
 
+    # Additive column adds (idempotent; ALTER TABLE on existing columns is
+    # safe to skip via the membership check).
     if "is_extract" not in cols:
         conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN is_extract BOOLEAN NOT NULL DEFAULT 0"))
     if "amount_ml" not in cols:
         conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN amount_ml REAL"))
+
+    # Relax alpha_acid_percent NOT NULL via SQLite table-recreate.
     if cols.get("alpha_acid_percent", {}).get("notnull") == 1:
-        # Clean up any leftover from a prior crashed migration before renaming,
-        # otherwise the RENAME below fails with "table already exists".
-        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
+        # No DROP IF EXISTS guard needed for the orphan here — we already
+        # handled it above. If we reach this branch, no orphan exists.
         conn.execute(text("ALTER TABLE recipe_hops RENAME TO recipe_hops_old_alpha"))
         conn.execute(text("""
             CREATE TABLE recipe_hops (
@@ -1739,6 +1768,7 @@ def _migrate_add_extract_columns(conn) -> bool:
         """))
         conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+
     return True
 
 

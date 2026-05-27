@@ -266,9 +266,17 @@
 					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
 					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
 					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-					const use = normalizeHopUse(timing.use ?? (h.use as string | undefined));
-					const alpha = h.alpha_acid_percent;
 					const isExtract = Boolean(h.is_extract);
+					// Normalise the use under the same isExtract flag the
+					// payload carries, otherwise extract-only cold-side
+					// uses (add_to_fermentation/add_to_package/keg/brite)
+					// collapse to "boil" and the LLM sees an aroma extract
+					// dosed at boil time.
+					const use = normalizeHopUse(
+						timing.use ?? (h.use as string | undefined),
+						isExtract,
+					);
+					const alpha = h.alpha_acid_percent;
 					const ml = h.amount_ml;
 					return {
 						name: h.name as string,
@@ -276,7 +284,9 @@
 						// Don't expose dry-hop / mash duration as IBU-time
 						// to the LLM — the review prompt would misread a
 						// 4-day dry hop as an absurd boil duration.
-						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
+						// Extracts are cold-side only, so always zero.
+						boil_time_minutes:
+							isExtract || use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
 						alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
 						use,
 						is_extract: isExtract,

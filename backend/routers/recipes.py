@@ -25,6 +25,7 @@ from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalC
 from ..services.brewing import calculate_recipe_stats
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_validation import validate_recipe_constraints
+from ..services.style_resolver import resolve_style_id
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
@@ -401,11 +402,18 @@ async def create_recipe(
         abv=recipe.abv,
     )
 
+    # Resolve free-text "style" (e.g. "American IPA") to a styles.id FK when
+    # the client didn't send an explicit style_id. Same helper feeds the
+    # LLM save_recipe path so behavior matches.
+    resolved_style_id = recipe.style_id
+    if resolved_style_id is None and recipe.style:
+        resolved_style_id = await resolve_style_id(db, recipe.style)
+
     db_recipe = Recipe(
         user_id=user.user_id,
         name=recipe.name,
         author=recipe.author,
-        style_id=recipe.style_id,
+        style_id=resolved_style_id,
         type=recipe.type,
         og=recipe.og,
         fg=recipe.fg,
@@ -590,9 +598,27 @@ async def update_recipe(
     if not existing_recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    # Apply updates from request
-    for field, value in recipe_update.model_dump(exclude_unset=True).items():
+    # Apply updates from request. "style" is a transient free-text resolver
+    # hint — not a column. Pop it before the setattr loop and resolve it to
+    # styles.id below when the client didn't explicitly send a non-null
+    # style_id.
+    update_data = recipe_update.model_dump(exclude_unset=True)
+    style_in_payload = "style" in update_data
+    style_free_text = update_data.pop("style", None)
+    # A non-null style_id from the client is authoritative. style_id=null
+    # by itself is also explicit clear, BUT when accompanied by a style
+    # free-text the text wins (typed-into-autocomplete-without-selecting
+    # case — RecipeBuilder emits style_id=null + style="American IPA").
+    explicit_style_id = (
+        "style_id" in update_data and update_data["style_id"] is not None
+    )
+    for field, value in update_data.items():
         setattr(existing_recipe, field, value)
+
+    # Resolve free-text "style" (e.g. "American IPA") to a styles.id FK.
+    # Mirrors the LLM save_recipe path (services/llm/tools/recipe.py).
+    if style_in_payload and not explicit_style_id:
+        existing_recipe.style_id = await resolve_style_id(db, style_free_text)
 
     # Recalculation is opt-in via ?recalculate=true. Without this gate,
     # imported recipes lose brewer-declared OG/FG/ABV/IBU/SRM targets on
@@ -614,6 +640,11 @@ async def update_recipe(
     )
 
     await db.commit()
+    # Session uses expire_on_commit=False, so the in-session instance still
+    # holds the pre-update relationship cache (e.g. .style points at the old
+    # row when style_id just changed). Expire the FK relationships so the
+    # re-query's selectinload actually reloads them.
+    db.expire(existing_recipe, ["style", "fermentables", "hops", "cultures"])
     # Re-query with eager loading for response serialization
     result = await db.execute(
         select(Recipe)

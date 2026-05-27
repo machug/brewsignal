@@ -44,6 +44,8 @@
 		name: string;
 		author: string;
 		type: string;
+		style_id: string | null;
+		style: string;
 		batch_size_liters: number;
 		efficiency_percent: number;
 		boil_time_minutes: number;
@@ -61,7 +63,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchYeastStrains, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
+	import { fetchYeastStrains, getStyle, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
 	import RecipeReviewModal from './RecipeReviewModal.svelte';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
@@ -152,7 +154,29 @@
 		if (initialData) {
 			name = initialData.name || '';
 			author = initialData.author || '';
-			styleInput = initialData.type || '';
+			// Style picker is bound to BJCP style (style_id FK), not the
+			// BeerXML "type" column (ale/lager/all_grain). Initialize from
+			// the linked style when present; fall back to the legacy free-text
+			// in initialData.type only for recipes saved before the picker
+			// produced a style_id, so users still see what they typed.
+			if (initialData.style) {
+				styleInput = initialData.style.name;
+				// RecipeResponse only carries {id, name}; fetch the full BJCP
+				// row so style-vs-target warnings (og_min/max etc) populate.
+				// Set a stub immediately so the picker shows the chip; replace
+				// once the BJCP detail lands. Replace by reference: stub has no
+				// og_min/abv_min, so any successful fetch is more complete.
+				const styleId = initialData.style.id;
+				selectedStyle = { ...initialData.style, guide: '', category_number: '', category: '' } as BJCPStyleResponse;
+				getStyle(styleId)
+					.then((s) => {
+						if (selectedStyle?.id === styleId) selectedStyle = s;
+					})
+					.catch(() => {});
+			} else {
+				selectedStyle = null;
+				styleInput = initialData.type || '';
+			}
 			notes = initialData.notes || '';
 			batchSizeLiters = initialData.batch_size_liters || 20;
 			efficiencyPercent = initialData.efficiency_percent || 72;
@@ -525,7 +549,12 @@
 		const recipe: RecipeData = {
 			name,
 			author,
-			type: styleInput,
+			// "type" stays the BeerXML/BeerJSON brewery-type field (ale/lager/
+			// all_grain). The style picker no longer writes to it — those
+			// values come from import or the LLM save_recipe tool.
+			type: '',
+			style_id: selectedStyle?.id ?? null,
+			style: styleInput,
 			batch_size_liters: batchSizeLiters,
 			efficiency_percent: efficiencyPercent,
 			boil_time_minutes: boilTimeMinutes,

@@ -1701,6 +1701,11 @@ class RecipeCreate(BaseModel):
     name: str
     author: Optional[str] = None
     style_id: Optional[str] = None
+    # Free-text style hint (e.g. "American IPA"). Not persisted as-is — the
+    # PUT/POST handlers resolve this to a styles.id FK via resolve_style_id
+    # when style_id is not explicitly provided. Lets the picker work even
+    # when the user typed without selecting from the autocomplete.
+    style: Optional[str] = None
     type: Optional[str] = None
     og: Optional[float] = None
     fg: Optional[float] = None
@@ -1725,6 +1730,8 @@ class RecipeUpdate(BaseModel):
     name: Optional[str] = None
     author: Optional[str] = None
     style_id: Optional[str] = None
+    # See RecipeCreate.style — same resolver semantics.
+    style: Optional[str] = None
     type: Optional[str] = None
     og: Optional[float] = None
     fg: Optional[float] = None

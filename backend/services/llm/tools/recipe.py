@@ -60,6 +60,11 @@ async def get_recipe(
             "time_minutes": h.time_min,
             "use": h.use,
             "alpha_acid": h.alpha_acid_percent,
+            # Extract markers (tilt_ui-0l5). Surface so the frontend / agent
+            # can render extracts distinctly and so IBU recompute downstream
+            # can skip iso-alpha / lupulin doses.
+            "is_extract": bool(h.is_extract),
+            "amount_ml": h.amount_ml,
         }
         for h in recipe.hops
     ]
@@ -377,6 +382,15 @@ def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
                     else:
                         norm_h["timing"] = {"use": use, "duration": {"value": float(time_val), "unit": "min"}}
 
+            # Preserve extract semantics (tilt_ui-0l5): is_extract gates the
+            # IBU skip in calculate_recipe_stats below, and amount_ml is the
+            # canonical dosage unit for hop extracts. Without these we'd
+            # silently fold extracts back into the Tinseth math.
+            if h.get("is_extract"):
+                norm_h["is_extract"] = True
+                if h.get("amount_ml") is not None:
+                    norm_h["amount_ml"] = float(h["amount_ml"])
+
             normalized_hops.append(norm_h)
         normalized_ingredients["hop_additions"] = normalized_hops
 
@@ -609,6 +623,11 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
     total_ibu = 0
 
     for hop in hops:
+        if hop.get("is_extract"):
+            # Abstrax-style extracts have no alpha acids and contribute zero
+            # IBU regardless of timing/amount. Skip before alpha math to
+            # avoid None/0 hazards (tilt_ui-0l5; mirrors brewing._calculate_ibu).
+            continue
         amount = hop.get("amount", {})
         if isinstance(amount, dict):
             amount_g = amount.get("value", 0)

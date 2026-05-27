@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -665,9 +665,15 @@ class RecipeHop(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     origin: Mapped[Optional[str]] = mapped_column(String(50))
     form: Mapped[Optional[str]] = mapped_column(String(20))  # pellet, leaf, plug, powder, extract
-    alpha_acid_percent: Mapped[float] = mapped_column(nullable=False)  # AA% (0-100), renamed from alpha_percent
+    # Alpha acid is nullable so iso-alpha / lupulin extracts (e.g. Abstrax) can omit
+    # bittering-percent metadata. Traditional hops still set it. Validation that
+    # non-extracts must supply alpha lands in a later task (tilt_ui-0l5 phase 1.6+).
+    alpha_acid_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100), renamed from alpha_percent
     beta_acid_percent: Mapped[Optional[float]] = mapped_column()  # Beta acids %, renamed from beta_percent
     amount_grams: Mapped[float] = mapped_column(nullable=False)  # Amount in grams (renamed from amount_kg)
+    # Extract-specific fields (tilt_ui-0l5 phase 1). Liquid extracts dose by mL.
+    amount_ml: Mapped[Optional[float]] = mapped_column()  # Volume in mL for liquid extracts
+    is_extract: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # BeerJSON timing (replaces use/time_min)
     timing: Mapped[Optional[dict]] = mapped_column(JSON)
@@ -1896,6 +1902,8 @@ class HopResponse(BaseModel):
     alpha_acid_percent: Optional[float] = None
     beta_acid_percent: Optional[float] = None
     amount_grams: Optional[float] = None
+    amount_ml: Optional[float] = None  # Volume in mL for liquid extracts (tilt_ui-0l5)
+    is_extract: bool = False  # True for iso-alpha / lupulin extracts (tilt_ui-0l5)
     timing: Optional[dict] = None  # BeerJSON timing object
     format_extensions: Optional[dict] = None  # BeerXML metadata (type, substitutes, oils, notes)
 

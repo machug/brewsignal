@@ -112,16 +112,19 @@ class BrewSignalToBeerJSONConverter:
         return out
 
     def _convert_hop(self, h: Dict[str, Any]) -> Dict[str, Any]:
-        # alpha_acid_percent is optional in the BrewSignal schema but the
-        # underlying RecipeHop column is non-nullable. Default missing AA
-        # to 0 so the import flushes; users can edit later.
-        alpha = h.get('alpha_acid_percent')
         out: Dict[str, Any] = {
             'name': h.get('name', ''),
             'amount': {'value': float(h['amount_grams']), 'unit': 'g'},
             'timing': h.get('timing') or {'use': 'add_to_boil'},
-            'alpha_acid': {'value': float(alpha) if alpha is not None else 0.0, 'unit': '%'},
         }
+        # alpha_acid_percent is optional in BrewSignal but the validator
+        # downstream requires alpha > 0 for non-extract hops (tilt_ui-0l5).
+        # Only emit alpha_acid when the source has a real value -- omitting
+        # the key lets the validator surface the missing data with a clear
+        # error at import time instead of silently coercing to 0.
+        alpha = h.get('alpha_acid_percent')
+        if alpha is not None and float(alpha) > 0:
+            out['alpha_acid'] = {'value': float(alpha), 'unit': '%'}
         if h.get('origin'):
             out['origin'] = h['origin']
         if h.get('form'):

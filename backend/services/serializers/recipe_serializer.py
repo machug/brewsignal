@@ -13,6 +13,65 @@ from backend.models import (
 )
 
 
+_EXTRACT_COLD_SIDE_USES = {
+    "dry_hop",
+    "add_to_dry_hop",
+    "add_to_fermentation",   # BeerJSON canonical for fermentation-time additions
+    "package",
+    "add_to_package",        # BeerJSON canonical for packaging additions
+    "keg",
+    "brite",
+}
+
+
+def _validate_hop_dict(hop_dict: Dict[str, Any]) -> None:
+    """Enforce extract vs traditional hop invariants (tilt_ui-0l5).
+
+    Extracts: must have amount_ml > 0; timing.use (if present) must be
+    cold-side. They cannot contribute to boil/whirlpool IBU math by design.
+
+    Traditional hops: must have alpha_acid_percent (under any of the
+    accepted key aliases) — without it the Tinseth math falls back to a
+    misleading default and IBU is silently wrong.
+    """
+    is_extract = bool(hop_dict.get("is_extract"))
+    if is_extract:
+        ml = hop_dict.get("amount_ml")
+        if ml is None or float(ml) <= 0:
+            raise ValueError(
+                f"Extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
+                f"amount_ml > 0; got {ml!r}"
+            )
+        timing = hop_dict.get("timing") or {}
+        use = (timing.get("use") or "").lower() if timing else ""
+        if use and use not in _EXTRACT_COLD_SIDE_USES:
+            raise ValueError(
+                f"Extract hops are cold-side only; "
+                f"timing.use={use!r} not allowed for {hop_dict.get('name', '<unnamed>')!r}"
+            )
+        return
+    # Traditional hop: alpha required.
+    # Coerce alpha down to a float (under any alias) so we can reject zero
+    # values explicitly — converters historically defaulted missing alpha to
+    # 0.0 which previously slipped past presence-only checks (tilt_ui-0l5).
+    raw_alpha = (
+        hop_dict.get("alpha_acid_percent")
+        or hop_dict.get("alpha_acid")
+        or hop_dict.get("alpha")
+    )
+    alpha_value = None
+    if raw_alpha is not None:
+        if isinstance(raw_alpha, dict):
+            alpha_value = raw_alpha.get("value")
+        else:
+            alpha_value = raw_alpha
+    if alpha_value is None or float(alpha_value) <= 0:
+        raise ValueError(
+            f"Non-extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
+            f"alpha_acid_percent > 0; got {alpha_value!r}"
+        )
+
+
 class RecipeSerializer:
     """Convert validated BeerJSON dict to SQLAlchemy Recipe model."""
 
@@ -224,16 +283,26 @@ class RecipeSerializer:
 
     def _create_hop(self, hop_dict: Dict[str, Any]) -> RecipeHop:
         """Create RecipeHop from BeerJSON hop_addition."""
+        _validate_hop_dict(hop_dict)
         hop = RecipeHop(
             name=hop_dict['name'],
             origin=hop_dict.get('origin'),
             form=hop_dict.get('form')
         )
 
-        # Alpha acid (convert from 0-1 to 0-100)
-        if 'alpha_acid' in hop_dict:
-            alpha_val = self._extract_percent(hop_dict['alpha_acid'])
-            hop.alpha_acid_percent = alpha_val * 100 if alpha_val < 1 else alpha_val
+        # Alpha acid (convert from 0-1 to 0-100). Accept multiple input
+        # aliases — the validator already verifies the canonical aliases
+        # so we mirror that list here to keep accepted-but-not-persisted
+        # cases impossible (tilt_ui-0l5).
+        raw_alpha = (
+            hop_dict.get("alpha_acid_percent")
+            or hop_dict.get("alpha_acid")
+            or hop_dict.get("alpha")
+        )
+        if raw_alpha is not None:
+            alpha_val = self._extract_percent(raw_alpha)
+            if alpha_val is not None:
+                hop.alpha_acid_percent = alpha_val * 100 if alpha_val < 1 else alpha_val
 
         # Beta acid (convert from 0-1 to 0-100)
         if 'beta_acid' in hop_dict:
@@ -243,6 +312,12 @@ class RecipeSerializer:
         # Amount (grams)
         if 'amount' in hop_dict:
             hop.amount_grams = self._extract_mass_g(hop_dict['amount'])
+        elif hop_dict.get("is_extract"):
+            # Extracts dose in mL, not grams. The recipe_hops.amount_grams
+            # column is NOT NULL for historical reasons, so write 0 to
+            # satisfy the constraint while the real dosage lives in
+            # amount_ml (tilt_ui-0l5).
+            hop.amount_grams = 0.0
 
         # Timing (store as JSON)
         if 'timing' in hop_dict:
@@ -251,6 +326,14 @@ class RecipeSerializer:
         # Format extensions
         if '_extensions' in hop_dict:
             hop.format_extensions = hop_dict['_extensions']
+
+        # Extract semantics (tilt_ui-0l5). is_extract gates IBU calc and
+        # downstream UI; amount_ml is the canonical dosage unit. Both come
+        # straight off the normalized dict produced by normalize_recipe_to_beerjson.
+        if hop_dict.get("is_extract"):
+            hop.is_extract = True
+        if hop_dict.get("amount_ml") is not None:
+            hop.amount_ml = float(hop_dict["amount_ml"])
 
         return hop
 

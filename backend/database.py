@@ -493,6 +493,9 @@ async def init_db():
         await conn.run_sync(_migrate_yeast_strains_alcohol_tolerance)
         # Add comments column to styles for alias searching (NEIPA -> Hazy IPA)
         reseed_styles = await conn.run_sync(_migrate_add_style_comments_column)
+        # Add is_extract + amount_ml columns to recipe_hops and relax
+        # alpha_acid_percent NOT NULL for Abstrax hop extracts (tilt_ui-0l5)
+        await conn.run_sync(_migrate_add_extract_columns)
         # Add title_locked column to ag_ui_threads
         await conn.run_sync(_migrate_add_ag_ui_thread_title_locked)
         # Add user_id column to ag_ui_threads for multi-tenant isolation
@@ -1666,6 +1669,139 @@ def _migrate_add_style_comments_column(conn):
         # Return True to signal that styles need re-seeding
         return True
     return False
+
+
+def _migrate_add_extract_columns(conn) -> bool:
+    """Add is_extract + amount_ml to recipe_hops; relax alpha NOT NULL.
+
+    SQLite cannot drop NOT NULL in place — recreate the table to relax
+    alpha_acid_percent. Returns True on first run, False on subsequent
+    runs (idempotent).
+
+    Crash-recovery contract: a leftover ``recipe_hops_old_alpha`` table
+    indicates a previous attempt died mid-flight. Possible mid-states:
+      a) live missing entirely (crash between RENAME and CREATE) —
+         orphan is the only copy of the data. Rename it back and fall
+         through to the normal path.
+      b) live exists in new shape but rows didn't reach it (crash between
+         CREATE and INSERT-SELECT) — copy via INSERT OR IGNORE, then drop.
+      c) live exists in some partially-migrated shape — treat the orphan
+         as authoritative, drop the partial live, rename orphan back.
+    Every non-short-circuit exit ensures ``ix_hops_recipe`` exists.
+    """
+    from sqlalchemy import text
+    info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
+    cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
+    live_exists = bool(cols)
+
+    # Detect leftover from a crashed prior attempt. If present, fall through
+    # to the cleanup path even when the live schema already looks migrated —
+    # otherwise the orphan table strands data forever.
+    has_orphan = bool(conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='recipe_hops_old_alpha'"
+    )).fetchone())
+
+    fully_migrated = (
+        live_exists
+        and "is_extract" in cols
+        and "amount_ml" in cols
+        and cols.get("alpha_acid_percent", {}).get("notnull") == 0
+    )
+
+    # Happy-path short-circuit: already migrated, no leftover to recover.
+    # Still ensure the index exists — covers a crash right before the
+    # CREATE INDEX in a prior run.
+    if fully_migrated and not has_orphan:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+        return False
+
+    # Crash-recovery (a): post-RENAME-pre-CREATE crash. The orphan is the
+    # only table holding the data; recipe_hops does not exist. Rename the
+    # orphan back so the normal migration flow can run safely from a
+    # known starting state.
+    if has_orphan and not live_exists:
+        conn.execute(text("ALTER TABLE recipe_hops_old_alpha RENAME TO recipe_hops"))
+        info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
+        cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
+        has_orphan = False
+
+    # Crash-recovery (b): new-shape live exists but the orphan still has
+    # rows that didn't reach it (post-RENAME-post-CREATE-pre-INSERT crash).
+    # INSERT OR IGNORE on the PRIMARY KEY id makes this idempotent if some
+    # rows already made it.
+    if has_orphan and fully_migrated:
+        conn.execute(text(
+            """
+            INSERT OR IGNORE INTO recipe_hops
+                (id, recipe_id, name, origin, form,
+                 alpha_acid_percent, beta_acid_percent, amount_grams,
+                 amount_ml, is_extract, timing, format_extensions)
+            SELECT id, recipe_id, name, origin, form,
+                   alpha_acid_percent, beta_acid_percent, amount_grams,
+                   NULL, 0, timing, format_extensions
+            FROM recipe_hops_old_alpha
+            """
+        ))
+        conn.execute(text("DROP TABLE recipe_hops_old_alpha"))
+        # Index might be missing if the original crash happened pre-CREATE-INDEX.
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+        return True
+
+    # Crash-recovery (c): orphan exists AND live exists AND live is NOT
+    # fully migrated — some weird mid-state. Treat the orphan as
+    # authoritative: drop the partially migrated live, rename orphan back,
+    # fall through to the normal migration path.
+    if has_orphan:
+        conn.execute(text("DROP TABLE recipe_hops"))
+        conn.execute(text("ALTER TABLE recipe_hops_old_alpha RENAME TO recipe_hops"))
+        info = conn.execute(text("PRAGMA table_info(recipe_hops)")).fetchall()
+        cols = {r[1]: {"type": r[2], "notnull": r[3]} for r in info}
+
+    # Additive column adds (idempotent; ALTER TABLE on existing columns is
+    # safe to skip via the membership check).
+    if "is_extract" not in cols:
+        conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN is_extract BOOLEAN NOT NULL DEFAULT 0"))
+    if "amount_ml" not in cols:
+        conn.execute(text("ALTER TABLE recipe_hops ADD COLUMN amount_ml REAL"))
+
+    # Relax alpha_acid_percent NOT NULL via SQLite table-recreate.
+    if cols.get("alpha_acid_percent", {}).get("notnull") == 1:
+        # No DROP IF EXISTS guard needed for the orphan here — we already
+        # handled it above. If we reach this branch, no orphan exists.
+        conn.execute(text("ALTER TABLE recipe_hops RENAME TO recipe_hops_old_alpha"))
+        conn.execute(text("""
+            CREATE TABLE recipe_hops (
+                id INTEGER PRIMARY KEY,
+                recipe_id INTEGER NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                origin VARCHAR(50),
+                form VARCHAR(20),
+                alpha_acid_percent REAL,
+                beta_acid_percent REAL,
+                amount_grams REAL NOT NULL,
+                amount_ml REAL,
+                is_extract BOOLEAN NOT NULL DEFAULT 0,
+                timing JSON,
+                format_extensions JSON,
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO recipe_hops (id, recipe_id, name, origin, form,
+                alpha_acid_percent, beta_acid_percent, amount_grams, amount_ml,
+                is_extract, timing, format_extensions)
+            SELECT id, recipe_id, name, origin, form,
+                alpha_acid_percent, beta_acid_percent, amount_grams, NULL,
+                0, timing, format_extensions
+            FROM recipe_hops_old_alpha
+        """))
+        conn.execute(text("DROP TABLE IF EXISTS recipe_hops_old_alpha"))
+
+    # Ensure the index exists on every non-short-circuit exit. Covers
+    # both the additive-only path and any crash that happened before the
+    # original CREATE INDEX in a prior attempt.
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_hops_recipe ON recipe_hops(recipe_id)"))
+    return True
 
 
 def _migrate_add_ag_ui_thread_title_locked(conn):

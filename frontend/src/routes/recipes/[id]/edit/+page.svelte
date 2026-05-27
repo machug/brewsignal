@@ -278,7 +278,12 @@
 						use: h.use,
 						form: h.form,
 						origin: h.origin,
-						purpose: h.purpose
+						purpose: h.purpose,
+						// Persist extract metadata so it round-trips through
+						// format_extensions. amount_ml is meaningful only when
+						// is_extract is true.
+						is_extract: Boolean(h.is_extract),
+						amount_ml: h.is_extract ? h.amount_ml ?? null : null
 					}))
 				}
 			};

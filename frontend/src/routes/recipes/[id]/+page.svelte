@@ -76,8 +76,13 @@
 		) as Fermentable[];
 		if (fermentables.length === 0) return null;
 
-		const rawHops: Array<Hop & { use?: string }> = Array.isArray(ext?.hops)
-			? ext!.hops!
+		// Extract-mode hops (Abstrax Quantum-style) are cold-side and
+		// contribute no Tinseth IBU — skip them entirely so their wider
+		// `use` allowlist (add_to_fermentation / add_to_package / etc.)
+		// never has to round-trip through the IBU calculator's narrower
+		// hot-side union.
+		const rawHops: Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }> = Array.isArray(ext?.hops)
+			? (ext!.hops! as Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }>)
 			: (recipe.hops ?? []).map((h) => {
 					const timing = h.timing || {};
 					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
@@ -88,11 +93,14 @@
 						amount_grams: h.amount_grams || 0,
 						alpha_acid_percent: h.alpha_acid_percent || 0,
 						boil_time_minutes: minutes,
-						use: normalizeHopUse(timing.use),
+						use: normalizeHopUse(timing.use) as string,
 						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
+						is_extract: Boolean(h.is_extract),
 					};
 				});
-		const hops = rawHops.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
+		const hops = rawHops
+			.filter((h) => !h.is_extract)
+			.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
 
 		const yeast: Yeast = {
 			name: recipe.yeast_name || '',
@@ -124,6 +132,44 @@
 	let recipeId = $derived.by(() => {
 		const id = parseInt($page.params.id || '', 10);
 		return isNaN(id) || id <= 0 ? null : id;
+	});
+
+	// Unified hop view that mirrors the liveStats precedence: prefer the
+	// UI editor's format_extensions.hops copy (where new/edit pages save
+	// their structured hop data including is_extract + amount_ml) and
+	// fall back to recipe.hops (rows written by the LLM tool / import
+	// path). Without this, UI-created extracts disappear from the AI
+	// review payload and the HopSchedule render. Follow-up bead covers
+	// teaching the backend POST/PUT to write recipe_hops directly.
+	let displayHops = $derived.by(() => {
+		if (!recipe) return [] as Array<Record<string, unknown>>;
+		const ext = recipe.format_extensions as
+			| { hops?: Array<Record<string, unknown>> }
+			| undefined;
+		// format_extensions.hops being an explicit array — even an empty
+		// one — is the UI editor's authoritative copy. An empty array
+		// means the brewer deleted every hop; falling back to recipe.hops
+		// at that point would resurrect stale rows. Only fall back when
+		// format_extensions has no hops key at all (importer / LLM path).
+		if (Array.isArray(ext?.hops)) {
+			return ext!.hops!.map((h) => {
+				const minutes = Number(h.boil_time_minutes ?? 0);
+				const use = String(h.use ?? '');
+				return {
+					name: h.name,
+					amount_grams: h.amount_grams ?? 0,
+					amount_ml: h.amount_ml ?? null,
+					alpha_acid_percent: h.alpha_acid_percent ?? null,
+					is_extract: Boolean(h.is_extract),
+					form: h.form ?? null,
+					origin: h.origin ?? null,
+					use,
+					boil_time_minutes: minutes,
+					timing: { use, duration: { value: minutes, unit: 'min' } },
+				};
+			});
+		}
+		return (recipe.hops ?? []) as unknown as Array<Record<string, unknown>>;
 	});
 
 	onMount(async () => {
@@ -164,13 +210,26 @@
 	async function handleReview() {
 		if (!recipe) return;
 
-		if (!recipe.type?.trim()) {
+		// BJCP style FK now drives the style label (tilt_ui-tre);
+		// recipe.type is the BeerXML brewery-type column and may be
+		// missing entirely on UI-created recipes. Prefer the linked
+		// style name, fall back to type for legacy recipes.
+		const styleName = recipe.style?.name ?? recipe.type ?? '';
+		if (!styleName.trim()) {
 			reviewError = 'Recipe is missing a beer style — edit the recipe and add one to get an AI review';
 			showReviewModal = true;
 			return;
 		}
 
-		const fermentables = recipe.fermentables ?? [];
+		// UI editor saves fermentables under format_extensions; the
+		// recipe.fermentables table rows are only populated by import or
+		// the LLM save_recipe path. Mirror the liveStats precedence.
+		const ext = recipe.format_extensions as
+			| { fermentables?: Array<{ name?: string; amount_kg?: number; color_srm?: number; color_lovibond?: number; type?: string }> }
+			| undefined;
+		const fermentables = Array.isArray(ext?.fermentables)
+			? ext!.fermentables!
+			: recipe.fermentables ?? [];
 		if (fermentables.length === 0) {
 			reviewError = 'Recipe has no fermentables to review';
 			showReviewModal = true;
@@ -195,33 +254,64 @@
 
 			reviewResult = await reviewRecipe({
 				name: recipe.name || 'Untitled Recipe',
-				style: recipe.type,
+				style: styleName,
 				og,
 				fg,
 				abv,
 				ibu,
 				color_srm: colorSrm,
 				fermentables: fermentables.map((f) => ({
-					name: f.name,
-					amount_kg: f.amount_kg ?? 0,
-					color_srm: f.color_srm,
-					type: f.type
+					name: (f as { name?: string }).name ?? '',
+					amount_kg: (f as { amount_kg?: number }).amount_kg ?? 0,
+					// format_extensions.fermentables carries color_lovibond
+					// while recipe.fermentables uses color_srm. Convert
+					// Lovibond → SRM (1.3546*L − 0.76) when only Lovibond
+					// is available.
+					color_srm:
+						(f as { color_srm?: number }).color_srm ??
+						((f as { color_lovibond?: number }).color_lovibond != null
+							? 1.3546 * (f as { color_lovibond: number }).color_lovibond - 0.76
+							: undefined),
+					type: (f as { type?: string }).type
 				})),
-				hops: (recipe.hops ?? []).map((h) => {
-					const timing = h.timing || {};
+				// displayHops merges format_extensions.hops (UI editor copy
+				// with is_extract + amount_ml) with the recipe_hops table
+				// fallback. Extracts come through with amount_grams=0 and
+				// no alpha, so the IBU side of the review prompt naturally
+				// ignores them while the agent still sees them as part of
+				// the hop bill (so it can comment on aroma additions and
+				// Abstrax usage). The backend review tool already knows
+				// is_extract semantics from phase 1.
+				hops: displayHops.map((h: Record<string, unknown>) => {
+					const timing = (h.timing as Record<string, any>) || {};
 					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
 					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
 					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-					const use = normalizeHopUse(timing.use);
+					const isExtract = Boolean(h.is_extract);
+					// Normalise the use under the same isExtract flag the
+					// payload carries, otherwise extract-only cold-side
+					// uses (add_to_fermentation/add_to_package/keg/brite)
+					// collapse to "boil" and the LLM sees an aroma extract
+					// dosed at boil time.
+					const use = normalizeHopUse(
+						timing.use ?? (h.use as string | undefined),
+						isExtract,
+					);
+					const alpha = h.alpha_acid_percent;
+					const ml = h.amount_ml;
 					return {
-						name: h.name,
-						amount_grams: h.amount_grams ?? 0,
+						name: h.name as string,
+						amount_grams: Number(h.amount_grams ?? 0),
 						// Don't expose dry-hop / mash duration as IBU-time
 						// to the LLM — the review prompt would misread a
 						// 4-day dry hop as an absurd boil duration.
-						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : minutes,
-						alpha_acid_percent: h.alpha_acid_percent,
-						use
+						// Extracts are cold-side only, so always zero.
+						boil_time_minutes:
+							isExtract || use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
+						alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
+						use,
+						is_extract: isExtract,
+						amount_ml: typeof ml === 'number' ? ml : null
 					};
 				}),
 				yeast: recipe.yeast_name
@@ -388,9 +478,9 @@
 			{/if}
 
 			<!-- Hops Section -->
-			{#if recipe.hops && recipe.hops.length > 0}
+			{#if displayHops.length > 0}
 				<section class="content-card">
-					<HopSchedule hops={recipe.hops} />
+					<HopSchedule hops={displayHops as never} />
 				</section>
 			{/if}
 

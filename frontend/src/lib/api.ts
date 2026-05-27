@@ -352,7 +352,7 @@ export interface RecipeResponse {
 	yeast_attenuation?: number;
 	notes?: string;
 	created_at: string;
-	style?: { id: string; name: string };
+	style?: { id: string; name: string; category_number?: string; style_letter?: string };
 	format_extensions?: Record<string, unknown>;
 	// Ingredient lists (only in detail response)
 	fermentables?: FermentableResponse[];

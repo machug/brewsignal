@@ -8,6 +8,12 @@
 		ibu?: number;
 		colorSrm?: number;
 		batchSizeLiters?: number;
+		// BJCP style metadata for the linked Style row. Rendered as a
+		// dedicated cell at the left of the stats grid so brewers see the
+		// target style alongside the core stats without scrolling back up
+		// to the title card (tilt_ui-6b9).
+		styleName?: string;
+		styleCategory?: string; // e.g. "21A"
 		// Imported brewer-declared targets. When present and meaningfully
 		// different from the calculated value, displayed as a small "src N"
 		// hint under the stat (tilt_ui-ak6).
@@ -20,6 +26,7 @@
 
 	let {
 		og = 1.050, fg = 1.010, abv = 5.0, ibu = 30, colorSrm = 8, batchSizeLiters = 20,
+		styleName, styleCategory,
 		targetOg, targetFg, targetAbv, targetIbu, targetSrm,
 	}: Props = $props();
 
@@ -78,6 +85,18 @@
 	</div>
 
 	<div class="stats-grid">
+		{#if styleName}
+			<div class="stat-group">
+				<div class="stat stat-style" title={styleName}>
+					<span class="stat-label">Style</span>
+					<span class="stat-value stat-style-value">{styleName}</span>
+					{#if styleCategory}
+						<span class="stat-sub">BJCP {styleCategory}</span>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
 		<div class="stat-group">
 			<div class="stat">
 				<span class="stat-label">OG</span>
@@ -147,7 +166,10 @@
 
 	.stats-grid {
 		display: flex;
-		flex-wrap: nowrap;
+		/* Wrap allowed at any width — Style cell (added in tilt_ui-6b9)
+		   can push the row past the panel on tablet widths if held to
+		   nowrap until 768px while panel overflow stays hidden. */
+		flex-wrap: wrap;
 		gap: var(--space-2);
 		align-items: center;
 	}
@@ -375,6 +397,25 @@
 	.stat-value.balance {
 		color: var(--positive);
 		text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+	}
+
+	/* Style cell needs to fit a multi-word BJCP name without forcing a
+	   line-wrap on the whole stats row. Narrower font, fixed cap, ellipsis. */
+	.stat-style {
+		min-width: 96px;
+		max-width: 160px;
+	}
+
+	.stat-style-value {
+		font-size: 13px;
+		font-family: inherit;
+		font-weight: 600;
+		letter-spacing: 0.2px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
+		color: var(--accent, var(--text-primary));
 	}
 
 	.stat-sub {

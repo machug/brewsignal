@@ -377,6 +377,15 @@ def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
                     else:
                         norm_h["timing"] = {"use": use, "duration": {"value": float(time_val), "unit": "min"}}
 
+            # Preserve extract semantics (tilt_ui-0l5): is_extract gates the
+            # IBU skip in calculate_recipe_stats below, and amount_ml is the
+            # canonical dosage unit for hop extracts. Without these we'd
+            # silently fold extracts back into the Tinseth math.
+            if h.get("is_extract"):
+                norm_h["is_extract"] = True
+                if h.get("amount_ml") is not None:
+                    norm_h["amount_ml"] = float(h["amount_ml"])
+
             normalized_hops.append(norm_h)
         normalized_ingredients["hop_additions"] = normalized_hops
 

@@ -68,3 +68,57 @@ def test_extract_with_null_alpha_does_not_crash():
     )
     # Must not raise.
     _ibu_for_hops([extract])
+
+
+def test_normalize_preserves_extract_marker():
+    """Normalization must carry is_extract through, otherwise the LLM-side
+    IBU calculator can't skip the extract row (tilt_ui-0l5)."""
+    from backend.services.llm.tools.recipe import normalize_recipe_to_beerjson
+    recipe = {
+        "name": "Extract LLM Test",
+        "batch_size_liters": 20,
+        "hops": [
+            {"name": "Quantum MOS", "is_extract": True, "amount_ml": 2.5, "use": "dry_hop"},
+            {"name": "Mosaic", "amount": 20, "alpha_acid": 12, "use": "boil", "time": 60},
+        ],
+    }
+    normalized = normalize_recipe_to_beerjson(recipe)
+    hops = normalized.get("ingredients", {}).get("hop_additions") or []
+    assert len(hops) == 2
+    extract = next(h for h in hops if h["name"] == "Quantum MOS")
+    assert extract.get("is_extract") is True
+    assert extract.get("amount_ml") == 2.5
+    pellet = next(h for h in hops if h["name"] == "Mosaic")
+    assert not pellet.get("is_extract"), "non-extract must not be marked"
+
+
+def test_llm_calculate_recipe_stats_skips_extract_ibu():
+    """End-to-end: an extract added via the LLM normalization+stats path
+    must not contribute IBU. Without preserving is_extract, the duplicate
+    IBU calculator at recipe.py:612 would never short-circuit."""
+    from backend.services.llm.tools.recipe import (
+        normalize_recipe_to_beerjson,
+        calculate_recipe_stats,
+    )
+
+    pellet_only = normalize_recipe_to_beerjson({
+        "name": "Pellet Only",
+        "batch_size_liters": 20,
+        "hops": [
+            {"name": "Mosaic", "amount": 20, "alpha_acid": 12, "use": "boil", "time": 60},
+        ],
+    })
+    mixed = normalize_recipe_to_beerjson({
+        "name": "Mixed",
+        "batch_size_liters": 20,
+        "hops": [
+            {"name": "Mosaic", "amount": 20, "alpha_acid": 12, "use": "boil", "time": 60},
+            {"name": "Quantum MOS", "is_extract": True, "amount_ml": 2.5, "use": "dry_hop"},
+        ],
+    })
+    pellet_ibu = calculate_recipe_stats(pellet_only)["ibu"]
+    mixed_ibu = calculate_recipe_stats(mixed)["ibu"]
+    assert pellet_ibu > 0
+    assert mixed_ibu == pytest.approx(pellet_ibu), (
+        f"extract perturbed LLM IBU: pellet={pellet_ibu} mixed={mixed_ibu}"
+    )

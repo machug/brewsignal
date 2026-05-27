@@ -164,3 +164,45 @@ def test_serializer_leaves_extract_false_for_pellets():
     # unset/falsy. Either way it must not be coerced to True.
     assert not getattr(hop, "is_extract", False)
     assert getattr(hop, "amount_ml", None) is None
+
+
+@pytest.mark.asyncio
+async def test_serializer_flushes_extract_hop_against_real_db():
+    """End-to-end persistence: extract hop produced by the serializer must
+    flush without violating recipe_hops.amount_grams NOT NULL."""
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy import text
+    from backend.models import Base, Recipe, RecipeHop
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+
+    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    Session = async_sessionmaker(eng, expire_on_commit=False)
+
+    serializer = RecipeSerializer()
+    extract_dict = {
+        "name": "Quantum MOS",
+        "is_extract": True,
+        "amount_ml": 2.5,
+        "timing": {"use": "dry_hop", "duration": {"value": 0}},
+    }
+    hop = serializer._create_hop(extract_dict)
+
+    async with Session() as db:
+        recipe = Recipe(name="Extract Persist Test")
+        db.add(recipe)
+        await db.flush()
+        hop.recipe_id = recipe.id
+        db.add(hop)
+        await db.commit()
+        row = (await db.execute(
+            text("SELECT name, is_extract, amount_ml, amount_grams FROM recipe_hops WHERE recipe_id = :rid"),
+            {"rid": recipe.id},
+        )).fetchone()
+    assert row is not None
+    assert row[0] == "Quantum MOS"
+    assert row[1] == 1
+    assert row[2] == 2.5
+    assert row[3] == 0.0  # extract amount_grams sentinel
+    await eng.dispose()

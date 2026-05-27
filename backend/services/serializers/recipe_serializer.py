@@ -243,6 +243,12 @@ class RecipeSerializer:
         # Amount (grams)
         if 'amount' in hop_dict:
             hop.amount_grams = self._extract_mass_g(hop_dict['amount'])
+        elif hop_dict.get("is_extract"):
+            # Extracts dose in mL, not grams. The recipe_hops.amount_grams
+            # column is NOT NULL for historical reasons, so write 0 to
+            # satisfy the constraint while the real dosage lives in
+            # amount_ml (tilt_ui-0l5).
+            hop.amount_grams = 0.0
 
         # Timing (store as JSON)
         if 'timing' in hop_dict:

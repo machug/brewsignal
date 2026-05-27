@@ -111,17 +111,21 @@ def calculate_og_from_fermentables(
     return calculated_og, calculated_srm
 
 
-def calculate_ibu_from_hops(
+def _calculate_ibu(
     hops: list["RecipeHop"],
+    og: float,
     batch_liters: float,
-    og: float
 ) -> float:
-    """Calculate IBU from hop additions using Tinseth formula.
+    """Internal IBU calculator (Tinseth) — testable in isolation.
+
+    Hoisted from the inline loop in calculate_ibu_from_hops so unit tests
+    (and the LLM-tools mirror) can target it directly. Same math, same
+    return value as the previous implementation.
 
     Args:
-        hops: List of RecipeHop models
-        batch_liters: Batch size in liters
+        hops: List of RecipeHop models (or fakes exposing the same attrs)
         og: Original gravity for utilization calculation
+        batch_liters: Batch size in liters
 
     Returns:
         Total IBU
@@ -132,6 +136,11 @@ def calculate_ibu_from_hops(
     total_ibu = 0
 
     for hop in hops:
+        if getattr(hop, "is_extract", False):
+            # Abstrax-style extracts have no alpha acids and contribute zero
+            # IBU regardless of timing/amount. Skipping early also protects
+            # the alpha math below from a None alpha_acid_percent (tilt_ui-0l5).
+            continue
         amount_g = hop.amount_grams or 0
         if amount_g <= 0:
             continue
@@ -187,6 +196,27 @@ def calculate_ibu_from_hops(
         # Dry hops (dry_hop, add_to_fermentation) don't contribute significant IBUs
 
     return total_ibu
+
+
+def calculate_ibu_from_hops(
+    hops: list["RecipeHop"],
+    batch_liters: float,
+    og: float,
+) -> float:
+    """Calculate IBU from hop additions using Tinseth formula.
+
+    Thin public wrapper preserving the historical (hops, batch_liters, og)
+    signature. New code/tests should target _calculate_ibu directly.
+
+    Args:
+        hops: List of RecipeHop models
+        batch_liters: Batch size in liters
+        og: Original gravity for utilization calculation
+
+    Returns:
+        Total IBU
+    """
+    return _calculate_ibu(hops, og=og, batch_liters=batch_liters)
 
 
 def calculate_fg_and_abv(og: float, attenuation: float) -> tuple[float, float]:

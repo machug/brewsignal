@@ -609,6 +609,11 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
     total_ibu = 0
 
     for hop in hops:
+        if hop.get("is_extract"):
+            # Abstrax-style extracts have no alpha acids and contribute zero
+            # IBU regardless of timing/amount. Skip before alpha math to
+            # avoid None/0 hazards (tilt_ui-0l5; mirrors brewing._calculate_ibu).
+            continue
         amount = hop.get("amount", {})
         if isinstance(amount, dict):
             amount_g = amount.get("value", 0)

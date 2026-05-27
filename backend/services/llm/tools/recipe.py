@@ -702,39 +702,9 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _resolve_style_id(
-    db: AsyncSession, style_name: Optional[str]
-) -> Optional[str]:
-    """Look up a BJCP style by name (exact then case-insensitive then fuzzy).
-
-    Returns Style.id when found, None otherwise. Used by save_recipe and
-    update_recipe to wire the LLM's free-text "style" field to the styles
-    table so review tools and the detail page can find the target style.
-    """
-    if not style_name or not isinstance(style_name, str):
-        return None
-    name = style_name.strip()
-    if not name:
-        return None
-
-    # .limit(1) + order keeps lookup deterministic when the styles table has
-    # duplicate names across BJCP guide versions or imported rows.
-    result = await db.execute(
-        select(Style)
-        .where(func.lower(Style.name) == name.lower())
-        .order_by(Style.guide.desc(), Style.id)
-        .limit(1)
-    )
-    style = result.scalar_one_or_none()
-    if not style:
-        result = await db.execute(
-            select(Style)
-            .where(Style.name.ilike(f"%{name}%"))
-            .order_by(Style.guide.desc(), Style.id)
-            .limit(1)
-        )
-        style = result.scalar_one_or_none()
-    return style.id if style else None
+# BJCP name → styles.id lookup lives in services/style_resolver. Re-export
+# here so existing callers (save_recipe, update_recipe) keep working.
+from ...style_resolver import resolve_style_id as _resolve_style_id  # noqa: F401
 
 
 _CONFIRMATION_GUIDANCE = (

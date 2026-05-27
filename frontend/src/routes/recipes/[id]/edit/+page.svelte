@@ -234,6 +234,10 @@
 				name: data.name,
 				author: data.author || undefined,
 				type: data.type || undefined,
+				// Pass null through — backend treats explicit null as "clear FK".
+				// Collapsing to undefined would drop the clear path entirely.
+				style_id: data.style_id,
+				style: data.style,
 				batch_size_liters: data.batch_size_liters,
 				efficiency_percent: data.efficiency_percent,
 				boil_time_minutes: data.boil_time_minutes,

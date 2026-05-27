@@ -1075,7 +1075,8 @@ export async function fetchRecipe(id: number): Promise<RecipeResponse> {
 export interface RecipeCreate {
 	name: string;
 	author?: string;
-	style_id?: string;
+	style_id?: string | null;
+	style?: string | null;
 	type?: string;
 	og?: number;
 	fg?: number;
@@ -1099,7 +1100,8 @@ export interface RecipeCreate {
 export interface RecipeUpdateData {
 	name?: string;
 	author?: string;
-	style_id?: string;
+	style_id?: string | null;
+	style?: string | null;
 	type?: string;
 	og?: number;
 	fg?: number;

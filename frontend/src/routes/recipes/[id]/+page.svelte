@@ -146,7 +146,12 @@
 		const ext = recipe.format_extensions as
 			| { hops?: Array<Record<string, unknown>> }
 			| undefined;
-		if (Array.isArray(ext?.hops) && ext!.hops!.length > 0) {
+		// format_extensions.hops being an explicit array — even an empty
+		// one — is the UI editor's authoritative copy. An empty array
+		// means the brewer deleted every hop; falling back to recipe.hops
+		// at that point would resurrect stale rows. Only fall back when
+		// format_extensions has no hops key at all (importer / LLM path).
+		if (Array.isArray(ext?.hops)) {
 			return ext!.hops!.map((h) => {
 				const minutes = Number(h.boil_time_minutes ?? 0);
 				const use = String(h.use ?? '');
@@ -250,30 +255,30 @@
 				})),
 				// displayHops merges format_extensions.hops (UI editor copy
 				// with is_extract + amount_ml) with the recipe_hops table
-				// fallback. Extracts are omitted from the LLM review
-				// payload because the existing review prompt is built
-				// around traditional hop-side IBU math; surfacing them
-				// directly would skew the agent's assessment.
-				hops: displayHops
-					.filter((h: Record<string, unknown>) => !h.is_extract)
-					.map((h: Record<string, unknown>) => {
-						const timing = (h.timing as Record<string, any>) || {};
-						const tv = timing.duration?.value ?? timing.time?.value ?? 0;
-						const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-						const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-						const use = normalizeHopUse(timing.use ?? (h.use as string | undefined));
-						const alpha = h.alpha_acid_percent;
-						return {
-							name: h.name as string,
-							amount_grams: Number(h.amount_grams ?? 0),
-							// Don't expose dry-hop / mash duration as IBU-time
-							// to the LLM — the review prompt would misread a
-							// 4-day dry hop as an absurd boil duration.
-							boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
-							alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
-							use
-						};
-					}),
+				// fallback. Extracts come through with amount_grams=0 and
+				// no alpha, so the IBU side of the review prompt naturally
+				// ignores them while the agent still sees them as part of
+				// the hop bill (so it can comment on aroma additions and
+				// Abstrax usage). The backend review tool already knows
+				// is_extract semantics from phase 1.
+				hops: displayHops.map((h: Record<string, unknown>) => {
+					const timing = (h.timing as Record<string, any>) || {};
+					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
+					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
+					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
+					const use = normalizeHopUse(timing.use ?? (h.use as string | undefined));
+					const alpha = h.alpha_acid_percent;
+					return {
+						name: h.name as string,
+						amount_grams: Number(h.amount_grams ?? 0),
+						// Don't expose dry-hop / mash duration as IBU-time
+						// to the LLM — the review prompt would misread a
+						// 4-day dry hop as an absurd boil duration.
+						boil_time_minutes: use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
+						alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
+						use
+					};
+				}),
 				yeast: recipe.yeast_name
 					? {
 							name: recipe.yeast_name,

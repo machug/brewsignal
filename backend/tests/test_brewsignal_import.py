@@ -129,13 +129,18 @@ class TestBrewSignalEdgeCases:
                    if k not in ('_format', 'brewsignal_version')}
         BrewSignalRecipe.model_validate(cleaned)  # no exception
 
-    def test_hop_without_alpha_acid_gets_default(self):
+    def test_hop_without_alpha_acid_omits_key(self):
+        """Missing alpha must NOT be coerced to 0.0; downstream validator
+        (tilt_ui-0l5) requires alpha > 0 for non-extract hops, so emitting
+        0.0 here would mask the bad data and cause a confusing validation
+        failure later. Omitting the key surfaces the absent-alpha state
+        directly to the validator with a clear error."""
         out = BrewSignalToBeerJSONConverter()._convert_hop({
             'name': 'Mystery Hop',
             'amount_grams': 30,
             'timing': {'use': 'add_to_boil'},
         })
-        assert out['alpha_acid'] == {'value': 0.0, 'unit': '%'}
+        assert 'alpha_acid' not in out
 
     def test_mash_step_type_emits_under_key_serializer_reads(self):
         """Serializer reads step_dict['type'], not 'step_type'."""

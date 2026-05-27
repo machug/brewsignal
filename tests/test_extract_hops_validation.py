@@ -149,3 +149,30 @@ def test_alpha_alias_persists_to_orm(serializer):
             f"alias {alias!r} accepted by validator but lost during _create_hop"
         )
         assert hop.alpha_acid_percent > 0
+
+
+def test_brewsignal_converter_omits_alpha_when_missing():
+    """Don't default missing alpha to 0.0 -- downstream validator must see
+    a clear absent-alpha state, not a silent zero (tilt_ui-0l5)."""
+    from backend.services.converters.brewsignal_to_beerjson import BrewSignalToBeerJSONConverter
+
+    converter = BrewSignalToBeerJSONConverter()
+    hop_in = {
+        "name": "Mystery Hop",
+        "amount_grams": 20,
+        # no alpha_acid_percent
+    }
+    hop_out = converter._convert_hop(hop_in)
+    assert "alpha_acid" not in hop_out, (
+        "alpha_acid should be omitted when source is missing, not coerced to 0.0"
+    )
+
+
+def test_brewsignal_converter_passes_real_alpha_through():
+    from backend.services.converters.brewsignal_to_beerjson import BrewSignalToBeerJSONConverter
+
+    converter = BrewSignalToBeerJSONConverter()
+    hop_out = converter._convert_hop({
+        "name": "Mosaic", "amount_grams": 20, "alpha_acid_percent": 12.5,
+    })
+    assert hop_out["alpha_acid"] == {"value": 12.5, "unit": "%"}

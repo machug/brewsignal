@@ -252,6 +252,14 @@ class RecipeSerializer:
         if '_extensions' in hop_dict:
             hop.format_extensions = hop_dict['_extensions']
 
+        # Extract semantics (tilt_ui-0l5). is_extract gates IBU calc and
+        # downstream UI; amount_ml is the canonical dosage unit. Both come
+        # straight off the normalized dict produced by normalize_recipe_to_beerjson.
+        if hop_dict.get("is_extract"):
+            hop.is_extract = True
+        if hop_dict.get("amount_ml") is not None:
+            hop.amount_ml = float(hop_dict["amount_ml"])
+
         return hop
 
     def _create_culture(self, culture_dict: Dict[str, Any]) -> RecipeCulture:

@@ -122,3 +122,45 @@ def test_llm_calculate_recipe_stats_skips_extract_ibu():
     assert mixed_ibu == pytest.approx(pellet_ibu), (
         f"extract perturbed LLM IBU: pellet={pellet_ibu} mixed={mixed_ibu}"
     )
+
+
+def test_serializer_persists_extract_fields():
+    """RecipeSerializer must write is_extract + amount_ml to the RecipeHop
+    ORM object — otherwise the marker is lost on save and IBU calc is wrong
+    post-reload (tilt_ui-0l5)."""
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+    from backend.models import RecipeHop
+
+    serializer = RecipeSerializer()
+    # The normalizer produces hop_additions entries shaped roughly like this:
+    extract_dict = {
+        "name": "Quantum MOS",
+        "is_extract": True,
+        "amount_ml": 2.5,
+        "timing": {"use": "dry_hop", "duration": {"value": 0}},
+    }
+    hop = serializer._create_hop(extract_dict)
+    assert isinstance(hop, RecipeHop)
+    assert hop.is_extract is True
+    assert hop.amount_ml == 2.5
+    assert hop.name == "Quantum MOS"
+
+
+def test_serializer_leaves_extract_false_for_pellets():
+    """Default path: non-extract hops persist is_extract=False (the column
+    default) and amount_ml stays None."""
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+    serializer = RecipeSerializer()
+    # Match the normalized dict shape produced by normalize_recipe_to_beerjson:
+    # alpha_acid is a BeerJSON unit object ({"value", "unit"}), not a raw float.
+    pellet_dict = {
+        "name": "Mosaic",
+        "alpha_acid": {"value": 0.12, "unit": "%"},
+        "amount": {"value": 20, "unit": "g"},
+        "timing": {"use": "boil", "duration": {"value": 60}},
+    }
+    hop = serializer._create_hop(pellet_dict)
+    # SQLAlchemy default applies on flush; in-memory the attribute may still be
+    # unset/falsy. Either way it must not be coerced to True.
+    assert not getattr(hop, "is_extract", False)
+    assert getattr(hop, "amount_ml", None) is None

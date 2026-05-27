@@ -13,6 +13,48 @@ from backend.models import (
 )
 
 
+_EXTRACT_COLD_SIDE_USES = {"dry_hop", "add_to_dry_hop", "package", "keg", "brite"}
+
+
+def _validate_hop_dict(hop_dict: Dict[str, Any]) -> None:
+    """Enforce extract vs traditional hop invariants (tilt_ui-0l5).
+
+    Extracts: must have amount_ml > 0; timing.use (if present) must be
+    cold-side. They cannot contribute to boil/whirlpool IBU math by design.
+
+    Traditional hops: must have alpha_acid_percent (under any of the
+    accepted key aliases) — without it the Tinseth math falls back to a
+    misleading default and IBU is silently wrong.
+    """
+    is_extract = bool(hop_dict.get("is_extract"))
+    if is_extract:
+        ml = hop_dict.get("amount_ml")
+        if ml is None or float(ml) <= 0:
+            raise ValueError(
+                f"Extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
+                f"amount_ml > 0; got {ml!r}"
+            )
+        timing = hop_dict.get("timing") or {}
+        use = (timing.get("use") or "").lower() if timing else ""
+        if use and use not in _EXTRACT_COLD_SIDE_USES:
+            raise ValueError(
+                f"Extract hops are cold-side only; "
+                f"timing.use={use!r} not allowed for {hop_dict.get('name', '<unnamed>')!r}"
+            )
+        return
+    # Traditional hop: alpha required.
+    has_alpha = (
+        hop_dict.get("alpha_acid_percent") is not None
+        or hop_dict.get("alpha_acid") is not None
+        or hop_dict.get("alpha") is not None
+    )
+    if not has_alpha:
+        raise ValueError(
+            f"Non-extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
+            f"alpha_acid_percent"
+        )
+
+
 class RecipeSerializer:
     """Convert validated BeerJSON dict to SQLAlchemy Recipe model."""
 
@@ -224,6 +266,7 @@ class RecipeSerializer:
 
     def _create_hop(self, hop_dict: Dict[str, Any]) -> RecipeHop:
         """Create RecipeHop from BeerJSON hop_addition."""
+        _validate_hop_dict(hop_dict)
         hop = RecipeHop(
             name=hop_dict['name'],
             origin=hop_dict.get('origin'),

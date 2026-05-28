@@ -43,31 +43,81 @@ async def get_recipe(
     if not recipe:
         return {"error": f"Recipe with ID {recipe_id} not found"}
 
-    # Build ingredient lists
-    fermentables = [
-        {
-            "name": f.name,
-            "amount_kg": f.amount_kg,
-            "color_srm": f.color_srm,
-            "type": f.type,
-        }
-        for f in recipe.fermentables
-    ]
-    hops = [
-        {
-            "name": h.name,
-            "amount_g": h.amount_grams,
-            "time_minutes": h.time_min,
-            "use": h.use,
-            "alpha_acid": h.alpha_acid_percent,
-            # Extract markers (tilt_ui-0l5). Surface so the frontend / agent
-            # can render extracts distinctly and so IBU recompute downstream
-            # can skip iso-alpha / lupulin doses.
-            "is_extract": bool(h.is_extract),
-            "amount_ml": h.amount_ml,
-        }
-        for h in recipe.hops
-    ]
+    # Build ingredient lists. UI-created recipes (POST/PUT via the
+    # SvelteKit editor) currently persist ingredients ONLY in
+    # recipes.format_extensions, leaving recipe_hops / recipe_fermentables
+    # empty (tracked as tilt_ui-9y7). If the agent loads such a recipe and
+    # the relationship rows are empty but format_extensions carries an
+    # ingredient list, prefer the format_extensions copy and emit a
+    # ui_authored_ingredients=True warning. Otherwise update_recipe would
+    # wipe the recipe to an empty hop bill on the next save.
+    fmt_ext = recipe.format_extensions or {}
+    ext_hops = fmt_ext.get("hops") if isinstance(fmt_ext, dict) else None
+    ext_ferms = fmt_ext.get("fermentables") if isinstance(fmt_ext, dict) else None
+    ui_authored_hops = (
+        not recipe.hops and isinstance(ext_hops, list) and len(ext_hops) > 0
+    )
+    ui_authored_ferms = (
+        not recipe.fermentables
+        and isinstance(ext_ferms, list)
+        and len(ext_ferms) > 0
+    )
+
+    if ui_authored_ferms:
+        fermentables = [
+            {
+                "name": f.get("name"),
+                "amount_kg": f.get("amount_kg"),
+                "color_srm": f.get("color_srm")
+                or (
+                    1.3546 * float(f["color_lovibond"]) - 0.76
+                    if f.get("color_lovibond") is not None
+                    else None
+                ),
+                "type": f.get("type"),
+            }
+            for f in ext_ferms
+        ]
+    else:
+        fermentables = [
+            {
+                "name": f.name,
+                "amount_kg": f.amount_kg,
+                "color_srm": f.color_srm,
+                "type": f.type,
+            }
+            for f in recipe.fermentables
+        ]
+
+    if ui_authored_hops:
+        hops = [
+            {
+                "name": h.get("name"),
+                "amount_g": h.get("amount_grams") or 0,
+                "time_minutes": h.get("boil_time_minutes") or 0,
+                "use": h.get("use"),
+                "alpha_acid": h.get("alpha_acid_percent"),
+                "is_extract": bool(h.get("is_extract")),
+                "amount_ml": h.get("amount_ml"),
+            }
+            for h in ext_hops
+        ]
+    else:
+        hops = [
+            {
+                "name": h.name,
+                "amount_g": h.amount_grams,
+                "time_minutes": h.time_min,
+                "use": h.use,
+                "alpha_acid": h.alpha_acid_percent,
+                # Extract markers (tilt_ui-0l5). Surface so the frontend / agent
+                # can render extracts distinctly and so IBU recompute downstream
+                # can skip iso-alpha / lupulin doses.
+                "is_extract": bool(h.is_extract),
+                "amount_ml": h.amount_ml,
+            }
+            for h in recipe.hops
+        ]
     cultures = [
         {
             "name": c.name,
@@ -78,7 +128,7 @@ async def get_recipe(
         for c in recipe.cultures
     ]
 
-    return {
+    response: dict[str, Any] = {
         "id": recipe.id,
         "name": recipe.name,
         "style": recipe.style.name if recipe.style else None,
@@ -96,6 +146,21 @@ async def get_recipe(
         "hops": hops,
         "cultures": cultures,
     }
+    if ui_authored_hops or ui_authored_ferms:
+        # Flag UI-only recipes so update_recipe callers know they have to
+        # round-trip these ingredients themselves. Without this guard the
+        # agent could load an "empty" recipe and replace it with whatever
+        # diff it just composed — silently dropping the brewer's hop bill.
+        response["ui_authored_ingredients"] = True
+        response["ui_authored_warning"] = (
+            "This recipe was edited via the SvelteKit UI; its ingredient "
+            "lists are stored in format_extensions, not recipe_hops/"
+            "recipe_fermentables. The values returned above are merged "
+            "from format_extensions. When calling update_recipe you MUST "
+            "include the full ingredient lists (every hop/fermentable in "
+            "this response) — otherwise the recipe loses its ingredients."
+        )
+    return response
 
 
 async def list_recipes(
@@ -1012,9 +1077,27 @@ def _format_hops_for_review(hops) -> str:
     def _time(h):
         return h.time_min if h.time_min is not None else 0
 
+    # Sort traditional hops first (by descending time), then extracts at the
+    # bottom; mixed-bill recipes read more naturally that way.
+    def _sort_key(h):
+        is_ext = bool(getattr(h, "is_extract", False))
+        return (1 if is_ext else 0, -_time(h))
+
     lines = []
-    for h in sorted(hops, key=_time, reverse=True):
+    for h in sorted(hops, key=_sort_key):
         use = (h.use or "boil").lower()
+        # Abstrax-style extracts: mL dose, no alpha, cold-side only, zero IBU.
+        # Don't render them as "Xg @ flameout" — that misleads the LLM judge
+        # into thinking the hop bill has another bittering charge (tilt_ui-0l5).
+        if getattr(h, "is_extract", False):
+            ml = getattr(h, "amount_ml", None)
+            amount = f"{ml:.1f} mL" if ml is not None else "?"
+            timing = use.replace("_", " ") if use else "cold side"
+            lines.append(
+                f"- {h.name}: {amount} extract @ {timing} (aroma-only, 0 IBU)"
+            )
+            continue
+
         aa = h.alpha_acid_percent
         aa_str = f" ({aa:.1f}% AA)" if aa else ""
         t = _time(h)
@@ -1026,7 +1109,8 @@ def _format_hops_for_review(hops) -> str:
             timing = "flameout"
         else:
             timing = f"{t:.0f} min"
-        lines.append(f"- {h.name}: {h.amount_grams:.0f}g @ {timing}{aa_str}")
+        amount_g = h.amount_grams if h.amount_grams is not None else 0
+        lines.append(f"- {h.name}: {amount_g:.0f}g @ {timing}{aa_str}")
     return "\n".join(lines)
 
 

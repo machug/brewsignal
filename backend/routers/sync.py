@@ -303,7 +303,10 @@ async def _sync_recipe(
         }
         await client.post(f"{base_url}/recipe_fermentables", headers=headers, json=ferm_data)
 
-    # Sync nested hops
+    # Sync nested hops. Extract identity (is_extract, amount_ml) added in
+    # tilt_ui-0l5 must round-trip through sync — otherwise the receiving
+    # side loses Abstrax/Quantum extracts and reincarnates them as
+    # zero-gram pellets with null alpha.
     for hop in recipe.hops:
         hop_data = {
             "id": hop.id,
@@ -314,6 +317,8 @@ async def _sync_recipe(
             "alpha_acid_percent": hop.alpha_acid_percent,
             "beta_acid_percent": hop.beta_acid_percent,
             "amount_grams": hop.amount_grams,
+            "amount_ml": hop.amount_ml,
+            "is_extract": hop.is_extract,
             "timing": hop.timing,
             "format_extensions": hop.format_extensions,
         }

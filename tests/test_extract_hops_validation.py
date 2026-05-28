@@ -176,3 +176,27 @@ def test_brewsignal_converter_passes_real_alpha_through():
         "name": "Mosaic", "amount_grams": 20, "alpha_acid_percent": 12.5,
     })
     assert hop_out["alpha_acid"] == {"value": 12.5, "unit": "%"}
+
+
+def test_non_extract_without_amount_rejected(serializer):
+    """Non-extract hop without amount_grams must fail validation rather
+    than hitting NOT NULL at DB flush (tilt_ui-0l5)."""
+    bad = {
+        "name": "Mosaic",
+        "alpha_acid": {"value": 0.12, "unit": "%"},
+        "timing": {"use": "boil", "duration": {"value": 60}},
+        # no 'amount' or 'amount_grams'
+    }
+    with pytest.raises(ValueError, match=r"amount_grams"):
+        serializer._create_hop(bad)
+
+
+def test_non_extract_with_zero_amount_rejected(serializer):
+    bad = {
+        "name": "Mosaic",
+        "alpha_acid": {"value": 0.12, "unit": "%"},
+        "amount": {"value": 0, "unit": "g"},
+        "timing": {"use": "boil", "duration": {"value": 60}},
+    }
+    with pytest.raises(ValueError, match=r"amount_grams"):
+        serializer._create_hop(bad)

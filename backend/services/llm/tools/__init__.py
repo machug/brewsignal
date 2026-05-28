@@ -769,7 +769,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "review_recipe",
-            "description": "THE recipe review tool. Call this for ANY user request to 'review', 'critique', 'check', 'look at', or evaluate a recipe — including 'style review', 'recipe review', 'does this fit the style', 'what do you think'. Returns BOTH a friendly BJCP-judge written review AND the numeric compliance block (OG/FG/ABV/IBU/SRM in/out of range, style_fit_score on a 0-10 scale, issues, suggestions) in ONE response. Do not call review_recipe_style for a review — review_recipe already includes its data. Required call before save_recipe / update_recipe (see the review-then-confirm gate in the system prompt).",
+            "description": "THE recipe review tool. Call this for ANY user request to 'review', 'critique', 'check', 'look at', or evaluate a recipe — including 'style review', 'recipe review', 'does this fit the style', 'what do you think'. Returns BOTH a friendly BJCP-judge written review AND the numeric compliance block (OG/FG/ABV/IBU/SRM in/out of range, style_fit_score on a 0-10 scale, issues, suggestions) in ONE response. Do not call review_recipe_style for a review — review_recipe already includes its data. Only accepts a persisted recipe_id — for not-yet-saved candidates or in-flight edits, summarize in prose instead. Call AFTER save_recipe / update_recipe succeeds to report the new style_fit_score (see the confirm-then-persist gate in the system prompt).",
             "parameters": {
                 "type": "object",
                 "properties": {

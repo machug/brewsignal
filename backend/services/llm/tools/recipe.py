@@ -728,12 +728,15 @@ from ...style_resolver import resolve_style_id as _resolve_style_id  # noqa: F40
 
 _CONFIRMATION_GUIDANCE = (
     "Do not persist this recipe yet. Required workflow: "
-    "(1) run review_recipe on the candidate (save it to a draft first "
-    "if it has no id yet, or summarize it back to the user for review); "
+    "(1) summarize the candidate back to the user in prose — review_recipe "
+    "cannot be run on a not-yet-saved draft or in-flight edit, only on "
+    "persisted recipe_ids; "
     "(2) explicitly ask the user to confirm — e.g. 'Save this recipe?' or "
     "'Apply these changes to recipe N?'; "
     "(3) only after the user says yes, call this tool again with "
-    "user_confirmed=true."
+    "user_confirmed=true; "
+    "(4) AFTER this tool returns the new/updated recipe_id, call "
+    "review_recipe(recipe_id) to report the new style_fit_score to the user."
 )
 
 

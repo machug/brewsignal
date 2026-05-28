@@ -70,6 +70,22 @@ def _validate_hop_dict(hop_dict: Dict[str, Any]) -> None:
             f"Non-extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
             f"alpha_acid_percent > 0; got {alpha_value!r}"
         )
+    # Traditional hops are dosed by grams. recipe_hops.amount_grams is
+    # NOT NULL, so a hop reaching the serializer without an amount would
+    # blow up at flush with a database error instead of a clear validation
+    # error (tilt_ui-0l5). Reject explicitly.
+    amount = hop_dict.get("amount")
+    raw_grams = hop_dict.get("amount_grams") if "amount_grams" in hop_dict else None
+    has_amount = (
+        (raw_grams is not None and float(raw_grams) > 0)
+        or (isinstance(amount, dict) and amount.get("value") is not None and float(amount.get("value") or 0) > 0)
+        or (isinstance(amount, (int, float)) and float(amount) > 0)
+    )
+    if not has_amount:
+        raise ValueError(
+            f"Non-extract hop {hop_dict.get('name', '<unnamed>')!r} requires "
+            f"amount_grams > 0"
+        )
 
 
 class RecipeSerializer:

@@ -4,9 +4,19 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+# Type for user_id columns (the Supabase auth uid). On Postgres the column is
+# native `uuid` so it matches Supabase's auth.users and the RLS policies — the
+# ORM then emits `WHERE user_id = $1::uuid` instead of `::VARCHAR`, which a uuid
+# column rejects ("operator does not exist: uuid = character varying",
+# tilt_ui-unt). On SQLite it stays a 36-char string. as_uuid=False keeps the
+# Python/JSON value a plain str on both, so API responses and the auth-filter
+# code (WHERE user_id = <jwt sub>) are unchanged.
+_UserId = String(36).with_variant(PG_UUID(as_uuid=False), "postgresql")
 
 
 def serialize_datetime_to_utc(dt: Optional[datetime]) -> Optional[str]:
@@ -39,7 +49,7 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # UUID from Supabase auth
     device_type: Mapped[str] = mapped_column(String(20), nullable=False, default="tilt")
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(100))
@@ -405,7 +415,7 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # UUID from Supabase auth
 
     # BeerJSON core fields
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -511,7 +521,7 @@ class Batch(Base):
     __tablename__ = "batches"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # UUID from Supabase auth
     recipe_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recipes.id"))
     device_id: Mapped[Optional[str]] = mapped_column(ForeignKey("devices.id"))
     yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))
@@ -1099,7 +1109,7 @@ class TastingNote(Base):
 
     # Extended fields for Batch Post-Mortem feature
     # Multi-tenant isolation
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
 
     # Context fields
     days_since_packaging: Mapped[Optional[int]] = mapped_column(nullable=True)
@@ -1153,7 +1163,7 @@ class BatchReflection(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
     phase: Mapped[str] = mapped_column(String(20), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -1177,7 +1187,7 @@ class BrewingLearning(Base):
     __tablename__ = "brewing_learnings"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(20), nullable=False)  # equipment|technique|recipe|ingredient|correction
     learning: Mapped[str] = mapped_column(Text, nullable=False)
     source_context: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
@@ -2537,7 +2547,7 @@ class AgUiThread(Base):
     __tablename__ = "ag_ui_threads"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # UUID from Supabase auth
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # UUID from Supabase auth
     title: Mapped[Optional[str]] = mapped_column(String(200))
     title_locked: Mapped[bool] = mapped_column(default=False)  # Prevents auto-summarization
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -2599,7 +2609,7 @@ class Equipment(Base):
     __tablename__ = "equipment"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # Multi-tenant owner
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)  # kettle, fermenter, pump, chiller, etc.
     brand: Mapped[Optional[str]] = mapped_column(String(100))
@@ -2623,7 +2633,7 @@ class HopInventory(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # Multi-tenant owner
     variety: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Citra", "Cascade"
     amount_grams: Mapped[float] = mapped_column(nullable=False)  # Current amount in grams
     alpha_acid_percent: Mapped[Optional[float]] = mapped_column()  # AA% (0-100)
@@ -2650,7 +2660,7 @@ class YeastInventory(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)  # Multi-tenant owner
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)  # Multi-tenant owner
     # Link to yeast strain database or custom name
     yeast_strain_id: Mapped[Optional[int]] = mapped_column(ForeignKey("yeast_strains.id"))
     custom_name: Mapped[Optional[str]] = mapped_column(String(200))  # For unlisted strains
@@ -2699,7 +2709,7 @@ class Gateway(Base):
     __tablename__ = "gateways"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)  # BSG-AABBCCDDEE00
-    user_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)  # Owning user (UUID)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, index=True)  # Owning user (UUID)
     name: Mapped[str] = mapped_column(String(100), default="Gateway")
     token_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA-256 of gateway token
     firmware_version: Mapped[Optional[str]] = mapped_column(String(20))

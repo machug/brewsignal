@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
+from backend.services.fermentable_colors import enrich_fermentable_colors
 from backend.services.llm.service import LLMService
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -378,6 +379,10 @@ def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
                 grain_name = f.get("name", "").lower().strip()
                 if grain_name in default_colors:
                     norm_f["color"] = {"value": float(default_colors[grain_name]), "unit": "SRM"}
+                    # Flag as a guess so enrich_fermentable_colors can replace
+                    # it with the authoritative seeded reference color when one
+                    # exists (tilt_ui-81n). Stripped before serialization.
+                    norm_f["_color_guessed"] = True
 
             # Yield
             yield_val = f.get("yield") or f.get("yield_percent")
@@ -842,6 +847,12 @@ async def save_recipe(
         normalized = normalize_recipe_to_beerjson(recipe)
         logger.info(f"Normalized recipe: {normalized.get('name')}")
 
+        # Fill missing grain colors from the reference table before the SRM
+        # calc, so a dark grain the model didn't color (e.g. roasted barley)
+        # doesn't silently default to pale and wreck the recipe's SRM
+        # (tilt_ui-81n).
+        await enrich_fermentable_colors(db, normalized)
+
         # Calculate OG, FG, ABV, IBU, and color from ingredients
         # This ensures accurate values regardless of what the LLM provided
         calculated = calculate_recipe_stats(normalized)
@@ -968,6 +979,9 @@ async def update_recipe(
             recipe["name"] = existing.name
 
         normalized = normalize_recipe_to_beerjson(recipe)
+        # Fill missing grain colors from the reference table before the SRM
+        # calc so dark grains aren't treated as pale (tilt_ui-81n).
+        await enrich_fermentable_colors(db, normalized)
         calculated = calculate_recipe_stats(normalized)
 
         normalized["original_gravity"] = {"value": calculated["og"], "unit": "sg"}

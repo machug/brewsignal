@@ -233,6 +233,22 @@ async def _sync_device(
         raise Exception(f"Supabase error: {response.status_code} - {response.text}")
 
 
+async def _post_child(
+    client: httpx.AsyncClient, base_url: str, table: str, headers: dict, payload: dict
+):
+    """POST a nested child row and raise on failure.
+
+    Child posts used to ignore the response, so a rejected insert (e.g. a legacy
+    NOT NULL column the payload doesn't set) was silently dropped and the recipe
+    still reported "synced" — that's how cloud recipes ended up with no hops
+    (tilt_ui-nyn). Raising propagates to the per-recipe handler in
+    push_to_cloud, which records it in the sync result's errors.
+    """
+    resp = await client.post(f"{base_url}/{table}", headers=headers, json=payload)
+    if resp.status_code not in (200, 201):
+        raise Exception(f"Supabase {table} error: {resp.status_code} - {resp.text}")
+
+
 async def _sync_recipe(
     client: httpx.AsyncClient,
     base_url: str,
@@ -256,6 +272,11 @@ async def _sync_recipe(
         "abv": recipe.abv,
         "ibu": recipe.ibu,
         "color_srm": recipe.color_srm,
+        # The UI editor stores ingredients (incl. hops) in format_extensions and
+        # the recipe-detail page reads them from there first. Omitting it left
+        # cloud recipes with no hop schedule even when relationship rows synced
+        # (tilt_ui-nyn).
+        "format_extensions": recipe.format_extensions,
         # Imported brewer-declared targets (tilt_ui-ak6) — sync through
         # so cloud rows preserve the imported-vs-calculated delta.
         "target_og": recipe.target_og,
@@ -301,7 +322,7 @@ async def _sync_recipe(
             "supplier": ferm.supplier,
             "notes": ferm.notes,
         }
-        await client.post(f"{base_url}/recipe_fermentables", headers=headers, json=ferm_data)
+        await _post_child(client, base_url, "recipe_fermentables", headers, ferm_data)
 
     # Sync nested hops. Extract identity (is_extract, amount_ml) added in
     # tilt_ui-0l5 must round-trip through sync — otherwise the receiving
@@ -322,7 +343,7 @@ async def _sync_recipe(
             "timing": hop.timing,
             "format_extensions": hop.format_extensions,
         }
-        await client.post(f"{base_url}/recipe_hops", headers=headers, json=hop_data)
+        await _post_child(client, base_url, "recipe_hops", headers, hop_data)
 
     # Sync nested cultures (yeast)
     for culture in recipe.cultures:
@@ -341,7 +362,7 @@ async def _sync_recipe(
             "amount": culture.amount,
             "amount_unit": culture.amount_unit,
         }
-        await client.post(f"{base_url}/recipe_cultures", headers=headers, json=culture_data)
+        await _post_child(client, base_url, "recipe_cultures", headers, culture_data)
 
 
 async def _sync_batch(

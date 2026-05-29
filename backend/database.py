@@ -398,6 +398,12 @@ async def init_db():
             await conn.run_sync(Base.metadata.create_all)
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
+        # Backfill NULL recipe.style_id (gated + idempotent) — also needed in
+        # cloud mode, which otherwise returns before the sweep (tilt_ui-ru9).
+        from backend.migrations.backfill_recipe_style_id import (
+            migrate_backfill_recipe_style_id,
+        )
+        await migrate_backfill_recipe_style_id(engine)
         return
 
     # Local mode: Run full SQLite migrations
@@ -509,6 +515,14 @@ async def init_db():
 
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
+
+    # Backfill NULL recipe.style_id from the free-text type field. Runs after
+    # style seeding (it resolves against the seeded BJCP table) and is gated on
+    # a config flag so it sweeps once (tilt_ui-ru9).
+    from backend.migrations.backfill_recipe_style_id import (
+        migrate_backfill_recipe_style_id,
+    )
+    await migrate_backfill_recipe_style_id(engine)
 
 
 async def _seed_reference_data(force_reseed_styles: bool = False):

@@ -523,7 +523,10 @@ async def init_db():
         # create_all adds missing TABLES but not missing COLUMNS. Supabase's
         # schema drifts behind the models because its migrations are applied by
         # hand; reconcile additive column drift so full-model SELECTs don't hit
-        # UndefinedColumnError (tilt_ui-xf8).
+        # UndefinedColumnError (tilt_ui-xf8). This stays ON the critical path
+        # (before the app serves) so a drifted column never reaches live traffic
+        # — reflecting all 32 tables over the pooler costs ~15s, which the 120s
+        # healthcheckTimeout absorbs (tilt_ui-7ba).
         await _reconcile_postgres_columns()
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
@@ -655,9 +658,14 @@ async def run_deferred_backfills():
     Both sweeps load every recipe and recompute stats, so on a cold boot they
     can take long enough to blow a platform healthcheck window (Railway's is
     30s) if run inside init_db before the lifespan yields. They are idempotent
-    and config-flag gated, and their only prerequisite (reference-data seeding)
-    is done by init_db — so they are safe to run after the app is already
-    serving. The lifespan spawns this as a background task (tilt_ui-h0j).
+    and config-flag gated, and their only prerequisite (reference-data seeding,
+    plus the cloud column reconcile) is done by init_db — so they are safe to
+    run after the app is already serving. The lifespan spawns this as a
+    background task (tilt_ui-h0j).
+
+    Unlike the schema reconcile (which stays on the critical path so columns
+    exist before serving), these are data repairs that don't affect serving
+    correctness and can grow with recipe count, so they belong off-path.
 
     Errors are logged, not raised: a failed backfill must never take the app
     down. Each migration sets its own completion flag only on success, so a

@@ -6,6 +6,9 @@ watchPatterns = ["backend/**", "requirements.txt", "pyproject.toml", "uv.lock", 
 [deploy]
 startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 30
+# Cloud boot does create_all + reference-data seeding before binding the port
+# (~10-15s); 30s left no margin and lost the race once (tilt_ui-7ba). Slow
+# idempotent repairs (schema reconcile, recipe backfills) run off this path.
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

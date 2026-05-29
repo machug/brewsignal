@@ -368,6 +368,130 @@ def _migrate_add_bjcp_scoring(conn):
                 print(f"Migration: Skipping {col_name} on tasting_notes - {e}")
 
 
+def _column_default_sql(col):
+    """Render a SQL DEFAULT literal for a column's model default, or None.
+
+    Used so reconciled columns that the model/API treat as non-optional with a
+    default (e.g. recipe_hops.is_extract = False) carry that default at the DB
+    level. Postgres ADD COLUMN ... DEFAULT backfills existing rows, so a
+    populated table doesn't end up with NULLs the API can't serialize.
+
+    Handles server-side defaults and scalar Python defaults (bool/int/float/str)
+    only. Callable defaults (e.g. datetime.now) and complex SQL are left to the
+    ORM at insert time — returns None so no DEFAULT clause is emitted.
+    """
+    sd = col.server_default
+    if sd is not None:
+        arg = getattr(sd, "arg", None)
+        text = getattr(arg, "text", None)
+        if text is not None:
+            return text
+        if isinstance(arg, str):
+            return arg
+        # Expression server_default (e.g. false()) we can't cheaply render —
+        # fall through to the scalar Python default rather than dropping it
+        # (Device.paired has server_default=false() AND default=False).
+
+    d = col.default
+    if d is not None and getattr(d, "is_scalar", False):
+        val = d.arg
+        if isinstance(val, bool):
+            return "true" if val else "false"
+        if isinstance(val, (int, float)):
+            return str(val)
+        if isinstance(val, str):
+            return "'" + val.replace("'", "''") + "'"
+    return None
+
+
+def _plan_column_additions(table, existing_cols, dialect):
+    """Return [(column_name, compiled_pg_type, default_sql_or_None)] for columns
+    in `table` missing from `existing_cols`. Pure (no DB I/O) so it's unit-testable.
+
+    Columns are emitted WITHOUT a NOT NULL constraint regardless of the model's
+    nullability, so `ADD COLUMN` is safe on a populated table — existing rows
+    get NULL (or the rendered DEFAULT, when the model declares a scalar/server
+    default). The ORM still enforces required-ness on writes and the canonical
+    SQLite store is untouched; the goal is column existence so full-model
+    SELECTs stop hitting UndefinedColumnError (tilt_ui-xf8). That keeps the
+    reconcile total (no residual gaps) with no row-count probing.
+    """
+    return [
+        (col.name, col.type.compile(dialect=dialect), _column_default_sql(col))
+        for col in table.columns
+        if col.name not in existing_cols
+    ]
+
+
+async def _reconcile_postgres_columns():
+    """Cloud-only: add ORM columns missing from the live Postgres schema.
+
+    Supabase owns the Postgres schema out-of-band and its migrations are applied
+    by hand, so columns added to the models (through the SQLite migration path)
+    routinely never reach Postgres. Any SELECT of the full model then fails with
+    UndefinedColumnError (tilt_ui-xf8). create_all already closes the gap for
+    missing *tables*; this closes it for missing *columns*.
+
+    Strictly additive and idempotent: ADD COLUMN IF NOT EXISTS only, never drops
+    or alters. Types and DB defaults are taken from the model (see
+    _plan_column_additions / _column_default_sql) so a defaulted column backfills
+    existing rows instead of going NULL.
+
+    LIMITATION: this does not migrate *renamed* columns. If a live table carries
+    a legacy name (e.g. recipe_hops.amount_kg now modelled as amount_grams), the
+    new column is added empty and the old data is not copied — a rename can't be
+    inferred safely and needs a targeted migration. In this deployment the
+    affected relationship tables (recipe_hops/_fermentables/_mash_steps/…) are
+    empty (ingredients live in recipes.format_extensions), so there is no data to
+    carry; revisit if those tables are ever populated on cloud.
+    """
+    import logging
+
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.dialects import postgresql
+
+    # Ensure every model is registered on Base.metadata before we read
+    # sorted_tables — importing only backend.database leaves it empty.
+    from backend import models  # noqa: F401
+
+    logger = logging.getLogger(__name__)
+    dialect = postgresql.dialect()
+
+    async with engine.begin() as conn:
+        def _existing(sync_conn):
+            insp = sa_inspect(sync_conn)
+            names = set(insp.get_table_names(schema="public"))
+            return {
+                t: {c["name"] for c in insp.get_columns(t, schema="public")}
+                for t in names
+            }
+
+        existing = await conn.run_sync(_existing)
+
+        added = 0
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing:
+                continue  # create_all owns missing tables
+            for name, coltype, default_sql in _plan_column_additions(
+                table, existing[table.name], dialect
+            ):
+                ddl = (
+                    f'ALTER TABLE "public"."{table.name}" '
+                    f'ADD COLUMN IF NOT EXISTS "{name}" {coltype}'
+                )
+                if default_sql is not None:
+                    ddl += f" DEFAULT {default_sql}"
+                await conn.exec_driver_sql(ddl)
+                added += 1
+                logger.info(
+                    "Schema reconcile: added %s.%s (%s%s)",
+                    table.name, name, coltype,
+                    f" DEFAULT {default_sql}" if default_sql else "",
+                )
+        if added:
+            logger.info("Schema reconcile: added %d missing column(s)", added)
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -396,6 +520,11 @@ async def init_db():
         async with engine.begin() as conn:
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
+        # create_all adds missing TABLES but not missing COLUMNS. Supabase's
+        # schema drifts behind the models because its migrations are applied by
+        # hand; reconcile additive column drift so full-model SELECTs don't hit
+        # UndefinedColumnError (tilt_ui-xf8).
+        await _reconcile_postgres_columns()
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
         # NOTE: recipe backfills (style_id, color_srm) are NOT run here. They

@@ -398,17 +398,11 @@ async def init_db():
             await conn.run_sync(Base.metadata.create_all)
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
-        # Backfill NULL recipe.style_id (gated + idempotent) — also needed in
-        # cloud mode, which otherwise returns before the sweep (tilt_ui-ru9).
-        from backend.migrations.backfill_recipe_style_id import (
-            migrate_backfill_recipe_style_id,
-        )
-        await migrate_backfill_recipe_style_id(engine)
-        # Repair color_srm computed from color-less grain bills (tilt_ui-81n).
-        from backend.migrations.backfill_recipe_color_srm import (
-            migrate_backfill_recipe_color_srm,
-        )
-        await migrate_backfill_recipe_color_srm(engine)
+        # NOTE: recipe backfills (style_id, color_srm) are NOT run here. They
+        # sweep every recipe and can exceed the platform healthcheck window on
+        # a cold boot. They run off the critical path via run_deferred_backfills()
+        # after the app is serving (tilt_ui-h0j). Seeding above is their only
+        # prerequisite and is complete.
         return
 
     # Local mode: Run full SQLite migrations
@@ -521,21 +515,46 @@ async def init_db():
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
 
-    # Backfill NULL recipe.style_id from the free-text type field. Runs after
-    # style seeding (it resolves against the seeded BJCP table) and is gated on
-    # a config flag so it sweeps once (tilt_ui-ru9).
-    from backend.migrations.backfill_recipe_style_id import (
-        migrate_backfill_recipe_style_id,
-    )
-    await migrate_backfill_recipe_style_id(engine)
+    # NOTE: recipe backfills (style_id, color_srm) run off the startup critical
+    # path via run_deferred_backfills() — see init_db's cloud-mode branch and
+    # tilt_ui-h0j. Seeding above is their only prerequisite and is complete.
 
-    # Repair recipe.color_srm computed from color-less grain bills. Runs after
-    # fermentable seeding (it enriches missing grain colors from the reference
-    # table) and is gated on a config flag (tilt_ui-81n).
-    from backend.migrations.backfill_recipe_color_srm import (
-        migrate_backfill_recipe_color_srm,
-    )
-    await migrate_backfill_recipe_color_srm(engine)
+
+async def run_deferred_backfills():
+    """Run one-time historical recipe backfills off the startup critical path.
+
+    Both sweeps load every recipe and recompute stats, so on a cold boot they
+    can take long enough to blow a platform healthcheck window (Railway's is
+    30s) if run inside init_db before the lifespan yields. They are idempotent
+    and config-flag gated, and their only prerequisite (reference-data seeding)
+    is done by init_db — so they are safe to run after the app is already
+    serving. The lifespan spawns this as a background task (tilt_ui-h0j).
+
+    Errors are logged, not raised: a failed backfill must never take the app
+    down. Each migration sets its own completion flag only on success, so a
+    failure simply retries on the next boot.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        # Backfill NULL recipe.style_id from the free-text type field. Resolves
+        # against the seeded BJCP table; gated on a config flag (tilt_ui-ru9).
+        from backend.migrations.backfill_recipe_style_id import (
+            migrate_backfill_recipe_style_id,
+        )
+        await migrate_backfill_recipe_style_id(engine)
+
+        # Repair recipe.color_srm computed from color-less grain bills. Enriches
+        # missing grain colors from the seeded reference table; gated on a
+        # config flag (tilt_ui-81n).
+        from backend.migrations.backfill_recipe_color_srm import (
+            migrate_backfill_recipe_color_srm,
+        )
+        await migrate_backfill_recipe_color_srm(engine)
+    except Exception:
+        logger.exception(
+            "Deferred recipe backfills failed; will retry on next boot"
+        )
 
 
 async def _seed_reference_data(force_reseed_styles: bool = False):

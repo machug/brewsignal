@@ -70,19 +70,26 @@ async def _substring(db: AsyncSession, name: str) -> Optional[Style]:
 
 
 async def resolve_style_id(
-    db: AsyncSession, style_name: Optional[str]
+    db: AsyncSession,
+    style_name: Optional[str],
+    *,
+    allow_substring: bool = True,
 ) -> Optional[str]:
     """Resolve a free-text style name to Style.id.
 
     Order, strongest signal first:
       1. exact (case-insensitive) name match
       2. curated alias map (exact key) -> canonical name, matched exactly
-      3. loose substring name match
+      3. loose substring name match (skipped when allow_substring=False)
 
     The alias step runs *before* the substring fallback so a known shorthand
     ("APA", "Hazy") resolves to its intended canonical style instead of being
     preempted by some other row whose name merely contains the alias text
-    (the styles table explicitly allows duplicate/imported rows). Returns
+    (the styles table explicitly allows duplicate/imported rows).
+
+    Pass allow_substring=False for noisy inputs where a partial match would be
+    wrong more often than right — e.g. backfilling from recipe.type, where a
+    bare "IPA" must NOT silently resolve to "English IPA" via substring. Returns
     Style.id when found, None otherwise.
     """
     if not style_name or not isinstance(style_name, str):
@@ -103,5 +110,9 @@ async def resolve_style_id(
         if style:
             return style.id
 
-    style = await _substring(db, name)
-    return style.id if style else None
+    if allow_substring:
+        style = await _substring(db, name)
+        if style:
+            return style.id
+
+    return None

@@ -64,6 +64,22 @@ class TestAliases:
         assert await resolve_style_id(test_db, "  NEIPA  ") == "bjcp-2021-21c"
 
     @pytest.mark.asyncio
+    async def test_strict_mode_skips_substring(self, test_db: AsyncSession):
+        # "IPA" substring-matches some style by default, but allow_substring=
+        # False returns None (used by the noisy recipe.type backfill).
+        assert await resolve_style_id(test_db, "IPA") is not None
+        assert await resolve_style_id(test_db, "IPA", allow_substring=False) is None
+
+    @pytest.mark.asyncio
+    async def test_strict_mode_keeps_exact_and_alias(self, test_db: AsyncSession):
+        assert await resolve_style_id(
+            test_db, "Irish Stout", allow_substring=False
+        ) == "bjcp-2021-15b"
+        assert await resolve_style_id(
+            test_db, "NEIPA", allow_substring=False
+        ) == "bjcp-2021-21c"
+
+    @pytest.mark.asyncio
     async def test_exact_alias_beats_substring_decoy(self, test_db: AsyncSession):
         """An exact alias hit must win over a loose substring match against
         some other row whose name merely contains the alias text."""

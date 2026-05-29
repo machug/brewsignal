@@ -221,7 +221,24 @@
 			// Load fermentables - prefer format_extensions, fall back to API response
 			const ext = initialData.format_extensions as { fermentables?: RecipeFermentable[]; hops?: RecipeHop[] } | undefined;
 			if (ext?.fermentables && ext.fermentables.length > 0) {
-				fermentables = ext.fermentables;
+				// format_extensions grain rows often omit color_srm, which makes
+				// recipeStats() default them to ~2 SRM and report a dark beer as
+				// pale (tilt_ui-b94). Backfill color from the colored
+				// relationship rows (matched by name, then index) without
+				// disturbing the rest of the stored shape.
+				const apiFerms = initialData.fermentables ?? [];
+				fermentables = ext.fermentables.map((f, i) => {
+					// Pick a color, not a row: prefer the same-name row at this
+					// index (handles duplicate grain names), then the first
+					// name match, then the index row. Keep f.color_srm verbatim
+					// when present so a real null isn't turned into undefined.
+					const byIndex = apiFerms[i];
+					const refColor =
+						(byIndex?.name === f.name ? byIndex?.color_srm : undefined) ??
+						apiFerms.find((a) => a.name === f.name)?.color_srm ??
+						byIndex?.color_srm;
+					return { ...f, color_srm: f.color_srm ?? refColor ?? f.color_srm };
+				});
 			} else if (initialData.fermentables && initialData.fermentables.length > 0) {
 				// Map from API response format to RecipeFermentable format
 				fermentables = initialData.fermentables.map((f) => ({

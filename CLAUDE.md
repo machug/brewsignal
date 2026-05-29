@@ -38,9 +38,12 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8080
 # Frontend dev
 cd frontend && npm run dev
 
-# Build + Deploy to Pi (one-liner)
-cd frontend && npm run build && cd .. && git add . && git commit -m "deploy" && git push && \
-sshpass -p 'tilt' ssh pi@192.168.4.218 "cd /opt/brewsignal && git fetch origin && git reset --hard origin/master && sudo systemctl restart brewsignal"
+# Deploy to Pi (push current branch + deploy origin/master, build only if frontend changed)
+BREWSIGNAL_PI_PASS=tilt ./deploy/deploy.sh --push
+# Deploy whatever is already on origin/master (no push):
+BREWSIGNAL_PI_PASS=tilt ./deploy/deploy.sh
+# The script fetches, resets to origin/master, rebuilds the frontend ONLY when
+# frontend/ changed (BUILD_TARGET=pi), restarts, and verifies service+HTTP 200.
 
 # Pi SSH: pi@192.168.4.218 (password: tilt)
 # Pi logs: sudo journalctl -u brewsignal -f

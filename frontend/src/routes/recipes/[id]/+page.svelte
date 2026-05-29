@@ -243,14 +243,17 @@
 
 		try {
 			const stats = liveStats;
-			// Prefer brewer-declared imported targets when present (they
-			// reflect what the brewer wrote); otherwise fall back to live
-			// calculator output, then stored stats.
-			const og = recipe.target_og ?? stats?.og ?? recipe.og ?? 1.05;
-			const fg = recipe.target_fg ?? stats?.fg ?? recipe.fg ?? 1.01;
-			const abv = recipe.target_abv ?? stats?.abv ?? recipe.abv ?? 5.0;
-			const ibu = recipe.target_ibu ?? stats?.ibu ?? recipe.ibu ?? 30;
-			const colorSrm = recipe.target_srm ?? stats?.srm ?? recipe.color_srm ?? 8;
+			// Review what the card actually shows. The stats card binds
+			// `liveStats?.X ?? recipe.X` (see RecipeStatsPanel props below), so
+			// the review payload must use the SAME precedence — otherwise the
+			// user sees e.g. IBU 36 on the card but "reviewed as 27"
+			// (tilt_ui-gkm). target_* is only the small "src" hint, so it's the
+			// last fallback, never preferred over the displayed value.
+			const og = stats?.og ?? recipe.og ?? recipe.target_og ?? 1.05;
+			const fg = stats?.fg ?? recipe.fg ?? recipe.target_fg ?? 1.01;
+			const abv = stats?.abv ?? recipe.abv ?? recipe.target_abv ?? 5.0;
+			const ibu = stats?.ibu ?? recipe.ibu ?? recipe.target_ibu ?? 30;
+			const colorSrm = stats?.srm ?? recipe.color_srm ?? recipe.target_srm ?? 8;
 
 			reviewResult = await reviewRecipe({
 				name: recipe.name || 'Untitled Recipe',

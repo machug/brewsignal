@@ -11,6 +11,7 @@ from backend.services.converters.brewsignal_to_beerjson import BrewSignalToBeerJ
 from backend.services.validators.beerjson_validator import BeerJSONValidator
 from backend.services.serializers.recipe_serializer import RecipeSerializer
 from backend.services.brewsignal_format import BrewSignalRecipe
+from backend.services.style_resolver import resolve_style_id
 from backend.models import Recipe
 
 
@@ -169,6 +170,20 @@ class RecipeImporter:
                 if detected_format == "brewsignal" and bs_payload \
                         and bs_payload.get('style_id'):
                     recipe.style_id = bs_payload['style_id']
+                # Converters (BeerXML/Brewfather) carry the style as a name
+                # only, and the serializer drops the BeerJSON `style` object
+                # entirely — so without this every non-native import lands
+                # with style_id=NULL even when the style is known. Resolve the
+                # style name to a styles.id FK when nothing set it above
+                # (tilt_ui-ru9).
+                if recipe.style_id is None:
+                    style_obj = beerjson_recipe.get('style')
+                    if isinstance(style_obj, dict):
+                        resolved = await resolve_style_id(
+                            session, style_obj.get('name')
+                        )
+                        if resolved:
+                            recipe.style_id = resolved
             except Exception as e:
                 await session.rollback()
                 return ImportResult(

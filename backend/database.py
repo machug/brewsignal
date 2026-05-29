@@ -404,6 +404,11 @@ async def init_db():
             migrate_backfill_recipe_style_id,
         )
         await migrate_backfill_recipe_style_id(engine)
+        # Repair color_srm computed from color-less grain bills (tilt_ui-81n).
+        from backend.migrations.backfill_recipe_color_srm import (
+            migrate_backfill_recipe_color_srm,
+        )
+        await migrate_backfill_recipe_color_srm(engine)
         return
 
     # Local mode: Run full SQLite migrations
@@ -523,6 +528,14 @@ async def init_db():
         migrate_backfill_recipe_style_id,
     )
     await migrate_backfill_recipe_style_id(engine)
+
+    # Repair recipe.color_srm computed from color-less grain bills. Runs after
+    # fermentable seeding (it enriches missing grain colors from the reference
+    # table) and is gated on a config flag (tilt_ui-81n).
+    from backend.migrations.backfill_recipe_color_srm import (
+        migrate_backfill_recipe_color_srm,
+    )
+    await migrate_backfill_recipe_color_srm(engine)
 
 
 async def _seed_reference_data(force_reseed_styles: bool = False):

@@ -22,8 +22,9 @@ from ..models import (
     RecipeFermentationStep, FermentationStepInput, FermentationStepResponse,
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
-from ..services.brewing import calculate_recipe_stats
+from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
+from ..services.recipe_ingredients import hydrate_recipe_ingredients
 from ..services.recipe_validation import validate_recipe_constraints
 from ..services.style_resolver import resolve_style_id
 
@@ -433,6 +434,29 @@ async def create_recipe(
         notes=recipe.notes,
         format_extensions=recipe.format_extensions,
     )
+    # Persist ingredients to the relationship tables (source of truth) from the
+    # editor's format_extensions cache, enriching grain colors from the
+    # reference table. Without this, UI-created recipes leave recipe_hops /
+    # recipe_fermentables empty (tilt_ui-9y7) and color-less (tilt_ui-hfi).
+    # Hydrate while db_recipe is still transient (not yet added): the color
+    # lookup's SELECT would otherwise autoflush the pending row to persistent,
+    # and the subsequent collection .append would lazy-load and raise
+    # MissingGreenlet. Children cascade-insert when the parent is added+flushed.
+    rebuilt = await hydrate_recipe_ingredients(
+        db, db_recipe, recipe.format_extensions
+    )
+    if rebuilt and db_recipe.fermentables:
+        # The grain bill now carries real colors — recompute color_srm so the
+        # card matches reality even when the editor sent a pale default. Use
+        # the fermentables-only calc to avoid touching cultures/hops.
+        _eff = db_recipe.efficiency_percent or 75
+        _, _color = calculate_og_from_fermentables(
+            db_recipe.fermentables,
+            db_recipe.batch_size_liters or 20,
+            _eff / 100 if _eff > 1 else _eff,
+        )
+        db_recipe.color_srm = round(_color, 1)
+
     db.add(db_recipe)
     await db.flush()  # Get recipe ID without committing
 
@@ -619,6 +643,25 @@ async def update_recipe(
     # Mirrors the LLM save_recipe path (services/llm/tools/recipe.py).
     if style_in_payload and not explicit_style_id:
         existing_recipe.style_id = await resolve_style_id(db, style_free_text)
+
+    # Rebuild the relationship ingredient tables from the editor's
+    # format_extensions cache so recipe_hops / recipe_fermentables remain the
+    # source of truth on UI edits (tilt_ui-9y7 / tilt_ui-hfi).
+    if "format_extensions" in update_data:
+        rebuilt = await hydrate_recipe_ingredients(
+            db, existing_recipe, update_data["format_extensions"]
+        )
+        # Recompute color_srm from the now-colored grain bill so the card is
+        # correct, but only when full recalculation isn't already running
+        # below — that preserves brewer-declared OG/FG/IBU targets (tilt_ui-5no).
+        if rebuilt and existing_recipe.fermentables and not recalculate:
+            _eff = existing_recipe.efficiency_percent or 75
+            _, _color = calculate_og_from_fermentables(
+                existing_recipe.fermentables,
+                existing_recipe.batch_size_liters or 20,
+                _eff / 100 if _eff > 1 else _eff,
+            )
+            existing_recipe.color_srm = round(_color, 1)
 
     # Recalculation is opt-in via ?recalculate=true. Without this gate,
     # imported recipes lose brewer-declared OG/FG/ABV/IBU/SRM targets on

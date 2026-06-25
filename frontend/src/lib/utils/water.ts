@@ -63,8 +63,12 @@ export function calculateWaterVolumes(
 
 	const grainAbsorption = totalGrainKg * eq.grainAbsorptionLPerKg;
 	const mashWater = totalGrainKg * eq.mashRatioLPerKg + eq.mashTunDeadspaceL;
-	const totalWater = preBoilVolume + grainAbsorption + eq.mashTunDeadspaceL;
-	const spargeWater = Math.max(0, totalWater - mashWater);
+	// Reverse-flow target: water needed to land pre-boil after lauter losses.
+	const targetTotal = preBoilVolume + grainAbsorption + eq.mashTunDeadspaceL;
+	// Clamp sparge at zero (thick/small mashes can need none), then keep the
+	// total consistent with the actual additions: total === mash + sparge always.
+	const spargeWater = Math.max(0, targetTotal - mashWater);
+	const totalWater = mashWater + spargeWater;
 	const mashVolume = mashWater + totalGrainKg * eq.grainDisplacementLPerKg;
 
 	return {

@@ -76,7 +76,9 @@
 		chamber: '#a78bfa',
 		trend: 'rgba(245, 158, 11, 0.5)',
 		anomaly: '#ef4444',
-		battery: '#22c55e'
+		battery: '#22c55e',
+		heatingBand: 'rgba(239, 68, 68, 0.10)',
+		coolingBand: 'rgba(96, 165, 250, 0.12)'
 	});
 
 	// Color mapping for tilt accent in chart (reads --tilt-* tokens)
@@ -105,7 +107,9 @@
 			chamber: getCssVar('--chart-chamber', '#a78bfa'),
 			trend: getCssVar('--chart-trend', 'rgba(245, 158, 11, 0.5)'),
 			anomaly: getCssVar('--chart-anomaly', '#ef4444'),
-			battery: getCssVar('--chart-battery', '#22c55e')
+			battery: getCssVar('--chart-battery', '#22c55e'),
+			heatingBand: getCssVar('--chart-heating-band', 'rgba(239, 68, 68, 0.10)'),
+			coolingBand: getCssVar('--chart-cooling-band', 'rgba(96, 165, 250, 0.12)')
 		};
 	}
 
@@ -141,6 +145,8 @@
 		endTime: number;
 	}
 	let controlPeriods = $state<ControlPeriod[]>([]);
+	const CONTROL_BANDS_STORAGE_KEY = 'brewsignal_chart_control_bands_enabled';
+	let showControlBands = $state(true);
 
 	// Linear regression for trend line calculation
 	interface TrendResult {
@@ -339,6 +345,28 @@
 				}
 			},
 			hooks: {
+				drawClear: [
+					(u: uPlot) => {
+						if (!showControlBands || controlPeriods.length === 0) return;
+						const { ctx } = u;
+						const { left, top, width, height } = u.bbox;
+						const right = left + width;
+						ctx.save();
+						for (const period of controlPeriods) {
+							let x0 = u.valToPos(period.startTime, 'x', true);
+							let x1 = u.valToPos(period.endTime, 'x', true);
+							if (x1 < left || x0 > right) continue;
+							x0 = Math.max(x0, left);
+							x1 = Math.min(x1, right);
+							// Keep short relay cycles visible as at least a sliver
+							if (x1 - x0 < 1) x1 = x0 + 1;
+							ctx.fillStyle =
+								period.type === 'heating' ? chartColors.heatingBand : chartColors.coolingBand;
+							ctx.fillRect(x0, top, x1 - x0, height);
+						}
+						ctx.restore();
+					}
+				],
 				setCursor: [
 					(u: uPlot) => {
 						const idx = u.cursor.idx;
@@ -903,6 +931,10 @@ onMount(async () => {
 	if (storedBattery !== null) {
 		showBattery = storedBattery === 'true';
 	}
+	const storedControlBands = localStorage.getItem(CONTROL_BANDS_STORAGE_KEY);
+	if (storedControlBands !== null) {
+		showControlBands = storedControlBands === 'true';
+	}
 
 	// Fetch system timezone for chart display
 	try {
@@ -936,6 +968,8 @@ onMount(async () => {
 		} else {
 			controlPeriods = [];
 		}
+		// Bands are painted in the drawClear hook, which only runs on redraw
+		chart?.redraw();
 	});
 
 	// Re-render chart when temp units or smoothing settings change
@@ -997,6 +1031,12 @@ onMount(async () => {
 		if (chart) {
 			chart.setSeries(6, { show: showAnomalies });
 		}
+	}
+
+	function toggleControlBands() {
+		showControlBands = !showControlBands;
+		localStorage.setItem(CONTROL_BANDS_STORAGE_KEY, String(showControlBands));
+		chart?.redraw();
 	}
 
 	function toggleBattery() {
@@ -1090,6 +1130,19 @@ onMount(async () => {
 					>
 						<span class="legend-dot legend-dot-anomaly"></span>
 						<span>Anomalies ({anomalyData.length})</span>
+					</button>
+				{/if}
+				{#if controlPeriods.length > 0}
+					<button
+						type="button"
+						class="legend-item legend-toggle"
+						class:legend-disabled={!showControlBands}
+						onclick={toggleControlBands}
+						title={showControlBands ? 'Hide heating/cooling bands' : 'Show heating/cooling bands'}
+					>
+						<span class="legend-band legend-band-heating"></span>
+						<span class="legend-band legend-band-cooling"></span>
+						<span>Heat/Cool</span>
 					</button>
 				{/if}
 				{#if hasBatteryData}
@@ -1306,6 +1359,21 @@ onMount(async () => {
 		background-size: 4px 2px;
 	}
 
+	.legend-band {
+		width: 0.5rem;
+		height: 0.625rem;
+		border-radius: 1px;
+	}
+
+	.legend-band-heating {
+		background: var(--chart-heating-band, rgba(239, 68, 68, 0.35));
+		margin-right: -0.25rem;
+	}
+
+	.legend-band-cooling {
+		background: var(--chart-cooling-band, rgba(96, 165, 250, 0.35));
+	}
+
 	.legend-toggle {
 		background: none;
 		border: none;
@@ -1334,6 +1402,10 @@ onMount(async () => {
 	.legend-disabled .legend-dot-anomaly {
 		background: var(--text-muted);
 		box-shadow: none;
+	}
+
+	.legend-disabled .legend-band {
+		background: var(--text-muted);
 	}
 
 	.anomaly-toggle {

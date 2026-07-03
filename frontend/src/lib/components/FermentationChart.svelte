@@ -77,6 +77,7 @@
 		trend: 'rgba(245, 158, 11, 0.5)',
 		anomaly: '#ef4444',
 		battery: '#22c55e',
+		filtered: '#e4e4e7',
 		heatingBand: 'rgba(239, 68, 68, 0.10)',
 		coolingBand: 'rgba(96, 165, 250, 0.12)'
 	});
@@ -108,6 +109,7 @@
 			trend: getCssVar('--chart-trend', 'rgba(245, 158, 11, 0.5)'),
 			anomaly: getCssVar('--chart-anomaly', '#ef4444'),
 			battery: getCssVar('--chart-battery', '#22c55e'),
+			filtered: getCssVar('--chart-filtered', '#e4e4e7'),
 			heatingBand: getCssVar('--chart-heating-band', 'rgba(239, 68, 68, 0.10)'),
 			coolingBand: getCssVar('--chart-cooling-band', 'rgba(96, 165, 250, 0.12)')
 		};
@@ -129,6 +131,11 @@
 
 	// Track if battery data is available
 	let hasBatteryData = $state(false);
+
+	// Kalman-filtered SG series (from ML pipeline)
+	const FILTERED_STORAGE_KEY = 'brewsignal_chart_filtered_enabled';
+	let showFiltered = $state(true);
+	let hasFilteredData = $state(false);
 
 	// Anomaly data for tooltip
 	interface AnomalyInfo {
@@ -551,6 +558,17 @@
 					points: { show: false },
 					paths: uPlot.paths.spline?.(), // Smooth spline interpolation
 					show: showBattery
+				},
+				{
+					// Kalman-filtered SG series (ML pipeline output)
+					label: 'Filtered',
+					scale: 'sg',
+					stroke: chartColors.filtered,
+					width: 1.5,
+					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.(),
+					show: showFiltered
 				}
 			]
 		};
@@ -588,10 +606,11 @@
 		ambientValues: (number | null)[],
 		chamberValues: (number | null)[],
 		batteryValues: (number | null)[],
+		filteredValues: (number | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -601,6 +620,7 @@
 		const newAmbient: (number | null)[] = [];
 		const newChamber: (number | null)[] = [];
 		const newBattery: (number | null)[] = [];
+		const newFiltered: (number | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -610,6 +630,7 @@
 			let ambientSum = 0, ambientCount = 0;
 			let chamberSum = 0, chamberCount = 0;
 			let batterySum = 0, batteryCount = 0;
+			let filteredSum = 0, filteredCount = 0;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
@@ -617,6 +638,7 @@
 				if (ambientValues[j] !== null) { ambientSum += ambientValues[j]!; ambientCount++; }
 				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
 				if (batteryValues[j] !== null) { batterySum += batteryValues[j]!; batteryCount++; }
+				if (filteredValues[j] !== null) { filteredSum += filteredValues[j]!; filteredCount++; }
 			}
 
 			// Use middle timestamp of bucket
@@ -626,9 +648,10 @@
 			newAmbient.push(ambientCount > 0 ? ambientSum / ambientCount : null);
 			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
 			newBattery.push(batteryCount > 0 ? batterySum / batteryCount : null);
+			newFiltered.push(filteredCount > 0 ? filteredSum / filteredCount : null);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newBattery];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newBattery, newFiltered];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -708,14 +731,21 @@
 		let tempValues: (number | null)[] = [];
 		let batteryValues: (number | null)[] = [];
 		let anomalyValues: (number | null)[] = [];
+		let filteredValues: (number | null)[] = [];
 		const anomalyInfoList: AnomalyInfo[] = [];
 		let foundBatteryData = false;
+		let foundFilteredData = false;
 
 		for (const r of sorted) {
 			const ts = parseUtcTimestamp(r.timestamp);
 			const sg = r.sg_calibrated ?? r.sg_raw;
 			timestamps.push(ts);
 			sgValues.push(sg);
+
+			// Kalman-filtered SG from the ML pipeline (null before pipeline warm-up)
+			const filtered = r.sg_filtered ?? null;
+			filteredValues.push(filtered);
+			if (filtered !== null) foundFilteredData = true;
 
 			// Track anomaly data - show SG value only for anomaly points
 			if (r.is_anomaly && sg !== null) {
@@ -754,6 +784,7 @@
 
 		// Update whether we have battery data
 		hasBatteryData = foundBatteryData;
+		hasFilteredData = foundFilteredData;
 
 		// Store anomaly info for tooltips
 		anomalyData = anomalyInfoList;
@@ -776,7 +807,7 @@
 		const maxPoints = 500;
 		const originalTimestamps = [...timestamps];
 		const originalAnomalyValues = [...anomalyValues];
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, maxPoints);
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues, maxPoints);
 
 		// Map anomaly values to downsampled timestamps
 		// For each downsampled timestamp, check if any original anomaly was near it
@@ -804,7 +835,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues, batteryValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues, batteryValues, filteredValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -935,6 +966,10 @@ onMount(async () => {
 	if (storedControlBands !== null) {
 		showControlBands = storedControlBands === 'true';
 	}
+	const storedFiltered = localStorage.getItem(FILTERED_STORAGE_KEY);
+	if (storedFiltered !== null) {
+		showFiltered = storedFiltered === 'true';
+	}
 
 	// Fetch system timezone for chart display
 	try {
@@ -1030,6 +1065,15 @@ onMount(async () => {
 		// Update the series visibility in the existing chart
 		if (chart) {
 			chart.setSeries(6, { show: showAnomalies });
+		}
+	}
+
+	function toggleFiltered() {
+		showFiltered = !showFiltered;
+		localStorage.setItem(FILTERED_STORAGE_KEY, String(showFiltered));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(8, { show: showFiltered });
 		}
 	}
 
@@ -1130,6 +1174,18 @@ onMount(async () => {
 					>
 						<span class="legend-dot legend-dot-anomaly"></span>
 						<span>Anomalies ({anomalyData.length})</span>
+					</button>
+				{/if}
+				{#if hasFilteredData}
+					<button
+						type="button"
+						class="legend-item legend-toggle"
+						class:legend-disabled={!showFiltered}
+						onclick={toggleFiltered}
+						title={showFiltered ? 'Hide Kalman-filtered SG' : 'Show Kalman-filtered SG'}
+					>
+						<span class="legend-line legend-line-filtered"></span>
+						<span>Filtered</span>
 					</button>
 				{/if}
 				{#if controlPeriods.length > 0}
@@ -1359,6 +1415,10 @@ onMount(async () => {
 		background-size: 4px 2px;
 	}
 
+	.legend-line-filtered {
+		background: var(--chart-filtered, #e4e4e7);
+	}
+
 	.legend-band {
 		width: 0.5rem;
 		height: 0.625rem;
@@ -1395,6 +1455,7 @@ onMount(async () => {
 	.legend-disabled .legend-line-ambient,
 	.legend-disabled .legend-line-chamber,
 	.legend-disabled .legend-line-trend,
+	.legend-disabled .legend-line-filtered,
 	.legend-disabled .legend-line-battery {
 		background: linear-gradient(90deg, var(--text-muted) 4px, transparent 4px);
 	}

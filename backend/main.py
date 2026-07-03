@@ -33,6 +33,7 @@ from .services.alert_service import detect_and_persist_alerts  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
+from scalar_fastapi import get_scalar_api_reference  # noqa: E402
 from .config import Settings  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
@@ -657,6 +658,14 @@ app.include_router(sync.router, dependencies=auth_deps)
 app.include_router(gateway.router)
 # Gateway HTTP API - requires auth
 app.include_router(gateway.api_router, dependencies=auth_deps)
+
+
+@app.get("/scalar", include_in_schema=False)
+async def scalar_docs():
+    return get_scalar_api_reference(
+        openapi_url=app.openapi_url,
+        title=app.title,
+    )
 
 
 @app.get("/api/health")

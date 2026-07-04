@@ -69,6 +69,22 @@ NEW=\$(git rev-parse "origin/$BRANCH")
 git reset --hard "origin/$BRANCH"
 echo "[pi] HEAD: \$(git log --oneline -1)"
 
+# Sync backend Python deps only when the dependency manifest changed between
+# OLD and NEW. A new pyproject dependency otherwise crash-loops the service
+# with ModuleNotFoundError (bit us with scalar-fastapi, 2026-07-04).
+# uv sync --locked installs exactly what uv.lock pins (and prunes removed
+# deps), matching how Railway builds; --locked also fails loudly if the lock
+# is stale relative to pyproject instead of silently re-resolving on the Pi.
+if ! git diff --quiet "\$OLD" "\$NEW" -- pyproject.toml uv.lock; then
+  echo "[pi] dependency manifest changed -> uv sync --locked"
+  command -v uv >/dev/null 2>&1 || .venv/bin/pip install -q 'uv==0.9.0'
+  UV_BIN=\$(command -v uv || echo .venv/bin/uv)
+  "\$UV_BIN" sync --locked --no-dev >/tmp/brewsignal-uv.log 2>&1 \
+    || { echo "[pi] DEP SYNC FAILED — tail of log:"; tail -20 /tmp/brewsignal-uv.log; exit 1; }
+else
+  echo "[pi] no dependency changes -> skipping dep sync"
+fi
+
 # Rebuild the frontend only when frontend/ changed between OLD and NEW, or when
 # the built output is missing. Avoids a slow npm build on backend-only deploys.
 if [ ! -f backend/static/index.html ] || ! git diff --quiet "\$OLD" "\$NEW" -- frontend/; then

@@ -568,7 +568,7 @@
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
 					points: { show: false },
 					paths: uPlot.paths.spline?.(),
-					show: showFiltered
+					show: hasFilteredData && showFiltered
 				}
 			]
 		};

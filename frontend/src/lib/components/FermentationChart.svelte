@@ -78,6 +78,7 @@
 		anomaly: '#ef4444',
 		battery: '#22c55e',
 		filtered: '#e4e4e7',
+		filteredTemp: '#94a3b8',
 		heatingBand: 'rgba(239, 68, 68, 0.10)',
 		coolingBand: 'rgba(96, 165, 250, 0.12)'
 	});
@@ -110,6 +111,7 @@
 			anomaly: getCssVar('--chart-anomaly', '#ef4444'),
 			battery: getCssVar('--chart-battery', '#22c55e'),
 			filtered: getCssVar('--chart-filtered', '#e4e4e7'),
+			filteredTemp: getCssVar('--chart-filtered-temp', '#94a3b8'),
 			heatingBand: getCssVar('--chart-heating-band', 'rgba(239, 68, 68, 0.10)'),
 			coolingBand: getCssVar('--chart-cooling-band', 'rgba(96, 165, 250, 0.12)')
 		};
@@ -136,6 +138,11 @@
 	const FILTERED_STORAGE_KEY = 'brewsignal_chart_filtered_enabled';
 	let showFiltered = $state(true);
 	let hasFilteredData = $state(false);
+
+	// Kalman-filtered temperature series (from ML pipeline)
+	const FILTERED_TEMP_STORAGE_KEY = 'brewsignal_chart_filtered_temp_enabled';
+	let showFilteredTemp = $state(true);
+	let hasFilteredTempData = $state(false);
 
 	// Anomaly data for tooltip
 	interface AnomalyInfo {
@@ -569,6 +576,18 @@
 					points: { show: false },
 					paths: uPlot.paths.spline?.(),
 					show: hasFilteredData && showFiltered
+				},
+				{
+					// Kalman-filtered temperature series (ML pipeline output)
+					label: 'Filt Temp',
+					scale: 'temp',
+					stroke: chartColors.filteredTemp,
+					width: 1.5,
+					dash: [6, 3],
+					value: (u: uPlot, v: number | null) => v !== null ? v.toFixed(1) + '°' : '--',
+					points: { show: false },
+					paths: uPlot.paths.spline?.(),
+					show: hasFilteredTempData && showFilteredTemp
 				}
 			]
 		};
@@ -607,10 +626,11 @@
 		chamberValues: (number | null)[],
 		batteryValues: (number | null)[],
 		filteredValues: (number | null)[],
+		filteredTempValues: (number | null)[],
 		maxPoints: number
-	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
+	): [number[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[], (number | null)[]] {
 		if (timestamps.length <= maxPoints) {
-			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues];
+			return [timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues, filteredTempValues];
 		}
 
 		const step = Math.ceil(timestamps.length / maxPoints);
@@ -621,6 +641,7 @@
 		const newChamber: (number | null)[] = [];
 		const newBattery: (number | null)[] = [];
 		const newFiltered: (number | null)[] = [];
+		const newFilteredTemp: (number | null)[] = [];
 
 		for (let i = 0; i < timestamps.length; i += step) {
 			// Average values in this bucket
@@ -631,6 +652,7 @@
 			let chamberSum = 0, chamberCount = 0;
 			let batterySum = 0, batteryCount = 0;
 			let filteredSum = 0, filteredCount = 0;
+			let filteredTempSum = 0, filteredTempCount = 0;
 
 			for (let j = i; j < bucketEnd; j++) {
 				if (sgValues[j] !== null) { sgSum += sgValues[j]!; sgCount++; }
@@ -639,6 +661,7 @@
 				if (chamberValues[j] !== null) { chamberSum += chamberValues[j]!; chamberCount++; }
 				if (batteryValues[j] !== null) { batterySum += batteryValues[j]!; batteryCount++; }
 				if (filteredValues[j] !== null) { filteredSum += filteredValues[j]!; filteredCount++; }
+				if (filteredTempValues[j] !== null) { filteredTempSum += filteredTempValues[j]!; filteredTempCount++; }
 			}
 
 			// Use middle timestamp of bucket
@@ -649,9 +672,10 @@
 			newChamber.push(chamberCount > 0 ? chamberSum / chamberCount : null);
 			newBattery.push(batteryCount > 0 ? batterySum / batteryCount : null);
 			newFiltered.push(filteredCount > 0 ? filteredSum / filteredCount : null);
+			newFilteredTemp.push(filteredTempCount > 0 ? filteredTempSum / filteredTempCount : null);
 		}
 
-		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newBattery, newFiltered];
+		return [newTimestamps, newSg, newTemp, newAmbient, newChamber, newBattery, newFiltered, newFilteredTemp];
 	}
 
 	// Parse timestamp string as UTC (backend stores UTC but may omit Z suffix)
@@ -732,9 +756,11 @@
 		let batteryValues: (number | null)[] = [];
 		let anomalyValues: (number | null)[] = [];
 		let filteredValues: (number | null)[] = [];
+		let filteredTempValues: (number | null)[] = [];
 		const anomalyInfoList: AnomalyInfo[] = [];
 		let foundBatteryData = false;
 		let foundFilteredData = false;
+		let foundFilteredTempData = false;
 
 		for (const r of sorted) {
 			const ts = parseUtcTimestamp(r.timestamp);
@@ -773,6 +799,15 @@
 				tempValues.push(null);
 			}
 
+			// Kalman-filtered temperature from the ML pipeline (Celsius, null before warm-up)
+			const filteredTemp = r.temp_filtered ?? null;
+			if (filteredTemp !== null) {
+				filteredTempValues.push(celsius ? filteredTemp : (filteredTemp * 9 / 5) + 32);
+				foundFilteredTempData = true;
+			} else {
+				filteredTempValues.push(null);
+			}
+
 			// Battery level (GravityMon/iSpindel only)
 			if (r.battery_percent !== null && r.battery_percent !== undefined) {
 				batteryValues.push(r.battery_percent);
@@ -785,6 +820,7 @@
 		// Update whether we have battery data
 		hasBatteryData = foundBatteryData;
 		hasFilteredData = foundFilteredData;
+		hasFilteredTempData = foundFilteredTempData;
 
 		// Store anomaly info for tooltips
 		anomalyData = anomalyInfoList;
@@ -807,7 +843,7 @@
 		const maxPoints = 500;
 		const originalTimestamps = [...timestamps];
 		const originalAnomalyValues = [...anomalyValues];
-		[timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues, maxPoints);
+		[timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues, filteredTempValues] = downsampleData(timestamps, sgValues, tempValues, ambientValues, chamberValues, batteryValues, filteredValues, filteredTempValues, maxPoints);
 
 		// Map anomaly values to downsampled timestamps
 		// For each downsampled timestamp, check if any original anomaly was near it
@@ -835,7 +871,7 @@
 			? generateTrendLine(timestamps, trend)
 			: timestamps.map(() => null);
 
-		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues, batteryValues, filteredValues];
+		return [timestamps, sgValues, tempValues, ambientValues, chamberValues, trendValues, anomalyValues, batteryValues, filteredValues, filteredTempValues];
 	}
 
 // Minimum interval between data fetches (30 seconds) to prevent BLE event spam
@@ -971,6 +1007,11 @@ onMount(async () => {
 		showFiltered = storedFiltered === 'true';
 	}
 
+	const storedFilteredTemp = localStorage.getItem(FILTERED_TEMP_STORAGE_KEY);
+	if (storedFilteredTemp !== null) {
+		showFilteredTemp = storedFilteredTemp === 'true';
+	}
+
 	// Fetch system timezone for chart display
 	try {
 		const response = await fetch('/api/system/timezone');
@@ -1074,6 +1115,15 @@ onMount(async () => {
 		// Update the series visibility in the existing chart
 		if (chart) {
 			chart.setSeries(8, { show: showFiltered });
+		}
+	}
+
+	function toggleFilteredTemp() {
+		showFilteredTemp = !showFilteredTemp;
+		localStorage.setItem(FILTERED_TEMP_STORAGE_KEY, String(showFilteredTemp));
+		// Update the series visibility in the existing chart
+		if (chart) {
+			chart.setSeries(9, { show: showFilteredTemp });
 		}
 	}
 
@@ -1186,6 +1236,18 @@ onMount(async () => {
 					>
 						<span class="legend-line legend-line-filtered"></span>
 						<span>Filtered</span>
+					</button>
+				{/if}
+				{#if hasFilteredTempData}
+					<button
+						type="button"
+						class="legend-item legend-toggle"
+						class:legend-disabled={!showFilteredTemp}
+						onclick={toggleFilteredTemp}
+						title={showFilteredTemp ? 'Hide Kalman-filtered temperature' : 'Show Kalman-filtered temperature'}
+					>
+						<span class="legend-line legend-line-filtered-temp"></span>
+						<span>Filt Temp</span>
 					</button>
 				{/if}
 				{#if controlPeriods.length > 0}
@@ -1419,6 +1481,11 @@ onMount(async () => {
 		background: var(--chart-filtered, #e4e4e7);
 	}
 
+	.legend-line-filtered-temp {
+		background: linear-gradient(90deg, var(--chart-filtered-temp, #94a3b8) 6px, transparent 6px);
+		background-size: 9px 2px;
+	}
+
 	.legend-band {
 		width: 0.5rem;
 		height: 0.625rem;
@@ -1456,6 +1523,7 @@ onMount(async () => {
 	.legend-disabled .legend-line-chamber,
 	.legend-disabled .legend-line-trend,
 	.legend-disabled .legend-line-filtered,
+	.legend-disabled .legend-line-filtered-temp,
 	.legend-disabled .legend-line-battery {
 		background: linear-gradient(90deg, var(--text-muted) 4px, transparent 4px);
 	}

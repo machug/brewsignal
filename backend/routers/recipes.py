@@ -1,6 +1,7 @@
 """Recipe API endpoints."""
 
 import json
+import re
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
@@ -23,7 +24,7 @@ from ..models import (
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats
-from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter
+from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, to_strict_beerjson
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_ingredients import hydrate_recipe_ingredients
 from ..services.recipe_validation import validate_recipe_constraints
@@ -361,11 +362,29 @@ async def _load_recipe_for_export(
     return recipe
 
 
+def _safe_filename(name: str) -> str:
+    """Sanitize a recipe-derived filename to an ASCII-safe subset.
+
+    Recipe names are user/import-controlled and can contain characters that
+    break the Content-Disposition header outright: a `"` breaks out of the
+    quoted filename, and non-latin-1 characters (emoji, CJK, etc.) raise a
+    UnicodeEncodeError when the ASGI server encodes response headers,
+    turning a download into a 500. Keep only a conservative safe subset and
+    collapse everything else, rather than trying to percent-encode or
+    otherwise preserve the original name.
+    """
+    sanitized = re.sub(r'[^A-Za-z0-9._-]+', "_", name or "")
+    sanitized = sanitized.strip("._")
+    return sanitized or "recipe"
+
+
 def _download_response(payload: dict, filename: str) -> Response:
     return Response(
         content=json.dumps(payload, indent=2),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'
+        },
     )
 
 
@@ -420,11 +439,23 @@ async def export_recipe_beerjson(
     user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export a recipe as vanilla BeerJSON 1.0 (the v2 recipe block, no
-    brewsignal namespace) for interchange with other BeerJSON tools."""
+    """Export a recipe as strict BeerJSON 1.0 (no brewsignal namespace) for
+    interchange with other BeerJSON tools.
+
+    The v2 `recipe` block uses a serializer-dialect shape so BrewSignal
+    round-trips losslessly; this endpoint post-processes a copy of it into
+    strict BeerJSON that validates against the official schemas
+    (`additionalProperties: false`) — see
+    `services.converters.brewsignal_v2.to_strict_beerjson`. Schema-required
+    fields with no source data (e.g. an extract hop's alpha_acid, or a
+    culture's amount) are filled with documented placeholder values rather
+    than omitted, since the schema requires them but BrewSignal has no
+    equivalent to carry over.
+    """
     recipe = await _load_recipe_for_export(recipe_id, user, db)
     doc = RecipeToBrewSignalV2Converter().convert(recipe)
-    beerjson = {"beerjson": {"version": 1.0, "recipes": [doc["recipe"]]}}
+    strict_recipe = to_strict_beerjson(doc["recipe"], doc.get("notes"))
+    beerjson = {"beerjson": {"version": 1.0, "recipes": [strict_recipe]}}
 
     if download:
         filename = f"{recipe.name or 'recipe'}.beerjson.json".replace(" ", "_")

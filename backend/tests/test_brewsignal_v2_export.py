@@ -6,7 +6,9 @@ from backend.models import (
     RecipeHop, RecipeMashStep, RecipeMisc, RecipeWaterAdjustment,
     RecipeWaterProfile,
 )
-from backend.services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter
+from backend.services.converters.brewsignal_v2 import (
+    RecipeToBrewSignalV2Converter, to_strict_beerjson,
+)
 
 
 def _full_recipe() -> Recipe:
@@ -20,6 +22,7 @@ def _full_recipe() -> Recipe:
         name="2-Row", type="grain", grain_group="base", amount_kg=4.66,
         color_srm=1.8, origin="United States", supplier="Rahr",
         yield_percent=80.0,
+        timing={"use": "add_to_mash"},
     ))
     recipe.hops.append(RecipeHop(
         name="Citra", origin="United States", form="pellet",
@@ -40,6 +43,7 @@ def _full_recipe() -> Recipe:
         product_id="1318", temp_min_c=18.0, temp_max_c=23.0,
         attenuation_min_percent=73.0, attenuation_max_percent=75.0,
         amount=1.0, amount_unit="1",
+        timing={"use": "add_to_fermentation"},
     ))
     recipe.cultures.append(RecipeCulture(name="CBC-1", type="ale", form="dry"))
     recipe.miscs.append(RecipeMisc(
@@ -97,6 +101,14 @@ def test_all_cultures_exported_not_just_first():
     assert c0["attenuation_range"]["maximum"] == {"value": 75.0, "unit": "%"}
     assert c0["temperature_range"]["minimum"] == {"value": 18.0, "unit": "C"}
     assert c0["amount"] == {"value": 1.0, "unit": "1"}
+    # timing is a lossless-export column (RecipeCulture.timing); must survive
+    assert c0["timing"] == {"use": "add_to_fermentation"}
+
+
+def test_fermentable_timing_survives_export():
+    r = RecipeToBrewSignalV2Converter().convert(_full_recipe())["recipe"]
+    ferm = r["ingredients"]["fermentable_additions"][0]
+    assert ferm["timing"] == {"use": "add_to_mash"}
 
 
 def test_extract_hops_keep_ml_dosage():
@@ -153,3 +165,171 @@ async def test_persistent_recipe_with_unloaded_collections_fails_loud(test_db):
 
     with pytest.raises(RuntimeError, match="selectinload"):
         RecipeToBrewSignalV2Converter().convert(fresh)
+
+
+def test_style_id_column_wins_over_stale_extension_copy():
+    """A real style_id FK must not be clobbered by a stale copy left over
+    in format_extensions['brewsignal']['style_id'] (e.g. from an earlier
+    export captured before the style was changed)."""
+    recipe = Recipe(
+        name="Restyled", og=1.050, fg=1.010, style_id="real-id",
+        format_extensions={"brewsignal": {"style_id": "stale-id"}},
+    )
+    bs = RecipeToBrewSignalV2Converter().convert(recipe)["brewsignal"]
+    assert bs["style_id"] == "real-id"
+
+
+def test_style_id_extension_fallback_when_no_fk():
+    """When there's no style_id FK, the leftover extension copy is still
+    used as a fallback (existing behavior, must not regress)."""
+    recipe = Recipe(
+        name="No FK", og=1.050, fg=1.010,
+        format_extensions={"brewsignal": {"style_id": "legacy-id"}},
+    )
+    bs = RecipeToBrewSignalV2Converter().convert(recipe)["brewsignal"]
+    assert bs["style_id"] == "legacy-id"
+
+
+class TestToStrictBeerJSON:
+    """Unit tests for the /export/beerjson post-processor (Finding 1)."""
+
+    def _minimal_recipe_block(self) -> dict:
+        return {
+            "name": "Minimal", "type": "extract", "author": "A",
+            "ingredients": {
+                "fermentable_additions": [{
+                    "name": "Mystery Grain", "type": "grain",
+                    "amount": {"value": 1.0, "unit": "kg"},
+                    "color": {"value": 2.0, "unit": "SRM"},
+                }],
+                "hop_additions": [{
+                    "name": "Mystery Extract", "form": "extract",
+                    "amount": {"value": 10.0, "unit": "g"},
+                    "timing": {"use": "add_to_boil"},
+                    "is_extract": True, "amount_ml": 5.0,
+                }],
+                "culture_additions": [{
+                    "name": "House Culture", "type": "ale", "form": "dry",
+                }],
+            },
+            "mash": {
+                "name": "Mash",
+                "mash_steps": [{
+                    "name": "Sacch", "type": "infusion",
+                    "step_temperature": {"value": 68.0, "unit": "C"},
+                    "step_time": {"value": 60, "unit": "min"},
+                }],
+            },
+            "fermentation": {
+                "name": "Fermentation",
+                "fermentation_steps": [{
+                    "name": "Primary", "step_type": "primary",
+                    "step_temperature": {"value": 20.0, "unit": "C"},
+                    "step_time": {"value": 6, "unit": "day"},
+                }],
+            },
+        }
+
+    def test_fermentation_step_renamed_and_step_type_dropped(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block())
+        step = strict["fermentation"]["fermentation_steps"][0]
+        assert "step_type" not in step
+        assert "step_temperature" not in step
+        assert step["start_temperature"] == {"value": 20.0, "unit": "C"}
+
+    def test_hop_extract_keys_dropped_and_alpha_acid_placeholder(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block())
+        hop = strict["ingredients"]["hop_additions"][0]
+        assert "is_extract" not in hop
+        assert "amount_ml" not in hop
+        assert hop["alpha_acid"] == {"value": 0, "unit": "%"}
+
+    def test_hop_alpha_acid_untouched_when_present(self):
+        block = self._minimal_recipe_block()
+        block["ingredients"]["hop_additions"][0]["alpha_acid"] = {
+            "value": 11.0, "unit": "%",
+        }
+        strict = to_strict_beerjson(block)
+        assert strict["ingredients"]["hop_additions"][0]["alpha_acid"] == {
+            "value": 11.0, "unit": "%",
+        }
+
+    def test_culture_amount_placeholder_when_missing(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block())
+        culture = strict["ingredients"]["culture_additions"][0]
+        assert culture["amount"] == {"value": 1, "unit": "1"}
+
+    def test_culture_amount_untouched_when_present(self):
+        block = self._minimal_recipe_block()
+        block["ingredients"]["culture_additions"][0]["amount"] = {
+            "value": 2.0, "unit": "pkg",
+        }
+        strict = to_strict_beerjson(block)
+        assert strict["ingredients"]["culture_additions"][0]["amount"] == {
+            "value": 2.0, "unit": "pkg",
+        }
+
+    def test_fermentable_yield_placeholder_when_missing(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block())
+        ferm = strict["ingredients"]["fermentable_additions"][0]
+        assert ferm["yield"] == {"fine_grind": {"value": 0, "unit": "%"}}
+
+    def test_fermentable_yield_untouched_when_present(self):
+        block = self._minimal_recipe_block()
+        block["ingredients"]["fermentable_additions"][0]["yield"] = {
+            "fine_grind": {"value": 80.0, "unit": "%"},
+        }
+        strict = to_strict_beerjson(block)
+        assert strict["ingredients"]["fermentable_additions"][0]["yield"] == {
+            "fine_grind": {"value": 80.0, "unit": "%"},
+        }
+
+    def test_mash_grain_temperature_placeholder_when_missing(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block())
+        assert strict["mash"]["grain_temperature"] == {"value": 20, "unit": "C"}
+
+    def test_mash_grain_temperature_untouched_when_present(self):
+        block = self._minimal_recipe_block()
+        block["mash"]["grain_temperature"] = {"value": 22.0, "unit": "C"}
+        strict = to_strict_beerjson(block)
+        assert strict["mash"]["grain_temperature"] == {"value": 22.0, "unit": "C"}
+
+    def test_incomplete_style_block_dropped(self):
+        block = self._minimal_recipe_block()
+        block["style"] = {"name": "Hazy IPA"}  # missing category/style_guide/type
+        strict = to_strict_beerjson(block)
+        assert "style" not in strict
+
+    def test_complete_style_block_kept(self):
+        block = self._minimal_recipe_block()
+        block["style"] = {
+            "name": "Hazy IPA", "category": "IPA", "style_guide": "BJCP 2021",
+            "type": "beer",
+        }
+        strict = to_strict_beerjson(block)
+        assert strict["style"] == block["style"]
+
+    def test_notes_included_when_provided(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block(), notes="Tasting notes")
+        assert strict["notes"] == "Tasting notes"
+
+    def test_notes_omitted_when_none(self):
+        strict = to_strict_beerjson(self._minimal_recipe_block(), notes=None)
+        assert "notes" not in strict
+
+    def test_original_recipe_block_not_mutated(self):
+        block = self._minimal_recipe_block()
+        block["style"] = {"name": "Hazy IPA"}
+        to_strict_beerjson(block, notes="Should not leak into original")
+        hop = block["ingredients"]["hop_additions"][0]
+        ferm = block["ingredients"]["fermentable_additions"][0]
+        step = block["fermentation"]["fermentation_steps"][0]
+        assert hop["is_extract"] is True
+        assert hop["amount_ml"] == 5.0
+        assert "alpha_acid" not in hop
+        assert "yield" not in ferm
+        assert "step_temperature" in step
+        assert "step_type" in step
+        assert "grain_temperature" not in block["mash"]
+        assert block["style"] == {"name": "Hazy IPA"}
+        assert "notes" not in block

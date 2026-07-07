@@ -7,6 +7,7 @@ apply_v2_extensions() then maps the brewsignal block onto ORM columns where
 they exist and preserves the rest under format_extensions['brewsignal'] so
 nothing is silently dropped. Export (Task 5) mirrors the same shapes back out.
 """
+import copy
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import inspect as sa_inspect
@@ -323,6 +324,8 @@ class RecipeToBrewSignalV2Converter:
             out['origin'] = ferm.origin
         if ferm.supplier:
             out['producer'] = ferm.supplier
+        if ferm.timing:
+            out['timing'] = ferm.timing
         return out
 
     def _convert_hop(self, hop) -> Dict[str, Any]:
@@ -375,6 +378,8 @@ class RecipeToBrewSignalV2Converter:
             out['temperature_range'] = temp_range
         if culture.amount is not None:
             out['amount'] = {'value': culture.amount, 'unit': culture.amount_unit or '1'}
+        if culture.timing:
+            out['timing'] = culture.timing
         return out
 
     def _convert_misc(self, misc) -> Dict[str, Any]:
@@ -417,11 +422,15 @@ class RecipeToBrewSignalV2Converter:
         block: Dict[str, Any] = {}
         leftovers = dict((recipe.format_extensions or {}).get('brewsignal') or {})
         water_leftovers = leftovers.pop('water', None)
+        # Pop unconditionally: a stale style_id left in leftovers would
+        # otherwise survive into `block.update(leftovers)` below and clobber
+        # the authoritative FK value set from recipe.style_id just above.
+        stale_style_id = leftovers.pop('style_id', None)
 
         if recipe.style_id:
             block['style_id'] = recipe.style_id
-        elif 'style_id' in leftovers:
-            block['style_id'] = leftovers.pop('style_id')
+        elif stale_style_id:
+            block['style_id'] = stale_style_id
 
         water: Dict[str, Any] = {}
         water_profiles = _require_loaded(recipe, 'water_profiles')
@@ -481,3 +490,87 @@ class RecipeToBrewSignalV2Converter:
             }
         out.update(extras)
         return out
+
+
+def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None) -> Dict[str, Any]:
+    """Reshape a v2 `recipe` block into strict BeerJSON 1.0.
+
+    RecipeToBrewSignalV2Converter.convert()'s `recipe` block mirrors the key
+    names the importer's serializer reads back (serializer dialect) so v2
+    round-trips losslessly. That dialect isn't byte-for-byte the official
+    BeerJSON 1.0 schema, though — the schemas set `additionalProperties:
+    false`, so a few serializer-dialect keys make the doc schema-invalid:
+    fermentation steps use `step_temperature`/`step_type` (BeerJSON wants
+    `start_temperature`; has no `step_type`), and hops carry non-standard
+    `is_extract`/`amount_ml`. This is the GET /export/beerjson post-processing
+    step that fixes those up for interchange with vanilla BeerJSON tools.
+    It never mutates `recipe_block` — /export/brewsignal must keep emitting
+    the unmodified serializer-dialect doc.
+
+    Schema-required fields with no BrewSignal-side source data get
+    documented placeholders rather than failing the export:
+    - hop `alpha_acid` missing (extract hops don't have one) ->
+      {"value": 0, "unit": "%"}
+    - culture `amount` missing -> {"value": 1, "unit": "1"} (UnitType)
+    - fermentable `yield` missing (BrewSignal doesn't track it for every
+      grain, e.g. imports that omitted it) -> {"fine_grind": {"value": 0,
+      "unit": "%"}}
+    - mash `grain_temperature` missing (not a BrewSignal field at all) ->
+      {"value": 20, "unit": "C"} (room temperature)
+    A `style` block that's missing any of BeerJSON's required
+    name/category/style_guide/type is dropped rather than padded with
+    placeholders — style is optional at the recipe level, and BrewSignal
+    only carries the style *name* today (category/style_guide/type would
+    have to be fabricated, unlike the numeric placeholders above).
+    """
+    recipe = copy.deepcopy(recipe_block)
+
+    style = recipe.get('style')
+    if isinstance(style, dict) and not {'category', 'style_guide', 'type'} <= style.keys():
+        recipe.pop('style', None)
+
+    fermentation = recipe.get('fermentation')
+    if isinstance(fermentation, dict):
+        steps = fermentation.get('fermentation_steps')
+        if isinstance(steps, list):
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                step.pop('step_type', None)
+                if 'step_temperature' in step:
+                    step['start_temperature'] = step.pop('step_temperature')
+
+    mash = recipe.get('mash')
+    if isinstance(mash, dict) and 'grain_temperature' not in mash:
+        mash['grain_temperature'] = {'value': 20, 'unit': 'C'}
+
+    ingredients = recipe.get('ingredients')
+    if isinstance(ingredients, dict):
+        fermentables = ingredients.get('fermentable_additions')
+        if isinstance(fermentables, list):
+            for ferm in fermentables:
+                if not isinstance(ferm, dict):
+                    continue
+                if 'yield' not in ferm:
+                    ferm['yield'] = {'fine_grind': {'value': 0, 'unit': '%'}}
+        hops = ingredients.get('hop_additions')
+        if isinstance(hops, list):
+            for hop in hops:
+                if not isinstance(hop, dict):
+                    continue
+                hop.pop('is_extract', None)
+                hop.pop('amount_ml', None)
+                if 'alpha_acid' not in hop:
+                    hop['alpha_acid'] = {'value': 0, 'unit': '%'}
+        cultures = ingredients.get('culture_additions')
+        if isinstance(cultures, list):
+            for culture in cultures:
+                if not isinstance(culture, dict):
+                    continue
+                if 'amount' not in culture:
+                    culture['amount'] = {'value': 1, 'unit': '1'}
+
+    if notes:
+        recipe['notes'] = notes
+
+    return recipe

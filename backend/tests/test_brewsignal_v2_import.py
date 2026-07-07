@@ -28,6 +28,9 @@ async def test_jasper_v2_imports(test_db):
     assert culture.name == "London Ale III"
     assert culture.attenuation_min_percent == 73.0   # flat PercentType fallback
     assert culture.attenuation_max_percent == 73.0
+    # legacy top-level mirror must also pick up the flat PercentType shape
+    # (Jasper's first culture uses attenuation: {value: 73.0}, not a range)
+    assert recipe.yeast_attenuation == 73.0
 
     profiles = {p.profile_type: p for p in recipe.water_profiles}
     assert profiles["target"].chloride_ppm == 125

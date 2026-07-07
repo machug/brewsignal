@@ -259,6 +259,13 @@ class RecipeSerializer:
                         elif 'maximum' in atten:
                             # Fallback to maximum if no minimum
                             recipe.yeast_attenuation = self._extract_percent(atten['maximum'])
+                        elif 'value' in atten:
+                            # Flat BeerJSON PercentType: attenuation: {value: 73, unit: "%"}
+                            # (mirrors the same fallback in _create_culture)
+                            atten_val = self._extract_percent(atten)
+                            recipe.yeast_attenuation = (
+                                atten_val * 100 if atten_val < 1 else atten_val
+                            )
 
         # Miscellaneous
         if 'miscellaneous_additions' in ingredients:

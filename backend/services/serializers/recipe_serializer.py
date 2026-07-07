@@ -193,6 +193,9 @@ class RecipeSerializer:
                 recipe.boil_time_minutes = int(self._extract_time_minutes(boil['boil_time']))
             if 'boil_size' in boil:
                 recipe.boil_size_l = self._extract_volume(boil['boil_size'])
+            elif 'pre_boil_size' in boil:
+                # BeerJSON 1.0 BoilProcedureType names it pre_boil_size
+                recipe.boil_size_l = self._extract_volume(boil['pre_boil_size'])
 
     def _extract_efficiency(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:
         """Extract brewhouse efficiency from BeerJSON."""
@@ -380,6 +383,12 @@ class RecipeSerializer:
             if 'maximum' in atten:
                 atten_max = self._extract_percent(atten['maximum'])
                 culture.attenuation_max_percent = atten_max * 100 if atten_max < 1 else atten_max
+            if 'minimum' not in atten and 'maximum' not in atten and 'value' in atten:
+                # Flat BeerJSON PercentType: attenuation: {value: 73, unit: "%"}
+                atten_val = self._extract_percent(atten)
+                atten_val = atten_val * 100 if atten_val < 1 else atten_val
+                culture.attenuation_min_percent = atten_val
+                culture.attenuation_max_percent = atten_val
 
         # Amount with unit
         if 'amount' in culture_dict:

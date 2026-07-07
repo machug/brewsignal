@@ -32,20 +32,75 @@ _HOP_ALIGNMENT_KEYS = ('index', 'name', 'ref_use')
 def _is_loaded(obj, name: str) -> bool:
     """True if relationship `name` is already populated on ORM object `obj`.
 
-    A freshly imported Recipe only has relationships populated that the
-    importer/apply_v2_extensions() actually touched via .append(); every
-    other relationship genuinely has zero rows for that (just-flushed)
-    recipe_id. Callers exporting a Recipe loaded from an existing row
-    MUST eager-load relationships (selectinload) per CLAUDE.md "Database:
-    Eager Loading Required" — touching an unloaded relationship here
-    would otherwise trigger an implicit lazy load and raise
-    MissingGreenlet outside the async session's greenlet context.
+    Used only for the `style` relationship (see _convert_recipe): a freshly
+    imported Recipe sets style_id via FK but never touches `.style`, so it
+    stays unloaded even on a persistent instance, and that's fine — style is
+    non-lossy to omit since style_id round-trips separately. Collections use
+    _require_loaded() instead, which fails loudly on persistent instances
+    per the lossless-export contract.
     """
     return name not in sa_inspect(obj).unloaded
 
 
+def _require_loaded(recipe: Recipe, name: str):
+    """Return collection relationship `name`, or raise if it's unloaded on
+    a persistent Recipe.
+
+    A freshly imported (transient/pending) Recipe only has relationships
+    populated that the importer/apply_v2_extensions() actually touched via
+    .append(); every other relationship genuinely has zero rows for that
+    not-yet-persisted recipe, so treating "unloaded" as "empty" is correct
+    there (unit tests build bare Recipe() objects the same way). But once a
+    Recipe is persistent (loaded from an existing row), an unloaded
+    collection here means the caller forgot to eager-load it — for a
+    lossless-export feature, silently emitting a truncated document is
+    worse than crashing. Callers MUST eager-load relationships
+    (selectinload) per CLAUDE.md "Database: Eager Loading Required" before
+    calling convert() on a persistent Recipe; touching an unloaded
+    relationship here would otherwise trigger an implicit lazy load and
+    raise MissingGreenlet outside the async session's greenlet context, so
+    we raise our own clearer error first.
+    """
+    insp = sa_inspect(recipe)
+    if name in insp.unloaded and insp.persistent:
+        raise RuntimeError(
+            f"Recipe.{name} is unloaded on a persistent recipe (id={recipe.id}). "
+            f"Eager-load it via selectinload(Recipe.{name}) before calling "
+            "RecipeToBrewSignalV2Converter.convert() — required for lossless export."
+        )
+    return getattr(recipe, name)
+
+
+_COLLECTION_RELATIONSHIPS = (
+    'fermentables', 'hops', 'cultures', 'miscs', 'mash_steps',
+    'fermentation_steps', 'water_profiles', 'water_adjustments',
+)
+
+
+def _touch_collections(recipe: Recipe) -> None:
+    """Mark every collection relationship "loaded" on `recipe`, even the
+    ones with zero items.
+
+    RecipeSerializer.serialize() only appends to a relationship when the
+    source document actually has that ingredient/step category, so e.g. a
+    recipe with zero miscellaneous_additions never touches Recipe.miscs and
+    it stays unloaded. That's harmless while the recipe is transient, but
+    by the time the importer flushes it, the recipe is "persistent" per
+    SQLAlchemy — and _require_loaded()'s guard can no longer distinguish
+    "genuinely empty" from "existing row, caller forgot to eager-load"
+    (both look identical: unloaded + persistent). Called from
+    apply_v2_extensions(), the last import-side hook before flush, so every
+    freshly-imported recipe is fully materialized before it can ever be
+    exported.
+    """
+    for name in _COLLECTION_RELATIONSHIPS:
+        if name in sa_inspect(recipe).unloaded:
+            setattr(recipe, name, [])
+
+
 def apply_v2_extensions(recipe: Recipe, brewsignal: Optional[Dict[str, Any]]) -> None:
     """Apply a v2 `brewsignal` block onto an ORM Recipe in place."""
+    _touch_collections(recipe)
     if not brewsignal:
         return
 
@@ -204,37 +259,43 @@ class RecipeToBrewSignalV2Converter:
             out['boil'] = boil
 
         ingredients: Dict[str, Any] = {}
-        if _is_loaded(recipe, 'fermentables') and recipe.fermentables:
+        fermentables = _require_loaded(recipe, 'fermentables')
+        if fermentables:
             ingredients['fermentable_additions'] = [
-                self._convert_fermentable(f) for f in recipe.fermentables
+                self._convert_fermentable(f) for f in fermentables
             ]
-        if _is_loaded(recipe, 'hops') and recipe.hops:
+        hops = _require_loaded(recipe, 'hops')
+        if hops:
             ingredients['hop_additions'] = [
-                self._convert_hop(h) for h in recipe.hops
+                self._convert_hop(h) for h in hops
             ]
-        if _is_loaded(recipe, 'cultures') and recipe.cultures:
+        cultures = _require_loaded(recipe, 'cultures')
+        if cultures:
             ingredients['culture_additions'] = [
-                self._convert_culture(c) for c in recipe.cultures
+                self._convert_culture(c) for c in cultures
             ]
-        if _is_loaded(recipe, 'miscs') and recipe.miscs:
+        miscs = _require_loaded(recipe, 'miscs')
+        if miscs:
             ingredients['miscellaneous_additions'] = [
-                self._convert_misc(m) for m in recipe.miscs
+                self._convert_misc(m) for m in miscs
             ]
         if ingredients:
             out['ingredients'] = ingredients
 
-        if _is_loaded(recipe, 'mash_steps') and recipe.mash_steps:
+        mash_steps = _require_loaded(recipe, 'mash_steps')
+        if mash_steps:
             out['mash'] = {
                 'name': 'Mash',
                 'mash_steps': [self._convert_mash_step(s) for s in
-                               sorted(recipe.mash_steps, key=lambda s: s.step_number)],
+                               sorted(mash_steps, key=lambda s: s.step_number)],
             }
-        if _is_loaded(recipe, 'fermentation_steps') and recipe.fermentation_steps:
+        fermentation_steps = _require_loaded(recipe, 'fermentation_steps')
+        if fermentation_steps:
             out['fermentation'] = {
                 'name': 'Fermentation',
                 'fermentation_steps': [
                     self._convert_fermentation_step(s) for s in
-                    sorted(recipe.fermentation_steps, key=lambda s: s.step_number)
+                    sorted(fermentation_steps, key=lambda s: s.step_number)
                 ],
             }
         return out
@@ -356,11 +417,13 @@ class RecipeToBrewSignalV2Converter:
             block['style_id'] = leftovers.pop('style_id')
 
         water: Dict[str, Any] = {}
-        if _is_loaded(recipe, 'water_profiles') and recipe.water_profiles:
-            water['profiles'] = [self._convert_profile(p) for p in recipe.water_profiles]
-        if _is_loaded(recipe, 'water_adjustments') and recipe.water_adjustments:
+        water_profiles = _require_loaded(recipe, 'water_profiles')
+        if water_profiles:
+            water['profiles'] = [self._convert_profile(p) for p in water_profiles]
+        water_adjustments = _require_loaded(recipe, 'water_adjustments')
+        if water_adjustments:
             water['adjustments'] = [
-                self._convert_adjustment(a) for a in recipe.water_adjustments
+                self._convert_adjustment(a) for a in water_adjustments
             ]
         if isinstance(water_leftovers, dict):
             water.update(water_leftovers)
@@ -368,7 +431,7 @@ class RecipeToBrewSignalV2Converter:
             block['water'] = water
 
         hop_entries = []
-        hops = recipe.hops if _is_loaded(recipe, 'hops') else []
+        hops = _require_loaded(recipe, 'hops')
         for idx, hop in enumerate(hops):
             extras = (hop.format_extensions or {}).get('brewsignal')
             if extras:

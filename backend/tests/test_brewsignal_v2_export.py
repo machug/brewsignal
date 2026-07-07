@@ -1,4 +1,6 @@
 """DB -> BrewSignal v2 exporter (tilt_ui-0jkg). In-memory ORM, no DB."""
+import pytest
+
 from backend.models import (
     Recipe, RecipeCulture, RecipeFermentable, RecipeFermentationStep,
     RecipeHop, RecipeMashStep, RecipeMisc, RecipeWaterAdjustment,
@@ -132,3 +134,22 @@ def test_minimal_recipe_omits_empty_blocks():
     assert doc["recipe"]["name"] == "Bare"
     assert "brewsignal" not in doc
     assert "ingredients" not in doc["recipe"] or doc["recipe"]["ingredients"]
+
+
+@pytest.mark.asyncio
+async def test_persistent_recipe_with_unloaded_collections_fails_loud(test_db):
+    """A persisted recipe exported without eager loading must raise, not
+    silently truncate (lossless-export contract)."""
+    from backend.models import Recipe
+    from sqlalchemy import select
+
+    recipe = Recipe(name="Persisted", og=1.050, fg=1.010)
+    test_db.add(recipe)
+    await test_db.commit()
+    recipe_id = recipe.id
+    test_db.expire_all()
+    result = await test_db.execute(select(Recipe).where(Recipe.id == recipe_id))
+    fresh = result.scalar_one()
+
+    with pytest.raises(RuntimeError, match="selectinload"):
+        RecipeToBrewSignalV2Converter().convert(fresh)

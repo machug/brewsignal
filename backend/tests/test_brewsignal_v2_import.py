@@ -58,3 +58,25 @@ async def test_v1_brewsignal_import_still_works(test_db):
     result = await RecipeImporter().import_recipe(json.dumps(v1), None, test_db)
     assert result.success, result.errors
     assert result.recipe.name == "V1 Pale"
+
+
+@pytest.mark.asyncio
+async def test_minimal_v2_doc_without_brewsignal_block_exports_after_import(test_db):
+    """A v2 doc with no brewsignal block must import AND export without the
+    unloaded-collection guard false-positiving on legitimately empty collections."""
+    import json
+    from backend.services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter
+
+    doc = {
+        "brewsignal_version": "2.0",
+        "recipe": {
+            "name": "Bare v2",
+            "type": "all grain",
+            "original_gravity": {"value": 1.050, "unit": "sg"},
+            "final_gravity": {"value": 1.010, "unit": "sg"},
+        },
+    }
+    result = await RecipeImporter().import_recipe(json.dumps(doc), None, test_db)
+    assert result.success, result.errors
+    out = RecipeToBrewSignalV2Converter().convert(result.recipe)
+    assert out["recipe"]["name"] == "Bare v2"

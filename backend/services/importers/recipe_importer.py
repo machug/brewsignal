@@ -66,6 +66,7 @@ class RecipeImporter:
         beerjson_dict = None
         bs_payload: Optional[Dict[str, Any]] = None
         v2_brewsignal = None
+        is_v2 = False
 
         try:
             # Stage 1: Auto-detect format
@@ -136,6 +137,7 @@ class RecipeImporter:
                             'beerjson': {'version': 1.0, 'recipes': [v2_recipe]}
                         }
                         v2_brewsignal = v2_doc.brewsignal
+                        is_v2 = True
                         bs_payload = None
                     else:
                         # Strip envelope/markers before strict validation
@@ -183,7 +185,11 @@ class RecipeImporter:
                 # Extract first recipe from BeerJSON document
                 beerjson_recipe = beerjson_dict['beerjson']['recipes'][0]
                 recipe = await self.serializer.serialize(beerjson_recipe, session)
-                if v2_brewsignal:
+                if is_v2:
+                    # Unconditional on the v2 path (even with no brewsignal
+                    # block): apply_v2_extensions also materializes empty
+                    # collections so a later export of this soon-persistent
+                    # recipe doesn't trip the unloaded-collection guard.
                     apply_v2_extensions(recipe, v2_brewsignal)
                 # The serializer doesn't carry style_id through the BeerJSON
                 # `style` object. For native BrewSignal imports, apply the

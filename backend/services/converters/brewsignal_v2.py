@@ -99,7 +99,14 @@ def _touch_collections(recipe: Recipe) -> None:
 
 
 def apply_v2_extensions(recipe: Recipe, brewsignal: Optional[Dict[str, Any]]) -> None:
-    """Apply a v2 `brewsignal` block onto an ORM Recipe in place."""
+    """Apply a v2 `brewsignal` block onto an ORM Recipe in place.
+
+    Must be called on EVERY v2 import, even when the doc has no brewsignal
+    block — _touch_collections() has to run regardless (deliberately before
+    the falsy early-return below), or a minimal v2 import would leave its
+    collections unloaded and a later export would false-positive
+    _require_loaded()'s persistent+unloaded guard.
+    """
     _touch_collections(recipe)
     if not brewsignal:
         return

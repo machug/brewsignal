@@ -16,7 +16,7 @@ JASPER = Path(__file__).resolve().parents[2] / "docs" / "examples" / "jasper-clo
 
 @pytest.mark.asyncio
 async def test_jasper_v2_roundtrip(test_db):
-    result = await RecipeImporter().import_recipe(test_db, JASPER.read_text())
+    result = await RecipeImporter().import_recipe(JASPER.read_text(), None, test_db)
     assert result.success, result.errors
     recipe = result.recipe
 

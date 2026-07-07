@@ -9,6 +9,8 @@ nothing is silently dropped. Export (Task 5) mirrors the same shapes back out.
 """
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import inspect as sa_inspect
+
 from backend.models import Recipe, RecipeWaterAdjustment, RecipeWaterProfile
 
 # Column names shared by the v2 wire format and the ORM (self-documenting
@@ -25,6 +27,21 @@ SALT_KEYS = (
 # brewsignal.hop_additions entries align to ingredients.hop_additions by
 # index; name/ref_use are a human-readable echo, not payload.
 _HOP_ALIGNMENT_KEYS = ('index', 'name', 'ref_use')
+
+
+def _is_loaded(obj, name: str) -> bool:
+    """True if relationship `name` is already populated on ORM object `obj`.
+
+    A freshly imported Recipe only has relationships populated that the
+    importer/apply_v2_extensions() actually touched via .append(); every
+    other relationship genuinely has zero rows for that (just-flushed)
+    recipe_id. Callers exporting a Recipe loaded from an existing row
+    MUST eager-load relationships (selectinload) per CLAUDE.md "Database:
+    Eager Loading Required" — touching an unloaded relationship here
+    would otherwise trigger an implicit lazy load and raise
+    MissingGreenlet outside the async session's greenlet context.
+    """
+    return name not in sa_inspect(obj).unloaded
 
 
 def apply_v2_extensions(recipe: Recipe, brewsignal: Optional[Dict[str, Any]]) -> None:
@@ -122,3 +139,275 @@ def _apply_hop_extras(recipe: Recipe, entries: List[Dict[str, Any]]) -> None:
         ext = dict(hop.format_extensions or {})
         ext['brewsignal'] = extras
         hop.format_extensions = ext
+
+
+class RecipeToBrewSignalV2Converter:
+    """Export an ORM Recipe (relationships loaded) as a BrewSignal v2 doc.
+
+    The `recipe` block mirrors the key names RecipeSerializer._create_*
+    read on import, so an exported doc re-imports without loss.
+    """
+
+    def convert(self, recipe: Recipe) -> Dict[str, Any]:
+        doc: Dict[str, Any] = {
+            'brewsignal_version': '2.0',
+            'based_on': {'standard': 'BeerJSON', 'version': '1.0'},
+            'recipe': self._convert_recipe(recipe),
+        }
+        brewsignal = self._convert_brewsignal_block(recipe)
+        if brewsignal:
+            doc['brewsignal'] = brewsignal
+        if recipe.notes:
+            doc['notes'] = recipe.notes
+        if recipe.created_at:
+            doc['created_at'] = recipe.created_at.isoformat()
+        return doc
+
+    # -- recipe block (BeerJSON shapes) --
+
+    def _convert_recipe(self, recipe: Recipe) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            'name': recipe.name,
+            'type': recipe.type or 'all grain',
+        }
+        if recipe.author:
+            out['author'] = recipe.author
+        if recipe.batch_size_liters is not None:
+            out['batch_size'] = {'value': recipe.batch_size_liters, 'unit': 'l'}
+        if recipe.efficiency_percent is not None:
+            out['efficiency'] = {
+                'brewhouse': {'value': recipe.efficiency_percent, 'unit': '%'}
+            }
+        if recipe.og is not None:
+            out['original_gravity'] = {'value': recipe.og, 'unit': 'sg'}
+        if recipe.fg is not None:
+            out['final_gravity'] = {'value': recipe.fg, 'unit': 'sg'}
+        if recipe.abv is not None:
+            out['alcohol_by_volume'] = {'value': recipe.abv, 'unit': '%'}
+        if recipe.ibu is not None:
+            out['ibu_estimate'] = {'value': recipe.ibu, 'unit': 'IBUs'}
+        if recipe.color_srm is not None:
+            out['color_estimate'] = {'value': recipe.color_srm, 'unit': 'SRM'}
+        if recipe.carbonation_vols is not None:
+            out['carbonation'] = recipe.carbonation_vols
+        # Recipe.style is a lazy relationship the importer never populates
+        # (it only sets style_id); see _is_loaded() docstring.
+        if _is_loaded(recipe, 'style') and recipe.style is not None:
+            out['style'] = {'name': recipe.style.name}
+
+        boil: Dict[str, Any] = {}
+        if recipe.boil_time_minutes is not None:
+            boil['boil_time'] = {'value': recipe.boil_time_minutes, 'unit': 'min'}
+        if recipe.boil_size_l is not None:
+            boil['pre_boil_size'] = {'value': recipe.boil_size_l, 'unit': 'l'}
+        if boil:
+            out['boil'] = boil
+
+        ingredients: Dict[str, Any] = {}
+        if _is_loaded(recipe, 'fermentables') and recipe.fermentables:
+            ingredients['fermentable_additions'] = [
+                self._convert_fermentable(f) for f in recipe.fermentables
+            ]
+        if _is_loaded(recipe, 'hops') and recipe.hops:
+            ingredients['hop_additions'] = [
+                self._convert_hop(h) for h in recipe.hops
+            ]
+        if _is_loaded(recipe, 'cultures') and recipe.cultures:
+            ingredients['culture_additions'] = [
+                self._convert_culture(c) for c in recipe.cultures
+            ]
+        if _is_loaded(recipe, 'miscs') and recipe.miscs:
+            ingredients['miscellaneous_additions'] = [
+                self._convert_misc(m) for m in recipe.miscs
+            ]
+        if ingredients:
+            out['ingredients'] = ingredients
+
+        if _is_loaded(recipe, 'mash_steps') and recipe.mash_steps:
+            out['mash'] = {
+                'name': 'Mash',
+                'mash_steps': [self._convert_mash_step(s) for s in
+                               sorted(recipe.mash_steps, key=lambda s: s.step_number)],
+            }
+        if _is_loaded(recipe, 'fermentation_steps') and recipe.fermentation_steps:
+            out['fermentation'] = {
+                'name': 'Fermentation',
+                'fermentation_steps': [
+                    self._convert_fermentation_step(s) for s in
+                    sorted(recipe.fermentation_steps, key=lambda s: s.step_number)
+                ],
+            }
+        return out
+
+    def _convert_fermentable(self, ferm) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            'name': ferm.name,
+            'type': ferm.type or 'grain',
+            'amount': {'value': ferm.amount_kg, 'unit': 'kg'},
+        }
+        if ferm.grain_group:
+            out['grain_group'] = ferm.grain_group
+        if ferm.color_srm is not None:
+            out['color'] = {'value': ferm.color_srm, 'unit': 'SRM'}
+        if ferm.yield_percent is not None:
+            out['yield'] = {'fine_grind': {'value': ferm.yield_percent, 'unit': '%'}}
+        if ferm.origin:
+            out['origin'] = ferm.origin
+        if ferm.supplier:
+            out['producer'] = ferm.supplier
+        return out
+
+    def _convert_hop(self, hop) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            'name': hop.name,
+            'amount': {'value': hop.amount_grams, 'unit': 'g'},
+            'timing': hop.timing or {'use': 'add_to_boil'},
+        }
+        if hop.origin:
+            out['origin'] = hop.origin
+        if hop.form:
+            out['form'] = hop.form
+        if hop.alpha_acid_percent is not None and hop.alpha_acid_percent > 0:
+            out['alpha_acid'] = {'value': hop.alpha_acid_percent, 'unit': '%'}
+        if hop.beta_acid_percent is not None:
+            out['beta_acid'] = {'value': hop.beta_acid_percent, 'unit': '%'}
+        # Extract semantics (tilt_ui-0l5): mL is the canonical dose for
+        # liquid extracts; these keys are what _create_hop reads back.
+        if hop.is_extract:
+            out['is_extract'] = True
+        if hop.amount_ml is not None:
+            out['amount_ml'] = hop.amount_ml
+        return out
+
+    def _convert_culture(self, culture) -> Dict[str, Any]:
+        out: Dict[str, Any] = {'name': culture.name}
+        if culture.type:
+            out['type'] = culture.type
+        if culture.form:
+            out['form'] = culture.form
+        if culture.producer:
+            out['producer'] = culture.producer
+        if culture.product_id:
+            out['product_id'] = culture.product_id
+        atten_min = culture.attenuation_min_percent
+        atten_max = culture.attenuation_max_percent
+        if atten_min is not None or atten_max is not None:
+            low = atten_min if atten_min is not None else atten_max
+            high = atten_max if atten_max is not None else atten_min
+            out['attenuation_range'] = {
+                'minimum': {'value': low, 'unit': '%'},
+                'maximum': {'value': high, 'unit': '%'},
+            }
+        if culture.temp_min_c is not None or culture.temp_max_c is not None:
+            temp_range: Dict[str, Any] = {}
+            if culture.temp_min_c is not None:
+                temp_range['minimum'] = {'value': culture.temp_min_c, 'unit': 'C'}
+            if culture.temp_max_c is not None:
+                temp_range['maximum'] = {'value': culture.temp_max_c, 'unit': 'C'}
+            out['temperature_range'] = temp_range
+        if culture.amount is not None:
+            out['amount'] = {'value': culture.amount, 'unit': culture.amount_unit or '1'}
+        return out
+
+    def _convert_misc(self, misc) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            'name': misc.name,
+            'type': misc.type or 'other',
+            'timing': misc.timing or {'use': 'add_to_boil'},
+        }
+        if misc.amount_kg is not None:
+            out['amount'] = {'value': misc.amount_kg,
+                             'unit': misc.amount_unit or 'kg'}
+        return out
+
+    def _convert_mash_step(self, step) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            'name': step.name,
+            'type': step.type,
+            'step_temperature': {'value': step.temp_c, 'unit': 'C'},
+            'step_time': {'value': step.time_minutes, 'unit': 'min'},
+        }
+        if step.infusion_amount_liters is not None:
+            out['infusion_amount'] = {'value': step.infusion_amount_liters, 'unit': 'l'}
+        if step.infusion_temp_c is not None:
+            out['infusion_temperature'] = {'value': step.infusion_temp_c, 'unit': 'C'}
+        if step.ramp_time_minutes is not None:
+            out['ramp_time'] = {'value': step.ramp_time_minutes, 'unit': 'min'}
+        return out
+
+    def _convert_fermentation_step(self, step) -> Dict[str, Any]:
+        return {
+            'name': step.type.replace('_', ' ').title(),
+            'step_type': step.type,
+            'step_temperature': {'value': step.temp_c, 'unit': 'C'},
+            'step_time': {'value': step.time_days, 'unit': 'day'},
+        }
+
+    # -- brewsignal block --
+
+    def _convert_brewsignal_block(self, recipe: Recipe) -> Dict[str, Any]:
+        block: Dict[str, Any] = {}
+        leftovers = dict((recipe.format_extensions or {}).get('brewsignal') or {})
+        water_leftovers = leftovers.pop('water', None)
+
+        if recipe.style_id:
+            block['style_id'] = recipe.style_id
+        elif 'style_id' in leftovers:
+            block['style_id'] = leftovers.pop('style_id')
+
+        water: Dict[str, Any] = {}
+        if _is_loaded(recipe, 'water_profiles') and recipe.water_profiles:
+            water['profiles'] = [self._convert_profile(p) for p in recipe.water_profiles]
+        if _is_loaded(recipe, 'water_adjustments') and recipe.water_adjustments:
+            water['adjustments'] = [
+                self._convert_adjustment(a) for a in recipe.water_adjustments
+            ]
+        if isinstance(water_leftovers, dict):
+            water.update(water_leftovers)
+        if water:
+            block['water'] = water
+
+        hop_entries = []
+        hops = recipe.hops if _is_loaded(recipe, 'hops') else []
+        for idx, hop in enumerate(hops):
+            extras = (hop.format_extensions or {}).get('brewsignal')
+            if extras:
+                hop_entries.append({'index': idx, 'name': hop.name, **extras})
+        if hop_entries:
+            block['hop_additions'] = hop_entries
+
+        block.update(leftovers)
+        return block
+
+    def _convert_profile(self, profile) -> Dict[str, Any]:
+        out: Dict[str, Any] = {'profile_type': profile.profile_type}
+        if profile.name:
+            out['name'] = profile.name
+        for key in ION_KEYS + ('ph', 'alkalinity'):
+            value = getattr(profile, key)
+            if value is not None:
+                out[key] = value
+        if profile.format_extensions:
+            out.update(profile.format_extensions)
+        return out
+
+    def _convert_adjustment(self, adjustment) -> Dict[str, Any]:
+        out: Dict[str, Any] = {'stage': adjustment.stage}
+        if adjustment.volume_liters is not None:
+            out['volume_liters'] = adjustment.volume_liters
+        salts = {key: getattr(adjustment, key) for key in SALT_KEYS
+                 if getattr(adjustment, key) is not None}
+        extras = dict(adjustment.format_extensions or {})
+        extra_salts = extras.pop('salts', None)
+        if isinstance(extra_salts, dict):
+            salts.update(extra_salts)
+        if salts:
+            out['salts'] = salts
+        if adjustment.acid_type or adjustment.acid_ml is not None:
+            out['acid'] = {
+                'type': adjustment.acid_type,
+                'ml': adjustment.acid_ml,
+                'concentration_percent': adjustment.acid_concentration_percent,
+            }
+        out.update(extras)
+        return out

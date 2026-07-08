@@ -112,13 +112,89 @@ class BrewfatherToBeerJSONConverter:
                 self._convert_culture(y) for y in bf_recipe['yeasts']
             ]
 
-        # Miscs
+        # Miscs. Brewfather mirrors water salts/acids as misc entries flagged
+        # waterAdjustment: true (its own UI hides them from the misc list).
+        # A flagged mirror is skipped ONLY when the water block's adjustment
+        # data actually carries that substance — the water importer is then
+        # the single authority and listing the salt twice is avoided. In
+        # every other case (no water block, profiles-only block, substance
+        # missing from adjustments, or substances the water importer has no
+        # column for, e.g. Campden) the misc is the only import path and is
+        # kept (tilt_ui-zlzz).
         if 'miscs' in bf_recipe:
+            water = bf_recipe.get('water') or {}
             ingredients['miscellaneous_additions'] = [
                 self._convert_misc(m) for m in bf_recipe['miscs']
+                if not (
+                    m.get('waterAdjustment')
+                    and self._water_block_covers(
+                        m.get('name', ''), m.get('use', ''), water
+                    )
+                )
             ]
 
         return ingredients
+
+    # Misc-name keywords mapped to the Brewfather adjustment key that
+    # recipe_serializer._serialize_brewfather_water persists. A flagged
+    # misc is only a duplicate when its substance's key is actually present
+    # in mashAdjustments/spargeAdjustments.
+    _SALT_KEYWORD_TO_ADJUSTMENT_KEY = (
+        (('gypsum', 'calcium sulfate'), 'calciumSulfate'),
+        (('calcium chloride',), 'calciumChloride'),
+        (('epsom', 'magnesium sulfate'), 'magnesiumSulfate'),
+        (('baking soda', 'sodium bicarbonate'), 'sodiumBicarbonate'),
+        (('chalk', 'calcium carbonate'), 'calciumCarbonate'),
+        (('slaked lime', 'pickling lime', 'calcium hydroxide'), 'calciumHydroxide'),
+        (('magnesium chloride',), 'magnesiumChloride'),
+        (('table salt', 'canning salt', 'sodium chloride'), 'sodiumChloride'),
+    )
+    _ACID_KEYWORDS = ('lactic', 'phosphoric', 'hydrochloric', 'sulfuric', 'citric')
+
+    def _water_block_covers(self, name: str, use: str, water: Dict[str, Any]) -> bool:
+        """True when the water block's adjustment data carries this misc's
+        substance FOR ITS STAGE, i.e. the water importer will persist the
+        amount and the misc is a pure duplicate."""
+        name_lower = (name or '').lower()
+
+        # Compare against the adjustment block matching the misc's stage; a
+        # mash gypsum misc is not covered by a sparge-only adjustment (and
+        # vice versa). Unknown/blank stages check both blocks.
+        use_lower = (use or '').lower()
+        if use_lower == 'mash':
+            stages = [water.get('mashAdjustments') or {}]
+        elif use_lower == 'sparge':
+            stages = [water.get('spargeAdjustments') or {}]
+        else:
+            stages = [
+                water.get('mashAdjustments') or {},
+                water.get('spargeAdjustments') or {},
+            ]
+
+        def has_amount(value: Any) -> bool:
+            # Brewfather sometimes emits amounts as strings; "0" is truthy
+            # but persists as 0.0, which is not real coverage.
+            try:
+                return value is not None and float(value) > 0
+            except (TypeError, ValueError):
+                return False
+
+        for keywords, adj_key in self._SALT_KEYWORD_TO_ADJUSTMENT_KEY:
+            if any(k in name_lower for k in keywords):
+                return any(has_amount(stage.get(adj_key)) for stage in stages)
+
+        if any(k in name_lower for k in self._ACID_KEYWORDS):
+            # The water importer persists only acids[0] per stage — mirrors
+            # of any further acids are the sole import path and stay miscs.
+            for stage in stages:
+                acids = stage.get('acids') or []
+                first = acids[0] if acids and isinstance(acids[0], dict) else {}
+                acid_type = (first.get('type') or '').lower()
+                if acid_type and acid_type in name_lower and has_amount(first.get('amount')):
+                    return True
+            return False
+
+        return False
 
     def _convert_fermentable(self, bf_ferm: Dict[str, Any]) -> Dict[str, Any]:
         """Convert Brewfather fermentable to BeerJSON."""

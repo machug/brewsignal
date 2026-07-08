@@ -362,3 +362,206 @@ class TestBrewfatherWaterExport:
         recipe.water_profiles.append(RecipeWaterProfile(profile_type="source"))
         bf = RecipeToBrewfatherConverter().convert(recipe)
         assert "source" not in bf.get("water", {})
+
+
+class TestWaterAdjustmentMiscDedup:
+    """Brewfather mirrors water salts as miscs flagged waterAdjustment: true.
+    When the water block is present it is the single authority — flagged miscs
+    are duplicates and must be skipped (tilt_ui-zlzz)."""
+
+    WATER = {'mashAdjustments': {'calciumSulfate': 9, 'calciumChloride': 5,
+                                 'acids': [{'type': 'lactic', 'amount': '5', 'concentration': 80}]}}
+    SALT = {'name': 'Gypsum (Calcium Sulfate)', 'type': 'Water Agent', 'use': 'Mash',
+            'amount': 11.842, 'unit': 'g', 'waterAdjustment': True}
+    FINING = {'name': 'Whirlfloc', 'type': 'Fining', 'use': 'Boil',
+              'amount': 0.658, 'unit': 'items'}
+
+    def _miscs(self, result):
+        ing = result['beerjson']['recipes'][0].get('ingredients', {})
+        return ing.get('miscellaneous_additions', [])
+
+    def test_flagged_misc_skipped_when_water_block_present(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'Pliny', 'water': self.WATER,
+            'miscs': [self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Whirlfloc']
+
+    def test_flagged_misc_kept_when_no_water_block(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'No Water', 'miscs': [self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Gypsum (Calcium Sulfate)', 'Whirlfloc']
+
+    def test_flagged_misc_kept_when_water_block_empty(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'Empty Water', 'water': {},
+            'miscs': [self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Gypsum (Calcium Sulfate)', 'Whirlfloc']
+
+    def test_unflagged_miscs_never_skipped(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'Pliny', 'water': self.WATER, 'miscs': [self.FINING],
+        })
+        assert [m['name'] for m in self._miscs(result)] == ['Whirlfloc']
+
+    def test_flagged_misc_kept_when_water_importer_cannot_represent_it(self):
+        """Campden etc. have no column in the water adjustment model — the
+        flagged misc is the only import path, so it must survive."""
+        converter = BrewfatherToBeerJSONConverter()
+        campden = {'name': 'Campden Tablets (Sodium Metabisulfite)',
+                   'type': 'Water Agent', 'use': 'Mash',
+                   'amount': 1.0, 'unit': 'items', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Pliny', 'water': self.WATER,
+            'miscs': [campden, self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Campden Tablets (Sodium Metabisulfite)', 'Whirlfloc']
+
+    def test_flagged_acid_misc_skipped_when_water_block_present(self):
+        converter = BrewfatherToBeerJSONConverter()
+        lactic = {'name': 'Lactic Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 6.579, 'unit': 'ml', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Pliny', 'water': self.WATER, 'miscs': [lactic, self.FINING],
+        })
+        assert [m['name'] for m in self._miscs(result)] == ['Whirlfloc']
+
+    def test_flagged_salt_kept_when_water_block_has_profiles_only(self):
+        """Profile-only water blocks import no adjustment rows — flagged
+        salt mirrors are then the only copy and must survive."""
+        converter = BrewfatherToBeerJSONConverter()
+        profiles_only = {'source': {'name': 'X', 'calcium': 50}}
+        result = converter.convert({
+            'name': 'Profiles Only', 'water': profiles_only,
+            'miscs': [self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Gypsum (Calcium Sulfate)', 'Whirlfloc']
+
+    def test_flagged_salt_kept_when_adjustments_lack_that_substance(self):
+        """Water block has gypsum but not sodium chloride — a flagged table
+        salt mirror has no other import path and must survive."""
+        converter = BrewfatherToBeerJSONConverter()
+        salt_misc = {'name': 'Canning Salt (Sodium Chloride)', 'type': 'Water Agent',
+                     'use': 'Mash', 'amount': 2.0, 'unit': 'g', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Partial', 'water': {'mashAdjustments': {'calciumSulfate': 9}},
+            'miscs': [salt_misc, self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Canning Salt (Sodium Chloride)', 'Whirlfloc']
+
+    def test_flagged_acid_kept_when_no_acids_in_adjustments(self):
+        converter = BrewfatherToBeerJSONConverter()
+        lactic = {'name': 'Lactic Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 5.0, 'unit': 'ml', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'No Acids', 'water': {'mashAdjustments': {'calciumSulfate': 9}},
+            'miscs': [lactic, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Lactic Acid', 'Whirlfloc']
+
+    def test_flagged_sparge_salt_kept_when_only_mash_adjustment_exists(self):
+        """Same substance, wrong stage: mashAdjustments gypsum must not
+        swallow a flagged SPARGE gypsum misc."""
+        converter = BrewfatherToBeerJSONConverter()
+        sparge_gypsum = {'name': 'Gypsum (Calcium Sulfate)', 'type': 'Water Agent',
+                         'use': 'Sparge', 'amount': 3.0, 'unit': 'g',
+                         'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Stage Mismatch',
+            'water': {'mashAdjustments': {'calciumSulfate': 9}},
+            'miscs': [sparge_gypsum, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Gypsum (Calcium Sulfate)', 'Whirlfloc']
+
+    def test_flagged_citric_acid_skipped_when_covered(self):
+        converter = BrewfatherToBeerJSONConverter()
+        citric = {'name': 'Citric Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 2.0, 'unit': 'g', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Citric',
+            'water': {'mashAdjustments': {'acids': [{'type': 'citric', 'amount': '2'}]}},
+            'miscs': [citric, self.FINING],
+        })
+        assert [m['name'] for m in self._miscs(result)] == ['Whirlfloc']
+
+    def test_null_acid_type_does_not_crash_and_keeps_misc(self):
+        converter = BrewfatherToBeerJSONConverter()
+        lactic = {'name': 'Lactic Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 5.0, 'unit': 'ml', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Null Acid',
+            'water': {'mashAdjustments': {'acids': [{'type': None, 'concentration': 80}]}},
+            'miscs': [lactic, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Lactic Acid', 'Whirlfloc']
+
+    def test_second_acid_mirror_kept_because_importer_stores_only_first(self):
+        """Serializer persists acids[0] only — a flagged mirror for the
+        second acid is the sole import path for it."""
+        converter = BrewfatherToBeerJSONConverter()
+        lactic = {'name': 'Lactic Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 5.0, 'unit': 'ml', 'waterAdjustment': True}
+        phosphoric = {'name': 'Phosphoric Acid', 'type': 'Water Agent', 'use': 'Mash',
+                      'amount': 2.0, 'unit': 'ml', 'waterAdjustment': True}
+        result = converter.convert({
+            'name': 'Two Acids',
+            'water': {'mashAdjustments': {'acids': [
+                {'type': 'lactic', 'amount': '5'},
+                {'type': 'phosphoric', 'amount': '2'},
+            ]}},
+            'miscs': [lactic, phosphoric, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Phosphoric Acid', 'Whirlfloc']
+
+    def test_string_zero_adjustment_does_not_swallow_misc(self):
+        """Brewfather sometimes emits amounts as strings; '0' must not count
+        as coverage — the flagged misc then carries the only real amount."""
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'String Zero',
+            'water': {'mashAdjustments': {'calciumSulfate': '0'}},
+            'miscs': [self.SALT, self.FINING],
+        })
+        names = [m['name'] for m in self._miscs(result)]
+        assert names == ['Gypsum (Calcium Sulfate)', 'Whirlfloc']
+
+    def test_string_amount_adjustment_still_covers(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'String Amount',
+            'water': {'mashAdjustments': {'calciumSulfate': '9.0'}},
+            'miscs': [self.SALT, self.FINING],
+        })
+        assert [m['name'] for m in self._miscs(result)] == ['Whirlfloc']
+
+    def test_acid_with_zero_amount_does_not_swallow_misc(self):
+        """acids[0] naming the acid but with amount 0/missing persists no
+        real dose — the flagged misc keeps the true amount."""
+        converter = BrewfatherToBeerJSONConverter()
+        lactic = {'name': 'Lactic Acid', 'type': 'Water Agent', 'use': 'Mash',
+                  'amount': 5.0, 'unit': 'ml', 'waterAdjustment': True}
+        for acids in ([{'type': 'lactic', 'amount': '0'}],
+                      [{'type': 'lactic'}]):
+            result = converter.convert({
+                'name': 'Zero Acid',
+                'water': {'mashAdjustments': {'acids': acids}},
+                'miscs': [lactic, self.FINING],
+            })
+            names = [m['name'] for m in self._miscs(result)]
+            assert names == ['Lactic Acid', 'Whirlfloc'], acids

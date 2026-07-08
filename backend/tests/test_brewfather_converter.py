@@ -274,3 +274,62 @@ class TestMiscTimingConversion:
         result = converter.convert(bf_recipe)
         misc = result['beerjson']['recipes'][0]['ingredients']['miscellaneous_additions'][0]
         assert misc['timing']['use'] == 'add_to_mash'
+
+
+class TestBrewfatherWaterExport:
+    """Export must include water chemistry the DB already holds (tilt_ui-0jkg)."""
+
+    def _recipe_with_water(self):
+        from backend.models import (
+            Recipe, RecipeWaterAdjustment, RecipeWaterProfile,
+        )
+        recipe = Recipe(name="Watery", og=1.050, fg=1.010)
+        recipe.water_profiles.append(RecipeWaterProfile(
+            profile_type="target", name="Hazy build",
+            chloride_ppm=125.0, sulfate_ppm=75.0, ph=5.4,
+        ))
+        recipe.water_profiles.append(RecipeWaterProfile(
+            profile_type="source", calcium_ppm=20.0,
+        ))
+        recipe.water_adjustments.append(RecipeWaterAdjustment(
+            stage="mash", volume_liters=18.0,
+            calcium_chloride_g=3.2, calcium_sulfate_g=1.1,
+            acid_type="lactic", acid_ml=2.0, acid_concentration_percent=88.0,
+        ))
+        recipe.water_adjustments.append(RecipeWaterAdjustment(
+            stage="total", calcium_chloride_g=5.0,  # derived by Brewfather; skipped
+        ))
+        return recipe
+
+    def test_water_profiles_exported(self):
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        bf = RecipeToBrewfatherConverter().convert(self._recipe_with_water())
+        assert bf["water"]["target"]["chloride"] == 125.0
+        assert bf["water"]["target"]["sulfate"] == 75.0
+        assert bf["water"]["target"]["ph"] == 5.4
+        assert bf["water"]["source"]["calcium"] == 20.0
+
+    def test_adjustments_exported_camel_case(self):
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        bf = RecipeToBrewfatherConverter().convert(self._recipe_with_water())
+        mash = bf["water"]["mashAdjustments"]
+        assert mash["calciumChloride"] == 3.2
+        assert mash["calciumSulfate"] == 1.1
+        assert mash["volume"] == 18.0
+        assert mash["acids"] == [
+            {"type": "lactic", "amount": 2.0, "concentration": 88.0}
+        ]
+        # 'total' stage has no Brewfather key — must not crash or leak
+        assert "totalAdjustments" not in bf["water"]
+
+    def test_no_water_key_when_recipe_has_none(self):
+        from backend.models import Recipe
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        bf = RecipeToBrewfatherConverter().convert(Recipe(name="Dry", og=1.05, fg=1.01))
+        assert "water" not in bf

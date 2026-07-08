@@ -1,6 +1,7 @@
 """Recipe API endpoints."""
 
 import json
+import re
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
@@ -23,6 +24,7 @@ from ..models import (
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
 from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats
+from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, to_strict_beerjson
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_ingredients import hydrate_recipe_ingredients
 from ..services.recipe_validation import validate_recipe_constraints
@@ -334,6 +336,58 @@ async def get_recipe(
     return await get_user_recipe(recipe_id, user, db)
 
 
+async def _load_recipe_for_export(
+    recipe_id: int, user: AuthUser, db: AsyncSession
+) -> Recipe:
+    """Load a recipe with every relationship any exporter needs."""
+    query = (
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.fermentation_steps),
+            selectinload(Recipe.water_profiles),
+            selectinload(Recipe.water_adjustments),
+        )
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    result = await db.execute(query)
+    recipe = result.scalar_one_or_none()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return recipe
+
+
+def _safe_filename(name: str) -> str:
+    """Sanitize a recipe-derived filename to an ASCII-safe subset.
+
+    Recipe names are user/import-controlled and can contain characters that
+    break the Content-Disposition header outright: a `"` breaks out of the
+    quoted filename, and non-latin-1 characters (emoji, CJK, etc.) raise a
+    UnicodeEncodeError when the ASGI server encodes response headers,
+    turning a download into a 500. Keep only a conservative safe subset and
+    collapse everything else, rather than trying to percent-encode or
+    otherwise preserve the original name.
+    """
+    sanitized = re.sub(r'[^A-Za-z0-9._-]+', "_", name or "")
+    sanitized = sanitized.strip("._")
+    return sanitized or "recipe"
+
+
+def _download_response(payload: dict, filename: str) -> Response:
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'
+        },
+    )
+
+
 @router.get("/{recipe_id}/export/brewfather")
 async def export_recipe_brewfather(
     recipe_id: int,
@@ -349,43 +403,65 @@ async def export_recipe_brewfather(
         recipe_id: The recipe ID to export
         download: If True, returns as a downloadable .json file
     """
-    # Load recipe with all relationships and ownership check
-    query = (
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-            selectinload(Recipe.miscs),
-            selectinload(Recipe.mash_steps),
-            selectinload(Recipe.fermentation_steps),
-        )
-        .where(Recipe.id == recipe_id, user_owns_recipe(user))
-    )
-    result = await db.execute(query)
-    recipe = result.scalar_one_or_none()
-
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-
-    # Convert to Brewfather format
+    recipe = await _load_recipe_for_export(recipe_id, user, db)
     converter = RecipeToBrewfatherConverter()
     brewfather_json = converter.convert(recipe)
 
     if download:
-        # Return as downloadable file
         filename = f"{recipe.name or 'recipe'}.json".replace(" ", "_")
-        content = json.dumps(brewfather_json, indent=2)
-        return Response(
-            content=content,
-            media_type="application/json",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            },
-        )
+        return _download_response(brewfather_json, filename)
 
     return brewfather_json
+
+
+@router.get("/{recipe_id}/export/brewsignal")
+async def export_recipe_brewsignal(
+    recipe_id: int,
+    download: bool = Query(False, description="Return as downloadable file"),
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export a recipe as a native BrewSignal v2 document (tilt_ui-0jkg)."""
+    recipe = await _load_recipe_for_export(recipe_id, user, db)
+    doc = RecipeToBrewSignalV2Converter().convert(recipe)
+
+    if download:
+        filename = f"{recipe.name or 'recipe'}.brewsignal".replace(" ", "_")
+        return _download_response(doc, filename)
+
+    return doc
+
+
+@router.get("/{recipe_id}/export/beerjson")
+async def export_recipe_beerjson(
+    recipe_id: int,
+    download: bool = Query(False, description="Return as downloadable file"),
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export a recipe as strict BeerJSON 1.0 (no brewsignal namespace) for
+    interchange with other BeerJSON tools.
+
+    The v2 `recipe` block uses a serializer-dialect shape so BrewSignal
+    round-trips losslessly; this endpoint post-processes a copy of it into
+    strict BeerJSON that validates against the official schemas
+    (`additionalProperties: false`) — see
+    `services.converters.brewsignal_v2.to_strict_beerjson`. Schema-required
+    fields with no source data (e.g. an extract hop's alpha_acid, or a
+    culture's amount) are filled with documented placeholder values rather
+    than omitted, since the schema requires them but BrewSignal has no
+    equivalent to carry over.
+    """
+    recipe = await _load_recipe_for_export(recipe_id, user, db)
+    doc = RecipeToBrewSignalV2Converter().convert(recipe)
+    strict_recipe = to_strict_beerjson(doc["recipe"], doc.get("notes"))
+    beerjson = {"beerjson": {"version": 1.0, "recipes": [strict_recipe]}}
+
+    if download:
+        filename = f"{recipe.name or 'recipe'}.beerjson.json".replace(" ", "_")
+        return _download_response(beerjson, filename)
+
+    return beerjson
 
 
 @router.post("", response_model=RecipeResponse, status_code=201)

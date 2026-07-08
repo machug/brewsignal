@@ -1,0 +1,247 @@
+{
+  "brewsignal_version": "2.0",
+  "based_on": { "standard": "BeerJSON", "version": "1.0" },
+  "_comment": "Worked example for BrewSignal Recipe Format v2 (bead tilt_ui-cnzl). The `recipe` object is pure BeerJSON 1.0 (unit objects, BeerJSON field shapes) — strip the root `brewsignal` block and any BeerJSON tool reads it. The `brewsignal` block carries everything v1 buried in free-text `notes`: 79C whirlpool, warm biotransformation dry hop, water build, LODO. Per-hop extras live in brewsignal.hop_additions, aligned to ingredients.hop_additions by index (name+use echoed for humans).",
+
+  "recipe": {
+    "name": "Jasper Clone (Fidens DIPA)",
+    "type": "all grain",
+    "author": "Hugh",
+    "coauthor": null,
+    "batch_size": { "value": 19.0, "unit": "l" },
+    "efficiency": { "brewhouse": { "value": 72.0, "unit": "%" } },
+    "original_gravity": { "value": 1.067, "unit": "sg" },
+    "final_gravity": { "value": 1.018, "unit": "sg" },
+    "alcohol_by_volume": { "value": 6.5, "unit": "%" },
+    "apparent_attenuation": { "value": 73.1, "unit": "%" },
+    "ibu_estimate": { "value": 53.0, "unit": "IBUs", "method": "tinseth" },
+    "color_estimate": { "value": 4.5, "unit": "SRM", "method": "morey" },
+    "carbonation": { "value": 2.4, "unit": "vol" },
+
+    "style": {
+      "name": "Hazy IPA",
+      "category_number": "21",
+      "style_letter": "C",
+      "style_guide": "BJCP 2021",
+      "type": "ale"
+    },
+
+    "ingredients": {
+      "fermentable_additions": [
+        {
+          "name": "Standard 2-Row",
+          "type": "grain",
+          "grain_group": "base",
+          "producer": "Rahr",
+          "origin": "United States",
+          "amount": { "value": 4.66, "unit": "kg" },
+          "color": { "value": 1.8, "unit": "SRM" }
+        },
+        {
+          "name": "Flaked Oats",
+          "type": "grain",
+          "grain_group": "flaked",
+          "amount": { "value": 0.91, "unit": "kg" },
+          "color": { "value": 2.2, "unit": "SRM" }
+        },
+        {
+          "name": "Golden Promise",
+          "type": "grain",
+          "grain_group": "base",
+          "producer": "Bairds",
+          "origin": "United Kingdom",
+          "amount": { "value": 0.31, "unit": "kg" },
+          "color": { "value": 3.0, "unit": "SRM" }
+        }
+      ],
+
+      "hop_additions": [
+        {
+          "name": "Citra",
+          "origin": "United States",
+          "form": "pellet",
+          "alpha_acid": { "value": 11.0, "unit": "%" },
+          "amount": { "value": 9.0, "unit": "g" },
+          "timing": { "use": "add_to_boil", "duration": { "value": 60, "unit": "min" } }
+        },
+        {
+          "name": "Citra",
+          "origin": "United States",
+          "form": "pellet",
+          "alpha_acid": { "value": 11.0, "unit": "%" },
+          "amount": { "value": 162.0, "unit": "g" },
+          "timing": { "use": "add_to_boil", "duration": { "value": 20, "unit": "min" } }
+        },
+        {
+          "name": "Citra",
+          "origin": "United States",
+          "form": "pellet",
+          "alpha_acid": { "value": 11.0, "unit": "%" },
+          "amount": { "value": 209.0, "unit": "g" },
+          "timing": {
+            "use": "add_to_fermentation",
+            "time": { "value": 8, "unit": "day" },
+            "duration": { "value": 5, "unit": "day" }
+          }
+        }
+      ],
+
+      "culture_additions": [
+        {
+          "name": "London Ale III",
+          "type": "ale",
+          "form": "liquid",
+          "producer": "Wyeast",
+          "product_id": "1318",
+          "attenuation": { "value": 73.0, "unit": "%" },
+          "temperature_range": {
+            "minimum": { "value": 18.0, "unit": "C" },
+            "maximum": { "value": 23.0, "unit": "C" }
+          },
+          "amount": { "value": 1, "unit": "1" }
+        }
+      ]
+    },
+
+    "mash": {
+      "name": "Single infusion",
+      "mash_steps": [
+        {
+          "name": "Saccharification",
+          "type": "infusion",
+          "step_temperature": { "value": 68.0, "unit": "C" },
+          "step_time": { "value": 60, "unit": "min" }
+        }
+      ]
+    },
+
+    "boil": {
+      "name": "Boil",
+      "pre_boil_size": { "value": 26.0, "unit": "l" },
+      "boil_time": { "value": 60, "unit": "min" }
+    },
+
+    "fermentation": {
+      "name": "Hazy schedule (warm biotransformation dry hop)",
+      "fermentation_steps": [
+        {
+          "name": "Primary",
+          "start_temperature": { "value": 20.0, "unit": "C" },
+          "step_time": { "value": 6, "unit": "day" },
+          "free_rise": false
+        },
+        {
+          "name": "Soft crash hold",
+          "start_temperature": { "value": 15.5, "unit": "C" },
+          "step_time": { "value": 2, "unit": "day" }
+        },
+        {
+          "name": "Warm dry hop (biotransformation)",
+          "start_temperature": { "value": 15.5, "unit": "C" },
+          "step_time": { "value": 5, "unit": "day" }
+        },
+        {
+          "name": "Cold crash",
+          "start_temperature": { "value": 2.0, "unit": "C" },
+          "step_time": { "value": 2, "unit": "day" }
+        }
+      ]
+    },
+
+    "packaging": {
+      "name": "Keg",
+      "packaged_carbonation": 2.4
+    }
+  },
+
+  "brewsignal": {
+    "schema": "brewsignal/2.0",
+    "style_id": "bjcp-2021-21c",
+
+    "hop_additions": [
+      { "index": 0, "name": "Citra", "ref_use": "add_to_boil", "hop_use": "boil", "purpose": "bittering" },
+      {
+        "index": 1, "name": "Citra", "ref_use": "add_to_boil",
+        "hop_use": "whirlpool",
+        "purpose": "aroma",
+        "temperature": { "value": 79.0, "unit": "C" },
+        "stand_time": { "value": 20, "unit": "min" },
+        "_note": "Hot side cooled to 79C before this 162g charge — NOT a 20-min boil. brewsignal.hop_use overrides the BeerJSON add_to_boil fallback."
+      },
+      {
+        "index": 2, "name": "Citra", "ref_use": "add_to_fermentation",
+        "hop_use": "dry_hop",
+        "purpose": "biotransformation",
+        "dry_hop_stage": 1,
+        "trigger": "warm_post_primary",
+        "temperature": { "value": 15.5, "unit": "C" },
+        "day_offset": { "value": 8, "unit": "day" },
+        "oil_content": {
+          "_source": "typical Citra variety values, not lot-specific",
+          "total_oil_ml_per_100g": 2.5,
+          "myrcene": 60, "humulene": 12, "caryophyllene": 7, "farnesene": 1
+        }
+      }
+    ],
+
+    "water": {
+      "target_profile": {
+        "name": "Hazy build (chloride-forward)",
+        "calcium_ppm": null,
+        "magnesium_ppm": null,
+        "sodium_ppm": null,
+        "chloride_ppm": 125,
+        "sulfate_ppm": 75,
+        "bicarbonate_ppm": null,
+        "sulfate_chloride_ratio": 0.6,
+        "_note": "0.6 SO4:Cl = chloride-forward, soft/round — opposite of a sulfate-forward West Coast IPA."
+      },
+      "adjustments": [
+        {
+          "stage": "mash",
+          "salts": { "calcium_chloride_g": null, "calcium_sulfate_g": null },
+          "computed_by": "water_tool",
+          "_note": "Brewer specified targets + salts (CaCl2 + gypsum); gram doses to be computed by the water calculator (tilt_ui-w5kd) from source water + volume."
+        }
+      ],
+      "mash_ph_target": 5.2
+    },
+
+    "process": {
+      "lodo": true,
+      "closed_transfer": true,
+      "pressure_fermentation": false,
+      "_note": "Closed/pressure transfer throughout to avoid oxidation — critical for hazy stability."
+    },
+
+    "nutrition": null,
+    "inventory": null,
+
+    "fermentation_tracking": {
+      "og_validation": { "enabled": true, "tolerance_sg": 0.003 },
+      "fg_prediction": { "enabled": true, "ml_model": "kalman_exponential" },
+      "anomaly_detection": {
+        "stuck_fermentation": true,
+        "temperature_alerts": true,
+        "min_sg_change_24h": 0.001,
+        "hop_creep_watch": true
+      }
+    },
+    "batch_defaults": {
+      "auto_link_device": true,
+      "temperature_control": {
+        "enabled": true,
+        "target_c": 20.0,
+        "hysteresis_c": 0.5,
+        "min_cycle_time_minutes": 5
+      }
+    },
+    "yeast_management": {
+      "pitch_rate_million_cells_ml_plato": 0.35,
+      "starter_required": true
+    }
+  },
+
+  "notes": "All-Citra Fidens 'Jasper' DIPA clone, 19L. Plain-language brew steps; ALL machine-actionable technique now lives in structured fields above (was free-text in v1): 79C/20min whirlpool (brewsignal.hop_additions[1]), warm 15.5C biotransformation dry hop day 8 (brewsignal.hop_additions[2]), chloride-forward water build 125/75 (brewsignal.water), LODO closed transfer (brewsignal.process).",
+  "created_at": "2026-06-27T00:00:00Z"
+}

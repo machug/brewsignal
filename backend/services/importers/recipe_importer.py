@@ -10,7 +10,8 @@ from backend.services.converters.brewfather_to_beerjson import BrewfatherToBeerJ
 from backend.services.converters.brewsignal_to_beerjson import BrewSignalToBeerJSONConverter
 from backend.services.validators.beerjson_validator import BeerJSONValidator
 from backend.services.serializers.recipe_serializer import RecipeSerializer
-from backend.services.brewsignal_format import BrewSignalRecipe
+from backend.services.brewsignal_format import BrewSignalRecipe, BrewSignalRecipeV2
+from backend.services.converters.brewsignal_v2 import apply_v2_extensions
 from backend.services.style_resolver import resolve_style_id
 from backend.models import Recipe
 
@@ -64,6 +65,8 @@ class RecipeImporter:
         detected_format = None
         beerjson_dict = None
         bs_payload: Optional[Dict[str, Any]] = None
+        v2_brewsignal = None
+        is_v2 = False
 
         try:
             # Stage 1: Auto-detect format
@@ -119,20 +122,38 @@ class RecipeImporter:
                     # _brewfather_water itself; no extra step needed.
                     beerjson_dict = self.brewfather_converter.convert(parsed_dict)
                 elif detected_format == "brewsignal":
-                    # Strip envelope/markers before strict validation
-                    # (BrewSignalRecipe sets extra=forbid). Recipe payloads
-                    # may carry _format / brewsignal_version metadata or
-                    # be wrapped under a "recipe" key.
-                    cleaned = parsed_dict
-                    if isinstance(cleaned, dict) and 'recipe' in cleaned \
-                            and isinstance(cleaned['recipe'], dict):
-                        cleaned = cleaned['recipe']
-                    bs_payload = {
-                        k: v for k, v in cleaned.items()
-                        if k not in ('_format', 'brewsignal_version')
-                    }
-                    BrewSignalRecipe.model_validate(bs_payload)
-                    beerjson_dict = self.brewsignal_converter.convert(bs_payload)
+                    if parsed_dict.get('brewsignal_version') == '2.0':
+                        # v2: the recipe block IS BeerJSON — ride the standard
+                        # serializer; the brewsignal block is applied after
+                        # serialization (apply_v2_extensions).
+                        v2_doc = BrewSignalRecipeV2.model_validate(parsed_dict)
+                        v2_recipe = dict(v2_doc.recipe)
+                        if 'notes' not in v2_recipe and v2_doc.notes:
+                            # v2 keeps notes at the envelope level (see the
+                            # Jasper worked example); the serializer reads
+                            # them from the recipe dict.
+                            v2_recipe['notes'] = v2_doc.notes
+                        beerjson_dict = {
+                            'beerjson': {'version': 1.0, 'recipes': [v2_recipe]}
+                        }
+                        v2_brewsignal = v2_doc.brewsignal
+                        is_v2 = True
+                        bs_payload = None
+                    else:
+                        # Strip envelope/markers before strict validation
+                        # (BrewSignalRecipe sets extra=forbid). Recipe payloads
+                        # may carry _format / brewsignal_version metadata or
+                        # be wrapped under a "recipe" key.
+                        cleaned = parsed_dict
+                        if isinstance(cleaned, dict) and 'recipe' in cleaned \
+                                and isinstance(cleaned['recipe'], dict):
+                            cleaned = cleaned['recipe']
+                        bs_payload = {
+                            k: v for k, v in cleaned.items()
+                            if k not in ('_format', 'brewsignal_version')
+                        }
+                        BrewSignalRecipe.model_validate(bs_payload)
+                        beerjson_dict = self.brewsignal_converter.convert(bs_payload)
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:
@@ -164,6 +185,12 @@ class RecipeImporter:
                 # Extract first recipe from BeerJSON document
                 beerjson_recipe = beerjson_dict['beerjson']['recipes'][0]
                 recipe = await self.serializer.serialize(beerjson_recipe, session)
+                if is_v2:
+                    # Unconditional on the v2 path (even with no brewsignal
+                    # block): apply_v2_extensions also materializes empty
+                    # collections so a later export of this soon-persistent
+                    # recipe doesn't trip the unloaded-collection guard.
+                    apply_v2_extensions(recipe, v2_brewsignal)
                 # The serializer doesn't carry style_id through the BeerJSON
                 # `style` object. For native BrewSignal imports, apply the
                 # original style_id directly so the FK column is populated.

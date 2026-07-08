@@ -20,14 +20,14 @@ bd update <id> --status=in_progress
 
 # After completing work
 bd close <id> --reason="Fixed in commit abc123"
-bd sync
 ```
 
 When fixing bugs, implementing features, or making significant changes:
 1. Create or find the relevant beads issue
 2. Update status to in_progress when starting
 3. Close with commit reference when done
-4. Run `bd sync` at session end
+
+Note: bd >= 1.0 has no `bd sync` — the beads daemon auto-flushes to `.beads/issues.jsonl`.
 
 ## Quick Reference
 

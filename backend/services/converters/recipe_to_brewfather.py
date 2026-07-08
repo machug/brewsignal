@@ -98,6 +98,12 @@ class RecipeToBrewfatherConverter:
                 recipe.fermentation_steps
             )
 
+        # Water chemistry (round-trips through _serialize_brewfather_water)
+        if recipe.water_profiles or recipe.water_adjustments:
+            water = self._convert_water(recipe)
+            if water:
+                bf_recipe["water"] = water
+
         return bf_recipe
 
     def _convert_fermentable(self, ferm: RecipeFermentable) -> dict[str, Any]:
@@ -328,6 +334,61 @@ class RecipeToBrewfatherConverter:
             bf_ferm["steps"].append(bf_step)
 
         return bf_ferm
+
+    def _convert_water(self, recipe: Recipe) -> dict[str, Any]:
+        """Emit Brewfather's water object from DB water rows.
+
+        Key names mirror what the importer reads back in
+        RecipeSerializer._serialize_brewfather_water so a
+        BrewSignal -> Brewfather -> BrewSignal trip is lossless.
+        """
+        water: dict[str, Any] = {}
+
+        for profile in recipe.water_profiles:
+            if profile.profile_type not in ("source", "target", "mash", "sparge"):
+                continue
+            entry = {
+                "name": profile.name,
+                "calcium": profile.calcium_ppm,
+                "magnesium": profile.magnesium_ppm,
+                "sodium": profile.sodium_ppm,
+                "chloride": profile.chloride_ppm,
+                "sulfate": profile.sulfate_ppm,
+                "bicarbonate": profile.bicarbonate_ppm,
+                "ph": profile.ph,
+                "alkalinity": profile.alkalinity,
+            }
+            water[profile.profile_type] = {
+                k: v for k, v in entry.items() if v is not None
+            }
+
+        stage_keys = {"mash": "mashAdjustments", "sparge": "spargeAdjustments"}
+        for adjustment in recipe.water_adjustments:
+            bf_key = stage_keys.get(adjustment.stage)
+            if not bf_key:
+                # 'total' is derived by Brewfather from mash+sparge
+                continue
+            entry = {
+                "volume": adjustment.volume_liters,
+                "calciumSulfate": adjustment.calcium_sulfate_g,
+                "calciumChloride": adjustment.calcium_chloride_g,
+                "magnesiumSulfate": adjustment.magnesium_sulfate_g,
+                "sodiumBicarbonate": adjustment.sodium_bicarbonate_g,
+                "calciumCarbonate": adjustment.calcium_carbonate_g,
+                "calciumHydroxide": adjustment.calcium_hydroxide_g,
+                "magnesiumChloride": adjustment.magnesium_chloride_g,
+                "sodiumChloride": adjustment.sodium_chloride_g,
+            }
+            entry = {k: v for k, v in entry.items() if v is not None}
+            if adjustment.acid_type or adjustment.acid_ml is not None:
+                entry["acids"] = [{
+                    "type": adjustment.acid_type,
+                    "amount": adjustment.acid_ml,
+                    "concentration": adjustment.acid_concentration_percent,
+                }]
+            water[bf_key] = entry
+
+        return water
 
     # Type mappers (reverse of import)
     def _map_recipe_type(self, internal_type: Optional[str]) -> str:

@@ -1,586 +1,744 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://brewsignal.io/schemas/recipe-v1.0.json",
-  "title": "BrewSignal Recipe Format v1.0",
-  "description": "Schema for BrewSignal recipe format - simplified, human-readable JSON for fermentation monitoring",
-  "type": "object",
-  "required": ["brewsignal_version", "recipe"],
-  "properties": {
-    "brewsignal_version": {
-      "type": "string",
-      "const": "1.0",
-      "description": "Format version (semantic versioning)"
-    },
-    "recipe": {
-      "$ref": "#/definitions/Recipe"
-    }
-  },
-  "definitions": {
-    "Recipe": {
-      "type": "object",
-      "required": ["name", "og", "fg"],
+  "$defs": {
+    "BrewSignalFermentable": {
+      "description": "Fermentable ingredient.",
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200,
-          "description": "Recipe name"
-        },
-        "author": {
-          "type": "string",
-          "maxLength": 100,
-          "description": "Recipe author"
+          "title": "Name",
+          "type": "string"
         },
         "type": {
-          "type": "string",
-          "enum": ["All Grain", "Extract", "Partial Mash", "BIAB"],
-          "description": "Recipe type"
-        },
-        "style_id": {
-          "type": "string",
-          "pattern": "^[a-z0-9-]+$",
-          "description": "Style reference (e.g., 'bjcp-2021-21a')"
-        },
-        "og": {
-          "type": "number",
-          "minimum": 1.000,
-          "maximum": 1.200,
-          "description": "Original gravity (SG)"
-        },
-        "fg": {
-          "type": "number",
-          "minimum": 1.000,
-          "maximum": 1.200,
-          "description": "Final gravity (SG)"
-        },
-        "abv": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 20,
-          "description": "Alcohol by volume (percent, 0-100 scale)"
-        },
-        "ibu": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 200,
-          "description": "International Bitterness Units"
-        },
-        "color_srm": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Color in SRM"
-        },
-        "batch_size_liters": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 1000,
-          "description": "Batch size in liters"
-        },
-        "boil_time_minutes": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 300,
-          "description": "Boil time in minutes"
-        },
-        "efficiency_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Brewhouse efficiency (percent)"
-        },
-        "carbonation_vols": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 5,
-          "description": "CO2 volumes"
-        },
-        "fermentables": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Fermentable"
-          },
-          "description": "Array of fermentable ingredients"
-        },
-        "hops": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Hop"
-          },
-          "description": "Array of hop additions"
-        },
-        "yeast": {
-          "$ref": "#/definitions/Yeast",
-          "description": "Primary yeast strain"
-        },
-        "miscs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Misc"
-          },
-          "description": "Array of misc ingredients"
-        },
-        "mash_steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/MashStep"
-          },
-          "description": "Mash schedule steps"
-        },
-        "fermentation_steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/FermentationStep"
-          },
-          "description": "Fermentation schedule steps"
-        },
-        "brewsignal_extensions": {
-          "$ref": "#/definitions/BrewSignalExtensions",
-          "description": "BrewSignal-specific extensions"
-        },
-        "notes": {
-          "type": "string",
-          "description": "Brew notes (markdown supported)"
-        },
-        "created_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp (UTC, with 'Z' suffix)"
-        }
-      }
-    },
-    "Fermentable": {
-      "type": "object",
-      "required": ["name", "amount_kg"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Fermentable name"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["grain", "extract", "sugar", "adjunct", "dry extract"],
-          "description": "Fermentable type"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
         },
         "grain_group": {
-          "type": "string",
-          "enum": ["base", "caramel", "roasted", "specialty", "crystal"],
-          "description": "Grain group category"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grain Group"
         },
         "amount_kg": {
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMinimum": true,
-          "description": "Amount in kilograms"
+          "exclusiveMinimum": 0,
+          "title": "Amount Kg",
+          "type": "number"
         },
         "percentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Percentage of grain bill (0-100)"
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Percentage"
         },
         "yield_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Extract yield (0-100)"
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yield Percent"
         },
         "color_srm": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Color in SRM or Lovibond"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Srm"
         },
         "origin": {
-          "type": "string",
-          "description": "Country of origin"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin"
         },
         "supplier": {
-          "type": "string",
-          "description": "Supplier/maltster"
-        }
-      }
-    },
-    "Hop": {
-      "type": "object",
-      "required": ["name", "amount_grams", "alpha_acid_percent", "timing"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Hop variety name"
-        },
-        "origin": {
-          "type": "string",
-          "description": "Country of origin"
-        },
-        "form": {
-          "type": "string",
-          "enum": ["pellet", "leaf", "plug", "powder", "extract"],
-          "description": "Hop form"
-        },
-        "amount_grams": {
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMinimum": true,
-          "description": "Amount in grams"
-        },
-        "alpha_acid_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 20,
-          "description": "Alpha acids (0-20%)"
-        },
-        "beta_acid_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 20,
-          "description": "Beta acids (0-20%)"
-        },
-        "timing": {
-          "$ref": "#/definitions/HopTiming",
-          "description": "BeerJSON timing object"
-        }
-      }
-    },
-    "HopTiming": {
-      "type": "object",
-      "required": ["use"],
-      "properties": {
-        "use": {
-          "type": "string",
-          "enum": ["add_to_mash", "add_to_boil", "add_to_fermentation", "add_to_package"],
-          "description": "When hop is added"
-        },
-        "duration": {
-          "type": "object",
-          "required": ["value", "unit"],
-          "properties": {
-            "value": {
-              "type": "number",
-              "minimum": 0
+          "anyOf": [
+            {
+              "type": "string"
             },
-            "unit": {
-              "type": "string",
-              "enum": ["min", "hour", "day"]
+            {
+              "type": "null"
             }
-          },
-          "description": "How long hop is in contact"
-        },
-        "continuous": {
-          "type": "boolean",
-          "description": "Continuous hopping (e.g., hop back)"
-        },
-        "temperature": {
-          "type": "object",
-          "required": ["value", "unit"],
-          "properties": {
-            "value": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "unit": {
-              "type": "string",
-              "enum": ["C", "F"]
-            }
-          },
-          "description": "Temperature for hopstand additions"
+          ],
+          "default": null,
+          "title": "Supplier"
         }
-      }
+      },
+      "required": [
+        "name",
+        "amount_kg"
+      ],
+      "title": "BrewSignalFermentable",
+      "type": "object"
     },
-    "Yeast": {
-      "type": "object",
-      "required": ["name"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Yeast strain name"
-        },
-        "producer": {
-          "type": "string",
-          "description": "Lab/manufacturer (e.g., 'Wyeast', 'White Labs')"
-        },
-        "product_id": {
-          "type": "string",
-          "description": "Product code (e.g., '1056', 'WLP001')"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["ale", "lager", "wine", "champagne", "other"],
-          "description": "Yeast type"
-        },
-        "form": {
-          "type": "string",
-          "enum": ["liquid", "dry", "slant", "culture"],
-          "description": "Yeast form"
-        },
-        "attenuation_percent": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Expected attenuation (0-100%)"
-        },
-        "temp_min_c": {
-          "type": "number",
-          "description": "Min fermentation temp (Celsius)"
-        },
-        "temp_max_c": {
-          "type": "number",
-          "description": "Max fermentation temp (Celsius)"
-        },
-        "amount_grams": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Amount in grams (for dry yeast)"
-        },
-        "amount_ml": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Amount in milliliters (for liquid yeast)"
-        }
-      }
-    },
-    "Misc": {
-      "type": "object",
-      "required": ["name", "type", "use"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Misc ingredient name"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["spice", "fining", "water agent", "herb", "flavor", "other"],
-          "description": "Misc type"
-        },
-        "use": {
-          "type": "string",
-          "enum": ["boil", "mash", "primary", "secondary", "bottling"],
-          "description": "When misc is added"
-        },
-        "time_min": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Time in minutes"
-        },
-        "amount_kg": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Amount (check amount_unit)"
-        },
-        "amount_unit": {
-          "type": "string",
-          "enum": ["g", "kg", "ml", "l", "tsp", "tbsp", "each"],
-          "description": "Unit for amount"
-        }
-      }
-    },
-    "MashStep": {
-      "type": "object",
-      "required": ["step_number", "name", "type", "temp_c", "time_minutes"],
+    "BrewSignalFermentationStep": {
+      "description": "Fermentation step.",
       "properties": {
         "step_number": {
-          "type": "integer",
           "minimum": 1,
-          "description": "Step order (1-based)"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Step name (e.g., 'Saccharification')"
+          "title": "Step Number",
+          "type": "integer"
         },
         "type": {
-          "type": "string",
-          "enum": ["infusion", "temperature", "decoction"],
-          "description": "Mash step type"
+          "title": "Type",
+          "type": "string"
         },
         "temp_c": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Target temperature (Celsius)"
-        },
-        "time_minutes": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Duration in minutes"
-        },
-        "infusion_amount_liters": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Infusion water volume (liters)"
-        },
-        "infusion_temp_c": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Infusion water temperature (Celsius)"
-        },
-        "ramp_time_minutes": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Ramp time to reach target temperature"
-        }
-      }
-    },
-    "FermentationStep": {
-      "type": "object",
-      "required": ["step_number", "type", "temp_c", "time_days"],
-      "properties": {
-        "step_number": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Step order (1-based)"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["primary", "secondary", "conditioning", "diacetyl_rest", "cold_crash"],
-          "description": "Fermentation step type"
-        },
-        "temp_c": {
-          "type": "number",
-          "description": "Target temperature (Celsius)"
+          "title": "Temp C",
+          "type": "number"
         },
         "time_days": {
-          "type": "integer",
           "minimum": 0,
-          "description": "Duration in days"
+          "title": "Time Days",
+          "type": "integer"
         }
-      }
+      },
+      "required": [
+        "step_number",
+        "type",
+        "temp_c",
+        "time_days"
+      ],
+      "title": "BrewSignalFermentationStep",
+      "type": "object"
     },
-    "BrewSignalExtensions": {
-      "type": "object",
+    "BrewSignalHop": {
+      "description": "Hop addition.",
       "properties": {
-        "version": {
-          "type": "string",
-          "pattern": "^\\d+\\.\\d+$",
-          "description": "Extensions version"
+        "name": {
+          "title": "Name",
+          "type": "string"
         },
-        "fermentation_tracking": {
-          "$ref": "#/definitions/FermentationTracking"
+        "origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin"
         },
-        "batch_defaults": {
-          "$ref": "#/definitions/BatchDefaults"
+        "form": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Form"
         },
-        "yeast_management": {
-          "$ref": "#/definitions/YeastManagement"
+        "amount_grams": {
+          "exclusiveMinimum": 0,
+          "title": "Amount Grams",
+          "type": "number"
+        },
+        "alpha_acid_percent": {
+          "anyOf": [
+            {
+              "maximum": 25,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alpha Acid Percent"
+        },
+        "beta_acid_percent": {
+          "anyOf": [
+            {
+              "maximum": 25,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Beta Acid Percent"
+        },
+        "timing": {
+          "$ref": "#/$defs/BrewSignalTiming"
         }
-      }
+      },
+      "required": [
+        "name",
+        "amount_grams",
+        "timing"
+      ],
+      "title": "BrewSignalHop",
+      "type": "object"
     },
-    "FermentationTracking": {
-      "type": "object",
+    "BrewSignalMashStep": {
+      "description": "Mash step.",
       "properties": {
-        "og_validation": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable OG validation on batch start"
-            },
-            "tolerance_sg": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 0.020,
-              "description": "Allowed OG deviation (default: 0.003)"
-            }
-          }
+        "step_number": {
+          "minimum": 1,
+          "title": "Step Number",
+          "type": "integer"
         },
-        "fg_prediction": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable ML-based FG prediction"
-            },
-            "ml_model": {
-              "type": "string",
-              "enum": ["kalman_exponential", "linear_regression"],
-              "description": "Model type"
-            }
-          }
+        "type": {
+          "title": "Type",
+          "type": "string"
         },
-        "anomaly_detection": {
-          "type": "object",
-          "properties": {
-            "stuck_fermentation": {
-              "type": "boolean",
-              "description": "Alert on stuck fermentation"
-            },
-            "temperature_alerts": {
-              "type": "boolean",
-              "description": "Alert on temp out of range"
-            },
-            "min_sg_change_24h": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Min gravity change per 24 hours"
-            }
-          }
+        "temp_c": {
+          "title": "Temp C",
+          "type": "number"
+        },
+        "time_minutes": {
+          "minimum": 0,
+          "title": "Time Minutes",
+          "type": "integer"
         }
-      }
+      },
+      "required": [
+        "step_number",
+        "type",
+        "temp_c",
+        "time_minutes"
+      ],
+      "title": "BrewSignalMashStep",
+      "type": "object"
     },
-    "BatchDefaults": {
-      "type": "object",
+    "BrewSignalMisc": {
+      "description": "Miscellaneous addition.",
       "properties": {
-        "auto_link_device": {
-          "type": "boolean",
-          "description": "Auto-link device when creating batch"
+        "name": {
+          "title": "Name",
+          "type": "string"
         },
-        "temperature_control": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "description": "Enable temp control for this recipe"
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
             },
-            "target_c": {
-              "type": "number",
-              "minimum": 0,
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "amount_grams": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount Grams"
+        },
+        "timing": {
+          "$ref": "#/$defs/BrewSignalTiming"
+        }
+      },
+      "required": [
+        "name",
+        "timing"
+      ],
+      "title": "BrewSignalMisc",
+      "type": "object"
+    },
+    "BrewSignalTiming": {
+      "description": "Timing object for hops and misc additions.",
+      "properties": {
+        "use": {
+          "title": "Use",
+          "type": "string"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration"
+        },
+        "continuous": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuous"
+        }
+      },
+      "required": [
+        "use"
+      ],
+      "title": "BrewSignalTiming",
+      "type": "object"
+    },
+    "BrewSignalYeast": {
+      "description": "Yeast culture (single yeast only in v1.0).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Producer"
+        },
+        "product_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product Id"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "form": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Form"
+        },
+        "attenuation_percent": {
+          "anyOf": [
+            {
               "maximum": 100,
-              "description": "Default target temp (Celsius)"
+              "minimum": 0,
+              "type": "number"
             },
-            "hysteresis_c": {
-              "type": "number",
-              "minimum": 0.05,
-              "maximum": 5.5,
-              "description": "Default hysteresis (Celsius)"
-            },
-            "min_cycle_time_minutes": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Min on/off time (minutes)"
+            {
+              "type": "null"
             }
-          }
+          ],
+          "default": null,
+          "title": "Attenuation Percent"
+        },
+        "temp_min_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temp Min C"
+        },
+        "temp_max_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temp Max C"
+        },
+        "amount_grams": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount Grams"
         }
-      }
-    },
-    "YeastManagement": {
-      "type": "object",
-      "properties": {
-        "pitch_rate_million_cells_ml_plato": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Pitch rate (M cells/mL/°P)"
-        },
-        "starter_required": {
-          "type": "boolean",
-          "description": "Starter calculation flag"
-        },
-        "rehydration_temp_c": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Rehydration temperature (dry yeast, Celsius)"
-        },
-        "rehydration_time_minutes": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Rehydration duration (minutes)"
-        }
-      }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "BrewSignalYeast",
+      "type": "object"
     }
-  }
+  },
+  "additionalProperties": false,
+  "description": "BrewSignal Recipe Format v1.0\n\nSimplified format for fermentation monitoring.\nAll temperatures in Celsius. All measurements as raw numbers.",
+  "example": {
+    "abv": 6.9,
+    "batch_size_liters": 19.0,
+    "fg": 1.012,
+    "name": "West Coast IPA",
+    "og": 1.065
+  },
+  "properties": {
+    "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "author": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Author"
+    },
+    "type": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Type"
+    },
+    "style_id": {
+      "anyOf": [
+        {
+          "maxLength": 50,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Style Id"
+    },
+    "og": {
+      "maximum": 1.2,
+      "minimum": 1.0,
+      "title": "Og",
+      "type": "number"
+    },
+    "fg": {
+      "maximum": 1.2,
+      "minimum": 1.0,
+      "title": "Fg",
+      "type": "number"
+    },
+    "abv": {
+      "anyOf": [
+        {
+          "maximum": 20,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Abv"
+    },
+    "ibu": {
+      "anyOf": [
+        {
+          "maximum": 200,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ibu"
+    },
+    "color_srm": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Color Srm"
+    },
+    "batch_size_liters": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Batch Size Liters"
+    },
+    "boil_time_minutes": {
+      "anyOf": [
+        {
+          "maximum": 300,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Boil Time Minutes"
+    },
+    "efficiency_percent": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Efficiency Percent"
+    },
+    "carbonation_vols": {
+      "anyOf": [
+        {
+          "maximum": 5,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Carbonation Vols"
+    },
+    "fermentables": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BrewSignalFermentable"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fermentables"
+    },
+    "hops": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BrewSignalHop"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hops"
+    },
+    "yeast": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BrewSignalYeast"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "miscs": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BrewSignalMisc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Miscs"
+    },
+    "mash_steps": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BrewSignalMashStep"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mash Steps"
+    },
+    "fermentation_steps": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BrewSignalFermentationStep"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fermentation Steps"
+    },
+    "brewsignal_extensions": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Brewsignal Extensions"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 10000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "maxLength": 30,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    }
+  },
+  "required": [
+    "name",
+    "og",
+    "fg"
+  ],
+  "title": "BrewSignalRecipe",
+  "type": "object"
 }

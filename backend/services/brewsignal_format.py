@@ -167,6 +167,39 @@ class BrewSignalRecipe(BaseModel):
     }
 
 
+class BrewSignalRecipeV2(BaseModel):
+    """BrewSignal Recipe Format v2 envelope (tilt_ui-cnzl / tilt_ui-0jkg).
+
+    v2 = a BeerJSON-1.0-shaped `recipe` block plus one namespaced
+    `brewsignal` block. The recipe block is intentionally typed as a dict:
+    BeerJSON structure is validated by the existing BeerJSON validator on
+    import, not re-modeled here. Stripping the `brewsignal` block must
+    leave a document any BeerJSON tool can read (design doc §7.1).
+    """
+    brewsignal_version: str
+    based_on: Optional[Dict[str, Any]] = None
+    recipe: Dict[str, Any]
+    brewsignal: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = Field(None, max_length=10_000)
+    created_at: Optional[str] = Field(None, max_length=30)
+
+    model_config = {"extra": "allow"}
+
+    @field_validator('brewsignal_version')
+    @classmethod
+    def version_must_be_2(cls, v):
+        if v != "2.0":
+            raise ValueError(f'expected brewsignal_version "2.0", got {v!r}')
+        return v
+
+    @field_validator('recipe')
+    @classmethod
+    def recipe_must_have_name(cls, v):
+        if not v.get('name'):
+            raise ValueError('recipe.name is required')
+        return v
+
+
 # ==============================================================================
 # BeerJSON → BrewSignal Converter
 # ==============================================================================

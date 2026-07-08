@@ -133,18 +133,31 @@ def _apply_water(recipe: Recipe, water: Dict[str, Any]) -> Dict[str, Any]:
     leftovers: Dict[str, Any] = {}
     for key, value in water.items():
         if key == 'profiles' and isinstance(value, list):
-            for profile_dict in value:
+            for i, profile_dict in enumerate(value):
+                _require_dict_entry(profile_dict, f'brewsignal.water.profiles[{i}]')
                 recipe.water_profiles.append(_profile_from_dict(profile_dict))
         elif key == 'target_profile' and isinstance(value, dict):
             recipe.water_profiles.append(
                 _profile_from_dict({**value, 'profile_type': 'target'})
             )
         elif key == 'adjustments' and isinstance(value, list):
-            for adj_dict in value:
+            for i, adj_dict in enumerate(value):
+                _require_dict_entry(adj_dict, f'brewsignal.water.adjustments[{i}]')
                 recipe.water_adjustments.append(_adjustment_from_dict(adj_dict))
         else:
             leftovers[key] = value
     return leftovers
+
+
+def _require_dict_entry(value: Any, path: str) -> None:
+    """Fail with the offending document path instead of letting a non-dict
+    entry AttributeError deep inside _profile_from_dict/_adjustment_from_dict,
+    which the importer would surface as an unactionable 'Serialization
+    error' (tilt_ui-4bwa item 3)."""
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"{path} must be an object, got {type(value).__name__}"
+        )
 
 
 def _profile_from_dict(profile_dict: Dict[str, Any]) -> RecipeWaterProfile:
@@ -200,7 +213,12 @@ def _apply_hop_extras(recipe: Recipe, entries: List[Dict[str, Any]]) -> None:
             continue
         hop = recipe.hops[idx]
         ext = dict(hop.format_extensions or {})
-        ext['brewsignal'] = extras
+        # Merge when several entries target the same index — plain
+        # assignment made the last entry silently clobber earlier ones
+        # (tilt_ui-4bwa item 3).
+        merged = dict(ext.get('brewsignal') or {})
+        merged.update(extras)
+        ext['brewsignal'] = merged
         hop.format_extensions = ext
 
 

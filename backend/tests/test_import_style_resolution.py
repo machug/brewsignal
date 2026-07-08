@@ -81,3 +81,47 @@ class TestBeerXMLImportStyleResolution:
     ):
         recipe = await _import(test_db, _beerxml(""))
         assert recipe.style_id is None
+
+
+def _v2_doc(brewsignal: dict, recipe_extra: dict | None = None) -> str:
+    import json
+    return json.dumps({
+        "brewsignal_version": "2.0",
+        "based_on": {"standard": "BeerJSON", "version": "1.0"},
+        "recipe": {"name": "V2 Styled", "type": "all grain",
+                   **(recipe_extra or {})},
+        "brewsignal": brewsignal,
+    })
+
+
+class TestV2StyleIdFK:
+    """tilt_ui-4bwa codex (b): a v2 doc's brewsignal.style_id must land on
+    the recipe.style_id FK when it exists in the styles table — previously
+    it only survived inside format_extensions, so the recipe rendered
+    unstyled in the UI whenever the style *name* couldn't be resolved.
+    The v1 import path already applied the FK; v2 must match."""
+
+    @pytest.mark.asyncio
+    async def test_valid_style_id_applied_to_fk(self, test_db: AsyncSession):
+        recipe = await _import(test_db, _v2_doc({"style_id": "bjcp-2021-21a"}))
+        assert recipe.style_id == "bjcp-2021-21a"
+
+    @pytest.mark.asyncio
+    async def test_unknown_style_id_not_applied(self, test_db: AsyncSession):
+        recipe = await _import(
+            test_db, _v2_doc({"style_id": "not-a-real-style"})
+        )
+        assert recipe.style_id is None
+        # still preserved as an extension, nothing silently dropped
+        assert recipe.format_extensions["brewsignal"]["style_id"] == \
+            "not-a-real-style"
+
+    @pytest.mark.asyncio
+    async def test_style_name_fallback_still_wins_when_id_unknown(
+        self, test_db: AsyncSession
+    ):
+        recipe = await _import(test_db, _v2_doc(
+            {"style_id": "not-a-real-style"},
+            recipe_extra={"style": {"name": "American IPA"}},
+        ))
+        assert recipe.style_id == "bjcp-2021-21a"

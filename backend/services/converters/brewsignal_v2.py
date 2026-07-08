@@ -238,6 +238,18 @@ class RecipeToBrewSignalV2Converter:
 
     The `recipe` block mirrors the key names RecipeSerializer._create_*
     read on import, so an exported doc re-imports without loss.
+
+    Caller contract (tilt_ui-4bwa item 8): for a PERSISTENT recipe, every
+    collection relationship must be loaded before convert() — either
+    eager-loaded via selectinload (the export endpoints do this), or
+    materialized by _touch_collections(), which only the v2 import path
+    runs (inside apply_v2_extensions). A recipe imported from
+    BeerXML/Brewfather/v1 in the SAME session is persistent after flush
+    with any untouched empty collections still "unloaded", so a
+    same-session convert() on it false-positives _require_loaded()'s
+    guard. That's accepted: the guard errs loud rather than lossy, and
+    the fix is to re-fetch with selectinload (as the endpoints do), not
+    to weaken the guard.
     """
 
     def convert(self, recipe: Recipe) -> Dict[str, Any]:

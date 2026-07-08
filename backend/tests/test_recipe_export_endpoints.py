@@ -135,6 +135,35 @@ async def test_export_download_header_survives_unsafe_recipe_name(client, test_d
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", ["brewsignal", "beerjson", "brewfather"])
+async def test_export_denied_for_other_users_recipe(
+    client, test_db, monkeypatch, fmt
+):
+    """tilt_ui-4bwa item 4: in cloud mode the export endpoints must 404 a
+    recipe owned by someone else — same contract as every other recipe
+    route, but previously untested for exports."""
+    from backend.auth import AuthUser, require_auth
+    from backend.config import get_settings
+    from backend.main import app
+    from backend.models import Recipe
+
+    recipe = Recipe(name="Someone Else's DIPA", user_id="user-a")
+    test_db.add(recipe)
+    await test_db.commit()
+
+    monkeypatch.setenv("DEPLOYMENT_MODE", "cloud")
+    get_settings.cache_clear()
+    app.dependency_overrides[require_auth] = lambda: AuthUser("user-b")
+    try:
+        resp = await client.get(f"/api/recipes/{recipe.id}/export/{fmt}")
+        assert resp.status_code == 404
+    finally:
+        del app.dependency_overrides[require_auth]
+        monkeypatch.undo()
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
 async def test_fully_unsafe_recipe_name_keeps_file_extension(client, test_db):
     """tilt_ui-4bwa item 1: a recipe name with zero safe characters must
     still download with its extension intact. Previously the whole

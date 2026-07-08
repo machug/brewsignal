@@ -15,7 +15,12 @@ export interface Fermentable {
   potential_sg: number;  // e.g., 1.037 for base malt
   color_srm: number;
   yield_percent?: number;  // Alternative to potential_sg (e.g., 80%)
+  type?: string;  // BeerJSON type: grain, sugar, extract, dry extract, honey...
 }
+
+// Kettle additions (not mashed) contribute full potential — brewhouse
+// efficiency only models mash losses, so it must not be applied to these.
+const NO_EFFICIENCY_TYPES = new Set(['sugar', 'extract', 'dry extract', 'liquid extract', 'honey', 'fruit', 'juice']);
 
 export interface Hop {
   name: string;
@@ -73,8 +78,12 @@ export function calculateOG(
   const totalPoints = fermentables.reduce((sum, f) => {
     // Convert potential SG to points (e.g., 1.037 -> 37)
     const potentialPoints = (f.potential_sg - 1) * 1000;
+    // Sugars/extracts skip the mash: full potential, no efficiency penalty
+    const efficiency = NO_EFFICIENCY_TYPES.has((f.type ?? '').toLowerCase())
+      ? 1
+      : batch.efficiency_percent / 100;
     // Apply metric conversion, efficiency, and scale to batch size
-    const points = (f.amount_kg * potentialPoints * PPG_TO_METRIC * (batch.efficiency_percent / 100)) /
+    const points = (f.amount_kg * potentialPoints * PPG_TO_METRIC * efficiency) /
                    batch.batch_size_liters;
     return sum + points;
   }, 0);

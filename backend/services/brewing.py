@@ -26,6 +26,10 @@ DEFAULT_POTENTIALS = {
     "sugar": 46, "dextrose": 46, "honey": 35, "candi": 38,
 }
 
+# Fermentable types added to the kettle rather than mashed: they contribute
+# their full potential, so brewhouse efficiency must not be applied.
+NO_EFFICIENCY_TYPES = {"sugar", "extract", "dry extract", "liquid extract", "honey", "fruit", "juice"}
+
 
 def get_extract_potential(name: str, yield_percent: float | None = None) -> float:
     """Get extract potential for a grain by name or yield percentage.
@@ -87,9 +91,11 @@ def calculate_og_from_fermentables(
 
         # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
         # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
+        ferm_type = (ferm.type or "").lower()
+        ferm_efficiency = 1.0 if ferm_type in NO_EFFICIENCY_TYPES else efficiency
         grain_lbs = amount_kg * 2.205
         batch_gal = batch_liters / 3.785
-        points = (grain_lbs * potential * efficiency) / batch_gal
+        points = (grain_lbs * potential * ferm_efficiency) / batch_gal
         total_gravity_points += points
 
         # Color contribution (MCU)

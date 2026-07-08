@@ -291,11 +291,13 @@ class RecipeSerializer:
         if 'color' in ferm_dict:
             ferm.color_srm = self._extract_color(ferm_dict['color'])
 
-        # Yield (percent)
+        # Yield (percent). No fermentable yields <= 1%, so a value of
+        # exactly 1.0 here is always a 100% decimal (e.g. cane sugar), not
+        # a 1% percent-form value — safe to scale, unlike ABV/alpha where
+        # 1% is plausible.
         if 'yield' in ferm_dict and 'fine_grind' in ferm_dict['yield']:
-            # Convert from 0-1 to 0-100
             yield_val = self._extract_percent(ferm_dict['yield']['fine_grind'])
-            ferm.yield_percent = yield_val * 100 if yield_val < 1 else yield_val
+            ferm.yield_percent = yield_val * 100 if yield_val <= 1 else yield_val
 
         # Timing
         if 'timing' in ferm_dict:
@@ -663,7 +665,10 @@ class RecipeSerializer:
             return None
 
         # BeerJSON percentages are stored as decimals (0-1 range)
-        # Convert to percentage (0-100 range)
+        # Convert to percentage (0-100 range). Exactly 1.0 is ambiguous
+        # (100% decimal vs 1% percent-form) and left unchanged here; sites
+        # where domain knowledge disambiguates (e.g. fermentable yield —
+        # nothing yields 1%) resolve it themselves.
         if value < 1.0:
             return value * 100
 

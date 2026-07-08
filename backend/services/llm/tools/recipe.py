@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
+from backend.services.brewing import NO_EFFICIENCY_TYPES
 from backend.services.fermentable_colors import enrich_fermentable_colors
 from backend.services.llm.service import LLMService
 
@@ -659,9 +660,13 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
         # Gravity points contribution using PPG (points per pound per gallon)
         # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
         # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
+        # Kettle additions (sugar/extract/fruit/juice) skip the mash and
+        # contribute full potential — mirrors services/brewing.py.
+        ferm_type = (ferm.get("type") or "").lower()
+        ferm_eff = 1.0 if ferm_type in NO_EFFICIENCY_TYPES else eff_val
         grain_lbs = amount_kg * 2.205
         batch_gal = batch_liters / 3.785
-        points = (grain_lbs * potential * eff_val) / batch_gal
+        points = (grain_lbs * potential * ferm_eff) / batch_gal
         total_gravity_points += points
 
         # Color contribution (MCU)

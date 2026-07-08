@@ -41,7 +41,8 @@
 			name: f.name,
 			amount_kg: f.amount_kg,
 			potential_sg: f.potential_sg || 1.036,
-			color_srm: f.color_srm || 2
+			color_srm: f.color_srm || 2,
+			type: f.type ?? undefined
 		}));
 
 		const batch = {

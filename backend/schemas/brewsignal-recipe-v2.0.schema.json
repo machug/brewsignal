@@ -1,4 +1,6 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brewsignal.io/schemas/recipe-v2.0.json",
   "additionalProperties": true,
   "description": "BrewSignal Recipe Format v2 envelope (tilt_ui-cnzl / tilt_ui-0jkg).\n\nv2 = a BeerJSON-1.0-shaped `recipe` block plus one namespaced\n`brewsignal` block. The recipe block is intentionally typed as a dict:\nBeerJSON structure is validated by the existing BeerJSON validator on\nimport, not re-modeled here. Stripping the `brewsignal` block must\nleave a document any BeerJSON tool can read (design doc \u00a77.1).",
   "properties": {

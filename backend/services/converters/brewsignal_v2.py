@@ -523,7 +523,9 @@ class RecipeToBrewSignalV2Converter:
             salts.update(extra_salts)
         if salts:
             out['salts'] = salts
-        if adjustment.acid_type or adjustment.acid_ml is not None:
+        if (adjustment.acid_type
+                or adjustment.acid_ml is not None
+                or adjustment.acid_concentration_percent is not None):
             out['acid'] = {
                 'type': adjustment.acid_type,
                 'ml': adjustment.acid_ml,

@@ -190,6 +190,20 @@ def test_style_id_extension_fallback_when_no_fk():
     assert bs["style_id"] == "legacy-id"
 
 
+def test_acid_concentration_only_adjustment_survives_v2_export():
+    """tilt_ui-4bwa item 5: same acid gate as the Brewfather exporter —
+    concentration-only adjustments dropped their acid block."""
+    recipe = Recipe(name="T")
+    recipe.water_adjustments.append(RecipeWaterAdjustment(
+        stage="mash", acid_concentration_percent=88.0,
+    ))
+    doc = RecipeToBrewSignalV2Converter().convert(recipe)
+    adj = doc["brewsignal"]["water"]["adjustments"][0]
+    assert adj["acid"] == {
+        "type": None, "ml": None, "concentration_percent": 88.0,
+    }
+
+
 class TestPerItemExtensionsReemitted:
     """tilt_ui-4bwa item 2: format_extensions stored on import (from each
     item's `_extensions` key) must be re-emitted on v2 export, or a

@@ -132,3 +132,28 @@ async def test_export_download_header_survives_unsafe_recipe_name(client, test_d
     assert "🍺" not in disposition
     filename = disposition.split("filename=", 1)[1].strip('"')
     assert '"' not in filename
+
+
+@pytest.mark.asyncio
+async def test_fully_unsafe_recipe_name_keeps_file_extension(client, test_db):
+    """tilt_ui-4bwa item 1: a recipe name with zero safe characters must
+    still download with its extension intact. Previously the whole
+    "name.ext" string was sanitized at once, so "🍺🍺🍺.brewsignal" became
+    "_.brewsignal" and strip("._") ate the extension's dot, yielding a
+    bare "brewsignal" filename."""
+    recipe_id = await _import_jasper(test_db)
+    resp = await client.put(f"/api/recipes/{recipe_id}", json={"name": "🍺🍺🍺"})
+    assert resp.status_code == 200
+
+    for suffix, ext in [
+        ("brewsignal", "brewsignal"),
+        ("beerjson", "beerjson.json"),
+        ("brewfather", "json"),
+    ]:
+        resp = await client.get(
+            f"/api/recipes/{recipe_id}/export/{suffix}?download=true"
+        )
+        assert resp.status_code == 200
+        disposition = resp.headers["content-disposition"]
+        filename = disposition.split("filename=", 1)[1].strip('"')
+        assert filename == f"recipe.{ext}", (suffix, filename)

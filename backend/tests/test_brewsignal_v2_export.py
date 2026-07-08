@@ -317,6 +317,65 @@ class TestToStrictBeerJSON:
         strict = to_strict_beerjson(self._minimal_recipe_block(), notes=None)
         assert "notes" not in strict
 
+    # -- bare-recipe completeness (tilt_ui-4bwa item 1 + codex a) --
+
+    def test_bare_recipe_gets_top_level_placeholders(self):
+        strict = to_strict_beerjson({"name": "Bare", "type": "all grain"})
+        assert strict["author"] == "Unknown"
+        assert strict["batch_size"] == {"value": 0, "unit": "l"}
+        assert strict["efficiency"] == {"brewhouse": {"value": 0, "unit": "%"}}
+        assert strict["ingredients"] == {"fermentable_additions": []}
+
+    def test_top_level_fields_untouched_when_present(self):
+        block = self._minimal_recipe_block()
+        block["batch_size"] = {"value": 19.0, "unit": "l"}
+        block["efficiency"] = {"brewhouse": {"value": 72.0, "unit": "%"}}
+        strict = to_strict_beerjson(block)
+        assert strict["author"] == "A"
+        assert strict["batch_size"] == {"value": 19.0, "unit": "l"}
+        assert strict["efficiency"] == {"brewhouse": {"value": 72.0, "unit": "%"}}
+
+    def test_ingredients_without_fermentables_gets_empty_array(self):
+        block = self._minimal_recipe_block()
+        del block["ingredients"]["fermentable_additions"]
+        strict = to_strict_beerjson(block)
+        assert strict["ingredients"]["fermentable_additions"] == []
+
+    def test_fermentable_color_placeholder_when_missing(self):
+        block = self._minimal_recipe_block()
+        del block["ingredients"]["fermentable_additions"][0]["color"]
+        strict = to_strict_beerjson(block)
+        ferm = strict["ingredients"]["fermentable_additions"][0]
+        assert ferm["color"] == {"value": 0, "unit": "SRM"}
+
+    def test_culture_type_and_form_placeholders_when_missing(self):
+        block = self._minimal_recipe_block()
+        culture = block["ingredients"]["culture_additions"][0]
+        del culture["type"]
+        del culture["form"]
+        strict = to_strict_beerjson(block)
+        out = strict["ingredients"]["culture_additions"][0]
+        assert out["type"] == "other"
+        assert out["form"] == "dry"
+
+    def test_item_extensions_stripped(self):
+        block = self._minimal_recipe_block()
+        block["_extensions"] = {"brewfather": {"x": 1}}
+        block["ingredients"]["fermentable_additions"][0]["_extensions"] = {"y": 2}
+        block["ingredients"]["culture_additions"][0]["_extensions"] = {"z": 3}
+        block["fermentation"]["fermentation_steps"][0]["_extensions"] = {"w": 4}
+        strict = to_strict_beerjson(block)
+        assert "_extensions" not in strict
+        assert "_extensions" not in strict["ingredients"]["fermentable_additions"][0]
+        assert "_extensions" not in strict["ingredients"]["culture_additions"][0]
+        assert "_extensions" not in strict["fermentation"]["fermentation_steps"][0]
+
+    def test_bare_recipe_validates_against_official_schema(self):
+        from backend.services.validators.beerjson_validator import BeerJSONValidator
+        strict = to_strict_beerjson({"name": "Bare", "type": "all grain"})
+        is_valid, errors = BeerJSONValidator().validate_recipe(strict)
+        assert is_valid, errors
+
     def test_original_recipe_block_not_mutated(self):
         block = self._minimal_recipe_block()
         block["style"] = {"name": "Hazy IPA"}

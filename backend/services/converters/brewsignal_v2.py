@@ -508,15 +508,27 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
     the unmodified serializer-dialect doc.
 
     Schema-required fields with no BrewSignal-side source data get
-    documented placeholders rather than failing the export:
+    documented placeholders rather than failing the export. Placeholder
+    values are deliberately obvious fakes (0, 'Unknown', 'other') so a
+    consumer can't mistake them for real measurements:
+    - recipe `author` missing -> "Unknown"
+    - recipe `batch_size` missing -> {"value": 0, "unit": "l"}
+    - recipe `efficiency` missing -> {"brewhouse": {"value": 0, "unit": "%"}}
+    - `ingredients.fermentable_additions` missing (schema requires the key
+      even for an ingredient-less recipe) -> []
     - hop `alpha_acid` missing (extract hops don't have one) ->
       {"value": 0, "unit": "%"}
     - culture `amount` missing -> {"value": 1, "unit": "1"} (UnitType)
+    - culture `type`/`form` missing -> "other" / "dry" (CultureBase enums)
     - fermentable `yield` missing (BrewSignal doesn't track it for every
       grain, e.g. imports that omitted it) -> {"fine_grind": {"value": 0,
       "unit": "%"}}
+    - fermentable `color` missing -> {"value": 0, "unit": "SRM"}
     - mash `grain_temperature` missing (not a BrewSignal field at all) ->
       {"value": 20, "unit": "C"} (room temperature)
+    Serializer-dialect `_extensions` keys (recipe level and per item) are
+    stripped — they're the round-trip side channel for foreign-format
+    extras and never schema-valid under additionalProperties: false.
     A `style` block that's missing any of BeerJSON's required
     name/category/style_guide/type is dropped rather than padded with
     placeholders — style is optional at the recipe level, and BrewSignal
@@ -524,6 +536,14 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
     have to be fabricated, unlike the numeric placeholders above).
     """
     recipe = copy.deepcopy(recipe_block)
+    recipe.pop('_extensions', None)
+
+    if not recipe.get('author'):
+        recipe['author'] = 'Unknown'
+    if 'batch_size' not in recipe:
+        recipe['batch_size'] = {'value': 0, 'unit': 'l'}
+    if 'efficiency' not in recipe:
+        recipe['efficiency'] = {'brewhouse': {'value': 0, 'unit': '%'}}
 
     style = recipe.get('style')
     if isinstance(style, dict) and not {'category', 'style_guide', 'type'} <= style.keys():
@@ -537,22 +557,34 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
                 if not isinstance(step, dict):
                     continue
                 step.pop('step_type', None)
+                step.pop('_extensions', None)
                 if 'step_temperature' in step:
                     step['start_temperature'] = step.pop('step_temperature')
 
     mash = recipe.get('mash')
-    if isinstance(mash, dict) and 'grain_temperature' not in mash:
-        mash['grain_temperature'] = {'value': 20, 'unit': 'C'}
+    if isinstance(mash, dict):
+        if 'grain_temperature' not in mash:
+            mash['grain_temperature'] = {'value': 20, 'unit': 'C'}
+        mash_steps = mash.get('mash_steps')
+        if isinstance(mash_steps, list):
+            for step in mash_steps:
+                if isinstance(step, dict):
+                    step.pop('_extensions', None)
 
-    ingredients = recipe.get('ingredients')
+    ingredients = recipe.setdefault('ingredients', {})
     if isinstance(ingredients, dict):
+        if 'fermentable_additions' not in ingredients:
+            ingredients['fermentable_additions'] = []
         fermentables = ingredients.get('fermentable_additions')
         if isinstance(fermentables, list):
             for ferm in fermentables:
                 if not isinstance(ferm, dict):
                     continue
+                ferm.pop('_extensions', None)
                 if 'yield' not in ferm:
                     ferm['yield'] = {'fine_grind': {'value': 0, 'unit': '%'}}
+                if 'color' not in ferm:
+                    ferm['color'] = {'value': 0, 'unit': 'SRM'}
         hops = ingredients.get('hop_additions')
         if isinstance(hops, list):
             for hop in hops:
@@ -560,6 +592,7 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
                     continue
                 hop.pop('is_extract', None)
                 hop.pop('amount_ml', None)
+                hop.pop('_extensions', None)
                 if 'alpha_acid' not in hop:
                     hop['alpha_acid'] = {'value': 0, 'unit': '%'}
         cultures = ingredients.get('culture_additions')
@@ -567,8 +600,18 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
             for culture in cultures:
                 if not isinstance(culture, dict):
                     continue
+                culture.pop('_extensions', None)
                 if 'amount' not in culture:
                     culture['amount'] = {'value': 1, 'unit': '1'}
+                if not culture.get('type'):
+                    culture['type'] = 'other'
+                if not culture.get('form'):
+                    culture['form'] = 'dry'
+        miscs = ingredients.get('miscellaneous_additions')
+        if isinstance(miscs, list):
+            for misc in miscs:
+                if isinstance(misc, dict):
+                    misc.pop('_extensions', None)
 
     if notes:
         recipe['notes'] = notes

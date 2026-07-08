@@ -204,6 +204,17 @@ def _apply_hop_extras(recipe: Recipe, entries: List[Dict[str, Any]]) -> None:
         hop.format_extensions = ext
 
 
+def _emit_extensions(out: Dict[str, Any], obj, exclude: tuple = ()) -> None:
+    """Re-emit `obj.format_extensions` as the item's `_extensions` key —
+    the exact key RecipeSerializer reads back on import (tilt_ui-4bwa
+    item 2). `exclude` skips namespaces routed elsewhere (the 'brewsignal'
+    namespace rides the brewsignal block, not the recipe block)."""
+    ext = {k: v for k, v in (obj.format_extensions or {}).items()
+           if k not in exclude}
+    if ext:
+        out['_extensions'] = ext
+
+
 class RecipeToBrewSignalV2Converter:
     """Export an ORM Recipe (relationships loaded) as a BrewSignal v2 doc.
 
@@ -306,6 +317,10 @@ class RecipeToBrewSignalV2Converter:
                     sorted(fermentation_steps, key=lambda s: s.step_number)
                 ],
             }
+        # Foreign-format recipe-level extras (e.g. 'brewfather') ride the
+        # recipe block; the 'brewsignal' namespace is the block's payload
+        # and is handled by _convert_brewsignal_block.
+        _emit_extensions(out, recipe, exclude=('brewsignal',))
         return out
 
     def _convert_fermentable(self, ferm) -> Dict[str, Any]:
@@ -326,6 +341,7 @@ class RecipeToBrewSignalV2Converter:
             out['producer'] = ferm.supplier
         if ferm.timing:
             out['timing'] = ferm.timing
+        _emit_extensions(out, ferm)
         return out
 
     def _convert_hop(self, hop) -> Dict[str, Any]:
@@ -348,6 +364,8 @@ class RecipeToBrewSignalV2Converter:
             out['is_extract'] = True
         if hop.amount_ml is not None:
             out['amount_ml'] = hop.amount_ml
+        # 'brewsignal' extras are block-aligned via hop_additions, not inline
+        _emit_extensions(out, hop, exclude=('brewsignal',))
         return out
 
     def _convert_culture(self, culture) -> Dict[str, Any]:
@@ -380,6 +398,7 @@ class RecipeToBrewSignalV2Converter:
             out['amount'] = {'value': culture.amount, 'unit': culture.amount_unit or '1'}
         if culture.timing:
             out['timing'] = culture.timing
+        _emit_extensions(out, culture)
         return out
 
     def _convert_misc(self, misc) -> Dict[str, Any]:
@@ -391,6 +410,7 @@ class RecipeToBrewSignalV2Converter:
         if misc.amount_kg is not None:
             out['amount'] = {'value': misc.amount_kg,
                              'unit': misc.amount_unit or 'kg'}
+        _emit_extensions(out, misc)
         return out
 
     def _convert_mash_step(self, step) -> Dict[str, Any]:
@@ -406,15 +426,18 @@ class RecipeToBrewSignalV2Converter:
             out['infusion_temperature'] = {'value': step.infusion_temp_c, 'unit': 'C'}
         if step.ramp_time_minutes is not None:
             out['ramp_time'] = {'value': step.ramp_time_minutes, 'unit': 'min'}
+        _emit_extensions(out, step)
         return out
 
     def _convert_fermentation_step(self, step) -> Dict[str, Any]:
-        return {
+        out = {
             'name': step.type.replace('_', ' ').title(),
             'step_type': step.type,
             'step_temperature': {'value': step.temp_c, 'unit': 'C'},
             'step_time': {'value': step.time_days, 'unit': 'day'},
         }
+        _emit_extensions(out, step)
+        return out
 
     # -- brewsignal block --
 

@@ -190,6 +190,64 @@ def test_style_id_extension_fallback_when_no_fk():
     assert bs["style_id"] == "legacy-id"
 
 
+class TestPerItemExtensionsReemitted:
+    """tilt_ui-4bwa item 2: format_extensions stored on import (from each
+    item's `_extensions` key) must be re-emitted on v2 export, or a
+    Brewfather -> BrewSignal -> v2 -> BrewSignal trip silently drops the
+    foreign-format extras the serializer faithfully preserved."""
+
+    def test_non_hop_item_extensions_reemitted(self):
+        recipe = _full_recipe()
+        recipe.fermentables[0].format_extensions = {"brewfather": {"inventory": 5.0}}
+        recipe.cultures[0].format_extensions = {"brewfather": {"starterSize": 1.5}}
+        recipe.miscs[0].format_extensions = {"brewfather": {"waterAdjustment": True}}
+        recipe.mash_steps[0].format_extensions = {"brewfather": {"displayStepTemp": 154}}
+        recipe.fermentation_steps[0].format_extensions = {"brewfather": {"pressure": 10}}
+
+        r = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
+        ing = r["ingredients"]
+        assert ing["fermentable_additions"][0]["_extensions"] == {
+            "brewfather": {"inventory": 5.0}}
+        assert ing["culture_additions"][0]["_extensions"] == {
+            "brewfather": {"starterSize": 1.5}}
+        assert ing["miscellaneous_additions"][0]["_extensions"] == {
+            "brewfather": {"waterAdjustment": True}}
+        assert r["mash"]["mash_steps"][0]["_extensions"] == {
+            "brewfather": {"displayStepTemp": 154}}
+        assert r["fermentation"]["fermentation_steps"][0]["_extensions"] == {
+            "brewfather": {"pressure": 10}}
+
+    def test_items_without_extensions_omit_the_key(self):
+        r = RecipeToBrewSignalV2Converter().convert(_full_recipe())["recipe"]
+        assert "_extensions" not in r["ingredients"]["fermentable_additions"][0]
+        assert "_extensions" not in r["mash"]["mash_steps"][0]
+
+    def test_hop_non_brewsignal_extensions_reemitted(self):
+        recipe = _full_recipe()
+        # hops[0] already carries a brewsignal namespace (block-aligned);
+        # add a foreign-format namespace beside it
+        recipe.hops[0].format_extensions = {
+            **recipe.hops[0].format_extensions,
+            "brewfather": {"ibuPct": 42.0},
+        }
+        doc = RecipeToBrewSignalV2Converter().convert(recipe)
+        hop = doc["recipe"]["ingredients"]["hop_additions"][0]
+        # foreign extras ride the item; brewsignal extras stay block-only
+        assert hop["_extensions"] == {"brewfather": {"ibuPct": 42.0}}
+        assert doc["brewsignal"]["hop_additions"][0]["hop_use"] == "whirlpool"
+
+    def test_recipe_level_non_brewsignal_extensions_reemitted(self):
+        recipe = _full_recipe()
+        recipe.format_extensions = {
+            **recipe.format_extensions,
+            "brewfather": {"tags": ["hazy"]},
+        }
+        doc = RecipeToBrewSignalV2Converter().convert(recipe)
+        assert doc["recipe"]["_extensions"] == {"brewfather": {"tags": ["hazy"]}}
+        # brewsignal namespace still routed through the block, not _extensions
+        assert doc["brewsignal"]["process"] == {"lodo": True}
+
+
 class TestToStrictBeerJSON:
     """Unit tests for the /export/beerjson post-processor (Finding 1)."""
 

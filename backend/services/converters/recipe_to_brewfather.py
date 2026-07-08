@@ -358,9 +358,9 @@ class RecipeToBrewfatherConverter:
                 "ph": profile.ph,
                 "alkalinity": profile.alkalinity,
             }
-            water[profile.profile_type] = {
-                k: v for k, v in entry.items() if v is not None
-            }
+            entry = {k: v for k, v in entry.items() if v is not None}
+            if entry:  # an all-NULL row would export as "{}" cruft
+                water[profile.profile_type] = entry
 
         stage_keys = {"mash": "mashAdjustments", "sparge": "spargeAdjustments"}
         for adjustment in recipe.water_adjustments:
@@ -380,7 +380,9 @@ class RecipeToBrewfatherConverter:
                 "sodiumChloride": adjustment.sodium_chloride_g,
             }
             entry = {k: v for k, v in entry.items() if v is not None}
-            if adjustment.acid_type or adjustment.acid_ml is not None:
+            if (adjustment.acid_type
+                    or adjustment.acid_ml is not None
+                    or adjustment.acid_concentration_percent is not None):
                 entry["acids"] = [{
                     "type": adjustment.acid_type,
                     "amount": adjustment.acid_ml,

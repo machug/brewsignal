@@ -2,6 +2,7 @@
 import json
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services.parsers.beerxml_parser import BeerXMLParser
@@ -13,7 +14,7 @@ from backend.services.serializers.recipe_serializer import RecipeSerializer
 from backend.services.brewsignal_format import BrewSignalRecipe, BrewSignalRecipeV2
 from backend.services.converters.brewsignal_v2 import apply_v2_extensions
 from backend.services.style_resolver import resolve_style_id
-from backend.models import Recipe
+from backend.models import Recipe, Style
 
 
 @dataclass
@@ -191,6 +192,18 @@ class RecipeImporter:
                     # collections so a later export of this soon-persistent
                     # recipe doesn't trip the unloaded-collection guard.
                     apply_v2_extensions(recipe, v2_brewsignal)
+                    # brewsignal.style_id is our own FK echoed back by the
+                    # v2 exporter — apply it when it resolves against the
+                    # styles table (tilt_ui-4bwa codex b). Unknown ids stay
+                    # extension-only rather than violating the FK; the
+                    # style-name fallback below still gets its chance.
+                    v2_style_id = (v2_brewsignal or {}).get('style_id')
+                    if v2_style_id is not None:
+                        known = await session.execute(
+                            select(Style.id).where(Style.id == v2_style_id)
+                        )
+                        if known.scalar_one_or_none() is not None:
+                            recipe.style_id = v2_style_id
                 # The serializer doesn't carry style_id through the BeerJSON
                 # `style` object. For native BrewSignal imports, apply the
                 # original style_id directly so the FK column is populated.

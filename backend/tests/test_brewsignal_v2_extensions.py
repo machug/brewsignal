@@ -1,4 +1,6 @@
 """apply_v2_extensions maps the brewsignal block onto ORM columns (tilt_ui-0jkg)."""
+import pytest
+
 from backend.models import Recipe, RecipeHop
 from backend.services.converters.brewsignal_v2 import apply_v2_extensions
 
@@ -77,6 +79,35 @@ def test_hop_extras_land_by_index():
     # index/name/ref_use are alignment metadata, not payload
     assert "index" not in ext and "name" not in ext and "ref_use" not in ext
     assert recipe.hops[0].format_extensions is None
+
+
+def test_duplicate_hop_index_merges_instead_of_clobbering():
+    """tilt_ui-4bwa item 3: two entries targeting the same hop index used
+    to last-write-win, silently dropping the first entry's extras."""
+    recipe = _recipe_with_hops(1)
+    apply_v2_extensions(recipe, {"hop_additions": [
+        {"index": 0, "hop_use": "whirlpool"},
+        {"index": 0, "temperature": {"value": 79.0, "unit": "C"}},
+    ]})
+    ext = recipe.hops[0].format_extensions["brewsignal"]
+    assert ext["hop_use"] == "whirlpool"
+    assert ext["temperature"] == {"value": 79.0, "unit": "C"}
+
+
+@pytest.mark.parametrize("water_block,path", [
+    ({"profiles": ["bogus"]}, "brewsignal.water.profiles[0]"),
+    ({"profiles": [{"profile_type": "source"}, 42]}, "brewsignal.water.profiles[1]"),
+    ({"adjustments": ["nope"]}, "brewsignal.water.adjustments[0]"),
+    ({"target_profile": {"ph": 7.0}, "adjustments": [None]},
+     "brewsignal.water.adjustments[0]"),
+])
+def test_non_dict_water_entries_raise_clear_error(water_block, path):
+    """tilt_ui-4bwa item 3: a non-dict entry used to blow up deep inside
+    _profile_from_dict with an AttributeError the importer surfaced as a
+    cryptic 'Serialization error'. Name the offending path instead."""
+    recipe = Recipe(name="T")
+    with pytest.raises(ValueError, match=path.replace("[", r"\[").replace("]", r"\]")):
+        apply_v2_extensions(recipe, {"water": water_block})
 
 
 def test_unknown_blocks_preserved():

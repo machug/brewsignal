@@ -1,4 +1,6 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brewsignal.io/schemas/recipe-v1.0.json",
   "$defs": {
     "BrewSignalFermentable": {
       "description": "Fermentable ingredient.",
@@ -445,13 +447,6 @@
   },
   "additionalProperties": false,
   "description": "BrewSignal Recipe Format v1.0\n\nSimplified format for fermentation monitoring.\nAll temperatures in Celsius. All measurements as raw numbers.",
-  "example": {
-    "abv": 6.9,
-    "batch_size_liters": 19.0,
-    "fg": 1.012,
-    "name": "West Coast IPA",
-    "og": 1.065
-  },
   "properties": {
     "name": {
       "maxLength": 200,

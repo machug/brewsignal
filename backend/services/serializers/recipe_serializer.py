@@ -695,8 +695,18 @@ class RecipeSerializer:
         }
         return mapping.get(use, 'boil')
 
+    _FERMENTATION_TYPES = frozenset(
+        ('primary', 'secondary', 'conditioning', 'diacetyl_rest', 'cold_crash')
+    )
+
     def _infer_fermentation_type(self, step_dict: Dict[str, Any]) -> str:
         """Infer fermentation step type from step name or properties.
+
+        A v2 export emits the DB type verbatim as `step_type`
+        (tilt_ui-4bwa item 9); when present and recognized it wins over
+        name inference so oddly-named steps round-trip exactly. Unknown or
+        malformed values fall through to inference rather than erroring —
+        the field is serializer dialect, not user input we control.
 
         Order matters: diacetyl rest and cold crash patterns are checked
         before the generic primary/secondary/conditioning matches because
@@ -706,6 +716,10 @@ class RecipeSerializer:
         cold crash intent because this function only knew the three
         original types (tilt_ui-psa).
         """
+        step_type = step_dict.get('step_type')
+        if isinstance(step_type, str) and step_type in self._FERMENTATION_TYPES:
+            return step_type
+
         name = step_dict.get('name', '').lower()
 
         if 'diacetyl' in name or 'd-rest' in name or 'd rest' in name:

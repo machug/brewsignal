@@ -81,3 +81,6 @@ hpa_recipes/
 .ruff_cache/
 .vercel
 .env*.local
+
+# beads: issues tracked at parent repo (/brewsignal/.beads) — legacy local dir untracked
+.beads/

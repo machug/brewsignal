@@ -333,3 +333,32 @@ class TestBrewfatherWaterExport:
         )
         bf = RecipeToBrewfatherConverter().convert(Recipe(name="Dry", og=1.05, fg=1.01))
         assert "water" not in bf
+
+    def test_acid_concentration_only_adjustment_keeps_acids(self):
+        """tilt_ui-4bwa item 5: the acid gate checked only type/ml, so an
+        adjustment carrying nothing but acid_concentration_percent dropped
+        its acids array on export."""
+        from backend.models import Recipe, RecipeWaterAdjustment
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        recipe = Recipe(name="Acidic", og=1.05, fg=1.01)
+        recipe.water_adjustments.append(RecipeWaterAdjustment(
+            stage="mash", acid_concentration_percent=88.0,
+        ))
+        bf = RecipeToBrewfatherConverter().convert(recipe)
+        assert bf["water"]["mashAdjustments"]["acids"] == [
+            {"type": None, "amount": None, "concentration": 88.0}
+        ]
+
+    def test_all_none_profile_emits_no_empty_dict(self):
+        """tilt_ui-4bwa item 5: a profile row with every chemistry field
+        NULL exported as `"source": {}` cruft."""
+        from backend.models import Recipe, RecipeWaterProfile
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        recipe = Recipe(name="Blank water", og=1.05, fg=1.01)
+        recipe.water_profiles.append(RecipeWaterProfile(profile_type="source"))
+        bf = RecipeToBrewfatherConverter().convert(recipe)
+        assert "source" not in bf.get("water", {})

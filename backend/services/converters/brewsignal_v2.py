@@ -133,18 +133,31 @@ def _apply_water(recipe: Recipe, water: Dict[str, Any]) -> Dict[str, Any]:
     leftovers: Dict[str, Any] = {}
     for key, value in water.items():
         if key == 'profiles' and isinstance(value, list):
-            for profile_dict in value:
+            for i, profile_dict in enumerate(value):
+                _require_dict_entry(profile_dict, f'brewsignal.water.profiles[{i}]')
                 recipe.water_profiles.append(_profile_from_dict(profile_dict))
         elif key == 'target_profile' and isinstance(value, dict):
             recipe.water_profiles.append(
                 _profile_from_dict({**value, 'profile_type': 'target'})
             )
         elif key == 'adjustments' and isinstance(value, list):
-            for adj_dict in value:
+            for i, adj_dict in enumerate(value):
+                _require_dict_entry(adj_dict, f'brewsignal.water.adjustments[{i}]')
                 recipe.water_adjustments.append(_adjustment_from_dict(adj_dict))
         else:
             leftovers[key] = value
     return leftovers
+
+
+def _require_dict_entry(value: Any, path: str) -> None:
+    """Fail with the offending document path instead of letting a non-dict
+    entry AttributeError deep inside _profile_from_dict/_adjustment_from_dict,
+    which the importer would surface as an unactionable 'Serialization
+    error' (tilt_ui-4bwa item 3)."""
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"{path} must be an object, got {type(value).__name__}"
+        )
 
 
 def _profile_from_dict(profile_dict: Dict[str, Any]) -> RecipeWaterProfile:
@@ -200,8 +213,24 @@ def _apply_hop_extras(recipe: Recipe, entries: List[Dict[str, Any]]) -> None:
             continue
         hop = recipe.hops[idx]
         ext = dict(hop.format_extensions or {})
-        ext['brewsignal'] = extras
+        # Merge when several entries target the same index — plain
+        # assignment made the last entry silently clobber earlier ones
+        # (tilt_ui-4bwa item 3).
+        merged = dict(ext.get('brewsignal') or {})
+        merged.update(extras)
+        ext['brewsignal'] = merged
         hop.format_extensions = ext
+
+
+def _emit_extensions(out: Dict[str, Any], obj, exclude: tuple = ()) -> None:
+    """Re-emit `obj.format_extensions` as the item's `_extensions` key —
+    the exact key RecipeSerializer reads back on import (tilt_ui-4bwa
+    item 2). `exclude` skips namespaces routed elsewhere (the 'brewsignal'
+    namespace rides the brewsignal block, not the recipe block)."""
+    ext = {k: v for k, v in (obj.format_extensions or {}).items()
+           if k not in exclude}
+    if ext:
+        out['_extensions'] = ext
 
 
 class RecipeToBrewSignalV2Converter:
@@ -209,6 +238,18 @@ class RecipeToBrewSignalV2Converter:
 
     The `recipe` block mirrors the key names RecipeSerializer._create_*
     read on import, so an exported doc re-imports without loss.
+
+    Caller contract (tilt_ui-4bwa item 8): for a PERSISTENT recipe, every
+    collection relationship must be loaded before convert() — either
+    eager-loaded via selectinload (the export endpoints do this), or
+    materialized by _touch_collections(), which only the v2 import path
+    runs (inside apply_v2_extensions). A recipe imported from
+    BeerXML/Brewfather/v1 in the SAME session is persistent after flush
+    with any untouched empty collections still "unloaded", so a
+    same-session convert() on it false-positives _require_loaded()'s
+    guard. That's accepted: the guard errs loud rather than lossy, and
+    the fix is to re-fetch with selectinload (as the endpoints do), not
+    to weaken the guard.
     """
 
     def convert(self, recipe: Recipe) -> Dict[str, Any]:
@@ -306,6 +347,10 @@ class RecipeToBrewSignalV2Converter:
                     sorted(fermentation_steps, key=lambda s: s.step_number)
                 ],
             }
+        # Foreign-format recipe-level extras (e.g. 'brewfather') ride the
+        # recipe block; the 'brewsignal' namespace is the block's payload
+        # and is handled by _convert_brewsignal_block.
+        _emit_extensions(out, recipe, exclude=('brewsignal',))
         return out
 
     def _convert_fermentable(self, ferm) -> Dict[str, Any]:
@@ -326,6 +371,7 @@ class RecipeToBrewSignalV2Converter:
             out['producer'] = ferm.supplier
         if ferm.timing:
             out['timing'] = ferm.timing
+        _emit_extensions(out, ferm)
         return out
 
     def _convert_hop(self, hop) -> Dict[str, Any]:
@@ -348,6 +394,8 @@ class RecipeToBrewSignalV2Converter:
             out['is_extract'] = True
         if hop.amount_ml is not None:
             out['amount_ml'] = hop.amount_ml
+        # 'brewsignal' extras are block-aligned via hop_additions, not inline
+        _emit_extensions(out, hop, exclude=('brewsignal',))
         return out
 
     def _convert_culture(self, culture) -> Dict[str, Any]:
@@ -380,6 +428,7 @@ class RecipeToBrewSignalV2Converter:
             out['amount'] = {'value': culture.amount, 'unit': culture.amount_unit or '1'}
         if culture.timing:
             out['timing'] = culture.timing
+        _emit_extensions(out, culture)
         return out
 
     def _convert_misc(self, misc) -> Dict[str, Any]:
@@ -391,6 +440,7 @@ class RecipeToBrewSignalV2Converter:
         if misc.amount_kg is not None:
             out['amount'] = {'value': misc.amount_kg,
                              'unit': misc.amount_unit or 'kg'}
+        _emit_extensions(out, misc)
         return out
 
     def _convert_mash_step(self, step) -> Dict[str, Any]:
@@ -406,15 +456,18 @@ class RecipeToBrewSignalV2Converter:
             out['infusion_temperature'] = {'value': step.infusion_temp_c, 'unit': 'C'}
         if step.ramp_time_minutes is not None:
             out['ramp_time'] = {'value': step.ramp_time_minutes, 'unit': 'min'}
+        _emit_extensions(out, step)
         return out
 
     def _convert_fermentation_step(self, step) -> Dict[str, Any]:
-        return {
+        out = {
             'name': step.type.replace('_', ' ').title(),
             'step_type': step.type,
             'step_temperature': {'value': step.temp_c, 'unit': 'C'},
             'step_time': {'value': step.time_days, 'unit': 'day'},
         }
+        _emit_extensions(out, step)
+        return out
 
     # -- brewsignal block --
 
@@ -482,7 +535,9 @@ class RecipeToBrewSignalV2Converter:
             salts.update(extra_salts)
         if salts:
             out['salts'] = salts
-        if adjustment.acid_type or adjustment.acid_ml is not None:
+        if (adjustment.acid_type
+                or adjustment.acid_ml is not None
+                or adjustment.acid_concentration_percent is not None):
             out['acid'] = {
                 'type': adjustment.acid_type,
                 'ml': adjustment.acid_ml,
@@ -508,15 +563,27 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
     the unmodified serializer-dialect doc.
 
     Schema-required fields with no BrewSignal-side source data get
-    documented placeholders rather than failing the export:
+    documented placeholders rather than failing the export. Placeholder
+    values are deliberately obvious fakes (0, 'Unknown', 'other') so a
+    consumer can't mistake them for real measurements:
+    - recipe `author` missing -> "Unknown"
+    - recipe `batch_size` missing -> {"value": 0, "unit": "l"}
+    - recipe `efficiency` missing -> {"brewhouse": {"value": 0, "unit": "%"}}
+    - `ingredients.fermentable_additions` missing (schema requires the key
+      even for an ingredient-less recipe) -> []
     - hop `alpha_acid` missing (extract hops don't have one) ->
       {"value": 0, "unit": "%"}
     - culture `amount` missing -> {"value": 1, "unit": "1"} (UnitType)
+    - culture `type`/`form` missing -> "other" / "dry" (CultureBase enums)
     - fermentable `yield` missing (BrewSignal doesn't track it for every
       grain, e.g. imports that omitted it) -> {"fine_grind": {"value": 0,
       "unit": "%"}}
+    - fermentable `color` missing -> {"value": 0, "unit": "SRM"}
     - mash `grain_temperature` missing (not a BrewSignal field at all) ->
       {"value": 20, "unit": "C"} (room temperature)
+    Serializer-dialect `_extensions` keys (recipe level and per item) are
+    stripped — they're the round-trip side channel for foreign-format
+    extras and never schema-valid under additionalProperties: false.
     A `style` block that's missing any of BeerJSON's required
     name/category/style_guide/type is dropped rather than padded with
     placeholders — style is optional at the recipe level, and BrewSignal
@@ -524,6 +591,14 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
     have to be fabricated, unlike the numeric placeholders above).
     """
     recipe = copy.deepcopy(recipe_block)
+    recipe.pop('_extensions', None)
+
+    if not recipe.get('author'):
+        recipe['author'] = 'Unknown'
+    if 'batch_size' not in recipe:
+        recipe['batch_size'] = {'value': 0, 'unit': 'l'}
+    if 'efficiency' not in recipe:
+        recipe['efficiency'] = {'brewhouse': {'value': 0, 'unit': '%'}}
 
     style = recipe.get('style')
     if isinstance(style, dict) and not {'category', 'style_guide', 'type'} <= style.keys():
@@ -537,22 +612,34 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
                 if not isinstance(step, dict):
                     continue
                 step.pop('step_type', None)
+                step.pop('_extensions', None)
                 if 'step_temperature' in step:
                     step['start_temperature'] = step.pop('step_temperature')
 
     mash = recipe.get('mash')
-    if isinstance(mash, dict) and 'grain_temperature' not in mash:
-        mash['grain_temperature'] = {'value': 20, 'unit': 'C'}
+    if isinstance(mash, dict):
+        if 'grain_temperature' not in mash:
+            mash['grain_temperature'] = {'value': 20, 'unit': 'C'}
+        mash_steps = mash.get('mash_steps')
+        if isinstance(mash_steps, list):
+            for step in mash_steps:
+                if isinstance(step, dict):
+                    step.pop('_extensions', None)
 
-    ingredients = recipe.get('ingredients')
+    ingredients = recipe.setdefault('ingredients', {})
     if isinstance(ingredients, dict):
+        if 'fermentable_additions' not in ingredients:
+            ingredients['fermentable_additions'] = []
         fermentables = ingredients.get('fermentable_additions')
         if isinstance(fermentables, list):
             for ferm in fermentables:
                 if not isinstance(ferm, dict):
                     continue
+                ferm.pop('_extensions', None)
                 if 'yield' not in ferm:
                     ferm['yield'] = {'fine_grind': {'value': 0, 'unit': '%'}}
+                if 'color' not in ferm:
+                    ferm['color'] = {'value': 0, 'unit': 'SRM'}
         hops = ingredients.get('hop_additions')
         if isinstance(hops, list):
             for hop in hops:
@@ -560,6 +647,7 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
                     continue
                 hop.pop('is_extract', None)
                 hop.pop('amount_ml', None)
+                hop.pop('_extensions', None)
                 if 'alpha_acid' not in hop:
                     hop['alpha_acid'] = {'value': 0, 'unit': '%'}
         cultures = ingredients.get('culture_additions')
@@ -567,8 +655,18 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
             for culture in cultures:
                 if not isinstance(culture, dict):
                     continue
+                culture.pop('_extensions', None)
                 if 'amount' not in culture:
                     culture['amount'] = {'value': 1, 'unit': '1'}
+                if not culture.get('type'):
+                    culture['type'] = 'other'
+                if not culture.get('form'):
+                    culture['form'] = 'dry'
+        miscs = ingredients.get('miscellaneous_additions')
+        if isinstance(miscs, list):
+            for misc in miscs:
+                if isinstance(misc, dict):
+                    misc.pop('_extensions', None)
 
     if notes:
         recipe['notes'] = notes

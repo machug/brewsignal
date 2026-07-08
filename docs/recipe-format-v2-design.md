@@ -187,6 +187,19 @@ We're closer than it looks: **BeerJSON covers most "advanced" things our v1 form
 
 ---
 
+## 9b. Accepted losses (v2 envelope)
+
+Documented import-side losses that are deliberate, not bugs (tilt_ui-4bwa):
+
+- **`created_at` (envelope)** — validated on import, then dropped. The DB's
+  `recipes.created_at` means "when this row was created in *this* BrewSignal
+  instance"; overwriting it from an imported file would silently repurpose the
+  column as "when the source instance authored it" and muddy every
+  created-date sort/filter in the UI. Export still stamps the exporting
+  recipe's `created_at`, so the envelope carries provenance one hop at a time.
+
+---
+
 ## 10. Sources
 - BeerJSON master schemas (verified field-by-field): https://github.com/beerjson/beerjson · docs https://beerjson.github.io/beerjson/ — timing.json, hop.json, water.json, fermentation_step.json, equipment.json, recipe.json, misc.json, culture.json
 - Scott Janish — *What We Know About Dry Hopping* (rate/saturation, cool & short, biotransformation): https://scottjanish.com/what-we-know-about-dry-hopping/

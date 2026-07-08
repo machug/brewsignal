@@ -378,12 +378,21 @@ def _safe_filename(name: str) -> str:
     return sanitized or "recipe"
 
 
-def _download_response(payload: dict, filename: str) -> Response:
+def _download_response(payload: dict, stem: str, ext: str) -> Response:
+    """Build the download Response with `filename="<safe-stem>.<ext>"`.
+
+    The stem (recipe name) is sanitized separately from the extension:
+    sanitizing the joined "name.ext" string meant a fully-unsafe name
+    collapsed to "_.<ext>" and _safe_filename's strip("._") then ate the
+    extension's leading dot, producing an extension-less file
+    (tilt_ui-4bwa item 1).
+    """
     return Response(
         content=json.dumps(payload, indent=2),
         media_type="application/json",
         headers={
-            "Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'
+            "Content-Disposition":
+                f'attachment; filename="{_safe_filename(stem)}.{ext}"'
         },
     )
 
@@ -408,8 +417,7 @@ async def export_recipe_brewfather(
     brewfather_json = converter.convert(recipe)
 
     if download:
-        filename = f"{recipe.name or 'recipe'}.json".replace(" ", "_")
-        return _download_response(brewfather_json, filename)
+        return _download_response(brewfather_json, recipe.name, "json")
 
     return brewfather_json
 
@@ -426,8 +434,7 @@ async def export_recipe_brewsignal(
     doc = RecipeToBrewSignalV2Converter().convert(recipe)
 
     if download:
-        filename = f"{recipe.name or 'recipe'}.brewsignal".replace(" ", "_")
-        return _download_response(doc, filename)
+        return _download_response(doc, recipe.name, "brewsignal")
 
     return doc
 
@@ -458,8 +465,7 @@ async def export_recipe_beerjson(
     beerjson = {"beerjson": {"version": 1.0, "recipes": [strict_recipe]}}
 
     if download:
-        filename = f"{recipe.name or 'recipe'}.beerjson.json".replace(" ", "_")
-        return _download_response(beerjson, filename)
+        return _download_response(beerjson, recipe.name, "beerjson.json")
 
     return beerjson
 

@@ -294,6 +294,13 @@ async def validate_recipe(request: RecipeValidationRequest):
         try:
             brewsignal = converter.convert(request.data)
             recipe_data = _coerce_brewsignal_recipe(brewsignal)
+            for message in converter.warnings:
+                warnings.append(
+                    RecipeValidationWarning(
+                        field="recipe.ingredients.culture_additions",
+                        warning=message,
+                    )
+                )
         except (KeyError, IndexError, ValueError, TypeError) as exc:
             errors.append(
                 RecipeValidationError(

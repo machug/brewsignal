@@ -205,7 +205,14 @@ class BrewSignalRecipeV2(BaseModel):
 # ==============================================================================
 
 class BeerJSONToBrewSignalConverter:
-    """Convert BeerJSON 1.0 to BrewSignal Format v1.0."""
+    """Convert BeerJSON 1.0 to BrewSignal Format v1.0.
+
+    Lossy conversions (e.g. extra yeast cultures dropped because v1 is
+    single-yeast) are recorded in ``self.warnings`` after ``convert()``.
+    """
+
+    def __init__(self) -> None:
+        self.warnings: List[str] = []
 
     def convert(self, beerjson: dict) -> dict:
         """Convert BeerJSON document to BrewSignal format.
@@ -219,6 +226,7 @@ class BeerJSONToBrewSignalConverter:
         Raises:
             ValueError: If BeerJSON is invalid or contains non-Celsius temps
         """
+        self.warnings = []
         recipe = beerjson["beerjson"]["recipes"][0]
 
         return {
@@ -288,10 +296,21 @@ class BeerJSONToBrewSignalConverter:
         """Convert BeerJSON cultures array to single BrewSignal yeast.
 
         BrewSignal v1.0 supports single yeast only.
-        Takes first culture from array.
+        Takes first culture from array; extras are dropped with a warning.
         """
         if not cultures:
             return None
+
+        if len(cultures) > 1:
+            def culture_name(c: Any) -> str:
+                name = c.get("name") if isinstance(c, dict) else None
+                return repr(name or "unnamed culture")
+
+            dropped = ", ".join(culture_name(c) for c in cultures[1:])
+            self.warnings.append(
+                f"Recipe has {len(cultures)} yeast cultures but BrewSignal v1 "
+                f"supports one; kept {culture_name(cultures[0])}, dropped {dropped}"
+            )
 
         culture = cultures[0]
         temp_range = culture.get("temperature_range", {})

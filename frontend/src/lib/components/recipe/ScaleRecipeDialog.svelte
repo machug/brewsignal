@@ -8,10 +8,15 @@
 		/** Pre-filled target (e.g. from "Scale to fit"). */
 		initialTarget?: number | null;
 		onClose: () => void;
-		onScaled: () => void;
+		/** Awaited before onBigJumpScaled so the reviewer sees the refreshed recipe. */
+		onScaled: () => void | Promise<void>;
+		/** Called after a large-ratio scale (≥2× or ≤0.5×) so the page can hand
+		 *  the result to the AI reviewer for an ingredient sanity check. */
+		onBigJumpScaled?: () => void;
 	}
 
-	let { open, recipeId, currentBatchLiters, initialTarget, onClose, onScaled }: Props = $props();
+	let { open, recipeId, currentBatchLiters, initialTarget, onClose, onScaled, onBigJumpScaled }: Props =
+		$props();
 
 	// Typical batch sizes for popular vessels — presets set the target batch,
 	// not the vessel volume (a G30 brews ~23 L batches, not 30 L).
@@ -48,9 +53,11 @@
 		scaling = true;
 		error = null;
 		try {
+			const wasBigJump = bigJump;
 			await scaleRecipe(recipeId, targetLiters);
-			onScaled();
+			await onScaled();
 			onClose();
+			if (wasBigJump) onBigJumpScaled?.();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to scale recipe';
 		} finally {
@@ -120,8 +127,9 @@
 					</p>
 					{#if bigJump}
 						<p class="jump-warning">
-							Large jump — hop character and boil-off behave a little differently at this scale, so
-							taste-check the numbers before brew day.
+							Large jump — hop character and boil-off behave a little differently at this scale.
+							{#if onBigJumpScaled}The AI reviewer will check the scaled ingredients afterwards.{:else}Taste-check
+								the numbers before brew day.{/if}
 						</p>
 					{/if}
 				{/if}

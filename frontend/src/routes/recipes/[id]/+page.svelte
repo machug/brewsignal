@@ -494,6 +494,7 @@
 			initialTarget={scaleTarget}
 			onClose={() => (showScaleDialog = false)}
 			onScaled={handleScaled}
+			onBigJumpScaled={handleReview}
 		/>
 
 		<div class="recipe-content">

@@ -740,6 +740,14 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
                 boil_factor = 0
             utilization = bigness * boil_factor
 
+            # Pellet (+10%) and first-wort (+10%) adjustments — mirrors
+            # services/brewing.py and the frontend (tilt_ui-nbh0).
+            form = (hop.get("form") or "pellet").lower()
+            if "pellet" in form:
+                utilization *= 1.10
+            if use == "first_wort":
+                utilization *= 1.10
+
             # IBU = (grams * alpha * utilization * 1000) / liters
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution

@@ -1,5 +1,7 @@
 """IBU calculation tests, focused on whirlpool/hop-stand modeling (tilt_ui-23u)."""
 
+import pytest
+
 from backend.models import RecipeHop
 from backend.services.brewing import calculate_ibu_from_hops
 
@@ -166,3 +168,81 @@ class TestLLMToolsCalculatorAgreesOnZero:
         }
         stats = calculate_recipe_stats(normalized)
         assert stats["ibu"] == 0
+
+
+class TestPelletAndFirstWortAdjustments:
+    """Backend must mirror the frontend Tinseth adjustments (tilt_ui-nbh0):
+    pellet form +10% utilization, first-wort +10%. Without them the
+    displayed (frontend) IBU and the recalculate-endpoint IBU disagree."""
+
+    def _hop_with_form(self, form, use="add_to_boil", duration=60.0):
+        return RecipeHop(
+            name="Test",
+            amount_grams=30.0,
+            alpha_acid_percent=12.0,
+            form=form,
+            timing={"use": use, "duration": {"value": duration, "unit": "min"}},
+        )
+
+    def test_pellet_boil_hop_gets_10_percent_more_than_leaf(self):
+        pellet = calculate_ibu_from_hops(
+            [self._hop_with_form("pellet")], batch_liters=20, og=1.060)
+        leaf = calculate_ibu_from_hops(
+            [self._hop_with_form("leaf")], batch_liters=20, og=1.060)
+        assert pellet == pytest.approx(leaf * 1.10)
+
+    def test_missing_form_defaults_to_pellet(self):
+        """Frontend maps missing forms to pellet before calculating —
+        the backend must default the same way or the mismatch persists."""
+        none_form = calculate_ibu_from_hops(
+            [self._hop_with_form(None)], batch_liters=20, og=1.060)
+        pellet = calculate_ibu_from_hops(
+            [self._hop_with_form("pellet")], batch_liters=20, og=1.060)
+        assert none_form == pytest.approx(pellet)
+
+    def test_first_wort_gets_10_percent_more_than_boil(self):
+        fw = calculate_ibu_from_hops(
+            [self._hop_with_form("leaf", use="first_wort")], batch_liters=20, og=1.060)
+        boil = calculate_ibu_from_hops(
+            [self._hop_with_form("leaf", use="add_to_boil")], batch_liters=20, og=1.060)
+        assert fw == pytest.approx(boil * 1.10)
+
+    def test_pellet_first_wort_stacks_both_adjustments(self):
+        both = calculate_ibu_from_hops(
+            [self._hop_with_form("pellet", use="first_wort")], batch_liters=20, og=1.060)
+        base = calculate_ibu_from_hops(
+            [self._hop_with_form("leaf", use="add_to_boil")], batch_liters=20, og=1.060)
+        assert both == pytest.approx(base * 1.21)
+
+
+class TestLLMToolsIBUMirrorAdjustments:
+    """LLM-tools duplicate calculator must apply the same pellet/first-wort
+    adjustments (tilt_ui-nbh0)."""
+
+    def _doc(self, form, use):
+        return {
+            "batch_size": {"value": 20.0, "unit": "l"},
+            "original_gravity": {"value": 1.060},
+            "efficiency": {"brewhouse": {"value": 72, "unit": "%"}},
+            "ingredients": {
+                "hop_additions": [{
+                    "name": "Test", "form": form,
+                    "amount": {"value": 30.0, "unit": "g"},
+                    "alpha_acid": {"value": 12.0, "unit": "%"},
+                    "timing": {"use": use,
+                               "duration": {"value": 60.0, "unit": "min"}},
+                }]
+            },
+        }
+
+    def test_llm_mirror_applies_pellet_adjustment(self):
+        from backend.services.llm.tools.recipe import calculate_recipe_stats
+        pellet = calculate_recipe_stats(self._doc("pellet", "add_to_boil"))["ibu"]
+        leaf = calculate_recipe_stats(self._doc("leaf", "add_to_boil"))["ibu"]
+        assert pellet == pytest.approx(leaf * 1.10, rel=0.01)
+
+    def test_llm_mirror_applies_first_wort_adjustment(self):
+        from backend.services.llm.tools.recipe import calculate_recipe_stats
+        fw = calculate_recipe_stats(self._doc("leaf", "first_wort"))["ibu"]
+        boil = calculate_recipe_stats(self._doc("leaf", "add_to_boil"))["ibu"]
+        assert fw == pytest.approx(boil * 1.10, rel=0.01)

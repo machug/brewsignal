@@ -183,6 +183,17 @@ def _calculate_ibu(
                 boil_factor = 0
             utilization = bigness * boil_factor
 
+            # Pellet (+10%) and first-wort (+10%) utilization adjustments —
+            # mirrors the frontend Tinseth calculator so the displayed IBU
+            # and the recalculate endpoint agree (tilt_ui-nbh0).
+            # Missing form defaults to pellet, matching the recipe UI
+            # (h.form || 'pellet') so display and recalc agree.
+            form = (getattr(hop, "form", None) or "pellet").lower()
+            if "pellet" in form:
+                utilization *= 1.10
+            if use == "first_wort":
+                utilization *= 1.10
+
             # IBU = (grams * alpha * utilization * 1000) / liters
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution

@@ -6,6 +6,7 @@
 	import { fetchRecipe, deleteRecipe, reviewRecipe } from '$lib/api';
 	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
 	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
+	import OtherIngredients from '$lib/components/recipe/OtherIngredients.svelte';
 	import MashSchedule from '$lib/components/recipe/MashSchedule.svelte';
 	import FermentationSchedule from '$lib/components/recipe/FermentationSchedule.svelte';
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
@@ -484,6 +485,13 @@
 			{#if displayHops.length > 0}
 				<section class="content-card">
 					<HopSchedule hops={displayHops as never} />
+				</section>
+			{/if}
+
+			<!-- Other Ingredients (non-water miscs: finings, enzymes, spices) -->
+			{#if (recipe.miscs || []).some((m) => (m.type ?? '').toLowerCase().replace('_', ' ') !== 'water agent')}
+				<section class="content-card">
+					<OtherIngredients miscs={recipe.miscs || []} />
 				</section>
 			{/if}
 

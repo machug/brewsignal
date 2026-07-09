@@ -77,7 +77,7 @@
 
 	// Filter to only water agents
 	let waterAgents = $derived(
-		miscs.filter((m) => m.type?.toLowerCase() === 'water agent')
+		miscs.filter((m) => (m.type ?? '').toLowerCase().replace('_', ' ') === 'water agent')
 	);
 
 	// Group by use (mash vs sparge)

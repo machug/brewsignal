@@ -14,7 +14,9 @@
 	let equipment = $state<EquipmentResponse[] | null>(null);
 
 	$effect(() => {
-		fetchEquipment({ is_active: true })
+		// limit 200 = the API's max page size; default (50) could miss the
+		// vessel that actually fits and produce false warnings.
+		fetchEquipment({ is_active: true, limit: 200 })
 			.then((items) => (equipment = items))
 			// No equipment registered / endpoint unavailable → stay silent.
 			.catch(() => (equipment = null));

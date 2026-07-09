@@ -13,6 +13,7 @@
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
 	import RecipeReviewModal from '$lib/components/recipe/RecipeReviewModal.svelte';
 	import RecipeBrewabilityBanner from '$lib/components/recipe/RecipeBrewabilityBanner.svelte';
+	import { totalMashGrainKg } from '$lib/brewing/brewability';
 	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
 	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
@@ -31,13 +32,15 @@
 
 	// UI-created recipes carry fermentables in format_extensions while
 	// recipe.fermentables may be empty — same precedence as liveStats below
-	// (explicit empty array in format_extensions = deletion intent).
+	// (explicit empty array in format_extensions = deletion intent). Kettle
+	// additions (extract/sugar/honey) never enter the mash, so they are
+	// excluded from the grain total used for water and brewability math.
 	let totalGrainKg = $derived.by(() => {
 		const ext = recipe?.format_extensions as { fermentables?: Fermentable[] } | undefined;
 		const fermentables = Array.isArray(ext?.fermentables)
 			? ext!.fermentables!
 			: (recipe?.fermentables ?? []);
-		return fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
+		return totalMashGrainKg(fermentables);
 	});
 
 	let waterVolumes = $derived.by(() => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { checkBrewability, type BrewabilityWarning } from './brewability';
+import { checkBrewability, totalMashGrainKg, type BrewabilityWarning } from './brewability';
 import type { EquipmentResponse } from '$lib/api';
 
 let nextId = 1;
@@ -15,6 +15,27 @@ function gear(partial: Partial<EquipmentResponse> & Pick<EquipmentResponse, 'typ
 }
 
 const codes = (warnings: BrewabilityWarning[]) => warnings.map((w) => w.code).sort();
+
+describe('totalMashGrainKg', () => {
+	test('counts grain but excludes kettle additions (extract, sugar, honey)', () => {
+		const total = totalMashGrainKg([
+			{ amount_kg: 5, type: 'Grain' },
+			{ amount_kg: 1.5, type: 'Liquid Extract' },
+			{ amount_kg: 0.5, type: 'sugar' },
+			{ amount_kg: 0.3, type: 'Honey' },
+			{ amount_kg: 0.25 }, // untyped → assume mashed
+		]);
+		expect(total).toBeCloseTo(5.25, 3);
+	});
+
+	test('returns 0 for a pure extract recipe', () => {
+		const total = totalMashGrainKg([
+			{ amount_kg: 3, type: 'Dry Extract' },
+			{ amount_kg: 1, type: 'extract' },
+		]);
+		expect(total).toBe(0);
+	});
+});
 
 describe('checkBrewability', () => {
 	test('no warnings when recipe fits all owned gear', () => {

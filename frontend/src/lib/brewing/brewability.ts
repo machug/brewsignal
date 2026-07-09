@@ -43,6 +43,32 @@ export interface BrewabilityRecipe {
 const MASH_TYPES: EquipmentType[] = ['all_in_one', 'mash_tun'];
 const BOIL_TYPES: EquipmentType[] = ['all_in_one', 'kettle'];
 
+// Kettle additions never enter the mash tun / malt pipe — same set the stat
+// calculators use for skipping brewhouse efficiency (calculations.ts).
+const KETTLE_FERMENTABLE_TYPES = new Set([
+	'sugar',
+	'extract',
+	'dry extract',
+	'liquid extract',
+	'honey',
+	'fruit',
+	'juice',
+]);
+
+/**
+ * Total weight that actually occupies the mash: grain and other mashed
+ * fermentables, excluding kettle additions. Untyped entries count as mashed.
+ */
+export function totalMashGrainKg(
+	fermentables: Array<{ amount_kg?: number | null; type?: string | null }>,
+): number {
+	return fermentables.reduce(
+		(sum, f) =>
+			KETTLE_FERMENTABLE_TYPES.has((f.type ?? '').toLowerCase()) ? sum : sum + (f.amount_kg ?? 0),
+		0,
+	);
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function largestBy(

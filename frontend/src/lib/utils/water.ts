@@ -39,6 +39,21 @@ export interface WaterVolumes {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
+ * Pre-boil volume estimate that works without a grain bill (extract recipes):
+ * batch + boil-off over the boil duration + trub/chiller loss.
+ * Matches the pre-boil term used inside calculateWaterVolumes.
+ */
+export function estimatePreBoilVolume(
+	batchSizeLiters: number,
+	boilTimeMinutes?: number | null,
+	equipment?: WaterEquipment,
+): number {
+	const eq = { ...DEFAULTS, ...equipment };
+	const boilTimeHrs = (boilTimeMinutes ?? 60) / 60;
+	return round2(batchSizeLiters + boilTimeHrs * eq.boilOffLPerHr + eq.trubChillerLossL);
+}
+
+/**
  * Reverse-flow water model (Brewfather / Brewtarget style):
  *   pre-boil  = given boilSize, else batch + boil-off + trub/chiller loss
  *   mashWater = grain·ratio + deadspace
@@ -55,11 +70,9 @@ export function calculateWaterVolumes(
 	if (batchSizeLiters <= 0 || totalGrainKg <= 0) return null;
 
 	const eq = { ...DEFAULTS, ...equipment };
-	const boilTimeHrs = (boilTimeMinutes ?? 60) / 60;
 
 	const preBoilVolume =
-		boilSizeL ??
-		batchSizeLiters + boilTimeHrs * eq.boilOffLPerHr + eq.trubChillerLossL;
+		boilSizeL ?? estimatePreBoilVolume(batchSizeLiters, boilTimeMinutes, equipment);
 
 	const grainAbsorption = totalGrainKg * eq.grainAbsorptionLPerKg;
 	const mashWater = totalGrainKg * eq.mashRatioLPerKg + eq.mashTunDeadspaceL;

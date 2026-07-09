@@ -135,6 +135,34 @@ describe('checkBrewability', () => {
 		expect(codes(warnings)).not.toContain('mash_overflow');
 	});
 
+	test('warns when no single vessel satisfies BOTH mash volume and grain weight', () => {
+		// 10 kg grain → mash volume 10·2.7+1+6.7 = 34.7 L.
+		// Big40 fits the volume (40 L) but not the grain (5 kg malt pipe);
+		// Wide30 fits the grain (20 kg) but not the volume (30 L).
+		// Checking each constraint against its own best vessel would pass both —
+		// but no single vessel can actually do this mash.
+		const warnings = checkBrewability(
+			{ batch_size_liters: 21, total_grain_kg: 10 },
+			[
+				gear({ type: 'all_in_one', name: 'Big40', capacity_liters: 40, capacity_kg: 5 }),
+				gear({ type: 'all_in_one', name: 'Wide30', capacity_liters: 30, capacity_kg: 20 }),
+			],
+		);
+		expect(warnings.length).toBeGreaterThan(0);
+	});
+
+	test('flags boil overflow for extract recipes with no grain and no boil_size_l', () => {
+		// No grain → water model unavailable; pre-boil must still be estimated
+		// from batch size + boil-off + trub: 25 + 0.85 + 1 = 26.85 L > 25 L kettle.
+		const warnings = checkBrewability(
+			{ batch_size_liters: 25, total_grain_kg: 0, boil_time_minutes: 60 },
+			[gear({ type: 'kettle', name: 'Stock pot', capacity_liters: 25 })],
+		);
+		const boil = warnings.find((w) => w.code === 'boil_overflow');
+		expect(boil).toBeDefined();
+		expect(boil!.required).toBeCloseTo(26.85, 2);
+	});
+
 	test('respects explicit boil_size_l over derived pre-boil', () => {
 		const warnings = checkBrewability(
 			{ batch_size_liters: 20, total_grain_kg: 5, boil_size_l: 33 },

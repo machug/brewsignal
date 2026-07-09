@@ -13,7 +13,7 @@
  */
 
 import type { EquipmentResponse, EquipmentType } from '$lib/api';
-import { calculateWaterVolumes } from '$lib/utils/water';
+import { calculateWaterVolumes, estimatePreBoilVolume } from '$lib/utils/water';
 
 // Fermenters need headroom for krausen; 20% is the common rule of thumb.
 const KRAUSEN_HEADSPACE_FACTOR = 1.2;
@@ -96,27 +96,51 @@ export function checkBrewability(
 	);
 
 	if (volumes) {
-		checkCapacity(
-			warnings,
-			largestBy(equipment, MASH_TYPES, litres),
-			litres,
-			volumes.mashVolume,
-			'mash_overflow',
-			(name, req, avail) => `Mash won't fit: needs ${req} L, ${name} holds ${avail} L`,
+		// A mash vessel must satisfy BOTH constraints at once — checking volume
+		// and grain weight against different vessels would pass recipes no
+		// single vessel can actually handle. Unknown capacity = can't judge,
+		// so it counts as fitting that constraint.
+		const mashVessels = equipment.filter(
+			(e) => e.is_active && MASH_TYPES.includes(e.type) && (litres(e) != null || kg(e) != null),
 		);
-		checkCapacity(
-			warnings,
-			largestBy(equipment, MASH_TYPES, kg),
-			kg,
-			recipe.total_grain_kg,
-			'grain_over_capacity',
-			(name, req, avail) => `Grain bill too big: ${req} kg, ${name} takes ${avail} kg`,
-		);
+		const fitsMash = (e: EquipmentResponse) =>
+			(litres(e) == null || volumes.mashVolume <= litres(e)!) &&
+			(kg(e) == null || recipe.total_grain_kg <= kg(e)!);
+		if (mashVessels.length > 0 && !mashVessels.some(fitsMash)) {
+			// Report against the roomiest candidate; it fails at least one
+			// constraint (or no vessel would have failed the joint check).
+			const best = largestBy(mashVessels, MASH_TYPES, litres) ?? largestBy(mashVessels, MASH_TYPES, kg)!;
+			const bestL = litres(best);
+			const bestKg = kg(best);
+			if (bestL != null && volumes.mashVolume > bestL) {
+				warnings.push({
+					code: 'mash_overflow',
+					equipment_name: best.name,
+					required: round2(volumes.mashVolume),
+					available: bestL,
+					message: `Mash won't fit: needs ${round2(volumes.mashVolume)} L, ${best.name} holds ${bestL} L`,
+				});
+			}
+			if (bestKg != null && recipe.total_grain_kg > bestKg) {
+				warnings.push({
+					code: 'grain_over_capacity',
+					equipment_name: best.name,
+					required: round2(recipe.total_grain_kg),
+					available: bestKg,
+					message: `Grain bill too big: ${round2(recipe.total_grain_kg)} kg, ${best.name} takes ${bestKg} kg`,
+				});
+			}
+		}
 	}
 
 	// Boil check works even for extract recipes (no grain → no water model);
-	// fall back to the recipe's explicit pre-boil volume.
-	const preBoil = volumes?.preBoilVolume ?? recipe.boil_size_l ?? 0;
+	// use the explicit pre-boil volume or estimate it from batch size + boil-off.
+	const preBoil =
+		volumes?.preBoilVolume ??
+		recipe.boil_size_l ??
+		(recipe.batch_size_liters > 0
+			? estimatePreBoilVolume(recipe.batch_size_liters, recipe.boil_time_minutes)
+			: 0);
 	checkCapacity(
 		warnings,
 		largestBy(equipment, BOIL_TYPES, litres),

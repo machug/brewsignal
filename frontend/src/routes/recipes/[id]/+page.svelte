@@ -12,6 +12,7 @@
 	import WaterAdditions from '$lib/components/recipe/WaterAdditions.svelte';
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
 	import RecipeReviewModal from '$lib/components/recipe/RecipeReviewModal.svelte';
+	import RecipeBrewabilityBanner from '$lib/components/recipe/RecipeBrewabilityBanner.svelte';
 	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
 	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
@@ -28,9 +29,12 @@
 	let reviewLoading = $state(false);
 	let reviewError = $state<string | null>(null);
 
+	let totalGrainKg = $derived(
+		(recipe?.fermentables ?? []).reduce((sum, f) => sum + (f.amount_kg ?? 0), 0)
+	);
+
 	let waterVolumes = $derived.by(() => {
 		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
-		const totalGrainKg = recipe.fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
 		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
 	});
 
@@ -437,6 +441,13 @@
 			targetAbv={recipe.target_abv}
 			targetIbu={recipe.target_ibu}
 			targetSrm={recipe.target_srm}
+		/>
+
+		<RecipeBrewabilityBanner
+			batchSizeLiters={recipe.batch_size_liters}
+			{totalGrainKg}
+			boilTimeMinutes={recipe.boil_time_minutes}
+			boilSizeL={recipe.boil_size_l}
 		/>
 
 		<div class="recipe-content">

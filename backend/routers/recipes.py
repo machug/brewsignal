@@ -847,9 +847,12 @@ async def recalculate_recipe_stats(
 
 class RecipeScaleRequest(BaseModel):
     target_batch_size_liters: float = Field(gt=0)
+    # Preview mode: compute and return the scaled recipe without persisting,
+    # so the UI can show before/after and ask for an explicit save.
+    dry_run: bool = False
 
 
-@router.post("/{recipe_id}/scale", response_model=RecipeResponse)
+@router.post("/{recipe_id}/scale", response_model=RecipeDetailResponse)
 async def scale_recipe_endpoint(
     recipe_id: int,
     request: RecipeScaleRequest,
@@ -865,17 +868,20 @@ async def scale_recipe_endpoint(
     """
     from ..services.recipe_scaling import scale_recipe
 
+    detail_options = (
+        selectinload(Recipe.style),
+        selectinload(Recipe.fermentables),
+        selectinload(Recipe.hops),
+        selectinload(Recipe.cultures),
+        selectinload(Recipe.miscs),
+        selectinload(Recipe.mash_steps),
+        selectinload(Recipe.fermentation_steps),
+        selectinload(Recipe.water_profiles),
+        selectinload(Recipe.water_adjustments),
+    )
     result = await db.execute(
         select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-            selectinload(Recipe.miscs),
-            selectinload(Recipe.mash_steps),
-            selectinload(Recipe.water_adjustments),
-        )
+        .options(*detail_options)
         .where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     recipe = result.scalar_one_or_none()
@@ -899,16 +905,16 @@ async def scale_recipe_endpoint(
         recipe.ibu = stats["ibu"]
         recipe.color_srm = stats["color_srm"]
 
+    if request.dry_run:
+        # Serialize the preview BEFORE rolling back — rollback expires the
+        # ORM objects, so the response must already be a plain Pydantic model.
+        preview = RecipeDetailResponse.model_validate(recipe)
+        await db.rollback()
+        return preview
+
     await db.commit()
     result = await db.execute(
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-        )
-        .where(Recipe.id == recipe.id)
+        select(Recipe).options(*detail_options).where(Recipe.id == recipe.id)
     )
     return result.scalar_one()
 

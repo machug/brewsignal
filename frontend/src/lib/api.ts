@@ -1172,12 +1172,16 @@ export async function updateRecipe(
 
 export async function scaleRecipe(
 	id: number,
-	targetBatchSizeLiters: number
+	targetBatchSizeLiters: number,
+	options: { dryRun?: boolean } = {}
 ): Promise<RecipeResponse> {
 	const response = await authFetch(`${BASE_URL}/recipes/${id}/scale`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ target_batch_size_liters: targetBatchSizeLiters })
+		body: JSON.stringify({
+			target_batch_size_liters: targetBatchSizeLiters,
+			dry_run: options.dryRun ?? false
+		})
 	});
 
 	if (!response.ok) {

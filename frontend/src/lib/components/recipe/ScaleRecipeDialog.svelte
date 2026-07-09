@@ -1,10 +1,23 @@
 <script lang="ts">
-	import { scaleRecipe } from '$lib/api';
+	import { scaleRecipe, type RecipeResponse } from '$lib/api';
+
+	interface BeforeFermentable {
+		name: string;
+		amount_kg?: number | null;
+	}
+	interface BeforeHop {
+		name: string;
+		amount_grams?: number | null;
+		amount_ml?: number | null;
+	}
 
 	interface Props {
 		open: boolean;
 		recipeId: number;
 		currentBatchLiters: number;
+		/** Current amounts, used for the before→after preview table. */
+		fermentables?: BeforeFermentable[];
+		hops?: BeforeHop[];
 		/** Pre-filled target (e.g. from "Scale to fit"). */
 		initialTarget?: number | null;
 		onClose: () => void;
@@ -15,8 +28,17 @@
 		onBigJumpScaled?: () => void;
 	}
 
-	let { open, recipeId, currentBatchLiters, initialTarget, onClose, onScaled, onBigJumpScaled }: Props =
-		$props();
+	let {
+		open,
+		recipeId,
+		currentBatchLiters,
+		fermentables = [],
+		hops = [],
+		initialTarget,
+		onClose,
+		onScaled,
+		onBigJumpScaled,
+	}: Props = $props();
 
 	// Typical batch sizes for popular vessels — presets set the target batch,
 	// not the vessel volume (a G30 brews ~23 L batches, not 30 L).
@@ -31,12 +53,16 @@
 		{ label: 'Corny keg (5 gal)', liters: 19 },
 	];
 
+	let step = $state<'pick' | 'preview'>('pick');
 	let targetLiters = $state(0);
-	let scaling = $state(false);
+	let preview = $state<RecipeResponse | null>(null);
+	let busy = $state(false);
 	let error = $state<string | null>(null);
 
 	$effect(() => {
 		if (open) {
+			step = 'pick';
+			preview = null;
 			targetLiters = initialTarget ?? currentBatchLiters;
 			error = null;
 		}
@@ -45,12 +71,55 @@
 	let ratio = $derived(currentBatchLiters > 0 && targetLiters > 0 ? targetLiters / currentBatchLiters : 0);
 	let bigJump = $derived(ratio >= 2 || (ratio > 0 && ratio <= 0.5));
 
-	async function handleScale() {
+	// Before→after rows for the preview table. Rows come from the dry-run
+	// response (authoritative post-scale amounts); before values match by
+	// name against the current recipe, falling back to index order.
+	let previewRows = $derived.by(() => {
+		if (!preview) return [];
+		const rows: Array<{ label: string; before: string; after: string }> = [];
+		const fmt = (n: number | null | undefined, unit: string) =>
+			n == null ? '—' : `${Math.round(n * 100) / 100} ${unit}`;
+		const beforeFerm = (name: string, i: number) =>
+			fermentables.find((f) => f.name === name) ?? fermentables[i];
+		for (const [i, f] of (preview.fermentables ?? []).entries()) {
+			rows.push({
+				label: f.name,
+				before: fmt(beforeFerm(f.name, i)?.amount_kg, 'kg'),
+				after: fmt(f.amount_kg, 'kg'),
+			});
+		}
+		const beforeHop = (name: string, i: number) => hops.find((h) => h.name === name) ?? hops[i];
+		for (const [i, h] of (preview.hops ?? []).entries()) {
+			const b = beforeHop(h.name, i);
+			const liquid = h.amount_ml != null && h.amount_ml > 0;
+			rows.push({
+				label: h.name,
+				before: liquid ? fmt(b?.amount_ml, 'ml') : fmt(b?.amount_grams, 'g'),
+				after: liquid ? fmt(h.amount_ml, 'ml') : fmt(h.amount_grams, 'g'),
+			});
+		}
+		return rows;
+	});
+
+	async function handlePreview() {
 		if (!(targetLiters > 0)) {
 			error = 'Enter a target batch size above 0 L';
 			return;
 		}
-		scaling = true;
+		busy = true;
+		error = null;
+		try {
+			preview = await scaleRecipe(recipeId, targetLiters, { dryRun: true });
+			step = 'preview';
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to preview scaling';
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function handleSave() {
+		busy = true;
 		error = null;
 		try {
 			const wasBigJump = bigJump;
@@ -61,7 +130,7 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to scale recipe';
 		} finally {
-			scaling = false;
+			busy = false;
 		}
 	}
 
@@ -92,63 +161,112 @@
 				<h2 id="scale-dialog-title">Scale Recipe</h2>
 				<button class="modal-close" onclick={onClose} aria-label="Close">&times;</button>
 			</div>
-			<div class="modal-body">
-				<p class="current-size">
-					Current batch: <strong>{currentBatchLiters} L</strong>
-				</p>
 
-				<div class="preset-grid">
-					{#each PRESETS as preset (preset.label)}
-						<button
-							type="button"
-							class="preset-chip"
-							class:selected={targetLiters === preset.liters}
-							onclick={() => (targetLiters = preset.liters)}
-						>
-							<span class="preset-name">{preset.label}</span>
-							<span class="preset-liters">{preset.liters} L</span>
-						</button>
-					{/each}
-				</div>
-
-				<label class="target-row">
-					<span>Target batch size</span>
-					<span class="target-input-wrap">
-						<input type="number" min="0.5" step="0.5" bind:value={targetLiters} />
-						<span class="unit">L</span>
-					</span>
-				</label>
-
-				{#if ratio > 0 && Math.abs(ratio - 1) > 0.001}
-					<p class="ratio-note">
-						All ingredient amounts and water volumes will be multiplied by
-						<strong>×{ratio.toFixed(2)}</strong>. Stats (OG, IBU, colour) are recomputed and should
-						stay the same.
+			{#if step === 'pick'}
+				<div class="modal-body">
+					<p class="current-size">
+						Current batch: <strong>{currentBatchLiters} L</strong>
 					</p>
+
+					<div class="preset-grid">
+						{#each PRESETS as preset (preset.label)}
+							<button
+								type="button"
+								class="preset-chip"
+								class:selected={targetLiters === preset.liters}
+								onclick={() => (targetLiters = preset.liters)}
+							>
+								<span class="preset-name">{preset.label}</span>
+								<span class="preset-liters">{preset.liters} L</span>
+							</button>
+						{/each}
+					</div>
+
+					<label class="target-row">
+						<span>Target batch size</span>
+						<span class="target-input-wrap">
+							<input type="number" min="0.5" step="0.5" bind:value={targetLiters} />
+							<span class="unit">L</span>
+						</span>
+					</label>
+
+					{#if ratio > 0 && Math.abs(ratio - 1) > 0.001}
+						<p class="ratio-note">
+							All ingredient amounts and water volumes will be multiplied by
+							<strong>×{ratio.toFixed(2)}</strong>. Stats (OG, IBU, colour) are recomputed and should
+							stay the same.
+						</p>
+						{#if bigJump}
+							<p class="jump-warning">
+								Large jump — hop character and boil-off behave a little differently at this scale.
+								{#if onBigJumpScaled}The AI reviewer will check the scaled ingredients after saving.{:else}Taste-check
+									the numbers before brew day.{/if}
+							</p>
+						{/if}
+					{/if}
+
+					{#if error}
+						<p class="error-note">{error}</p>
+					{/if}
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn-cancel" onclick={onClose} disabled={busy}>Cancel</button>
+					<button
+						type="button"
+						class="btn-scale"
+						onclick={handlePreview}
+						disabled={busy || !(targetLiters > 0) || Math.abs(ratio - 1) <= 0.001}
+					>
+						{busy ? 'Calculating…' : 'Preview scale'}
+					</button>
+				</div>
+			{:else}
+				<div class="modal-body">
+					<p class="current-size">
+						<strong>{currentBatchLiters} L → {targetLiters} L</strong> (×{ratio.toFixed(2)}) — nothing
+						is saved until you confirm.
+					</p>
+
+					<table class="preview-table">
+						<thead>
+							<tr><th>Ingredient</th><th>Now</th><th>Scaled</th></tr>
+						</thead>
+						<tbody>
+							{#each previewRows as row, i (row.label + i)}
+								<tr>
+									<td>{row.label}</td>
+									<td class="num">{row.before}</td>
+									<td class="num after">{row.after}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+
+					{#if preview?.boil_size_l != null}
+						<p class="ratio-note">Pre-boil volume: {preview.boil_size_l} L</p>
+					{/if}
+
 					{#if bigJump}
 						<p class="jump-warning">
 							Large jump — hop character and boil-off behave a little differently at this scale.
-							{#if onBigJumpScaled}The AI reviewer will check the scaled ingredients afterwards.{:else}Taste-check
-								the numbers before brew day.{/if}
+							{#if onBigJumpScaled}The AI reviewer will check the scaled ingredients after saving.{/if}
 						</p>
 					{/if}
-				{/if}
 
-				{#if error}
-					<p class="error-note">{error}</p>
-				{/if}
-			</div>
-			<div class="modal-footer">
-				<button type="button" class="btn-cancel" onclick={onClose} disabled={scaling}>Cancel</button>
-				<button
-					type="button"
-					class="btn-scale"
-					onclick={handleScale}
-					disabled={scaling || !(targetLiters > 0) || Math.abs(ratio - 1) <= 0.001}
-				>
-					{scaling ? 'Scaling…' : `Scale to ${targetLiters || '—'} L`}
-				</button>
-			</div>
+					{#if error}
+						<p class="error-note">{error}</p>
+					{/if}
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn-cancel" onclick={() => (step = 'pick')} disabled={busy}>
+						Back
+					</button>
+					<button type="button" class="btn-cancel" onclick={onClose} disabled={busy}>Discard</button>
+					<button type="button" class="btn-scale" onclick={handleSave} disabled={busy}>
+						{busy ? 'Saving…' : 'Save changes'}
+					</button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -284,6 +402,37 @@
 
 	.unit {
 		color: var(--text-muted);
+	}
+
+	.preview-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.85rem;
+	}
+
+	.preview-table th {
+		text-align: left;
+		color: var(--text-muted);
+		font-weight: 500;
+		padding: var(--space-1) var(--space-2);
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.preview-table td {
+		padding: var(--space-1) var(--space-2);
+		color: var(--text-secondary);
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.preview-table .num {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.preview-table .after {
+		color: var(--text-primary);
+		font-weight: 600;
 	}
 
 	.ratio-note {

@@ -196,6 +196,32 @@ class TestScaleEndpoint:
         assert after["color_srm"] == pytest.approx(before["color_srm"], rel=0.05)
 
     @pytest.mark.asyncio
+    async def test_dry_run_previews_without_persisting(self, client, test_db):
+        rid = await _create_recipe(client)
+        r = await client.post(
+            f"/api/recipes/{rid}/scale",
+            json={"target_batch_size_liters": 40, "dry_run": True},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Response shows the scaled preview...
+        assert body["batch_size_liters"] == 40
+        preview = {f["name"]: f["amount_kg"] for f in body["fermentables"]}
+        assert preview["Pale Malt 2-Row (US)"] == pytest.approx(10.0, abs=0.01)
+        # Hops must be in the preview too (RecipeResponse has no hops list —
+        # the endpoint returns RecipeDetailResponse for exactly this reason).
+        hop_preview = {h["name"]: h["amount_grams"] for h in body["hops"]}
+        assert hop_preview["Magnum"] == pytest.approx(40, abs=0.1)
+
+        # ...but nothing was persisted.
+        after = (await client.get(f"/api/recipes/{rid}")).json()
+        assert after["batch_size_liters"] == 20
+        stored = {f["name"]: f["amount_kg"] for f in after["fermentables"]}
+        assert stored["Pale Malt 2-Row (US)"] == pytest.approx(5.0, abs=0.01)
+        ext = {f["name"]: f["amount_kg"] for f in after["format_extensions"]["fermentables"]}
+        assert ext["Pale Malt 2-Row (US)"] == pytest.approx(5.0, abs=0.01)
+
+    @pytest.mark.asyncio
     async def test_rejects_non_positive_target(self, client, test_db):
         rid = await _create_recipe(client)
         r = await client.post(

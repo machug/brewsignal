@@ -491,6 +491,8 @@
 			open={showScaleDialog}
 			recipeId={recipe.id}
 			currentBatchLiters={recipe.batch_size_liters ?? 0}
+			fermentables={recipe.fermentables ?? []}
+			hops={recipe.hops ?? []}
 			initialTarget={scaleTarget}
 			onClose={() => (showScaleDialog = false)}
 			onScaled={handleScaled}

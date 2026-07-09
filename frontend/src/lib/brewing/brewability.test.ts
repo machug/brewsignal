@@ -148,6 +148,18 @@ describe('checkBrewability', () => {
 		expect(warnings).toEqual([]);
 	});
 
+	test('treats zero/negative capacities as unknown instead of crashing', () => {
+		// Users can enter 0 for "don't know"; the API doesn't reject it.
+		const warnings = checkBrewability(
+			{ batch_size_liters: 21, total_grain_kg: 9 },
+			[
+				gear({ type: 'all_in_one', name: 'Zeroed rig', capacity_liters: 0, capacity_kg: 0 }),
+				gear({ type: 'fermenter', name: 'Negative carboy', capacity_liters: -1 }),
+			],
+		);
+		expect(warnings).toEqual([]);
+	});
+
 	test('returns empty for extract recipes (no grain)', () => {
 		const warnings = checkBrewability(
 			{ batch_size_liters: 21, total_grain_kg: 0 },

@@ -111,8 +111,11 @@ export function checkBrewability(
 	equipment: EquipmentResponse[],
 ): BrewabilityWarning[] {
 	const warnings: BrewabilityWarning[] = [];
-	const litres = (e: EquipmentResponse) => e.capacity_liters;
-	const kg = (e: EquipmentResponse) => e.capacity_kg;
+	// Zero/negative capacities are "don't know" (the API accepts them) —
+	// treat like missing so they never become a crash or a false warning.
+	const pos = (n: number | null | undefined) => (n != null && n > 0 ? n : undefined);
+	const litres = (e: EquipmentResponse) => pos(e.capacity_liters);
+	const kg = (e: EquipmentResponse) => pos(e.capacity_kg);
 
 	const volumes = calculateWaterVolumes(
 		recipe.batch_size_liters,

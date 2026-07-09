@@ -56,9 +56,24 @@
 	let sourceProfile = $derived(waterProfiles.find((p) => p.profile_type === 'source'));
 	let targetProfile = $derived(waterProfiles.find((p) => p.profile_type === 'target'));
 
-	// Get mash and sparge adjustments
-	let mashAdjustment = $derived(waterAdjustments.find((a) => a.stage === 'mash'));
-	let spargeAdjustment = $derived(waterAdjustments.find((a) => a.stage === 'sparge'));
+	// Get mash and sparge adjustments. An adjustment row with no salts and
+	// no acid (e.g. Brewfather sparge stage on a no-sparge profile) renders
+	// as an empty box, so treat it as absent.
+	function hasAdditions(adj: (typeof waterAdjustments)[number] | undefined): boolean {
+		if (!adj) return false;
+		return Boolean(
+			adj.calcium_sulfate_g || adj.calcium_chloride_g || adj.magnesium_sulfate_g ||
+			adj.sodium_bicarbonate_g || adj.sodium_chloride_g || adj.calcium_carbonate_g ||
+			adj.calcium_hydroxide_g || adj.magnesium_chloride_g ||
+			(adj.acid_type && adj.acid_ml)
+		);
+	}
+	let mashAdjustment = $derived(
+		[...waterAdjustments].filter((a) => a.stage === 'mash').find(hasAdditions)
+	);
+	let spargeAdjustment = $derived(
+		[...waterAdjustments].filter((a) => a.stage === 'sparge').find(hasAdditions)
+	);
 
 	// Filter to only water agents
 	let waterAgents = $derived(
@@ -100,7 +115,7 @@
 	}
 </script>
 
-{#if waterAgents.length > 0 || waterProfiles.length > 0 || waterAdjustments.length > 0}
+{#if waterAgents.length > 0 || waterProfiles.length > 0 || mashAdjustment || spargeAdjustment}
 	<div class="water-additions">
 		<h3 class="section-title">
 			<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -157,7 +172,7 @@
 				<div class="additions-grid">
 					{#if mashAdjustment}
 						<div class="additions-group">
-							<h4 class="group-title">Mash ({mashAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
+							<h4 class="group-title">Mash water treated ({mashAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
 							<ul class="additions-list">
 								{#if mashAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{mashAdjustment.calcium_sulfate_g.toFixed(2)} g</span></li>{/if}
 								{#if mashAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{mashAdjustment.calcium_chloride_g.toFixed(2)} g</span></li>{/if}
@@ -165,13 +180,15 @@
 								{#if mashAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{mashAdjustment.sodium_bicarbonate_g.toFixed(2)} g</span></li>{/if}
 								{#if mashAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{mashAdjustment.sodium_chloride_g.toFixed(2)} g</span></li>{/if}
 								{#if mashAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{mashAdjustment.calcium_carbonate_g.toFixed(2)} g</span></li>{/if}
+								{#if mashAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{mashAdjustment.calcium_hydroxide_g.toFixed(2)} g</span></li>{/if}
+								{#if mashAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{mashAdjustment.magnesium_chloride_g.toFixed(2)} g</span></li>{/if}
 								{#if mashAdjustment.acid_type && mashAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{mashAdjustment.acid_type} acid ({mashAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{mashAdjustment.acid_ml.toFixed(2)} ml</span></li>{/if}
 							</ul>
 						</div>
 					{/if}
 					{#if spargeAdjustment}
 						<div class="additions-group">
-							<h4 class="group-title">Sparge ({spargeAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
+							<h4 class="group-title">Sparge water treated ({spargeAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
 							<ul class="additions-list">
 								{#if spargeAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{spargeAdjustment.calcium_sulfate_g.toFixed(2)} g</span></li>{/if}
 								{#if spargeAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{spargeAdjustment.calcium_chloride_g.toFixed(2)} g</span></li>{/if}
@@ -179,6 +196,8 @@
 								{#if spargeAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{spargeAdjustment.sodium_bicarbonate_g.toFixed(2)} g</span></li>{/if}
 								{#if spargeAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{spargeAdjustment.sodium_chloride_g.toFixed(2)} g</span></li>{/if}
 								{#if spargeAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{spargeAdjustment.calcium_carbonate_g.toFixed(2)} g</span></li>{/if}
+								{#if spargeAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{spargeAdjustment.calcium_hydroxide_g.toFixed(2)} g</span></li>{/if}
+								{#if spargeAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{spargeAdjustment.magnesium_chloride_g.toFixed(2)} g</span></li>{/if}
 								{#if spargeAdjustment.acid_type && spargeAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{spargeAdjustment.acid_type} acid ({spargeAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{spargeAdjustment.acid_ml.toFixed(2)} ml</span></li>{/if}
 							</ul>
 						</div>

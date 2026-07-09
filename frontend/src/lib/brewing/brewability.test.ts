@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { checkBrewability, totalMashGrainKg, type BrewabilityWarning } from './brewability';
+import {
+	checkBrewability,
+	maxFitBatchLiters,
+	totalMashGrainKg,
+	type BrewabilityWarning,
+} from './brewability';
 import type { EquipmentResponse } from '$lib/api';
 
 let nextId = 1;
@@ -15,6 +20,50 @@ function gear(partial: Partial<EquipmentResponse> & Pick<EquipmentResponse, 'typ
 }
 
 const codes = (warnings: BrewabilityWarning[]) => warnings.map((w) => w.code).sort();
+
+describe('maxFitBatchLiters', () => {
+	test('shrinks an oversized recipe until it fits the vessel', () => {
+		// 21 L / 9 kg on a G30: mash volume 9·3.37+1 = 31.33 L > 30 L.
+		// Max ratio = (30−1)/(9·3.37) ≈ 0.9562 → batch ≈ 20.08 → floor 20.
+		const recipe = { batch_size_liters: 21, total_grain_kg: 9 };
+		const gear30 = [gear({ type: 'all_in_one', name: 'G30', capacity_liters: 30 })];
+		const max = maxFitBatchLiters(recipe, gear30);
+		expect(max).toBeCloseTo(20, 5);
+		// The suggestion must actually pass the brewability check.
+		expect(
+			checkBrewability({ ...recipe, total_grain_kg: (9 * max!) / 21, batch_size_liters: max! }, gear30),
+		).toEqual([]);
+	});
+
+	test('binds on the tightest constraint across categories', () => {
+		// Fermenter 20 L limits batch to 20/1.2 ≈ 16.67 → floor 16.5,
+		// tighter than the mash constraint on the G30.
+		const max = maxFitBatchLiters({ batch_size_liters: 21, total_grain_kg: 6 }, [
+			gear({ type: 'all_in_one', name: 'G30', capacity_liters: 30 }),
+			gear({ type: 'fermenter', name: 'Small', capacity_liters: 20 }),
+		]);
+		expect(max).toBeCloseTo(16.5, 5);
+	});
+
+	test('returns null when the recipe already fits', () => {
+		const max = maxFitBatchLiters({ batch_size_liters: 21, total_grain_kg: 5 }, [
+			gear({ type: 'all_in_one', name: 'G70', capacity_liters: 70 }),
+		]);
+		expect(max).toBeNull();
+	});
+
+	test('returns null with no judgeable equipment', () => {
+		expect(maxFitBatchLiters({ batch_size_liters: 21, total_grain_kg: 9 }, [])).toBeNull();
+	});
+
+	test('respects the malt pipe grain limit', () => {
+		// 10 kg grain, 9 kg malt pipe → ratio 0.9 → batch 18.9 → floor 18.5.
+		const max = maxFitBatchLiters({ batch_size_liters: 21, total_grain_kg: 10 }, [
+			gear({ type: 'all_in_one', name: 'BrewZilla', capacity_liters: 65, capacity_kg: 9 }),
+		]);
+		expect(max).toBeCloseTo(18.5, 5);
+	});
+});
 
 describe('totalMashGrainKg', () => {
 	test('counts grain but excludes kettle additions (extract, sugar, honey)', () => {

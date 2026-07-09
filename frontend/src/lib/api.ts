@@ -1170,6 +1170,25 @@ export async function updateRecipe(
 	return response.json();
 }
 
+export async function scaleRecipe(
+	id: number,
+	targetBatchSizeLiters: number
+): Promise<RecipeResponse> {
+	const response = await authFetch(`${BASE_URL}/recipes/${id}/scale`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ target_batch_size_liters: targetBatchSizeLiters })
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		const detail = Array.isArray(error.detail) ? error.detail.join('; ') : error.detail;
+		throw new Error(detail || 'Failed to scale recipe');
+	}
+
+	return response.json();
+}
+
 /**
  * Import recipe from BeerXML, BeerJSON, or Brewfather JSON.
  * Backend auto-detects format from file extension and content.

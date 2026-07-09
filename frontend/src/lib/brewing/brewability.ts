@@ -13,7 +13,7 @@
  */
 
 import type { EquipmentResponse, EquipmentType } from '$lib/api';
-import { calculateWaterVolumes, estimatePreBoilVolume } from '$lib/utils/water';
+import { calculateWaterVolumes, estimatePreBoilVolume, WATER_DEFAULTS } from '$lib/utils/water';
 
 // Fermenters need headroom for krausen; 20% is the common rule of thumb.
 const KRAUSEN_HEADSPACE_FACTOR = 1.2;
@@ -104,6 +104,74 @@ function checkCapacity(
 		available,
 		message: message(vessel.name, round2(required), available),
 	});
+}
+
+/**
+ * Largest batch size (litres, floored to 0.5 L) at which the proportionally
+ * scaled recipe fits the owned equipment. Everything in the recipe scales
+ * with the batch ratio (grain, mash volume minus deadspace, pre-boil minus
+ * fixed losses), so each capacity bound inverts to a max ratio directly.
+ *
+ * Returns null when the recipe already fits, when nothing is judgeable,
+ * or when no positive batch size can fit (suggestion would be useless).
+ */
+export function maxFitBatchLiters(
+	recipe: BrewabilityRecipe,
+	equipment: EquipmentResponse[],
+): number | null {
+	if (recipe.batch_size_liters <= 0) return null;
+	if (checkBrewability(recipe, equipment).length === 0) return null;
+
+	const pos = (n: number | null | undefined) => (n != null && n > 0 ? n : undefined);
+	const active = equipment.filter((e) => e.is_active);
+	const { mashRatioLPerKg, grainDisplacementLPerKg, mashTunDeadspaceL, boilOffLPerHr, trubChillerLossL } =
+		WATER_DEFAULTS;
+	const boilTimeHrs = (recipe.boil_time_minutes ?? 60) / 60;
+	const fixedBoilLosses = boilTimeHrs * boilOffLPerHr + trubChillerLossL;
+	const grain = recipe.total_grain_kg;
+	const mashVolumePerKg = mashRatioLPerKg + grainDisplacementLPerKg;
+
+	const categoryMaxima: number[] = [];
+
+	const mashVessels = active.filter(
+		(e) => MASH_TYPES.includes(e.type) && (pos(e.capacity_liters) != null || pos(e.capacity_kg) != null),
+	);
+	if (grain > 0 && mashVessels.length > 0) {
+		const perVessel = mashVessels.map((e) => {
+			const capL = pos(e.capacity_liters);
+			const capKg = pos(e.capacity_kg);
+			const byVolume = capL != null ? (capL - mashTunDeadspaceL) / (grain * mashVolumePerKg) : Infinity;
+			const byGrain = capKg != null ? capKg / grain : Infinity;
+			return Math.min(byVolume, byGrain);
+		});
+		categoryMaxima.push(Math.max(...perVessel));
+	}
+
+	const boilVessels = active.filter((e) => BOIL_TYPES.includes(e.type) && pos(e.capacity_liters) != null);
+	if (boilVessels.length > 0) {
+		const perVessel = boilVessels.map((e) => {
+			const capL = pos(e.capacity_liters)!;
+			// Explicit boil_size_l scales with the ratio; the derived pre-boil
+			// carries fixed (non-scaling) boil-off + trub losses.
+			return recipe.boil_size_l != null && recipe.boil_size_l > 0
+				? capL / recipe.boil_size_l
+				: (capL - fixedBoilLosses) / recipe.batch_size_liters;
+		});
+		categoryMaxima.push(Math.max(...perVessel));
+	}
+
+	const fermenters = active.filter((e) => e.type === 'fermenter' && pos(e.capacity_liters) != null);
+	if (fermenters.length > 0) {
+		const perVessel = fermenters.map(
+			(e) => pos(e.capacity_liters)! / (recipe.batch_size_liters * KRAUSEN_HEADSPACE_FACTOR),
+		);
+		categoryMaxima.push(Math.max(...perVessel));
+	}
+
+	if (categoryMaxima.length === 0) return null;
+	const maxRatio = Math.min(...categoryMaxima);
+	const suggested = Math.floor((recipe.batch_size_liters * maxRatio) / 0.5) * 0.5;
+	return suggested > 0 ? suggested : null;
 }
 
 export function checkBrewability(

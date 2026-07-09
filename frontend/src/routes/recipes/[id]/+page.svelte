@@ -13,6 +13,7 @@
 	import RecipeStatsPanel from '$lib/components/recipe/RecipeStatsPanel.svelte';
 	import RecipeReviewModal from '$lib/components/recipe/RecipeReviewModal.svelte';
 	import RecipeBrewabilityBanner from '$lib/components/recipe/RecipeBrewabilityBanner.svelte';
+	import ScaleRecipeDialog from '$lib/components/recipe/ScaleRecipeDialog.svelte';
 	import { totalMashGrainKg } from '$lib/brewing/brewability';
 	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
@@ -23,6 +24,19 @@
 	let error = $state<string | null>(null);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+
+	// Scale dialog state
+	let showScaleDialog = $state(false);
+	let scaleTarget = $state<number | null>(null);
+
+	function openScaleDialog(suggested?: number) {
+		scaleTarget = suggested ?? null;
+		showScaleDialog = true;
+	}
+
+	async function handleScaled() {
+		if (recipeId) recipe = await fetchRecipe(recipeId);
+	}
 
 	// AI Review state
 	let showReviewModal = $state(false);
@@ -409,6 +423,18 @@
 							AI Review
 						{/if}
 					</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						onclick={() => openScaleDialog()}
+						disabled={!recipe.batch_size_liters}
+						title={recipe.batch_size_liters ? 'Scale recipe to a new batch size' : 'Recipe has no batch size to scale from'}
+					>
+						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+						</svg>
+						Scale
+					</button>
 					<a href="/recipes/{recipe.id}/edit" class="btn-secondary">
 						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -458,6 +484,16 @@
 			{totalGrainKg}
 			boilTimeMinutes={recipe.boil_time_minutes}
 			boilSizeL={recipe.boil_size_l}
+			onScaleToFit={(suggested) => openScaleDialog(suggested)}
+		/>
+
+		<ScaleRecipeDialog
+			open={showScaleDialog}
+			recipeId={recipe.id}
+			currentBatchLiters={recipe.batch_size_liters ?? 0}
+			initialTarget={scaleTarget}
+			onClose={() => (showScaleDialog = false)}
+			onScaled={handleScaled}
 		/>
 
 		<div class="recipe-content">

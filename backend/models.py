@@ -1729,6 +1729,7 @@ class RecipeCreate(BaseModel):
     ibu: Optional[float] = None
     color_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
+    boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None
     efficiency_percent: Optional[float] = None
     carbonation_vols: Optional[float] = None
@@ -1755,6 +1756,7 @@ class RecipeUpdate(BaseModel):
     ibu: Optional[float] = None
     color_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
+    boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None
     efficiency_percent: Optional[float] = None
     carbonation_vols: Optional[float] = None

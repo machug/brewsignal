@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { fetchEquipment, type EquipmentResponse } from '$lib/api';
-	import { checkBrewability } from '$lib/brewing/brewability';
+	import { checkBrewability, maxFitBatchLiters } from '$lib/brewing/brewability';
 
 	interface Props {
 		batchSizeLiters: number | null | undefined;
 		totalGrainKg: number;
 		boilTimeMinutes?: number | null;
 		boilSizeL?: number | null;
+		/** When provided, a "Scale to fit" action appears with the largest fitting batch size. */
+		onScaleToFit?: (suggestedBatchLiters: number) => void;
 	}
 
-	let { batchSizeLiters, totalGrainKg, boilTimeMinutes, boilSizeL }: Props = $props();
+	let { batchSizeLiters, totalGrainKg, boilTimeMinutes, boilSizeL, onScaleToFit }: Props = $props();
 
 	let equipment = $state<EquipmentResponse[] | null>(null);
 
@@ -25,6 +27,19 @@
 	let warnings = $derived.by(() => {
 		if (!equipment?.length || !batchSizeLiters) return [];
 		return checkBrewability(
+			{
+				batch_size_liters: batchSizeLiters,
+				total_grain_kg: totalGrainKg,
+				boil_time_minutes: boilTimeMinutes,
+				boil_size_l: boilSizeL,
+			},
+			equipment,
+		);
+	});
+
+	let suggestedBatch = $derived.by(() => {
+		if (!onScaleToFit || warnings.length === 0 || !equipment?.length || !batchSizeLiters) return null;
+		return maxFitBatchLiters(
 			{
 				batch_size_liters: batchSizeLiters,
 				total_grain_kg: totalGrainKg,
@@ -52,6 +67,11 @@
 					<li>{warning.message}</li>
 				{/each}
 			</ul>
+			{#if suggestedBatch != null && onScaleToFit}
+				<button type="button" class="scale-to-fit" onclick={() => onScaleToFit(suggestedBatch!)}>
+					Scale to fit ({suggestedBatch} L)
+				</button>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -91,5 +111,22 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
+	}
+
+	.scale-to-fit {
+		align-self: flex-start;
+		margin-top: var(--space-3);
+		padding: var(--space-1) var(--space-3);
+		background: none;
+		border: 1px solid var(--warning);
+		border-radius: 8px;
+		color: var(--warning);
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.scale-to-fit:hover {
+		background: var(--warning-muted);
 	}
 </style>

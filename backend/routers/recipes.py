@@ -511,6 +511,7 @@ async def create_recipe(
         ibu=recipe.ibu,
         color_srm=recipe.color_srm,
         batch_size_liters=recipe.batch_size_liters,
+        boil_size_l=recipe.boil_size_l,
         boil_time_minutes=recipe.boil_time_minutes,
         efficiency_percent=recipe.efficiency_percent,
         carbonation_vols=recipe.carbonation_vols,
@@ -831,6 +832,74 @@ async def recalculate_recipe_stats(
 
     await db.commit()
     # Re-query with eager loading for response serialization
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+        )
+        .where(Recipe.id == recipe.id)
+    )
+    return result.scalar_one()
+
+
+class RecipeScaleRequest(BaseModel):
+    target_batch_size_liters: float = Field(gt=0)
+
+
+@router.post("/{recipe_id}/scale", response_model=RecipeResponse)
+async def scale_recipe_endpoint(
+    recipe_id: int,
+    request: RecipeScaleRequest,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Proportionally scale a recipe to a new batch size.
+
+    Multiplies every per-batch amount (fermentables, hops, miscs, cultures,
+    mash infusions, water adjustments, boil size, priming sugar — plus the
+    format_extensions editor cache) by target/current ratio, then recomputes
+    stats. Concentrations (OG/FG/IBU/SRM) stay effectively unchanged.
+    """
+    from ..services.recipe_scaling import scale_recipe
+
+    result = await db.execute(
+        select(Recipe)
+        .options(
+            selectinload(Recipe.style),
+            selectinload(Recipe.fermentables),
+            selectinload(Recipe.hops),
+            selectinload(Recipe.cultures),
+            selectinload(Recipe.miscs),
+            selectinload(Recipe.mash_steps),
+            selectinload(Recipe.water_adjustments),
+        )
+        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+    )
+    recipe = result.scalar_one_or_none()
+
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    if not recipe.batch_size_liters or recipe.batch_size_liters <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Recipe has no batch size to scale from",
+        )
+
+    scale_recipe(recipe, request.target_batch_size_liters)
+
+    if recipe.fermentables or recipe.hops:
+        stats = calculate_recipe_stats(recipe)
+        recipe.og = stats["og"]
+        recipe.fg = stats["fg"]
+        recipe.abv = stats["abv"]
+        recipe.ibu = stats["ibu"]
+        recipe.color_srm = stats["color_srm"]
+
+    await db.commit()
     result = await db.execute(
         select(Recipe)
         .options(

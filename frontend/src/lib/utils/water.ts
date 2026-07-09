@@ -19,7 +19,9 @@ export interface WaterEquipment {
 }
 
 // Brewfather-calibrated defaults (Generic 19L stainless profile).
-const DEFAULTS: Required<WaterEquipment> = {
+// Exported so volume math elsewhere (brewability inversion) can stay
+// consistent with this model instead of duplicating constants.
+export const WATER_DEFAULTS: Required<WaterEquipment> = {
 	mashRatioLPerKg: 2.7,
 	grainAbsorptionLPerKg: 0.45,
 	mashTunDeadspaceL: 1.0,
@@ -48,7 +50,7 @@ export function estimatePreBoilVolume(
 	boilTimeMinutes?: number | null,
 	equipment?: WaterEquipment,
 ): number {
-	const eq = { ...DEFAULTS, ...equipment };
+	const eq = { ...WATER_DEFAULTS, ...equipment };
 	const boilTimeHrs = (boilTimeMinutes ?? 60) / 60;
 	return round2(batchSizeLiters + boilTimeHrs * eq.boilOffLPerHr + eq.trubChillerLossL);
 }
@@ -69,7 +71,7 @@ export function calculateWaterVolumes(
 ): WaterVolumes | null {
 	if (batchSizeLiters <= 0 || totalGrainKg <= 0) return null;
 
-	const eq = { ...DEFAULTS, ...equipment };
+	const eq = { ...WATER_DEFAULTS, ...equipment };
 
 	const preBoilVolume =
 		boilSizeL ?? estimatePreBoilVolume(batchSizeLiters, boilTimeMinutes, equipment);

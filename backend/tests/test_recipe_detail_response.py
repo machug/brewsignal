@@ -94,6 +94,7 @@ async def test_recipe_detail_response_with_ingredients(test_db: AsyncSession):
         use="Boil",
         time_min=15,
         amount_kg=0.005,
+        amount_unit="g",
         amount_is_weight=True
     )
     test_db.add(misc)
@@ -158,3 +159,7 @@ async def test_recipe_detail_response_with_ingredients(test_db: AsyncSession):
     assert response_dict["hops"][0]["name"] == "Cascade"
     assert response_dict["cultures"][0]["name"] == "Safale US-05"
     assert response_dict["miscs"][0]["name"] == "Irish Moss"
+    # amount_kg holds the value in amount_unit units (legacy column name);
+    # without the unit the frontend cannot render the amount correctly
+    # (tilt_ui-mjdc)
+    assert response_dict["miscs"][0]["amount_unit"] == "g"

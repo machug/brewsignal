@@ -1951,8 +1951,14 @@ class MiscResponse(BaseModel):
     type: Optional[str] = None
     use: Optional[str] = None
     time_min: Optional[float] = None
+    # amount_kg holds the value in amount_unit units — the column name is
+    # legacy (imports store g/ml/items/... natively). The unit must travel
+    # with the value or clients misrender amounts (tilt_ui-mjdc).
     amount_kg: Optional[float] = None
+    amount_unit: Optional[str] = None
     amount_is_weight: Optional[bool] = None
+    use_for: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class MashStepResponse(BaseModel):

@@ -125,7 +125,10 @@
 				type: m.type || 'other',
 				use: m.use || 'boil',
 				time_min: m.time_min,
-				amount_kg: m.amount_kg
+				amount_kg: m.amount_kg,
+				amount_unit: m.amount_unit,
+				use_for: m.use_for,
+				notes: m.notes
 			}));
 		}
 	});

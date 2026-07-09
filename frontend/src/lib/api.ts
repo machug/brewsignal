@@ -266,8 +266,12 @@ export interface MiscResponse {
 	type?: string;
 	use?: string;
 	time_min?: number;
+	// amount_kg holds the value in amount_unit units (legacy column name)
 	amount_kg?: number;
+	amount_unit?: string;
 	amount_is_weight?: boolean;
+	use_for?: string;
+	notes?: string;
 }
 
 // Mash and fermentation schedule types

@@ -29,6 +29,18 @@
 	let showScaleDialog = $state(false);
 	let scaleTarget = $state<number | null>(null);
 
+	// "Now" amounts for the scale preview — same source precedence as the
+	// page display (format_extensions editor copy first, relationship rows
+	// otherwise), so the preview matches what the user sees on the card.
+	let scaleBeforeFermentables = $derived.by(() => {
+		const ext = recipe?.format_extensions as
+			| { fermentables?: Array<{ name?: string; amount_kg?: number | null }> }
+			| undefined;
+		const source = Array.isArray(ext?.fermentables) ? ext!.fermentables! : (recipe?.fermentables ?? []);
+		return source.map((f) => ({ name: String(f.name ?? ''), amount_kg: f.amount_kg }));
+	});
+
+
 	function openScaleDialog(suggested?: number) {
 		scaleTarget = suggested ?? null;
 		showScaleDialog = true;
@@ -200,6 +212,14 @@
 		}
 		return (recipe.hops ?? []) as unknown as Array<Record<string, unknown>>;
 	});
+
+	let scaleBeforeHops = $derived(
+		displayHops.map((h) => ({
+			name: String(h.name ?? ''),
+			amount_grams: (h.amount_grams as number | null) ?? null,
+			amount_ml: (h.amount_ml as number | null) ?? null,
+		}))
+	);
 
 	onMount(async () => {
 		if (!recipeId) {
@@ -491,8 +511,8 @@
 			open={showScaleDialog}
 			recipeId={recipe.id}
 			currentBatchLiters={recipe.batch_size_liters ?? 0}
-			fermentables={recipe.fermentables ?? []}
-			hops={recipe.hops ?? []}
+			fermentables={scaleBeforeFermentables}
+			hops={scaleBeforeHops}
 			initialTarget={scaleTarget}
 			onClose={() => (showScaleDialog = false)}
 			onScaled={handleScaled}

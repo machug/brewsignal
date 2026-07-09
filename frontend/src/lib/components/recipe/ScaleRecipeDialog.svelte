@@ -79,8 +79,13 @@
 		const rows: Array<{ label: string; before: string; after: string }> = [];
 		const fmt = (n: number | null | undefined, unit: string) =>
 			n == null ? '—' : `${Math.round(n * 100) / 100} ${unit}`;
+		// Match by index first — the server rebuilds collections in editor
+		// order, so arrays are parallel; duplicate names (same hop at several
+		// timings) would otherwise all show the first addition's amount.
 		const beforeFerm = (name: string, i: number) =>
-			fermentables.find((f) => f.name === name) ?? fermentables[i];
+			fermentables[i]?.name === name
+				? fermentables[i]
+				: (fermentables.find((f) => f.name === name) ?? fermentables[i]);
 		for (const [i, f] of (preview.fermentables ?? []).entries()) {
 			rows.push({
 				label: f.name,
@@ -88,7 +93,8 @@
 				after: fmt(f.amount_kg, 'kg'),
 			});
 		}
-		const beforeHop = (name: string, i: number) => hops.find((h) => h.name === name) ?? hops[i];
+		const beforeHop = (name: string, i: number) =>
+			hops[i]?.name === name ? hops[i] : (hops.find((h) => h.name === name) ?? hops[i]);
 		for (const [i, h] of (preview.hops ?? []).entries()) {
 			const b = beforeHop(h.name, i);
 			const liquid = h.amount_ml != null && h.amount_ml > 0;

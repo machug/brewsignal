@@ -29,12 +29,19 @@
 	let reviewLoading = $state(false);
 	let reviewError = $state<string | null>(null);
 
-	let totalGrainKg = $derived(
-		(recipe?.fermentables ?? []).reduce((sum, f) => sum + (f.amount_kg ?? 0), 0)
-	);
+	// UI-created recipes carry fermentables in format_extensions while
+	// recipe.fermentables may be empty — same precedence as liveStats below
+	// (explicit empty array in format_extensions = deletion intent).
+	let totalGrainKg = $derived.by(() => {
+		const ext = recipe?.format_extensions as { fermentables?: Fermentable[] } | undefined;
+		const fermentables = Array.isArray(ext?.fermentables)
+			? ext!.fermentables!
+			: (recipe?.fermentables ?? []);
+		return fermentables.reduce((sum, f) => sum + (f.amount_kg ?? 0), 0);
+	});
 
 	let waterVolumes = $derived.by(() => {
-		if (!recipe?.batch_size_liters || !recipe.fermentables?.length) return null;
+		if (!recipe?.batch_size_liters || totalGrainKg <= 0) return null;
 		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
 	});
 

@@ -79,14 +79,33 @@
 		const rows: Array<{ label: string; before: string; after: string }> = [];
 		const fmt = (n: number | null | undefined, unit: string) =>
 			n == null ? '—' : `${Math.round(n * 100) / 100} ${unit}`;
-		// Match by index first — the server rebuilds collections in editor
-		// order, so arrays are parallel; duplicate names (same hop at several
-		// timings) would otherwise all show the first addition's amount.
+		// "After" amounts follow the same format_extensions-first precedence as
+		// the page display — legacy UI recipes can have empty relationship rows
+		// while the (scaled) editor copy is the authoritative one.
+		const ext = preview.format_extensions as
+			| {
+					fermentables?: Array<{ name?: string; amount_kg?: number | null }>;
+					hops?: Array<{ name?: string; amount_grams?: number | null; amount_ml?: number | null }>;
+			  }
+			| undefined;
+		const afterFerms = Array.isArray(ext?.fermentables)
+			? ext!.fermentables!.map((f) => ({ name: String(f.name ?? ''), amount_kg: f.amount_kg }))
+			: (preview.fermentables ?? []);
+		const afterHops = Array.isArray(ext?.hops)
+			? ext!.hops!.map((h) => ({
+					name: String(h.name ?? ''),
+					amount_grams: h.amount_grams,
+					amount_ml: h.amount_ml,
+				}))
+			: (preview.hops ?? []);
+		// Match by index first — collections are rebuilt in editor order, so
+		// arrays are parallel; duplicate names (same hop at several timings)
+		// would otherwise all show the first addition's amount.
 		const beforeFerm = (name: string, i: number) =>
 			fermentables[i]?.name === name
 				? fermentables[i]
 				: (fermentables.find((f) => f.name === name) ?? fermentables[i]);
-		for (const [i, f] of (preview.fermentables ?? []).entries()) {
+		for (const [i, f] of afterFerms.entries()) {
 			rows.push({
 				label: f.name,
 				before: fmt(beforeFerm(f.name, i)?.amount_kg, 'kg'),
@@ -95,7 +114,7 @@
 		}
 		const beforeHop = (name: string, i: number) =>
 			hops[i]?.name === name ? hops[i] : (hops.find((h) => h.name === name) ?? hops[i]);
-		for (const [i, h] of (preview.hops ?? []).entries()) {
+		for (const [i, h] of afterHops.entries()) {
 			const b = beforeHop(h.name, i);
 			const liquid = h.amount_ml != null && h.amount_ml > 0;
 			rows.push({

@@ -148,6 +148,10 @@ class RecipeToBrewfatherConverter:
         bf_hop["use"] = use
         if time is not None:
             bf_hop["time"] = time
+        # Hop stand temperature, so a re-import keeps the derated IBU (tilt_ui-2mxj)
+        temp = ((hop.timing or {}).get("temperature") or {}).get("value")
+        if temp is not None:
+            bf_hop["temp"] = temp
 
         return bf_hop
 

@@ -650,6 +650,14 @@ def to_strict_beerjson(recipe_block: Dict[str, Any], notes: Optional[str] = None
                 hop.pop('_extensions', None)
                 if 'alpha_acid' not in hop:
                     hop['alpha_acid'] = {'value': 0, 'unit': '%'}
+                timing = hop.get('timing')
+                if isinstance(timing, dict):
+                    # BeerJSON 1.0 has no whirlpool use and no timing
+                    # temperature; fold hop stands back to add_to_boil
+                    # (tilt_ui-2mxj)
+                    timing.pop('temperature', None)
+                    if timing.get('use') == 'add_to_whirlpool':
+                        timing['use'] = 'add_to_boil'
         cultures = ingredients.get('culture_additions')
         if isinstance(cultures, list):
             for culture in cultures:

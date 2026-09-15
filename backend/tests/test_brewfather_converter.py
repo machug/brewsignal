@@ -267,6 +267,26 @@ class TestHopTimingRoundTrip:
         assert bf_use == 'Whirlpool'
         assert bf_time == 20.0
 
+    def test_hop_stand_temperature_round_trips_through_brewfather(self):
+        from backend.models import RecipeHop
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+
+        hop = RecipeHop(
+            name='Nectaron',
+            amount_grams=30.0,
+            alpha_acid_percent=12.0,
+            timing={
+                'use': 'add_to_whirlpool',
+                'duration': {'value': 20.0, 'unit': 'min'},
+                'temperature': {'value': 80.0, 'unit': 'C'},
+            },
+        )
+        bf_hop = RecipeToBrewfatherConverter()._convert_hop(hop)
+        assert bf_hop['temp'] == 80.0
+        assert _convert_single_hop(bf_hop)['timing'] == hop.timing
+
 
 class TestMiscTimingConversion:
     """Tests for misc ingredient timing conversion."""

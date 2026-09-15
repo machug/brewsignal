@@ -316,6 +316,18 @@ class TestToStrictBeerJSON:
         assert "amount_ml" not in hop
         assert hop["alpha_acid"] == {"value": 0, "unit": "%"}
 
+    def test_hop_stand_timing_folds_to_strict_boil(self):
+        block = self._minimal_recipe_block()
+        block["ingredients"]["hop_additions"][0]["timing"] = {
+            "use": "add_to_whirlpool",
+            "duration": {"value": 20.0, "unit": "min"},
+            "temperature": {"value": 80.0, "unit": "C"},
+        }
+        strict = to_strict_beerjson(block)
+        assert strict["ingredients"]["hop_additions"][0]["timing"] == {
+            "use": "add_to_boil", "duration": {"value": 20.0, "unit": "min"},
+        }
+
     def test_hop_alpha_acid_untouched_when_present(self):
         block = self._minimal_recipe_block()
         block["ingredients"]["hop_additions"][0]["alpha_acid"] = {

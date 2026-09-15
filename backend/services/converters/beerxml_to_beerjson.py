@@ -192,7 +192,9 @@ class BeerXMLToBeerJSONConverter:
             'Dry Hop': 'add_to_fermentation',
             'Mash': 'add_to_mash',
             'First Wort': 'add_to_boil',
-            'Aroma': 'add_to_boil'
+            # BeerXML 1.0 has no whirlpool use; Aroma is the hop stand /
+            # steep addition (tilt_ui-2mxj)
+            'Aroma': 'add_to_whirlpool'
         }
 
         timing = {

@@ -73,7 +73,8 @@
 				form: h.form,
 				// `use` may carry an extract-only value on a stale row;
 				// the filter above guarantees we won't pass one through.
-				use: h.use as Hop['use']
+				use: h.use as Hop['use'],
+				whirlpool_temp_c: h.whirlpool_temp_c
 			}));
 
 		return calculateTotalIBU(calcHops, og, batchSizeLiters);
@@ -104,7 +105,8 @@
 			alpha_acid_percent: hop.alpha_acid_percent,
 			boil_time_minutes: hop.boil_time_minutes,
 			form: hop.form,
-			use: hop.use as Hop['use']
+			use: hop.use as Hop['use'],
+			whirlpool_temp_c: hop.whirlpool_temp_c
 		};
 		return calculateIBU_Tinseth(calcHop, og, batchSizeLiters);
 	}

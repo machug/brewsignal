@@ -29,6 +29,8 @@ export interface Hop {
   boil_time_minutes: number;
   form?: 'pellet' | 'whole' | 'plug';
   use?: 'boil' | 'whirlpool' | 'dry_hop' | 'first_wort' | 'mash';
+  // Hop stand temperature (imported timing.temperature). Null = boil-hot.
+  whirlpool_temp_c?: number | null;
 }
 
 export interface Yeast {
@@ -172,12 +174,15 @@ export function calculateIBU_Tinseth(
   if (isDryHop) return 0;
 
   // Whirlpool / hop-stand additions: linear ramp from 5% (true flameout) to a
-  // 20% cap reached around 30 min stand time. Mirrors backend services/brewing.py
-  // (tilt_ui-23u). Stand temperature isn't carried on the hop schema, so we
-  // assume hot-side stand.
+  // 20% cap reached around 30 min stand time, for a boil-hot stand
+  // (tilt_ui-23u). A recorded stand temperature scales it by Malowicki's
+  // Arrhenius fit — Brewfather's aroma utilisation, 80 °C -> 0.23
+  // (tilt_ui-2mxj). Mirrors backend services/brewing.py.
   if (isWhirlpool) {
     const standMin = Math.max(0, hop.boil_time_minutes);
-    const utilization = Math.min(0.05 + 0.005 * standMin, 0.20);
+    const tempC = hop.whirlpool_temp_c;
+    const tempFactor = tempC == null ? 1 : Math.min(1, 2.39e11 * Math.exp(-9773 / (tempC + 273.15)));
+    const utilization = Math.min(0.05 + 0.005 * standMin, 0.20) * tempFactor;
     const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
                 batch_size_liters;
     return Math.max(0, ibu);

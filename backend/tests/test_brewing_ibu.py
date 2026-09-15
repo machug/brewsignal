@@ -75,6 +75,75 @@ class TestWhirlpoolStandModel:
         assert 0.3 <= ibu <= 3.0
 
 
+class TestWhirlpoolStandTemperature:
+    """Stand temperature derates whirlpool IBU (tilt_ui-2mxj)."""
+
+    def _stand(self, temp_c, duration_min=20.0):
+        hop = _hop("add_to_whirlpool", duration_min)
+        if temp_c is not None:
+            hop.timing["temperature"] = {"value": temp_c, "unit": "C"}
+        return calculate_ibu_from_hops([hop], batch_liters=21, og=1.054)
+
+    def test_80c_stand_is_about_a_quarter_of_a_hot_stand(self):
+        # Brewfather's own aroma utilisation at 80 C is 0.23.
+        assert self._stand(80) == pytest.approx(self._stand(None) * 0.229, rel=0.01)
+
+    def test_100c_stand_matches_legacy_hot_stand(self):
+        assert self._stand(100) == pytest.approx(self._stand(None))
+
+    def test_55c_stand_is_near_zero(self):
+        assert self._stand(55) < 1.0
+
+    def test_hoppy_pale_brewfather_import_lands_near_50_ibu(self):
+        """Hugh's Hoppy Pale (Batch #6): two boil additions plus a 20 min
+        80 C hop stand. Showed 94 IBU when the stand was treated as boil."""
+        from types import SimpleNamespace
+        from backend.services.converters.brewfather_to_beerjson import BrewfatherToBeerJSONConverter
+
+        bf = {
+            'name': 'Hoppy Pale',
+            'equipment': {'hopstandTemperature': 80},
+            'hops': [
+                {'name': 'Galaxy', 'amount': 30, 'alpha': 17.9, 'use': 'Boil', 'time': 15, 'type': 'Pellet'},
+                {'name': 'Cascade', 'amount': 25, 'alpha': 7.4, 'use': 'Boil', 'time': 10, 'type': 'Pellet'},
+                {'name': 'Nectaron', 'amount': 30, 'alpha': 12.0, 'use': 'Aroma', 'time': 20, 'temp': 80, 'type': 'Pellet'},
+                {'name': 'Mosaic', 'amount': 20, 'alpha': 12.5, 'use': 'Aroma', 'time': 20, 'temp': 80, 'type': 'Pellet'},
+                {'name': 'Galaxy', 'amount': 10, 'alpha': 17.9, 'use': 'Aroma', 'time': 20, 'temp': 80, 'type': 'Pellet'},
+                {'name': 'Citra', 'amount': 30, 'alpha': 12.0, 'use': 'Dry Hop', 'time': 3, 'type': 'Pellet'},
+            ],
+        }
+        additions = BrewfatherToBeerJSONConverter().convert(bf)['beerjson']['recipes'][0]['ingredients']['hop_additions']
+        hops = [
+            SimpleNamespace(amount_grams=h['amount']['value'], alpha_acid_percent=h['alpha_acid']['value'],
+                            form=h['form'], timing=h['timing'])
+            for h in additions
+        ]
+        ibu = calculate_ibu_from_hops(hops, batch_liters=21, og=1.054)
+        assert 45 <= ibu <= 56
+
+    def test_llm_mirror_applies_stand_temperature(self):
+        from backend.services.llm.tools.recipe import calculate_recipe_stats
+
+        def doc(temp_c):
+            timing = {"use": "add_to_whirlpool", "duration": {"value": 20.0, "unit": "min"}}
+            if temp_c is not None:
+                timing["temperature"] = {"value": temp_c, "unit": "C"}
+            return {
+                "batch_size": {"value": 21, "unit": "l"},
+                "original_gravity": {"value": 1.054},
+                "ingredients": {"hop_additions": [{
+                    "name": "Nectaron", "form": "pellet",
+                    "amount": {"value": 30.0, "unit": "g"},
+                    "alpha_acid": {"value": 12.0, "unit": "%"},
+                    "timing": timing,
+                }]},
+            }
+
+        hot = calculate_recipe_stats(doc(None))["ibu"]
+        at_80 = calculate_recipe_stats(doc(80))["ibu"]
+        assert at_80 == pytest.approx(hot * 0.229, rel=0.02)
+
+
 class TestDryHopUnchanged:
     """Dry hops must contribute zero IBU and not get credited by any other
     branch (no double-counting). Pins the audit conclusion for tilt_ui-4te.

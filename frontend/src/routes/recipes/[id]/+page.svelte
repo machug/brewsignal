@@ -137,6 +137,7 @@
 						use: normalizeHopUse(timing.use) as string,
 						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
 						is_extract: Boolean(h.is_extract),
+						whirlpool_temp_c: timing.temperature?.value ?? null,
 					};
 				});
 		const hops = rawHops
@@ -196,6 +197,7 @@
 			return ext!.hops!.map((h) => {
 				const minutes = Number(h.boil_time_minutes ?? 0);
 				const use = String(h.use ?? '');
+				const tempC = h.whirlpool_temp_c as number | null | undefined;
 				return {
 					name: h.name,
 					amount_grams: h.amount_grams ?? 0,
@@ -206,7 +208,11 @@
 					origin: h.origin ?? null,
 					use,
 					boil_time_minutes: minutes,
-					timing: { use, duration: { value: minutes, unit: 'min' } },
+					timing: {
+						use,
+						duration: { value: minutes, unit: 'min' },
+						...(tempC != null ? { temperature: { value: tempC, unit: 'C' } } : {}),
+					},
 				};
 			});
 		}

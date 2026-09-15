@@ -286,7 +286,10 @@
 						// format_extensions. amount_ml is meaningful only when
 						// is_extract is true.
 						is_extract: Boolean(h.is_extract),
-						amount_ml: h.is_extract ? h.amount_ml ?? null : null
+						amount_ml: h.is_extract ? h.amount_ml ?? null : null,
+						// Imported hop stand temperature derates whirlpool IBU
+						// (tilt_ui-2mxj); dropping it here would re-inflate it.
+						whirlpool_temp_c: h.whirlpool_temp_c ?? null
 					}))
 				}
 			};

@@ -41,6 +41,15 @@
 		return timing?.duration?.unit ?? timing?.time?.unit;
 	}
 
+	// Brew-day order for groups: whirlpool happens after the boil ends, so
+	// it must follow the boil group whatever its stand time (tilt_ui-2mxj).
+	// Unlisted uses (fermentation, package, ...) keep their order after these.
+	const HOT_SIDE_ORDER = ['add_to_mash', 'mash', 'first_wort', 'add_to_boil', 'boil', 'whirlpool', 'add_to_whirlpool'];
+	function groupRank(use: string): number {
+		const i = HOT_SIDE_ORDER.indexOf(use.toLowerCase());
+		return i === -1 ? HOT_SIDE_ORDER.length : i;
+	}
+
 	// Group hops by use (Boil, Dry Hop, etc.)
 	let groupedHops = $derived.by(() => {
 		const groups: Record<string, Hop[]> = {};
@@ -55,7 +64,7 @@
 				hopList.sort((a, b) => (getTimingValue(b.timing) || 0) - (getTimingValue(a.timing) || 0));
 			}
 		}
-		return groups;
+		return Object.entries(groups).sort(([a], [b]) => groupRank(a) - groupRank(b));
 	});
 
 	function formatAmount(grams?: number | null): string {
@@ -79,7 +88,8 @@
 			return value === 0 ? 'At packaging' : `${value} ${unit}`;
 		}
 		// Whirlpool - show time and temperature if available
-		if ((use === 'whirlpool' || use === 'Whirlpool') && timing?.temperature?.value) {
+		const isWhirlpool = use === 'whirlpool' || use === 'Whirlpool' || use === 'add_to_whirlpool';
+		if (isWhirlpool && timing?.temperature?.value) {
 			return `${value} ${unit} @ ${timing.temperature.value}°${timing.temperature.unit || 'C'}`;
 		}
 		return `${value} ${unit}`;
@@ -96,6 +106,7 @@
 			'dry_hop': 'Dry Hop',
 			'add_to_fermentation': 'Fermentation',
 			'whirlpool': 'Whirlpool',
+			'add_to_whirlpool': 'Whirlpool',
 			'first_wort': 'First Wort',
 			'mash': 'Mash',
 			'aroma': 'Aroma'
@@ -109,7 +120,7 @@
 	<div class="hop-schedule">
 		<h3>Hop Schedule</h3>
 
-		{#each Object.entries(groupedHops) as [use, hopList]}
+		{#each groupedHops as [use, hopList]}
 			<div class="hop-group">
 				<h4>{formatUse(use)}</h4>
 				<table>

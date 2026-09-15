@@ -74,6 +74,9 @@
 		// restricted to the cold-side allowlist.
 		is_extract?: boolean;
 		amount_ml?: number | null;
+		// Imported hop stand temperature (Celsius). No editor input yet;
+		// carried so saving an imported recipe keeps its whirlpool IBU.
+		whirlpool_temp_c?: number | null;
 	}
 
 	export interface RecipeData {
@@ -308,6 +311,7 @@
 						use: normalizedUse,
 						is_extract: isExtract,
 						amount_ml: isExtract ? h.amount_ml ?? null : null,
+						whirlpool_temp_c: timing.temperature?.value ?? null,
 						form: (h.form || 'pellet') as HopForm,
 						source: 'recipe',
 						is_custom: false,
@@ -399,7 +403,8 @@
 				// (e.g. add_to_package) on a stale row — cast through
 				// the calculator's narrower union here. The filter
 				// above ensures we never actually pass one through.
-				use: h.use as Hop['use']
+				use: h.use as Hop['use'],
+				whirlpool_temp_c: h.whirlpool_temp_c
 			}));
 
 		// Use default yeast if none selected

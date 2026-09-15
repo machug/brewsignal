@@ -226,6 +226,11 @@ export interface HopResponse {
 			value?: number;
 			unit?: string;
 		};
+		// Hop stand temperature on whirlpool additions (Celsius)
+		temperature?: {
+			value?: number;
+			unit?: string;
+		};
 	};
 	format_extensions?: Record<string, unknown>;
 }

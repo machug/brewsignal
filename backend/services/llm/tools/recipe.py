@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
-from backend.services.brewing import NO_EFFICIENCY_TYPES
+from backend.services.brewing import NO_EFFICIENCY_TYPES, hop_stand_temp_factor
 from backend.services.fermentable_colors import enrich_fermentable_colors
 from backend.services.llm.service import LLMService
 
@@ -753,10 +753,11 @@ def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
             total_ibu += ibu_contribution
         elif use in ["whirlpool", "add_to_whirlpool"]:
             # Hop-stand utilization: linear ramp from 5% (true flameout) to a
-            # 20% cap reached around 30 minutes. Mirrors services/brewing.py
-            # (tilt_ui-23u). Keep this in sync when updating the model.
+            # 20% cap reached around 30 minutes, derated by stand temperature.
+            # Mirrors services/brewing.py (tilt_ui-23u, tilt_ui-2mxj). Keep
+            # this in sync when updating the model.
             stand_min = max(0.0, boil_min)
-            utilization = min(0.05 + 0.005 * stand_min, 0.20)
+            utilization = min(0.05 + 0.005 * stand_min, 0.20) * hop_stand_temp_factor(timing)
             ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
             total_ibu += ibu_contribution
         # Dry hops don't contribute significant IBUs

@@ -102,8 +102,9 @@ class BrewfatherToBeerJSONConverter:
 
         # Hops (BeerJSON uses hop_additions)
         if 'hops' in bf_recipe:
+            hopstand_temp = (bf_recipe.get('equipment') or {}).get('hopstandTemperature')
             ingredients['hop_additions'] = [
-                self._convert_hop(h) for h in bf_recipe['hops']
+                self._convert_hop(h, hopstand_temp) for h in bf_recipe['hops']
             ]
 
         # Yeasts/Cultures (BeerJSON uses culture_additions)
@@ -222,7 +223,7 @@ class BrewfatherToBeerJSONConverter:
 
         return ferm
 
-    def _convert_hop(self, bf_hop: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_hop(self, bf_hop: Dict[str, Any], hopstand_temp: Any = None) -> Dict[str, Any]:
         """Convert Brewfather hop to BeerJSON."""
         hop = {
             'name': bf_hop.get('name', ''),
@@ -230,7 +231,7 @@ class BrewfatherToBeerJSONConverter:
             'form': self._map_hop_form(bf_hop.get('type', '')),
             'alpha_acid': self._make_percent(bf_hop.get('alpha')),
             'amount': self._make_mass_g(bf_hop.get('amount')),
-            'timing': self._convert_hop_timing(bf_hop)
+            'timing': self._convert_hop_timing(bf_hop, hopstand_temp)
         }
 
         # Beta acid (if present)
@@ -242,11 +243,12 @@ class BrewfatherToBeerJSONConverter:
 
         return hop
 
-    def _convert_hop_timing(self, bf_hop: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_hop_timing(self, bf_hop: Dict[str, Any], hopstand_temp: Any = None) -> Dict[str, Any]:
         """Convert Brewfather hop use/time/temp to BeerJSON timing object.
 
-        NOTE: BeerJSON 1.0 TimingType schema doesn't allow 'temperature' or 'phase' fields.
-        These are omitted for spec compliance.
+        NOTE: BeerJSON 1.0 TimingType has no 'temperature'. Whirlpool timings
+        carry it anyway as a BrewSignal extension (like add_to_whirlpool) —
+        the IBU calculators derate hop stand utilisation by it (tilt_ui-2mxj).
         """
         use = bf_hop.get('use', 'Boil')
         time = bf_hop.get('time', 0)
@@ -256,19 +258,27 @@ class BrewfatherToBeerJSONConverter:
         # add_to_boil collapses hop-stand additions into zero-time boil
         # additions, which the IBU calculator (correctly) credits with zero
         # utilization. The downstream calculator and serializer already
-        # accept add_to_whirlpool (tilt_ui-53n).
+        # accept add_to_whirlpool (tilt_ui-53n). 'Aroma' is Brewfather's hop
+        # stand use, so it is a whirlpool addition too (tilt_ui-2mxj).
         use_mapping = {
             'Boil': 'add_to_boil',
             'Dry Hop': 'add_to_fermentation',
             'Mash': 'add_to_mash',
             'First Wort': 'add_to_boil',
-            'Aroma': 'add_to_boil',
+            'Aroma': 'add_to_whirlpool',
             'Whirlpool': 'add_to_whirlpool',
         }
 
         timing = {
             'use': use_mapping.get(use, 'add_to_boil')
         }
+
+        if timing['use'] == 'add_to_whirlpool':
+            temp = bf_hop.get('temp')
+            if temp is None:
+                temp = hopstand_temp
+            if temp is not None:
+                timing['temperature'] = {'value': float(temp), 'unit': 'C'}
 
         # Duration
         if use in ['Boil', 'Aroma', 'Whirlpool'] and time and time > 0:

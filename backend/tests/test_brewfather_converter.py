@@ -45,6 +45,28 @@ class TestHopTimingConversion:
         })
         assert hop['timing']['use'] == 'add_to_whirlpool'
 
+    def test_aroma_hop_stand_maps_to_whirlpool_with_temperature(self):
+        """Brewfather 'Aroma' is its hop stand use (tilt_ui-2mxj). It must not
+        land as a boil addition, and the stand temperature must survive."""
+        hop = _convert_single_hop({
+            'name': 'Nectaron', 'use': 'Aroma', 'time': 20, 'temp': 80,
+            'amount': 30, 'alpha': 12.0,
+        })
+        assert hop['timing']['use'] == 'add_to_whirlpool'
+        assert hop['timing']['duration'] == {'value': 20.0, 'unit': 'min'}
+        assert hop['timing']['temperature'] == {'value': 80.0, 'unit': 'C'}
+
+    def test_aroma_hop_without_temp_falls_back_to_equipment_hopstand_temp(self):
+        converter = BrewfatherToBeerJSONConverter()
+        result = converter.convert({
+            'name': 'Test Recipe',
+            'equipment': {'hopstandTemperature': 90.2},
+            'hops': [{'name': 'Mosaic', 'use': 'Aroma', 'time': 20, 'temp': None,
+                      'amount': 20, 'alpha': 12.5}],
+        })
+        hop = result['beerjson']['recipes'][0]['ingredients']['hop_additions'][0]
+        assert hop['timing']['temperature'] == {'value': 90.2, 'unit': 'C'}
+
     def test_boil_hop_still_maps_to_add_to_boil(self):
         """Regular boil additions must continue to map to add_to_boil."""
         hop = _convert_single_hop({

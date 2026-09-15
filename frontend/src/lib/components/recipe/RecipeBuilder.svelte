@@ -114,6 +114,7 @@
 		srmToHex,
 		srmToDescription,
 		calculateBUGU,
+		describeBUGU,
 		type Fermentable,
 		type Hop,
 		type Yeast,
@@ -431,14 +432,7 @@
 	let buguRatio = $derived(() => calculateBUGU(recipeStats().ibu, recipeStats().og));
 
 	// Balance description
-	let balanceDescription = $derived(() => {
-		const ratio = buguRatio();
-		if (ratio < 0.3) return 'Very Malty';
-		if (ratio < 0.5) return 'Malty';
-		if (ratio < 0.7) return 'Balanced';
-		if (ratio < 0.9) return 'Hoppy';
-		return 'Very Bitter';
-	});
+	let balanceDescription = $derived(() => describeBUGU(buguRatio()));
 
 	// Style warnings (proactive validation against BJCP guidelines)
 	interface StyleWarning {

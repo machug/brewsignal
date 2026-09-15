@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { HopVarietyResponse } from '$lib/api';
 	import { fetchHopVarieties, fetchHopOrigins } from '$lib/api';
-	import { calculateIBU_Tinseth, calculateTotalIBU, calculateBUGU, type Hop } from '$lib/brewing';
+	import { calculateIBU_Tinseth, calculateTotalIBU, calculateBUGU, describeBUGU, type Hop } from '$lib/brewing';
 	import { EXTRACT_USE_ALLOWLIST, type HopUse, type HopForm } from './hop-types';
 	import type { RecipeHop } from './RecipeBuilder.svelte';
 
@@ -86,14 +86,7 @@
 	});
 
 	// Describe bitterness balance
-	let bitterDescription = $derived(() => {
-		const ratio = buguRatio();
-		if (ratio < 0.3) return 'Very Sweet';
-		if (ratio < 0.5) return 'Malty';
-		if (ratio < 0.7) return 'Balanced';
-		if (ratio < 0.9) return 'Hoppy';
-		return 'Very Bitter';
-	});
+	let bitterDescription = $derived(() => describeBUGU(buguRatio()));
 
 	// Calculate individual IBU contribution. Extract hops are cold-side
 	// and contribute no IBU via Tinseth.

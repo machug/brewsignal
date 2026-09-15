@@ -243,6 +243,19 @@ export function calculateBUGU(ibu: number, og: number): number {
   return ogPoints > 0 ? ibu / ogPoints : 0;
 }
 
+/**
+ * Balance label for a BU:GU ratio. 'Very Bitter' starts at 1.0, roughly
+ * where IPA bitterness begins; BJCP American Pale Ale spans about 0.5-1.1,
+ * so the old 0.9 cut-off called in-style pales Very Bitter (tilt_ui-idp9).
+ */
+export function describeBUGU(ratio: number): string {
+  if (ratio < 0.3) return 'Very Malty';
+  if (ratio < 0.5) return 'Malty';
+  if (ratio < 0.7) return 'Balanced';
+  if (ratio < 1.0) return 'Hoppy';
+  return 'Very Bitter';
+}
+
 // ============================================================================
 // Color (SRM) Calculations
 // ============================================================================

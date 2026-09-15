@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { srmToHex, srmToDescription, calculateBUGU, calculateCalories } from '$lib/brewing';
+	import { srmToHex, srmToDescription, calculateBUGU, calculateCalories, describeBUGU } from '$lib/brewing';
 
 	interface Props {
 		og?: number;
@@ -42,13 +42,7 @@
 	let calories = $derived(og && fg ? calculateCalories(og, fg) : 0);
 
 	// Balance description based on BU:GU ratio
-	let balanceDesc = $derived.by(() => {
-		if (buguRatio < 0.3) return 'Very Sweet';
-		if (buguRatio < 0.5) return 'Malty';
-		if (buguRatio < 0.7) return 'Balanced';
-		if (buguRatio < 0.9) return 'Hoppy';
-		return 'Very Bitter';
-	});
+	let balanceDesc = $derived(describeBUGU(buguRatio));
 </script>
 
 <div class="stats-panel">

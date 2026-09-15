@@ -85,7 +85,10 @@
 
 		// Dry hop and fermentation additions use day-based timing
 		if (use === 'dry_hop' || use === 'dry hop' || use === 'add_to_fermentation') {
-			return value === 0 ? 'At packaging' : `${value} ${unit}`;
+			if (value === 0) return 'At packaging';
+			// Editor saves store the dry hop day count as minutes (3 days =
+			// 4320 min); show it in days like imported rows (tilt_ui-5z86)
+			return unit === 'min' ? `${+(value / (24 * 60)).toFixed(2)} day` : `${value} ${unit}`;
 		}
 		// Whirlpool - show time and temperature if available
 		const isWhirlpool = use === 'whirlpool' || use === 'Whirlpool' || use === 'add_to_whirlpool';

@@ -162,15 +162,23 @@ class RecipeToBrewfatherConverter:
         if not timing:
             return "Boil", 60
 
+        # Imports store BeerJSON long forms; editor saves store the short
+        # forms (recipe_ingredients._build_hops). Brewfather's hop stand use
+        # is 'Aroma' (tilt_ui-u1iz).
         use_mapping = {
             "add_to_boil": "Boil",
-            "add_to_whirlpool": "Whirlpool",
+            "boil": "Boil",
+            "first_wort": "First Wort",
+            "add_to_whirlpool": "Aroma",
+            "whirlpool": "Aroma",
             "add_to_fermentation": "Dry Hop",
+            "dry_hop": "Dry Hop",
             "add_to_mash": "Mash",
+            "mash": "Mash",
             "add_to_package": "Bottling",
         }
 
-        use = timing.get("use", "add_to_boil")
+        use = str(timing.get("use") or "add_to_boil").lower()
         bf_use = use_mapping.get(use, "Boil")
 
         # Duration
@@ -181,6 +189,15 @@ class RecipeToBrewfatherConverter:
                 time_val = duration.get("value")
             else:
                 time_val = duration
+
+        # Brewfather counts dry hop time in days; editor rows store minutes
+        if (
+            bf_use == "Dry Hop"
+            and time_val is not None
+            and isinstance(duration, dict)
+            and duration.get("unit") == "min"
+        ):
+            time_val = time_val / (24 * 60)
 
         return bf_use, time_val
 

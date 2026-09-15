@@ -264,8 +264,33 @@ class TestHopTimingRoundTrip:
         )
         converter = RecipeToBrewfatherConverter()
         bf_use, bf_time = converter._extract_hop_timing(hop.timing)
-        assert bf_use == 'Whirlpool'
+        # Brewfather's hop stand use is 'Aroma' (tilt_ui-u1iz)
+        assert bf_use == 'Aroma'
         assert bf_time == 20.0
+
+    def test_editor_saved_hops_keep_their_use_through_brewfather(self):
+        """Editor saves write short uses ('whirlpool', 'dry_hop', ...) and a
+        dry hop duration in minutes into recipe_hops. Export must not turn
+        them into boil additions (tilt_ui-u1iz)."""
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        from backend.services.recipe_ingredients import _build_hops
+
+        rows = _build_hops([
+            {'name': 'Magnum', 'amount_grams': 20, 'use': 'first_wort', 'boil_time_minutes': 60},
+            {'name': 'Galaxy', 'amount_grams': 30, 'use': 'boil', 'boil_time_minutes': 15},
+            {'name': 'Nectaron', 'amount_grams': 30, 'use': 'whirlpool', 'boil_time_minutes': 20,
+             'whirlpool_temp_c': 80},
+            {'name': 'Citra', 'amount_grams': 30, 'use': 'dry_hop', 'boil_time_minutes': 4320},
+        ])
+        converter = RecipeToBrewfatherConverter()
+        bf_hops = [converter._convert_hop(h) for h in rows]
+        assert [(h['use'], h['time']) for h in bf_hops] == [
+            ('First Wort', 60.0), ('Boil', 15.0), ('Aroma', 20.0), ('Dry Hop', 3.0),
+        ]
+        reimported = [_convert_single_hop(h)['timing']['use'] for h in bf_hops]
+        assert reimported == ['add_to_boil', 'add_to_boil', 'add_to_whirlpool', 'add_to_fermentation']
 
     def test_hop_stand_temperature_round_trips_through_brewfather(self):
         from backend.models import RecipeHop

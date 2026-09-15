@@ -86,6 +86,10 @@ def _build_hops(rows: list[dict[str, Any]]) -> list[RecipeHop]:
         boil_min = _num(r.get("boil_time_minutes"))
         if boil_min is not None:
             timing["duration"] = {"value": boil_min, "unit": "min"}
+        # Imported hop stand temperature derates whirlpool IBU (tilt_ui-2mxj).
+        stand_temp = _num(r.get("whirlpool_temp_c"))
+        if stand_temp is not None:
+            timing["temperature"] = {"value": stand_temp, "unit": "C"}
         built.append(
             RecipeHop(
                 name=r.get("name") or "Unknown Hop",

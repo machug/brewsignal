@@ -134,3 +134,18 @@ class TestUpdateRebuildsIngredients:
         hops = await _hops(test_db, rid)
         assert [f.name for f in ferms] == ["Pilsner Malt"]
         assert [h.name for h in hops] == ["Saaz"]
+
+
+def test_editor_stand_temperature_survives_into_hop_timing():
+    """Saving an imported hop stand from the editor must keep its temperature
+    in canonical timing, or backend IBU recalculation treats it as boil-hot
+    (tilt_ui-2mxj)."""
+    from backend.services.recipe_ingredients import _build_hops
+
+    hot, stand = _build_hops([
+        {"name": "Mosaic", "amount_grams": 20, "use": "whirlpool", "boil_time_minutes": 20},
+        {"name": "Nectaron", "amount_grams": 30, "use": "whirlpool", "boil_time_minutes": 20,
+         "whirlpool_temp_c": 80},
+    ])
+    assert "temperature" not in hot.timing
+    assert stand.timing["temperature"] == {"value": 80.0, "unit": "C"}

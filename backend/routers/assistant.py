@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import httpx
 import prompty
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -15,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database import get_db
 from backend.models import Config, Style
 from backend.services.llm import LLMConfig, LLMProvider, LLMService
+from backend.services.llm.config import DEFAULT_MODELS
+from backend.services.llm.openrouter import fetch_openrouter_models, resolve_openrouter_model
 
 # Prompts directory
 PROMPTS_DIR = Path(__file__).parent.parent / "services" / "llm" / "prompts"
@@ -97,10 +98,15 @@ async def get_llm_config(db: AsyncSession) -> LLMConfig:
     except ValueError:
         provider = LLMProvider.LOCAL
 
+    model = get_value("ai_model") or None
+    if provider == LLMProvider.OPENROUTER and not model and get_value("ai_enabled", False):
+        # "Default" must point at a model OpenRouter still serves
+        model = await resolve_openrouter_model(DEFAULT_MODELS[LLMProvider.OPENROUTER])
+
     return LLMConfig(
         enabled=get_value("ai_enabled", False),
         provider=provider,
-        model=get_value("ai_model") or None,
+        model=model,
         api_key=get_value("ai_api_key") or None,
         base_url=get_value("ai_base_url") or None,
         temperature=get_value("ai_temperature", 0.7),
@@ -153,26 +159,15 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def fetch_openrouter_models() -> list[dict]:
-    """Live OpenRouter catalogue, limited to models that support tool calling
-    (the assistant needs function calling). Public endpoint, no key needed."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get("https://openrouter.ai/api/v1/models")
-        resp.raise_for_status()
-    models = [
-        {"id": m["id"], "name": m.get("name") or m["id"], "description": ""}
-        for m in resp.json().get("data", [])
-        if "tools" in (m.get("supported_parameters") or [])
-    ]
-    return sorted(models, key=lambda m: m["name"].lower())
-
-
 @public_router.get("/models/{provider}", response_model=ModelsResponse)
 async def get_models(provider: str) -> ModelsResponse:
     """Get available models for a provider."""
     if provider == "openrouter":
         try:
-            return ModelsResponse(provider=provider, models=await fetch_openrouter_models())
+            models = await fetch_openrouter_models()
+            return ModelsResponse(
+                provider=provider, models=sorted(models, key=lambda m: m["name"].lower())
+            )
         except Exception as e:
             logger.warning(f"OpenRouter model fetch failed, using static list: {e}")
     # Define popular models per provider

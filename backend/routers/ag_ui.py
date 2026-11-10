@@ -27,6 +27,7 @@ from sqlalchemy.orm import selectinload
 from backend.database import get_db
 from backend.auth import AuthUser, require_auth
 from backend.routers.assistant import get_llm_config
+from backend.services.llm.openrouter import resolve_openrouter_model
 from backend.services.llm import LLMService
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
 from backend.services.llm.context import prune_messages_if_needed, context_usage_info, get_token_budget, count_context_tokens
@@ -471,6 +472,10 @@ async def _summarize_thread_title(
             # Use main provider's fast model
             provider_str = config._provider_str()
             fast_model = FAST_MODELS_BY_PROVIDER.get(provider_str, "gpt-4o-mini")
+            if provider_str == "openrouter":
+                fast_model = "openrouter/" + await resolve_openrouter_model(
+                    fast_model.removeprefix("openrouter/")
+                )
             kwargs = {
                 "model": fast_model,
                 "messages": rendered,

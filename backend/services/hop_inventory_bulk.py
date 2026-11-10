@@ -7,6 +7,7 @@ against the hop library so variety spelling and alpha acid come from there.
 
 import difflib
 import hashlib
+import unicodedata
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -42,9 +43,16 @@ def hop_owner_condition(user_id: Optional[str]):
     return HopInventory.user_id == user_id
 
 
+def _norm(name: str) -> str:
+    """Comparison form of a hop name: trimmed, case-folded, accents removed,
+    so 'Hallertau Mittelfruh' equals 'Hallertau Mittelfrüh'."""
+    decomposed = unicodedata.normalize("NFKD", name.strip())
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+
+
 def _resolve(name: str, library: dict[str, HopVariety]) -> tuple[Optional[HopVariety], bool]:
     """Library variety for a name, and whether it was a fuzzy (non-exact) match."""
-    key = name.strip().lower()
+    key = _norm(name)
     if key in library:
         return library[key], False
     close = difflib.get_close_matches(key, library.keys(), n=1, cutoff=0.85)
@@ -55,7 +63,7 @@ def _key(name: str, library: dict[str, HopVariety]) -> str:
     """Grouping key shared by pasted names and stock rows, so 'Tettnanger'
     stock and a pasted 'Tettnang' land on the same library variety."""
     var, _ = _resolve(name, library)
-    return (var.name if var else name.strip()).lower()
+    return _norm(var.name if var else name)
 
 
 def _alpha(v: HopVariety) -> Optional[float]:
@@ -83,14 +91,14 @@ async def bulk_update_hops(
     no longer matches the current stock.
     """
     library = {
-        v.name.lower(): v for v in (await db.execute(select(HopVariety))).scalars()
+        _norm(v.name): v for v in (await db.execute(select(HopVariety))).scalars()
     }
 
     wanted: dict[str, dict[str, Any]] = {}
     for item in items:
         var, fuzzy = _resolve(item.name, library)
         variety = var.name if var else item.name.strip()
-        entry = wanted.setdefault(variety.lower(), {
+        entry = wanted.setdefault(_norm(variety), {
             "variety": variety,
             "amount_grams": 0.0,
             "alpha_acid_percent": _alpha(var) if var else None,
@@ -121,11 +129,11 @@ async def bulk_update_hops(
     # there and give the others their own key, so they are never merged.
     for key in list(existing):
         group = existing[key]
-        if len({r.variety.strip().lower() for r in group}) > 1:
-            existing[key] = [r for r in group if r.variety.strip().lower() == key]
+        if len({_norm(r.variety) for r in group}) > 1:
+            existing[key] = [r for r in group if _norm(r.variety) == key]
             for r in group:
-                if r.variety.strip().lower() != key:
-                    existing.setdefault(r.variety.strip().lower(), []).append(r)
+                if _norm(r.variety) != key:
+                    existing.setdefault(_norm(r.variety), []).append(r)
             if not existing[key]:
                 del existing[key]
 
@@ -145,7 +153,7 @@ async def bulk_update_hops(
             continue
         first, extras = have[0], have[1:]
         total = sum(r.amount_grams for r in have)
-        same_name = all(r.variety.strip().lower() == want["variety"].lower() for r in have)
+        same_name = all(_norm(r.variety) == _norm(want["variety"]) for r in have)
         if not extras and same_name and abs(total - want["amount_grams"]) <= 1e-9:
             unchanged.append(first)  # a guessed name match is listed as an update so the card warns
         else:
@@ -157,7 +165,7 @@ async def bulk_update_hops(
 
     def guessed_as(row: HopInventory, variety: Optional[str]) -> Optional[str]:
         """Listed hop a stock row was fuzzy-matched to, shown on the card."""
-        return variety if variety and row.variety.strip().lower() != variety.lower() else None
+        return variety if variety and _norm(row.variety) != _norm(variety) else None
 
     plan = {
         "replace": replace,

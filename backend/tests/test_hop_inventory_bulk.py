@@ -252,3 +252,17 @@ async def test_guessed_match_with_same_amount_still_flagged(test_db: AsyncSessio
     )
     assert plan["unchanged"] == []
     assert [(u["variety"], u["guessed_as"]) for u in plan["update"]] == [("Solaris", "Polaris")]
+
+
+@pytest.mark.asyncio
+async def test_accents_match_exactly(test_db: AsyncSession):
+    """'Mittelfruh' (no umlaut) is an exact match, not a guess, in list and stock."""
+    await _library(test_db, "Hallertau Mittelfrüh", 3.0, 5.5)
+    test_db.add(HopInventory(variety="Hallertau Mittelfruh", amount_grams=20, user_id=None))
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="hallertau Mittelfruh", amount_grams=50)], replace=True, dry_run=True
+    )
+    assert plan["add"] == [] and plan["remove"] == []
+    [u] = plan["update"]
+    assert (u["from_grams"], u["to_grams"], u["fuzzy_from"], u["guessed_as"]) == (20, 50, [], None)

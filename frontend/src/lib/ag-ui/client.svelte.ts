@@ -41,6 +41,10 @@ export function createAgentState() {
 		// Connection
 		status: 'disconnected' as ConnectionStatus,
 		error: null as string | null,
+		// True for the whole lifetime of a run request. status flips to
+		// 'connected' on RUN_STARTED, so it can't signal "agent is working"
+		// through tool calls and model reasoning.
+		running: false,
 
 		// Thread info
 		threadId: null as string | null,
@@ -78,7 +82,7 @@ export function createAgentState() {
 	// Derived state
 	const isStreaming = $derived(state.streamingMessageId !== null);
 	const isConnected = $derived(state.status === 'connected');
-	const isRunning = $derived(state.status === 'connecting' || isStreaming);
+	const isRunning = $derived(state.running || state.status === 'connecting' || isStreaming);
 
 	// Get all messages including streaming
 	const allMessages = $derived(() => {
@@ -320,6 +324,7 @@ export function createAgentState() {
 
 		// Internal state mutation (for agent client)
 		_setStatus(status: ConnectionStatus) { state.status = status; },
+		_setRunning(running: boolean) { state.running = running; },
 		_setError(error: string | null) { state.error = error; },
 		_setThreadId(threadId: string) { state.threadId = threadId; },
 		_addMessage(message: Message) { state.messages.push(message); }
@@ -361,6 +366,7 @@ export function createAgentClient(config: {
 
 		abortController = new AbortController();
 		agentState._setStatus('connecting');
+		agentState._setRunning(true);
 		agentState._setError(null);
 
 		try {
@@ -424,6 +430,7 @@ export function createAgentClient(config: {
 				agentState._setError(err instanceof Error ? err.message : 'Unknown error');
 			}
 		} finally {
+			agentState._setRunning(false);
 			abortController = null;
 		}
 	}

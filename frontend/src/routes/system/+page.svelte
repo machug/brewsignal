@@ -464,6 +464,8 @@
 			const response = await authFetch(`/api/assistant/models/${provider}`);
 			if (response.ok) {
 				const data = await response.json();
+				// Provider may have changed while this request was in flight
+				if (provider !== aiProvider) return;
 				aiModels = data.models;
 			}
 		} catch (e) {

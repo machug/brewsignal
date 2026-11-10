@@ -43,7 +43,7 @@ DEFAULT_MODELS = {
     LLMProvider.GROQ: "llama-3.1-8b-instant",
     LLMProvider.DEEPSEEK: "deepseek-chat",
     LLMProvider.HUGGINGFACE: "meta-llama/Llama-3.1-8B-Instruct",
-    LLMProvider.OPENROUTER: "anthropic/claude-sonnet-4",
+    LLMProvider.OPENROUTER: "anthropic/claude-sonnet-4.5",
 }
 
 # Model prefixes for LiteLLM

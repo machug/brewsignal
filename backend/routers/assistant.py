@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import prompty
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -152,9 +153,28 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def fetch_openrouter_models() -> list[dict]:
+    """Live OpenRouter catalogue, limited to models that support tool calling
+    (the assistant needs function calling). Public endpoint, no key needed."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get("https://openrouter.ai/api/v1/models")
+        resp.raise_for_status()
+    models = [
+        {"id": m["id"], "name": m.get("name") or m["id"], "description": ""}
+        for m in resp.json().get("data", [])
+        if "tools" in (m.get("supported_parameters") or [])
+    ]
+    return sorted(models, key=lambda m: m["name"].lower())
+
+
 @public_router.get("/models/{provider}", response_model=ModelsResponse)
 async def get_models(provider: str) -> ModelsResponse:
     """Get available models for a provider."""
+    if provider == "openrouter":
+        try:
+            return ModelsResponse(provider=provider, models=await fetch_openrouter_models())
+        except Exception as e:
+            logger.warning(f"OpenRouter model fetch failed, using static list: {e}")
     # Define popular models per provider
     models_by_provider = {
         "hailo": [
@@ -203,8 +223,8 @@ async def get_models(provider: str) -> ModelsResponse:
             {"id": "mistralai/Mistral-7B-Instruct-v0.3", "name": "Mistral 7B", "description": "Strong reasoning"},
         ],
         "openrouter": [
-            {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "description": "Anthropic via OpenRouter"},
-            {"id": "anthropic/claude-haiku-4", "name": "Claude Haiku 4", "description": "Fast Anthropic via OpenRouter"},
+            {"id": "anthropic/claude-sonnet-4.5", "name": "Claude Sonnet 4.5", "description": "Anthropic via OpenRouter"},
+            {"id": "anthropic/claude-haiku-4.5", "name": "Claude Haiku 4.5", "description": "Fast Anthropic via OpenRouter"},
             {"id": "openai/gpt-4o", "name": "GPT-4o", "description": "OpenAI via OpenRouter"},
             {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash", "description": "Google via OpenRouter"},
             {"id": "deepseek/deepseek-chat-v3", "name": "DeepSeek V3", "description": "DeepSeek via OpenRouter"},

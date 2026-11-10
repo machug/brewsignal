@@ -334,8 +334,12 @@ TOOL_DEFINITIONS = [
                 "NEVER saves anything: the app shows the user a confirm card where they choose "
                 "'Replace all hops' (removes stock not in the list) or 'Add & update only'. "
                 "After calling it, briefly summarise the plan (adds, updates, removals, names "
-                "not found in the library) and tell the user to confirm on the card. Do not say "
-                "the inventory was updated."
+                "not found in the library, and any name the plan guessed via fuzzy_from) and "
+                "tell the user to confirm on the card. You cannot apply changes yourself: never "
+                "say the inventory was updated, and if the user confirms in text (e.g. 'yes, "
+                "replace all'), tell them to press the button on the card instead of calling "
+                "this tool again. Call it again only if the list changes, or if the user asks for "
+                "a fresh plan (for example after the card said their inventory changed)."
             ),
             "parameters": {
                 "type": "object",
@@ -1417,10 +1421,12 @@ async def execute_tool(
         return await get_style_by_name(db, **arguments)
     # Inventory tools - pass user_id for multi-tenant isolation
     elif tool_name == "update_hop_inventory":
-        from backend.services.hop_inventory_bulk import BulkHopItem, bulk_update_hops
-        items = [BulkHopItem(**i) for i in arguments.get("items", [])]
-        if not items:
-            return {"error": "No hops given."}
+        from pydantic import ValidationError
+        from backend.services.hop_inventory_bulk import BulkHopRequest, bulk_update_hops
+        try:
+            items = BulkHopRequest(items=arguments.get("items", [])).items
+        except ValidationError as e:
+            return {"error": f"Invalid hop list (1-200 items, amounts >= 0 g): {e.errors()[0]['msg']}"}
         # Plan with replace=True so the card can show what a full replace removes;
         # the card applies either mode via POST /api/inventory/hops/bulk.
         plan = await bulk_update_hops(db, user_id, items, replace=True, dry_run=True)

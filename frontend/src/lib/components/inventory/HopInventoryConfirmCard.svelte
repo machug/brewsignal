@@ -3,9 +3,23 @@
 
 	// Plan returned by the assistant's update_hop_inventory tool (preview only).
 	interface Plan {
-		add: { variety: string; amount_grams: number; in_library: boolean }[];
-		update: { variety: string; from_grams: number; to_grams: number }[];
-		remove: { variety: string; amount_grams: number; replace_only: boolean }[];
+		add: { variety: string; amount_grams: number; in_library: boolean; fuzzy_from: string[] }[];
+		update: {
+			variety: string;
+			from_grams: number;
+			to_grams: number;
+			fuzzy_from: string[];
+			guessed_as?: string | null;
+		}[];
+		remove: {
+			variety: string;
+			amount_grams: number;
+			crop_year: number | null;
+			form: string;
+			reason: 'not_listed' | 'zero' | 'merged';
+			replace_only: boolean;
+			guessed_as?: string | null;
+		}[];
 		unchanged: { variety: string }[];
 		not_in_library: string[];
 		stock_version: string;
@@ -14,11 +28,15 @@
 
 	let { plan }: { plan: Plan } = $props();
 
-	let status = $state<'pending' | 'saving' | 'done' | 'cancelled' | 'error'>('pending');
+	// 'stale' = server refused (409): stock changed, only a fresh preview can help.
+	// 'error' = other failure: buttons stay so the user can retry.
+	let status = $state<'pending' | 'saving' | 'done' | 'cancelled' | 'error' | 'stale'>('pending');
 	let message = $state('');
 
 	const replaceOnly = $derived(plan.remove.filter((r) => r.replace_only).length);
 	const g = (n: number) => `${Math.round(n * 10) / 10} g`;
+	const reasonText = { not_listed: 'only if replacing', zero: 'listed as 0 g', merged: 'merged into one row' };
+	const rowDetail = (r: Plan['remove'][number]) => [r.crop_year, r.form].filter(Boolean).join(', ');
 
 	async function apply(replace: boolean) {
 		status = 'saving';
@@ -34,7 +52,7 @@
 				})
 			});
 			if (res.status === 409) {
-				status = 'error';
+				status = 'stale';
 				message = (await res.json()).detail;
 				return;
 			}
@@ -54,13 +72,13 @@
 
 	<ul class="changes">
 		{#each plan.add as a}
-			<li><span class="tag add">Add</span>{a.variety} <span class="num">{g(a.amount_grams)}</span>{#if !a.in_library}<span class="warn"> · not in library</span>{/if}</li>
+			<li><span class="tag add">Add</span>{a.variety} <span class="num">{g(a.amount_grams)}</span>{#if !a.in_library}<span class="warn"> · not in library</span>{/if}{#if a.fuzzy_from?.length}<span class="warn"> · you typed “{a.fuzzy_from.join('”, “')}”</span>{/if}</li>
 		{/each}
 		{#each plan.update as u}
-			<li><span class="tag upd">Update</span>{u.variety} <span class="num">{g(u.from_grams)} → {g(u.to_grams)}</span></li>
+			<li><span class="tag upd">Update</span>{u.variety} <span class="num">{g(u.from_grams)} → {g(u.to_grams)}</span>{#if u.fuzzy_from?.length}<span class="warn"> · you typed “{u.fuzzy_from.join('”, “')}”</span>{/if}{#if u.guessed_as}<span class="warn"> · guessed to be {u.guessed_as}</span>{/if}</li>
 		{/each}
 		{#each plan.remove as r}
-			<li class="removal"><span class="tag del">Remove</span>{r.variety} <span class="num">{g(r.amount_grams)}</span>{#if r.replace_only}<span class="muted"> · only if replacing</span>{:else}<span class="muted"> · listed as 0 g</span>{/if}</li>
+			<li class="removal"><span class="tag del">Remove</span>{r.variety}{#if rowDetail(r)}<span class="muted"> ({rowDetail(r)})</span>{/if} <span class="num">{g(r.amount_grams)}</span><span class="muted"> · {reasonText[r.reason] ?? (r.replace_only ? reasonText.not_listed : reasonText.zero)}</span>{#if r.guessed_as}<span class="warn"> · guessed to be {r.guessed_as}</span>{/if}</li>
 		{/each}
 	</ul>
 	{#if plan.add.length}
@@ -70,7 +88,10 @@
 		<p class="muted">No change: {plan.unchanged.map((u) => u.variety).join(', ')}</p>
 	{/if}
 
-	{#if status === 'pending'}
+	{#if status === 'error'}
+		<p class="error">{message}</p>
+	{/if}
+	{#if status === 'pending' || status === 'error'}
 		<p class="question">Replace all your existing hops with this list?</p>
 		<div class="actions">
 			<button class="primary" onclick={() => apply(true)}>
@@ -86,7 +107,7 @@
 	{:else if status === 'cancelled'}
 		<p class="muted">Cancelled. Nothing was changed.</p>
 	{:else}
-		<p class={status === 'error' ? 'error' : 'ok'}>{message}</p>
+		<p class={status === 'stale' ? 'error' : 'ok'}>{message}</p>
 	{/if}
 </div>
 

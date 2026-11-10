@@ -153,6 +153,11 @@ async def bulk_update_hop_inventory(
     Used by the assistant chat's confirm card. replace=True removes stock
     that is not in the list.
     """
+    if not request.dry_run and not request.expected_stock_version:
+        raise HTTPException(
+            status_code=422,
+            detail="expected_stock_version (from a preview) is required to apply changes.",
+        )
     try:
         return await bulk_update_hops(
             db, user.user_id, request.items, replace=request.replace, dry_run=request.dry_run,

@@ -55,9 +55,14 @@ async def test_dry_run_plans_replace_without_writing(test_db: AsyncSession):
     assert plan["applied"] is False
     assert [a["variety"] for a in plan["add"]] == ["Zorbatron"]
     assert plan["not_in_library"] == ["Zorbatron"]
-    assert {(u["variety"], u["to_grams"]) for u in plan["update"]} == {("Citra", 100), ("Cascade", 50)}
+    assert {(u["variety"], u["from_grams"], u["to_grams"]) for u in plan["update"]} == {
+        ("Citra", 30, 100),  # from = total of both Citra rows
+        ("Cascade", 40, 50),
+    }
     removed = sorted((r["variety"], r["amount_grams"]) for r in plan["remove"])
-    assert removed == [("Amarillo", 95), ("Citra", 20)]  # not listed + duplicate Citra row
+    assert removed == [("Amarillo", 95), ("Citra", 20)]  # not listed + Citra row merged into first
+    reasons = {r["variety"]: r["reason"] for r in plan["remove"]}
+    assert reasons == {"Amarillo": "not_listed", "Citra": "merged"}
     assert len((await _stock(test_db))[1]) == 5  # nothing written
 
 
@@ -80,9 +85,11 @@ async def test_apply_merge_keeps_unlisted_stock(test_db: AsyncSession):
     plan = await bulk_update_hops(
         test_db, "local", [BulkHopItem(name="Citra", amount_grams=5)], replace=False, dry_run=False
     )
-    assert plan["remove"] == []
-    _, rows = await _stock(test_db)
-    assert sorted(r.variety for r in rows) == ["Amarillo", "Cascade", "Citra", "Citra", "Mosaic"]
+    # Listed Citra is the new total: its two rows merge; unlisted hops stay.
+    assert [(r["variety"], r["reason"]) for r in plan["remove"]] == [("Citra", "merged")]
+    by_key, rows = await _stock(test_db)
+    assert sorted(r.variety for r in rows) == ["Amarillo", "Cascade", "Citra", "Mosaic"]
+    assert by_key[("Citra", None)].amount_grams == 5
 
 
 @pytest.mark.asyncio
@@ -92,7 +99,10 @@ async def test_new_hop_gets_library_alpha(test_db: AsyncSession):
     plan = await bulk_update_hops(
         test_db, "local", [BulkHopItem(name="CITRA ", amount_grams=28)], replace=False, dry_run=True
     )
-    assert plan["add"] == [{"variety": "Citra", "amount_grams": 28, "alpha_acid_percent": 12.0, "in_library": True}]
+    assert plan["add"] == [{
+        "variety": "Citra", "amount_grams": 28, "alpha_acid_percent": 12.0,
+        "in_library": True, "fuzzy_from": [],
+    }]
 
 
 @pytest.mark.asyncio
@@ -116,7 +126,12 @@ async def test_bulk_endpoint_defaults_to_dry_run_then_applies(client: AsyncClien
     assert preview.status_code == 200 and preview.json()["applied"] is False
     assert len((await _stock(test_db))[1]) == 5
 
-    applied = await client.post("/api/inventory/hops/bulk", json={**body, "dry_run": False})
+    no_version = await client.post("/api/inventory/hops/bulk", json={**body, "dry_run": False})
+    assert no_version.status_code == 422  # apply needs the preview's stock_version
+
+    applied = await client.post("/api/inventory/hops/bulk", json={
+        **body, "dry_run": False, "expected_stock_version": preview.json()["stock_version"],
+    })
     assert applied.status_code == 200 and applied.json()["applied"] is True
     _, rows = await _stock(test_db)
     assert sorted(r.variety for r in rows) == ["Citra", "Mosaic"]
@@ -162,3 +177,78 @@ async def test_apply_refused_when_stock_changed_since_preview(client: AsyncClien
     ok = await client.post("/api/inventory/hops/bulk",
                            json={**body, "dry_run": False, "expected_stock_version": fresh})
     assert ok.status_code == 200 and ok.json()["applied"] is True
+
+
+@pytest.mark.asyncio
+async def test_stock_spelling_matches_library_name(test_db: AsyncSession):
+    """Stock 'Tettnanger' and pasted 'Tettnang' are the same hop (no duplicate add)."""
+    await _library(test_db, "Tettnang", 3.5, 5.5)
+    test_db.add(HopInventory(variety="Tettnanger", amount_grams=50, crop_year=2023, user_id=None))
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Tettnang", amount_grams=80)], replace=False, dry_run=True
+    )
+    assert plan["add"] == []
+    assert [(u["variety"], u["from_grams"], u["to_grams"]) for u in plan["update"]] == [("Tettnanger", 50, 80)]
+
+
+@pytest.mark.asyncio
+async def test_fuzzy_match_is_reported(test_db: AsyncSession):
+    await _library(test_db, "Citra", 11.0, 13.0)
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Citraa", amount_grams=10)], replace=False, dry_run=True
+    )
+    assert plan["add"][0]["variety"] == "Citra"
+    assert plan["add"][0]["fuzzy_from"] == ["Citraa"]
+
+
+@pytest.mark.asyncio
+async def test_tool_rejects_oversized_list(test_db: AsyncSession):
+    items = [{"name": f"Hop {i}", "amount_grams": 1} for i in range(201)]
+    result = await execute_tool(test_db, "update_hop_inventory", {"items": items}, user_id="local")
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_distinct_stock_names_never_merged_by_fuzzy_match(test_db: AsyncSession):
+    """Stock Solaris + Polaris (library has only Polaris): updating Polaris leaves Solaris alone."""
+    await _library(test_db, "Polaris", 18.0, 23.0)
+    test_db.add_all([
+        HopInventory(variety="Solaris", amount_grams=40, user_id=None),
+        HopInventory(variety="Polaris", amount_grams=30, user_id=None),
+    ])
+    await test_db.commit()
+    for grams in (60, 0):
+        plan = await bulk_update_hops(
+            test_db, "local", [BulkHopItem(name="Polaris", amount_grams=grams)], replace=False, dry_run=True
+        )
+        touched = {u["variety"] for u in plan["update"]} | {r["variety"] for r in plan["remove"]}
+        assert touched == {"Polaris"}
+
+
+@pytest.mark.asyncio
+async def test_sole_fuzzy_stock_match_is_flagged(test_db: AsyncSession):
+    await _library(test_db, "Polaris", 18.0, 23.0)
+    test_db.add(HopInventory(variety="Solaris", amount_grams=40, user_id=None))
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Polaris", amount_grams=0)], replace=False, dry_run=True
+    )
+    assert [(r["variety"], r["guessed_as"]) for r in plan["remove"]] == [("Solaris", "Polaris")]
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Polaris", amount_grams=60)], replace=False, dry_run=True
+    )
+    assert [(u["variety"], u["guessed_as"]) for u in plan["update"]] == [("Solaris", "Polaris")]
+
+
+@pytest.mark.asyncio
+async def test_guessed_match_with_same_amount_still_flagged(test_db: AsyncSession):
+    await _library(test_db, "Polaris", 18.0, 23.0)
+    test_db.add(HopInventory(variety="Solaris", amount_grams=40, user_id=None))
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Polaris", amount_grams=40)], replace=False, dry_run=True
+    )
+    assert plan["unchanged"] == []
+    assert [(u["variety"], u["guessed_as"]) for u in plan["update"]] == [("Solaris", "Polaris")]

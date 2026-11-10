@@ -90,13 +90,17 @@
 		}
 	}
 	let restoredHopPlan = $state<{ id: string; plan: any } | null>(null);
-	let hopInventoryPlans = $derived([
-		...(restoredHopPlan ? [restoredHopPlan] : []),
-		...toolCallsArray.flatMap((tc) => {
-			const plan = tc.name === 'update_hop_inventory' ? parseHopPlan(tc.result) : null;
-			return plan ? [{ id: tc.id, plan }] : [];
-		})
-	]);
+	// Only the newest plan gets a card: an older card for a since-corrected list
+	// would share the same stock_version and could apply outdated amounts.
+	let hopInventoryPlans = $derived(
+		[
+			...(restoredHopPlan ? [restoredHopPlan] : []),
+			...toolCallsArray.flatMap((tc) => {
+				const plan = tc.name === 'update_hop_inventory' ? parseHopPlan(tc.result) : null;
+				return plan ? [{ id: tc.id, plan }] : [];
+			})
+		].slice(-1)
+	);
 
 	// toolCalls accumulates across the conversation (debug panel shows all),
 	// so only look at calls made since this run started.

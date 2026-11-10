@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { renderMarkdown } from '$lib/markdown';
+	import HopInventoryConfirmCard from '$lib/components/inventory/HopInventoryConfirmCard.svelte';
 	import { useAgent } from '$lib/ag-ui';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -75,6 +76,19 @@
 
 	// Status line under the typing dots, so a long run (tools + model
 	// reasoning can take a minute) visibly shows progress.
+	// Confirm cards for hop inventory previews from the update_hop_inventory tool
+	let hopInventoryPlans = $derived(
+		toolCallsArray.flatMap((tc) => {
+			if (tc.name !== 'update_hop_inventory' || !tc.result) return [];
+			try {
+				const plan = JSON.parse(tc.result);
+				return plan?.confirmation ? [{ id: tc.id, plan }] : [];
+			} catch {
+				return [];
+			}
+		})
+	);
+
 	// toolCalls accumulates across the conversation (debug panel shows all),
 	// so only look at calls made since this run started.
 	let runToolStart = $state(0);
@@ -403,6 +417,10 @@
 							{/if}
 						</div>
 					</div>
+				{/each}
+
+				{#each hopInventoryPlans as card (card.id)}
+					<HopInventoryConfirmCard plan={card.plan} />
 				{/each}
 
 				{#if agent.isRunning && !agent.isStreaming}

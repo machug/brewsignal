@@ -1,0 +1,164 @@
+"""Bulk hop inventory update from a pasted list (tilt_ui-86wt)."""
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.models import HopInventory, HopVariety
+from backend.services.hop_inventory_bulk import BulkHopItem, bulk_update_hops
+from backend.services.llm.tools import execute_tool
+
+
+async def _library(db: AsyncSession, name: str, lo: float, hi: float):
+    """Get-or-create a library row (the test DB may already seed the library)."""
+    v = (await db.execute(select(HopVariety).where(HopVariety.name == name))).scalar_one_or_none()
+    if v is None:
+        v = HopVariety(name=name)
+        db.add(v)
+    v.alpha_acid_low, v.alpha_acid_high = lo, hi
+    await db.flush()
+
+
+async def _seed(db: AsyncSession):
+    for name, lo, hi in (("Citra", 11.0, 13.0), ("Cascade", 5.0, 7.0), ("Amarillo", 8.0, 11.0)):
+        await _library(db, name, lo, hi)
+    db.add_all([
+        # Stock: Cascade kept (amount changes), Amarillo not in list, Citra twice
+        HopInventory(variety="Cascade", amount_grams=40, storage_location="Freezer", user_id=None),
+        HopInventory(variety="Amarillo", amount_grams=95, user_id=None),
+        HopInventory(variety="Citra", amount_grams=10, user_id=None),
+        HopInventory(variety="Citra", amount_grams=20, user_id=None),
+        # Another tenant's stock must never be touched
+        HopInventory(variety="Mosaic", amount_grams=500, user_id="other-user"),
+    ])
+    await db.commit()
+
+
+ITEMS = [
+    BulkHopItem(name="citra", amount_grams=100),
+    BulkHopItem(name="Cascade", amount_grams=30),
+    BulkHopItem(name="Cascade", amount_grams=20),   # duplicates are summed
+    BulkHopItem(name="Zorbatron", amount_grams=40),   # not in library (typos like "Galaxxy" fuzzy-match to Galaxy)
+]
+
+
+async def _stock(db):
+    rows = (await db.execute(select(HopInventory).order_by(HopInventory.id))).scalars().all()
+    return {(r.variety, r.user_id): r for r in rows}, rows
+
+
+@pytest.mark.asyncio
+async def test_dry_run_plans_replace_without_writing(test_db: AsyncSession):
+    await _seed(test_db)
+    plan = await bulk_update_hops(test_db, "local", ITEMS, replace=True, dry_run=True)
+
+    assert plan["applied"] is False
+    assert [a["variety"] for a in plan["add"]] == ["Zorbatron"]
+    assert plan["not_in_library"] == ["Zorbatron"]
+    assert {(u["variety"], u["to_grams"]) for u in plan["update"]} == {("Citra", 100), ("Cascade", 50)}
+    removed = sorted((r["variety"], r["amount_grams"]) for r in plan["remove"])
+    assert removed == [("Amarillo", 95), ("Citra", 20)]  # not listed + duplicate Citra row
+    assert len((await _stock(test_db))[1]) == 5  # nothing written
+
+
+@pytest.mark.asyncio
+async def test_apply_replace(test_db: AsyncSession):
+    await _seed(test_db)
+    await bulk_update_hops(test_db, "local", ITEMS, replace=True, dry_run=False)
+    by_key, rows = await _stock(test_db)
+
+    assert sorted(r.variety for r in rows if r.user_id != "other-user") == ["Cascade", "Citra", "Zorbatron"]
+    assert by_key[("Cascade", None)].amount_grams == 50
+    assert by_key[("Cascade", None)].storage_location == "Freezer"  # kept on update
+    assert by_key[("Citra", None)].amount_grams == 100
+    assert by_key[("Mosaic", "other-user")].amount_grams == 500  # other tenant untouched
+
+
+@pytest.mark.asyncio
+async def test_apply_merge_keeps_unlisted_stock(test_db: AsyncSession):
+    await _seed(test_db)
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="Citra", amount_grams=5)], replace=False, dry_run=False
+    )
+    assert plan["remove"] == []
+    _, rows = await _stock(test_db)
+    assert sorted(r.variety for r in rows) == ["Amarillo", "Cascade", "Citra", "Citra", "Mosaic"]
+
+
+@pytest.mark.asyncio
+async def test_new_hop_gets_library_alpha(test_db: AsyncSession):
+    await _library(test_db, "Citra", 11.0, 13.0)
+    await test_db.commit()
+    plan = await bulk_update_hops(
+        test_db, "local", [BulkHopItem(name="CITRA ", amount_grams=28)], replace=False, dry_run=True
+    )
+    assert plan["add"] == [{"variety": "Citra", "amount_grams": 28, "alpha_acid_percent": 12.0, "in_library": True}]
+
+
+@pytest.mark.asyncio
+async def test_tool_never_writes_and_returns_confirmation(test_db: AsyncSession):
+    await _seed(test_db)
+    result = await execute_tool(
+        test_db, "update_hop_inventory",
+        {"items": [{"name": "Citra", "amount_grams": 100}]}, user_id="local",
+    )
+    assert result["applied"] is False and result["replace"] is True
+    assert result["confirmation"]["kind"] == "hop_inventory"
+    assert len((await _stock(test_db))[1]) == 5
+
+
+@pytest.mark.asyncio
+async def test_bulk_endpoint_defaults_to_dry_run_then_applies(client: AsyncClient, test_db: AsyncSession):
+    await _seed(test_db)
+    body = {"items": [{"name": "Citra", "amount_grams": 100}], "replace": True}
+
+    preview = await client.post("/api/inventory/hops/bulk", json=body)
+    assert preview.status_code == 200 and preview.json()["applied"] is False
+    assert len((await _stock(test_db))[1]) == 5
+
+    applied = await client.post("/api/inventory/hops/bulk", json={**body, "dry_run": False})
+    assert applied.status_code == 200 and applied.json()["applied"] is True
+    _, rows = await _stock(test_db)
+    assert sorted(r.variety for r in rows) == ["Citra", "Mosaic"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_endpoint_rejects_negative_amounts(client: AsyncClient):
+    r = await client.post("/api/inventory/hops/bulk", json={"items": [{"name": "Citra", "amount_grams": -1}]})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_zero_grams_removes_in_merge_mode_too(test_db: AsyncSession):
+    await _seed(test_db)
+    items = [BulkHopItem(name="Amarillo", amount_grams=0)]
+    preview = await bulk_update_hops(test_db, "local", items, replace=True, dry_run=True)
+    zero = [r for r in preview["remove"] if r["variety"] == "Amarillo"]
+    assert zero and zero[0]["replace_only"] is False
+
+    plan = await bulk_update_hops(test_db, "local", items, replace=False, dry_run=False)
+    assert [r["variety"] for r in plan["remove"]] == ["Amarillo"]
+    _, rows = await _stock(test_db)
+    assert "Amarillo" not in [r.variety for r in rows]
+    assert [r.variety for r in rows].count("Citra") == 2  # merge keeps duplicates
+
+
+@pytest.mark.asyncio
+async def test_apply_refused_when_stock_changed_since_preview(client: AsyncClient, test_db: AsyncSession):
+    await _seed(test_db)
+    body = {"items": [{"name": "Citra", "amount_grams": 100}], "replace": True}
+    version = (await client.post("/api/inventory/hops/bulk", json=body)).json()["stock_version"]
+
+    test_db.add(HopInventory(variety="Nelson Sauvin", amount_grams=50, user_id=None))
+    await test_db.commit()
+
+    r = await client.post("/api/inventory/hops/bulk",
+                          json={**body, "dry_run": False, "expected_stock_version": version})
+    assert r.status_code == 409
+    _, rows = await _stock(test_db)
+    assert "Nelson Sauvin" in [x.variety for x in rows]  # nothing deleted
+
+    fresh = (await client.post("/api/inventory/hops/bulk", json=body)).json()["stock_version"]
+    ok = await client.post("/api/inventory/hops/bulk",
+                           json={**body, "dry_run": False, "expected_stock_version": fresh})
+    assert ok.status_code == 200 and ok.json()["applied"] is True

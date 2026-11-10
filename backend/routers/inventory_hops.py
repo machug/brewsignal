@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import AuthUser, require_auth
 from ..config import get_settings
 from ..database import get_db
+from ..services.hop_inventory_bulk import BulkHopRequest, StaleStockError, bulk_update_hops
 from ..models import (
     HopInventory,
     HopInventoryAdjust,
@@ -139,6 +140,29 @@ async def create_hop_inventory(
     await db.commit()
     await db.refresh(db_hop)
     return db_hop
+
+
+@router.post("/bulk")
+async def bulk_update_hop_inventory(
+    request: BulkHopRequest,
+    db: AsyncSession = Depends(get_db),
+    user: AuthUser = Depends(require_auth),
+):
+    """Preview (dry_run, default) or apply a bulk update from a name + grams list.
+
+    Used by the assistant chat's confirm card. replace=True removes stock
+    that is not in the list.
+    """
+    try:
+        return await bulk_update_hops(
+            db, user.user_id, request.items, replace=request.replace, dry_run=request.dry_run,
+            expected_stock_version=request.expected_stock_version,
+        )
+    except StaleStockError:
+        raise HTTPException(
+            status_code=409,
+            detail="Your hop inventory changed since this preview. Ask the assistant again to get an updated plan.",
+        )
 
 
 @router.put("/{hop_id}", response_model=HopInventoryResponse)

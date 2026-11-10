@@ -326,6 +326,40 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "update_hop_inventory",
+            "description": (
+                "Preview a bulk update of the user's hop inventory from a list of hop names "
+                "and amounts in grams (e.g. a list the user pasted). Names are matched to the "
+                "hop library, which supplies the variety spelling and alpha acid. This tool "
+                "NEVER saves anything: the app shows the user a confirm card where they choose "
+                "'Replace all hops' (removes stock not in the list) or 'Add & update only'. "
+                "After calling it, briefly summarise the plan (adds, updates, removals, names "
+                "not found in the library) and tell the user to confirm on the card. Do not say "
+                "the inventory was updated."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "description": "Every hop in the user's list, one entry per line. Sum nothing yourself.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Hop name as written by the user"},
+                                "amount_grams": {"type": "number", "description": "Amount in grams (convert oz/kg to g)"},
+                            },
+                            "required": ["name", "amount_grams"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_inventory_hops",
             "description": "Search the user's hop inventory. Use this when the user asks about what hops they have on hand, or when suggesting recipes based on available ingredients.",
             "parameters": {
@@ -1382,6 +1416,19 @@ async def execute_tool(
     elif tool_name == "get_style_by_name":
         return await get_style_by_name(db, **arguments)
     # Inventory tools - pass user_id for multi-tenant isolation
+    elif tool_name == "update_hop_inventory":
+        from backend.services.hop_inventory_bulk import BulkHopItem, bulk_update_hops
+        items = [BulkHopItem(**i) for i in arguments.get("items", [])]
+        if not items:
+            return {"error": "No hops given."}
+        # Plan with replace=True so the card can show what a full replace removes;
+        # the card applies either mode via POST /api/inventory/hops/bulk.
+        plan = await bulk_update_hops(db, user_id, items, replace=True, dry_run=True)
+        plan["confirmation"] = {
+            "kind": "hop_inventory",
+            "items": [i.model_dump() for i in items],
+        }
+        return plan
     elif tool_name == "search_inventory_hops":
         return await search_inventory_hops(db, user_id=user_id, **arguments)
     elif tool_name == "search_inventory_yeast":

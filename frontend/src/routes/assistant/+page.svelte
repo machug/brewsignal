@@ -76,18 +76,27 @@
 
 	// Status line under the typing dots, so a long run (tools + model
 	// reasoning can take a minute) visibly shows progress.
-	// Confirm cards for hop inventory previews from the update_hop_inventory tool
-	let hopInventoryPlans = $derived(
-		toolCallsArray.flatMap((tc) => {
-			if (tc.name !== 'update_hop_inventory' || !tc.result) return [];
-			try {
-				const plan = JSON.parse(tc.result);
-				return plan?.confirmation ? [{ id: tc.id, plan }] : [];
-			} catch {
-				return [];
-			}
+	// Confirm cards for hop inventory previews from the update_hop_inventory tool.
+	// Live tool calls are lost on reload/thread switch, so loadThread restores
+	// the newest saved preview into restoredHopPlan. A stale plan is refused by
+	// the server (stock_version check), so restoring an old one is safe.
+	function parseHopPlan(json: unknown) {
+		if (typeof json !== 'string') return null;
+		try {
+			const plan = JSON.parse(json);
+			return plan?.confirmation && plan?.stock_version ? plan : null;
+		} catch {
+			return null;
+		}
+	}
+	let restoredHopPlan = $state<{ id: string; plan: any } | null>(null);
+	let hopInventoryPlans = $derived([
+		...(restoredHopPlan ? [restoredHopPlan] : []),
+		...toolCallsArray.flatMap((tc) => {
+			const plan = tc.name === 'update_hop_inventory' ? parseHopPlan(tc.result) : null;
+			return plan ? [{ id: tc.id, plan }] : [];
 		})
-	);
+	]);
 
 	// toolCalls accumulates across the conversation (debug panel shows all),
 	// so only look at calls made since this run started.
@@ -152,6 +161,10 @@
 						createdAt: m.created_at
 					}));
 				agent.loadMessages(messages, threadId);
+				const saved = [...thread.messages].reverse().find(
+					(m: any) => m.role === 'tool' && parseHopPlan(m.content)
+				);
+				restoredHopPlan = saved ? { id: `saved-${saved.id}`, plan: parseHopPlan(saved.content) } : null;
 			}
 		} catch (e) {
 			console.error('Failed to load thread:', e);
@@ -175,6 +188,7 @@
 
 	function startNewConversation() {
 		currentThreadId = null;
+		restoredHopPlan = null;
 		agent.clear();
 		inputRef?.focus();
 	}

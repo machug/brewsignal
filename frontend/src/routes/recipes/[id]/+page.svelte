@@ -703,7 +703,7 @@
 	loading={reviewLoading}
 	error={reviewError}
 	result={reviewResult}
-	styleName={recipe?.type ?? ''}
+	styleName={recipe?.style?.name ?? recipe?.type ?? ''}
 	onClose={closeReviewModal}
 />
 

@@ -593,6 +593,11 @@ async def _run_agent_loop(
 
         # Add base URL for Ollama/Hailo
         provider_str = service.config._provider_str()
+        if provider_str == "openrouter":
+            # Reasoning models (e.g. Claude Sonnet 5.5) can spend the whole
+            # max_tokens budget thinking after tool results and emit no text.
+            # Cap reasoning at half so the answer always has room.
+            kwargs["extra_body"] = {"reasoning": {"max_tokens": service.config.max_tokens // 2}}
         if provider_str in ("local", "hailo"):
             default_url = "http://localhost:8000" if provider_str == "hailo" else "http://localhost:11434"
             kwargs["api_base"] = service.config.base_url or default_url
@@ -606,8 +611,11 @@ async def _run_agent_loop(
         full_content = ""
         tool_calls = []
         current_tool_call = None
+        finish_reason = None
 
         async for chunk in response:
+            if chunk.choices and chunk.choices[0].finish_reason:
+                finish_reason = chunk.choices[0].finish_reason
             delta = chunk.choices[0].delta if chunk.choices else None
             if not delta:
                 continue
@@ -649,6 +657,26 @@ async def _run_agent_loop(
                             current_tool_call["name"] = tc.function.name
                         if tc.function.arguments:
                             current_tool_call["arguments"] += tc.function.arguments
+
+        # Hit max_tokens: tell the user instead of ending silently or mid-sentence
+        if finish_reason == "length" and not any(tc.get("id") for tc in tool_calls):
+            note = (
+                "\n\n_(Reply cut off: it reached the Max Tokens limit. "
+                "Raise Max Tokens in System > AI Settings for longer answers.)_"
+            )
+            if not full_content:
+                note = note.lstrip()
+                yield AGUIEvent(
+                    "TEXT_MESSAGE_START",
+                    messageId=message_id,
+                    role="assistant",
+                ).to_sse()
+            full_content += note
+            yield AGUIEvent(
+                "TEXT_MESSAGE_CONTENT",
+                messageId=message_id,
+                delta=note,
+            ).to_sse()
 
         # End text message if we had content
         if full_content:

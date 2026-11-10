@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { renderMarkdown } from '$lib/markdown';
 	import { useAgent } from '$lib/ag-ui';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -379,12 +380,12 @@
 							{#if message.role === 'assistant' && agent.isStreaming && message.id === agent._agentState.streamingMessageId}
 								<!-- Streaming message -->
 								<div class="message-text streaming">
-									{@html formatMarkdown(agent.streamingContent || '')}
+									{@html renderMarkdown(agent.streamingContent || '')}
 									<span class="cursor"></span>
 								</div>
 							{:else}
 								<div class="message-text">
-									{@html formatMarkdown(message.content)}
+									{@html renderMarkdown(message.content)}
 								</div>
 							{/if}
 						</div>
@@ -537,65 +538,6 @@
 		}
 	}
 
-	// Markdown formatting with headers, lists, and more
-	function formatMarkdown(text: string): string {
-		if (!text) return '';
-
-		// Escape HTML first
-		let html = text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;');
-
-		// Code blocks (must be first to protect content inside)
-		html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-
-		// Inline code
-		html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-		// Headers (must be at start of line)
-		html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-		html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-		html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-
-		// Horizontal rule
-		html = html.replace(/^---+$/gm, '<hr>');
-
-		// Bold
-		html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-		// Italic
-		html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-		// Links
-		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-		// Process lists - convert consecutive list items to proper lists
-		// Unordered lists
-		html = html.replace(/(?:^|\n)((?:- .+\n?)+)/g, (match, listContent) => {
-			const items = listContent.trim().split('\n')
-				.map((line: string) => line.replace(/^- (.+)$/, '<li>$1</li>'))
-				.join('');
-			return '\n<ul>' + items + '</ul>\n';
-		});
-
-		// Ordered lists
-		html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (match, listContent) => {
-			const items = listContent.trim().split('\n')
-				.map((line: string) => line.replace(/^\d+\. (.+)$/, '<li>$1</li>'))
-				.join('');
-			return '\n<ol>' + items + '</ol>\n';
-		});
-
-		// Line breaks (but not after block elements)
-		html = html.replace(/\n(?!<\/?(ul|ol|li|pre|h[1-6]|hr))/g, '<br>');
-
-		// Clean up extra breaks around block elements
-		html = html.replace(/<br><(ul|ol|pre|h[1-6]|hr)/g, '<$1');
-		html = html.replace(/<\/(ul|ol|pre|h[1-6])><br>/g, '</$1>');
-
-		return html;
-	}
 </script>
 
 <style>
@@ -1123,6 +1065,34 @@
 	.message-text :global(li) {
 		margin: var(--space-1) 0;
 		line-height: 1.5;
+	}
+
+	.message-text :global(p) {
+		margin: 0 0 var(--space-2);
+	}
+
+	.message-text :global(p:last-child) {
+		margin-bottom: 0;
+	}
+
+	.message-text :global(table) {
+		display: block;
+		overflow-x: auto;
+		border-collapse: collapse;
+		margin: var(--space-2) 0;
+		font-size: 0.9em;
+	}
+
+	.message-text :global(th),
+	.message-text :global(td) {
+		padding: var(--space-1) var(--space-3);
+		border-bottom: 1px solid var(--border-subtle);
+		text-align: left;
+	}
+
+	.message-text :global(th) {
+		color: var(--text-secondary);
+		font-weight: 600;
 	}
 
 	.message-text :global(hr) {

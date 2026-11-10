@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { renderMarkdown } from '$lib/markdown';
 	import { useAgent } from '$lib/ag-ui';
 	import type { Message } from '$lib/ag-ui/types';
 	import type { BatchResponse } from '$lib/api';
@@ -88,57 +89,6 @@
 		}
 	}
 
-	// Simple markdown formatting (inline subset)
-	function formatMarkdown(text: string): string {
-		if (!text) return '';
-
-		let html = text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;');
-
-		// Code blocks
-		html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-
-		// Inline code
-		html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-		// Headers
-		html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-		html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-		html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-
-		// Bold
-		html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-		// Italic
-		html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-		// Unordered lists
-		html = html.replace(/(?:^|\n)((?:- .+\n?)+)/g, (_match, listContent) => {
-			const items = listContent.trim().split('\n')
-				.map((line: string) => line.replace(/^- (.+)$/, '<li>$1</li>'))
-				.join('');
-			return '\n<ul>' + items + '</ul>\n';
-		});
-
-		// Ordered lists
-		html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_match, listContent) => {
-			const items = listContent.trim().split('\n')
-				.map((line: string) => line.replace(/^\d+\. (.+)$/, '<li>$1</li>'))
-				.join('');
-			return '\n<ol>' + items + '</ol>\n';
-		});
-
-		// Line breaks (not after block elements)
-		html = html.replace(/\n(?!<\/?(ul|ol|li|pre|h[1-6]))/g, '<br>');
-
-		// Clean up extra breaks around block elements
-		html = html.replace(/<br><(ul|ol|pre|h[1-6])/g, '<$1');
-		html = html.replace(/<\/(ul|ol|pre|h[1-6])><br>/g, '</$1>');
-
-		return html;
-	}
 </script>
 
 {#if minimized}
@@ -205,12 +155,12 @@
 						</div>
 					{:else if message.role === 'assistant' && agent.isStreaming && message.id === agent._agentState.streamingMessageId}
 						<div class="tp-message-bubble tp-assistant-bubble streaming">
-							{@html formatMarkdown(agent.streamingContent || '')}
+							{@html renderMarkdown(agent.streamingContent || '')}
 							<span class="cursor"></span>
 						</div>
 					{:else}
 						<div class="tp-message-bubble tp-assistant-bubble">
-							{@html formatMarkdown(message.content)}
+							{@html renderMarkdown(message.content)}
 						</div>
 					{/if}
 				</div>

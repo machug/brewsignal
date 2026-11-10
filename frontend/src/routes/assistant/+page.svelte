@@ -72,6 +72,18 @@
 	// Reactive tool calls array - toolCalls is now an array in the client
 	let toolCallsArray = $derived(agent.toolCalls);
 
+	// Status line under the typing dots, so a long run (tools + model
+	// reasoning can take a minute) visibly shows progress.
+	// toolCalls accumulates across the conversation (debug panel shows all),
+	// so only look at calls made since this run started.
+	let runToolStart = $state(0);
+	let activityLabel = $derived.by(() => {
+		const runCalls = toolCallsArray.slice(runToolStart);
+		const running = runCalls.findLast((tc) => tc.status === 'running');
+		if (running) return `Using tool: ${running.name.replaceAll('_', ' ')}…`;
+		return runCalls.length ? 'Thinking…' : 'Reading your question…';
+	});
+
 	// Input state
 	let input = $state('');
 	let inputRef = $state<HTMLTextAreaElement | null>(null);
@@ -168,6 +180,7 @@
 			inputRef.style.height = 'auto';
 		}
 
+		runToolStart = toolCallsArray.length;
 		await agent.send(content, currentThreadId || undefined);
 
 		// Update currentThreadId after first message (agent creates new thread)
@@ -401,8 +414,9 @@
 							</svg>
 						</div>
 						<div class="message-content">
-							<div class="typing-indicator">
+							<div class="typing-indicator" role="status" aria-live="polite">
 								<span></span><span></span><span></span>
+								<em class="activity-label">{activityLabel}</em>
 							</div>
 						</div>
 					</div>
@@ -1147,6 +1161,7 @@
 
 	.typing-indicator {
 		display: flex;
+		align-items: center;
 		gap: 4px;
 		padding: var(--space-3) var(--space-4);
 	}
@@ -1157,6 +1172,13 @@
 		background: var(--text-muted);
 		border-radius: 50%;
 		animation: bounce 1.4s infinite ease-in-out both;
+	}
+
+	.activity-label {
+		margin-left: var(--space-2);
+		font-size: 0.85em;
+		font-style: normal;
+		color: var(--text-muted);
 	}
 
 	.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }

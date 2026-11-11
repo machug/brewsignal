@@ -220,6 +220,20 @@ class ControlEvent(Base):
     target_temp: Mapped[Optional[float]] = mapped_column()  # Temperature in Celsius
 
 
+class ControlEntityState(Base):
+    """Per-entity switch bookkeeping that must survive service restarts.
+
+    Keyed by entity (not batch) so the compressor min-cycle protection holds
+    across restarts and when two batches reference the same switch.
+    """
+    __tablename__ = "control_entity_state"
+
+    entity_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    last_switch_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    on_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # start of current continuous on-run
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # max-on lockout
+
+
 class FermentationAlert(Base):
     """Fermentation alerts tracked over time with first detection and resolution."""
     __tablename__ = "fermentation_alerts"

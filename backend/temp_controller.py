@@ -8,14 +8,16 @@ Supports multiple control backends via the device control abstraction layer:
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select
 
 from .database import async_session_factory
-from .models import Batch, ControlEvent, AmbientReading, serialize_datetime_to_utc
+from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, serialize_datetime_to_utc
 from .routers.config import get_config_value
+from .services.alert_service import AlertSeverity, AlertType, _clear_alert, _upsert_alert
 from .services.device_control import (
     get_device_router,
     init_device_router,
@@ -28,7 +30,39 @@ logger = logging.getLogger(__name__)
 
 _controller_task: asyncio.Task | None = None
 CONTROL_INTERVAL_SECONDS = 60
-MIN_CYCLE_MINUTES = 5  # Minimum time between heater state changes
+MIN_CYCLE_MINUTES = 5  # Minimum time between state changes of one switch (compressor protection)
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+# Safety limits (tilt_ui-f50x). Override with environment variables.
+# Stale sensor: a Tilt broadcasts every few seconds, so 15 min is ~100+ missed
+# readings. Slower devices (RAPT/iSpindel-class, 5-15 min cadence) get 3x.
+SENSOR_STALE_MINUTES = _env_float("BREWSIGNAL_SENSOR_STALE_MINUTES", 15)
+# Heater adds ~1.1 C/h to the wort, so 4 h continuous is ~4 C of heating: a
+# runaway, not a normal run. A fridge legitimately runs for many hours during a
+# cold crash (wort moves only ~0.35 C/h), so the cooler limit is 12 h.
+MAX_HEATER_ON_MINUTES = _env_float("BREWSIGNAL_MAX_HEATER_ON_MINUTES", 240)
+MAX_COOLER_ON_MINUTES = _env_float("BREWSIGNAL_MAX_COOLER_ON_MINUTES", 720)
+# After a max-on trip the device may not be turned on again for this long.
+MAX_ON_LOCKOUT_MINUTES = _env_float("BREWSIGNAL_MAX_ON_LOCKOUT_MINUTES", 30)
+# After a failed 'on' command, wait this long before trying 'on' again.
+FAILURE_BACKOFF_MINUTES = _env_float("BREWSIGNAL_FAILURE_BACKOFF_MINUTES", 5)
+
+
+def _now() -> datetime:
+    """Controller clock (monkeypatched in tests)."""
+    return datetime.now(timezone.utc)
+
+
+# Per-ENTITY switch bookkeeping, persisted in control_entity_state:
+# {entity_id: {"last_switch", "on_since", "locked_until", "fail_until"}}
+_entity_state: dict[str, dict] = {}
 
 # Track per-batch heater states to avoid redundant API calls
 # Keys are batch_id, values are {"state": "on"/"off", "last_change": datetime}
@@ -262,6 +296,110 @@ async def log_control_event(
     logger.info(f"Control event: {action} (wort={wort_temp}, target={target_temp}{batch_info})")
 
 
+def _utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """SQLite hands back naive datetimes; everything here is UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+async def _entity(db, entity_id: str) -> dict:
+    """Return the (lazily DB-loaded) switch record for an entity."""
+    ent = _entity_state.get(entity_id)
+    if ent is None:
+        ent = {"last_switch": None, "on_since": None, "locked_until": None, "fail_until": None}
+        try:
+            row = await db.get(ControlEntityState, entity_id)
+            if row is not None:
+                ent["last_switch"] = _utc(row.last_switch_at)
+                ent["on_since"] = _utc(row.on_since)
+                ent["locked_until"] = _utc(row.locked_until)
+        except Exception as e:
+            # Unknown history: fall back to "never switched". Logged, not fatal.
+            logger.error(f"Could not load persisted switch state for {entity_id}: {e}")
+        _entity_state[entity_id] = ent
+    return ent
+
+
+async def _persist_entity(db, entity_id: str) -> None:
+    """Write the entity's switch record to the DB. Never raises."""
+    ent = _entity_state[entity_id]
+    try:
+        await db.merge(ControlEntityState(
+            entity_id=entity_id,
+            last_switch_at=ent["last_switch"],
+            on_since=ent["on_since"],
+            locked_until=ent["locked_until"],
+        ))
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Could not persist switch state for {entity_id}: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+
+async def _read_state(router: DeviceControlRouter, entity_id: str) -> Optional[str]:
+    """Read actual device state; None on unavailable or error."""
+    try:
+        state = await router.get_state(entity_id)
+    except Exception as e:
+        logger.error(f"Failed to read state of {entity_id}: {e}")
+        return None
+    return state if state in ("on", "off") else None
+
+
+async def _set_entity_state(
+    router: DeviceControlRouter,
+    db,
+    entity_id: str,
+    kind: str,
+    state: str,
+    force: bool = False,
+) -> bool:
+    """Single choke point for every switch command.
+
+    - min-cycle is per ENTITY and persisted (honoured across restarts and when
+      two batches share a switch); `force` skips it (overrides, safety-offs)
+    - 'on' is refused during a max-on lockout, even when forced
+    - after a failed 'on' no further 'on' is attempted for FAILURE_BACKOFF_MINUTES
+      ('off' is always allowed: it is the safe direction)
+    """
+    ent = await _entity(db, entity_id)
+    now = _now()
+
+    if not force and ent["last_switch"] is not None:
+        elapsed = now - ent["last_switch"]
+        if elapsed < timedelta(minutes=MIN_CYCLE_MINUTES):
+            remaining = MIN_CYCLE_MINUTES - elapsed.total_seconds() / 60
+            logger.debug(f"{entity_id}: not switching to '{state}' - min cycle ({remaining:.1f} min remaining)")
+            return False
+
+    if state == "on":
+        if ent["locked_until"] is not None and now < ent["locked_until"]:
+            logger.warning(f"{entity_id}: refusing 'on' - max-on lockout until {ent['locked_until'].isoformat()}")
+            return False
+        if ent["fail_until"] is not None and now < ent["fail_until"]:
+            logger.debug(f"{entity_id}: not retrying 'on' - backing off after a failed command")
+            return False
+
+    try:
+        success = await router.set_state(entity_id, state)
+    except Exception as e:
+        logger.error(f"{entity_id}: set_state('{state}') raised: {e}")
+        success = False
+
+    if success:
+        ent["last_switch"] = now
+        ent["on_since"] = now if state == "on" else None
+        ent["fail_until"] = None
+        await _persist_entity(db, entity_id)
+    elif state == "on":
+        ent["fail_until"] = now + timedelta(minutes=FAILURE_BACKOFF_MINUTES)
+    return success
+
+
 async def set_heater_state_for_batch(
     router: DeviceControlRouter,
     entity_id: str,
@@ -275,36 +413,22 @@ async def set_heater_state_for_batch(
     force: bool = False
 ) -> bool:
     """Turn heater on or off for a specific batch and log the event."""
-    global _batch_heater_states
-
-    # Get batch's heater state tracking
-    batch_state = _batch_heater_states.get(batch_id, {})
-    last_state = batch_state.get("state")
-    last_change = batch_state.get("last_change")
-
-    # Check minimum cycle time (skip for forced changes like overrides)
-    if not force and last_change is not None:
-        elapsed = datetime.now(timezone.utc) - last_change
-        if elapsed < timedelta(minutes=MIN_CYCLE_MINUTES):
-            remaining = MIN_CYCLE_MINUTES - (elapsed.total_seconds() / 60)
-            logger.debug(f"Batch {batch_id}: Skipping heater change to '{state}' - min cycle time not met ({remaining:.1f} min remaining)")
-            return False
-
+    last_state = _batch_heater_states.get(batch_id, {}).get("state")
     logger.debug(f"Batch {batch_id}: Attempting to set heater to '{state}' (entity: {entity_id})")
 
-    success = await router.set_state(entity_id, state)
+    success = await _set_entity_state(router, db, entity_id, "heater", state, force=force)
     action = "heat_on" if state == "on" else "heat_off"
 
     if success:
         _batch_heater_states[batch_id] = {
             "state": state,
-            "last_change": datetime.now(timezone.utc),
+            "last_change": _now(),
             "entity_id": entity_id,
         }
         logger.info(f"Batch {batch_id}: Heater state changed: {last_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, device_id, batch_id)
     else:
-        logger.error(f"Batch {batch_id}: Failed to set heater to '{state}' (entity: {entity_id})")
+        logger.error(f"Batch {batch_id}: Heater not set to '{state}' (entity: {entity_id})")
 
     return success
 
@@ -322,38 +446,160 @@ async def set_cooler_state_for_batch(
     force: bool = False
 ) -> bool:
     """Turn cooler on or off for a specific batch and log the event."""
-    global _batch_cooler_states
-
-    # Get batch's cooler state tracking
-    batch_state = _batch_cooler_states.get(batch_id, {})
-    last_state = batch_state.get("state")
-    last_change = batch_state.get("last_change")
-
-    # Check minimum cycle time (skip for forced changes like overrides)
-    if not force and last_change is not None:
-        elapsed = datetime.now(timezone.utc) - last_change
-        if elapsed < timedelta(minutes=MIN_CYCLE_MINUTES):
-            remaining = MIN_CYCLE_MINUTES - (elapsed.total_seconds() / 60)
-            logger.debug(f"Batch {batch_id}: Skipping cooler change to '{state}' - min cycle time not met ({remaining:.1f} min remaining)")
-            return False
-
+    last_state = _batch_cooler_states.get(batch_id, {}).get("state")
     logger.debug(f"Batch {batch_id}: Attempting to set cooler to '{state}' (entity: {entity_id})")
 
-    success = await router.set_state(entity_id, state)
+    success = await _set_entity_state(router, db, entity_id, "cooler", state, force=force)
     action = "cool_on" if state == "on" else "cool_off"
 
     if success:
         _batch_cooler_states[batch_id] = {
             "state": state,
-            "last_change": datetime.now(timezone.utc),
+            "last_change": _now(),
             "entity_id": entity_id,
         }
         logger.info(f"Batch {batch_id}: Cooler state changed: {last_state} -> {state}")
         await log_control_event(db, action, wort_temp, ambient_temp, target_temp, device_id, batch_id)
     else:
-        logger.error(f"Batch {batch_id}: Failed to set cooler to '{state}' (entity: {entity_id})")
+        logger.error(f"Batch {batch_id}: Cooler not set to '{state}' (entity: {entity_id})")
 
     return success
+
+
+# ---------------------------------------------------------------------------
+# Safety helpers (tilt_ui-f50x, tilt_ui-8d49)
+# ---------------------------------------------------------------------------
+
+async def _raise_alert(db, batch: Batch, alert_type: str, message: str) -> None:
+    """Persist (upsert) a critical alert on the batch. Never raises."""
+    try:
+        await _upsert_alert(
+            db, batch.id, batch.device_id, alert_type, AlertSeverity.CRITICAL,
+            message, None, None, _now(),
+        )
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Batch {batch.id}: could not persist {alert_type} alert: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+
+async def _clear_batch_alert(db, batch_id: int, alert_type: str) -> None:
+    try:
+        if await _clear_alert(db, batch_id, alert_type, _now()):
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Batch {batch_id}: could not clear {alert_type} alert: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+
+def get_device_reading_age(device_id: str) -> Optional[timedelta]:
+    """Age of the cached reading for a device, or None if it cannot be trusted.
+
+    None (= treat as stale) when the reading or its timestamp is missing or
+    unparseable, or is more than 5 min in the FUTURE (a Pi that booted with a
+    wrong clock would otherwise see an old cached reading as fresh).
+    """
+    from .state import latest_readings
+
+    reading = latest_readings.get(device_id) if device_id else None
+    if not reading:
+        return None
+    ts = reading.get("last_seen") or reading.get("timestamp")
+    if not ts:
+        return None
+    try:
+        seen = _utc(datetime.fromisoformat(str(ts).replace("Z", "+00:00")))
+    except (ValueError, TypeError):
+        return None
+    age = _now() - seen
+    if age < timedelta(minutes=-5):
+        return None
+    return age
+
+
+def _stale_limit(device_id: str) -> timedelta:
+    """Tilt broadcasts every few seconds; RAPT/iSpindel-class devices report
+    every 5-15 min, so they get 3x the threshold to avoid false trips."""
+    from .state import latest_readings
+
+    dtype = (latest_readings.get(device_id) or {}).get("device_type", "tilt")
+    mult = 1 if dtype == "tilt" else 3
+    return timedelta(minutes=SENSOR_STALE_MINUTES * mult)
+
+
+def _max_on_minutes(kind: str) -> float:
+    return MAX_HEATER_ON_MINUTES if kind == "heater" else MAX_COOLER_ON_MINUTES
+
+
+async def _observe_entity(router, db, entity_id: str, kind: str) -> tuple[Optional[str], bool]:
+    """Read the real state and track the continuous on-run.
+
+    Returns (state, max_on_exceeded). state is None when unavailable.
+    A switch found 'on' with no recorded start (manual toggle in HA, or a
+    record lost) starts counting now.
+    """
+    state = await _read_state(router, entity_id)
+    ent = await _entity(db, entity_id)
+    exceeded = False
+    if state == "on":
+        if ent["on_since"] is None:
+            ent["on_since"] = _now()
+            await _persist_entity(db, entity_id)
+        elif _now() - ent["on_since"] > timedelta(minutes=_max_on_minutes(kind)):
+            exceeded = True
+    elif state == "off" and ent["on_since"] is not None:
+        ent["on_since"] = None
+        await _persist_entity(db, entity_id)
+    return state, exceeded
+
+
+async def _start_lockout(db, entity_id: str) -> None:
+    ent = await _entity(db, entity_id)
+    ent["locked_until"] = _now() + timedelta(minutes=MAX_ON_LOCKOUT_MINUTES)
+    await _persist_entity(db, entity_id)
+
+
+async def _ensure_batch_off(
+    router, db, batch_id: int, kind: str, entity_id: str,
+    wort_temp: Optional[float], ambient_temp, target_temp, device_id,
+) -> bool:
+    """Force one entity off (bypasses min-cycle). True if confirmed off."""
+    state = await _read_state(router, entity_id)
+    if state == "off":
+        return True
+    setter = set_heater_state_for_batch if kind == "heater" else set_cooler_state_for_batch
+    return await setter(
+        router, entity_id, "off", db, batch_id,
+        wort_temp, ambient_temp, target_temp, device_id, force=True,
+    )
+
+
+async def run_control_cycle(
+    router: DeviceControlRouter,
+    db,
+    batches,
+    global_target: float,
+    global_hysteresis: float,
+    ambient_temp: Optional[float],
+) -> None:
+    """One pass over all controllable batches.
+
+    Batches are processed sequentially: they share one DB session and, with
+    shared equipment, one per-entity switch record.
+    """
+    for batch in batches:
+        try:
+            await control_batch_temperature(
+                router, batch, db, global_target, global_hysteresis, ambient_temp
+            )
+        except Exception as e:
+            logger.error(f"Batch {batch.id}: control error: {e}", exc_info=True)
 
 
 async def control_batch_temperature(
@@ -370,6 +616,10 @@ async def control_batch_temperature(
     - Only cooling is allowed to bring wort down to pitch temp
     - Heating is disabled to prevent accidentally warming the wort
     - A "pitch_ready" WebSocket notification is sent when target is reached
+
+    Safety (tilt_ui-f50x): stale/missing sensor -> both off + alert; max
+    continuous on-time -> off + lockout + alert; a device is only turned on
+    when the opposite device is confirmed off.
     """
     batch_id = batch.id
     device_id = batch.device_id
@@ -384,55 +634,83 @@ async def control_batch_temperature(
     if not heater_entity and not cooler_entity:
         return
 
-    # Get temperature from batch's linked device
-    wort_temp = get_device_temp(device_id) if device_id else None
-    if wort_temp is None:
-        logger.debug(f"Batch {batch_id}: No temperature available from device {device_id}")
-        return
-
     # Use batch-specific settings or fall back to global
     target_temp = batch.temp_target if batch.temp_target is not None else global_target
     hysteresis = batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis
 
-    # Sync cached heater state with actual device state
-    # NOTE: This sync happens before checking minimum cycle time. If the heater state
-    # was changed externally (e.g., manual toggle in HA), this sync updates our cache
-    # but does NOT reset the last_change timestamp. This means external changes won't
-    # bypass the MIN_CYCLE_MINUTES protection, which is intentional to prevent rapid
-    # cycling even when users manually toggle the heater.
-    if heater_entity:
-        actual_heater_state = await router.get_state(heater_entity)
-        if actual_heater_state in ("on", "off"):
-            if batch_id in _batch_heater_states:
-                if _batch_heater_states[batch_id].get("state") != actual_heater_state:
-                    logger.debug(f"Batch {batch_id}: Syncing heater cache: {_batch_heater_states[batch_id].get('state')} -> {actual_heater_state}")
-                # Only update the state, preserve the existing last_change timestamp
-                _batch_heater_states[batch_id]["state"] = actual_heater_state
-            else:
-                # Initialize state tracking for new batch (no last_change yet)
-                _batch_heater_states[batch_id] = {"state": actual_heater_state}
-        elif actual_heater_state is None:
-            logger.warning(f"Batch {batch_id}: Heater entity {heater_entity} is unavailable")
-            return  # Early return - cannot control unavailable entity
+    # Stale-sensor guard: never act on a missing, old or untrustworthy reading
+    # (includes the reading cache reloaded from disk at startup).
+    wort_temp = get_device_temp(device_id) if device_id else None
+    age = get_device_reading_age(device_id) if device_id else None
+    if wort_temp is None or age is None or age > _stale_limit(device_id):
+        age_txt = "missing" if age is None else f"{age.total_seconds() / 60:.0f} min old"
+        msg = (
+            f"Batch {batch_id}: wort temperature from device {device_id} is {age_txt} "
+            f"(limit {_stale_limit(device_id).total_seconds() / 60:.0f} min); heater and cooler forced OFF"
+        )
+        logger.warning(msg)
+        for kind, entity in (("heater", heater_entity), ("cooler", cooler_entity)):
+            if entity:
+                await _ensure_batch_off(router, db, batch_id, kind, entity, wort_temp, ambient_temp, target_temp, device_id)
+        await _raise_alert(db, batch, AlertType.SENSOR_STALE, msg)
+        return
+    await _clear_batch_alert(db, batch_id, AlertType.SENSOR_STALE)
 
-    # Sync cached cooler state with actual device state
-    if cooler_entity:
-        actual_cooler_state = await router.get_state(cooler_entity)
-        if actual_cooler_state in ("on", "off"):
-            if batch_id in _batch_cooler_states:
-                if _batch_cooler_states[batch_id].get("state") != actual_cooler_state:
-                    logger.debug(f"Batch {batch_id}: Syncing cooler cache: {_batch_cooler_states[batch_id].get('state')} -> {actual_cooler_state}")
-                # Only update the state, preserve the existing last_change timestamp
-                _batch_cooler_states[batch_id]["state"] = actual_cooler_state
-            else:
-                # Initialize state tracking for new batch (no last_change yet)
-                _batch_cooler_states[batch_id] = {"state": actual_cooler_state}
-        elif actual_cooler_state is None:
-            logger.warning(f"Batch {batch_id}: Cooler entity {cooler_entity} is unavailable")
-            return  # Early return - cannot control unavailable entity
+    # Read real device state, track continuous on-time, enforce max-on.
+    # NOTE: the sync updates our cache but never resets last_switch, so external
+    # (manual HA) toggles do not bypass the min-cycle protection.
+    current_heater_state = current_cooler_state = None
+    tripped = False
+    for kind, entity, states in (
+        ("heater", heater_entity, _batch_heater_states),
+        ("cooler", cooler_entity, _batch_cooler_states),
+    ):
+        if not entity:
+            continue
+        actual, exceeded = await _observe_entity(router, db, entity, kind)
+        if actual is None:
+            logger.warning(f"Batch {batch_id}: {kind.capitalize()} entity {entity} is unavailable")
+            return  # Cannot control (or safely reason about) an unavailable entity
+        states.setdefault(batch_id, {})["state"] = actual
+        if kind == "heater":
+            current_heater_state = actual
+        else:
+            current_cooler_state = actual
+        if exceeded:
+            tripped = True
+            limit_h = _max_on_minutes(kind) / 60
+            msg = (
+                f"Batch {batch_id}: {kind} {entity} has been on continuously for more than "
+                f"{limit_h:g} h; forced OFF and locked out for {MAX_ON_LOCKOUT_MINUTES:g} min. "
+                f"Check the temperature sensor."
+            )
+            logger.error(msg)
+            await _start_lockout(db, entity)
+            await _ensure_batch_off(router, db, batch_id, kind, entity, wort_temp, ambient_temp, target_temp, device_id)
+            await _raise_alert(db, batch, AlertType.MAX_ON_EXCEEDED, msg)
+    if tripped:
+        return
+    await _clear_batch_alert(db, batch_id, AlertType.MAX_ON_EXCEEDED)
 
-    current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
-    current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
+    # Re-read from the cache (an off above may have changed it)
+    current_heater_state = _batch_heater_states.get(batch_id, {}).get("state") if heater_entity else None
+    current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state") if cooler_entity else None
+
+    async def _turn_off_cooler(force: bool = False) -> None:
+        nonlocal current_cooler_state
+        if await set_cooler_state_for_batch(
+            router, cooler_entity, "off", db, batch_id,
+            wort_temp, ambient_temp, target_temp, device_id, force=force,
+        ):
+            current_cooler_state = "off"
+
+    async def _turn_off_heater(force: bool = False) -> None:
+        nonlocal current_heater_state
+        if await set_heater_state_for_batch(
+            router, heater_entity, "off", db, batch_id,
+            wort_temp, ambient_temp, target_temp, device_id, force=force,
+        ):
+            current_heater_state = "off"
 
     # Check for manual overrides for this batch
     if batch_id in _batch_overrides:
@@ -442,7 +720,7 @@ async def control_batch_temperature(
         heater_override = override.get("heater")
         if heater_override:
             override_until = heater_override.get("until")
-            if override_until and datetime.now(timezone.utc) > override_until:
+            if override_until and _now() > override_until:
                 # Override expired
                 logger.info(f"Batch {batch_id}: Heater override expired, returning to auto mode")
                 del _batch_overrides[batch_id]["heater"]
@@ -450,16 +728,21 @@ async def control_batch_temperature(
                 # Override active
                 desired_state = heater_override.get("state")
                 if heater_entity and current_heater_state != desired_state:
-                    await set_heater_state_for_batch(
-                        router, heater_entity, desired_state, db, batch_id,
-                        wort_temp, ambient_temp, target_temp, device_id, force=True
-                    )
+                    if desired_state == "on" and cooler_entity and current_cooler_state != "off":
+                        await _turn_off_cooler(force=True)
+                    if desired_state != "on" or not cooler_entity or current_cooler_state == "off":
+                        await set_heater_state_for_batch(
+                            router, heater_entity, desired_state, db, batch_id,
+                            wort_temp, ambient_temp, target_temp, device_id, force=True
+                        )
+                    else:
+                        logger.error(f"Batch {batch_id}: heater override 'on' skipped - cooler not confirmed off")
 
         # Handle cooler override
         cooler_override = override.get("cooler")
         if cooler_override:
             override_until = cooler_override.get("until")
-            if override_until and datetime.now(timezone.utc) > override_until:
+            if override_until and _now() > override_until:
                 # Override expired
                 logger.info(f"Batch {batch_id}: Cooler override expired, returning to auto mode")
                 del _batch_overrides[batch_id]["cooler"]
@@ -467,10 +750,15 @@ async def control_batch_temperature(
                 # Override active
                 desired_state = cooler_override.get("state")
                 if cooler_entity and current_cooler_state != desired_state:
-                    await set_cooler_state_for_batch(
-                        router, cooler_entity, desired_state, db, batch_id,
-                        wort_temp, ambient_temp, target_temp, device_id, force=True
-                    )
+                    if desired_state == "on" and heater_entity and current_heater_state != "off":
+                        await _turn_off_heater(force=True)
+                    if desired_state != "on" or not heater_entity or current_heater_state == "off":
+                        await set_cooler_state_for_batch(
+                            router, cooler_entity, desired_state, db, batch_id,
+                            wort_temp, ambient_temp, target_temp, device_id, force=True
+                        )
+                    else:
+                        logger.error(f"Batch {batch_id}: cooler override 'on' skipped - heater not confirmed off")
 
         # If either override is active, skip automatic control
         if heater_override or cooler_override:
@@ -484,73 +772,60 @@ async def control_batch_temperature(
     cool_off_threshold = round(target_temp, 1)  # Turn OFF at target to prevent undershoot
 
     logger.debug(
-        f"Batch {batch_id}: Control check: wort={wort_temp:.2f}F, target={target_temp:.2f}F, "
-        f"hysteresis={hysteresis:.2f}F, heat_on<={heat_on_threshold:.2f}F, heat_off>={heat_off_threshold:.2f}F, "
-        f"cool_on>={cool_on_threshold:.2f}F, cool_off<={cool_off_threshold:.2f}F, "
+        f"Batch {batch_id}: Control check: wort={wort_temp:.2f}C, target={target_temp:.2f}C, "
+        f"hysteresis={hysteresis:.2f}C, heat_on<={heat_on_threshold:.2f}C, heat_off>={heat_off_threshold:.2f}C, "
+        f"cool_on>={cool_on_threshold:.2f}C, cool_off<={cool_off_threshold:.2f}C, "
         f"heater={current_heater_state}, cooler={current_cooler_state}"
     )
 
     # Automatic control logic with mutual exclusion
-    # CRITICAL: Turn OFF opposite device FIRST, then turn ON current device
-    # This prevents both devices from being ON simultaneously
+    # CRITICAL: Turn OFF opposite device FIRST, then turn ON current device,
+    # and ONLY if the opposite device is confirmed off. If the off was refused
+    # (min-cycle) or failed, the other device stays off this cycle.
     if wort_temp <= heat_on_threshold:
         # Need heating - FIRST ensure cooler is OFF
         if cooler_entity and current_cooler_state == "on":
             logger.info(f"Batch {batch_id}: Turning cooler OFF (heater needs to run)")
-            await set_cooler_state_for_batch(
-                router, cooler_entity, "off", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
-            # Refresh state after change
-            current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
+            await _turn_off_cooler()
 
         # THEN turn heater ON (only if cooler is confirmed off)
         if heater_entity and current_heater_state != "on":
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/below threshold {heat_on_threshold:.1f}F, turning heater ON")
-            await set_heater_state_for_batch(
-                router, heater_entity, "on", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
-            # Refresh state after change
-            current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
+            if cooler_entity and current_cooler_state != "off":
+                logger.warning(f"Batch {batch_id}: heater ON withheld - cooler not confirmed off")
+            else:
+                logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C at/below threshold {heat_on_threshold:.1f}C, turning heater ON")
+                await set_heater_state_for_batch(
+                    router, heater_entity, "on", db, batch_id,
+                    wort_temp, ambient_temp, target_temp, device_id
+                )
 
     elif wort_temp >= cool_on_threshold:
         # Need cooling - FIRST ensure heater is OFF
         if heater_entity and current_heater_state == "on":
             logger.info(f"Batch {batch_id}: Turning heater OFF (cooler needs to run)")
-            await set_heater_state_for_batch(
-                router, heater_entity, "off", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
-            # Refresh state after change
-            current_heater_state = _batch_heater_states.get(batch_id, {}).get("state")
+            await _turn_off_heater()
 
         # THEN turn cooler ON (only if heater is confirmed off)
         if cooler_entity and current_cooler_state != "on":
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F at/above threshold {cool_on_threshold:.1f}F, turning cooler ON")
-            await set_cooler_state_for_batch(
-                router, cooler_entity, "on", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
-            # Refresh state after change
-            current_cooler_state = _batch_cooler_states.get(batch_id, {}).get("state")
+            if heater_entity and current_heater_state != "off":
+                logger.warning(f"Batch {batch_id}: cooler ON withheld - heater not confirmed off")
+            else:
+                logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C at/above threshold {cool_on_threshold:.1f}C, turning cooler ON")
+                await set_cooler_state_for_batch(
+                    router, cooler_entity, "on", db, batch_id,
+                    wort_temp, ambient_temp, target_temp, device_id
+                )
 
     else:
         # Within deadband - check if we should turn OFF at target temp
         if wort_temp >= heat_off_threshold and heater_entity and current_heater_state == "on":
             # Reached target temp while heating - turn heater OFF to prevent overshoot
-            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}F reached target {heat_off_threshold:.1f}F, turning heater OFF")
-            await set_heater_state_for_batch(
-                router, heater_entity, "off", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
+            logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C reached target {heat_off_threshold:.1f}C, turning heater OFF")
+            await _turn_off_heater()
         elif wort_temp <= cool_off_threshold and cooler_entity and current_cooler_state == "on":
             # Reached target temp while cooling - turn cooler OFF to prevent undershoot
             logger.info(f"Batch {batch_id}: Wort temp {wort_temp:.1f}C reached target {cool_off_threshold:.1f}C, turning cooler OFF")
-            await set_cooler_state_for_batch(
-                router, cooler_entity, "off", db, batch_id,
-                wort_temp, ambient_temp, target_temp, device_id
-            )
+            await _turn_off_cooler()
             # If in chilling mode (planning status), send pitch-ready notification
             if is_chilling_mode:
                 await _send_pitch_ready_notification(batch, wort_temp, target_temp)
@@ -561,9 +836,24 @@ async def control_batch_temperature(
         else:
             # Maintain current states
             logger.debug(
-                f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}F-{cool_on_threshold:.1f}F), "
+                f"Batch {batch_id}: Within hysteresis band ({heat_on_threshold:.1f}C-{cool_on_threshold:.1f}C), "
                 f"maintaining states: heater={current_heater_state}, cooler={current_cooler_state}"
             )
+
+
+async def get_latest_chamber_reading(db) -> tuple[Optional[float], Optional[datetime]]:
+    """Most recent chamber (temperature, timestamp)."""
+    from sqlalchemy import desc
+    from .models import ChamberReading
+
+    result = await db.execute(
+        select(ChamberReading.temperature, ChamberReading.timestamp)
+        .where(ChamberReading.temperature.isnot(None))
+        .order_by(desc(ChamberReading.timestamp))
+        .limit(1)
+    )
+    row = result.first()
+    return (row[0], _utc(row[1])) if row else (None, None)
 
 
 async def control_chamber_idle(
@@ -578,6 +868,9 @@ async def control_chamber_idle(
     Uses the chamber sensor (not wort sensor) to maintain a target temperature
     in the fermentation chamber when idle. This prevents the chamber from
     getting too hot or cold between batches.
+
+    Shares the safety rules of batch control: persisted per-entity min-cycle,
+    stale-sensor guard, max-on, and on only when the opposite is confirmed off.
     """
     global _idle_heater_state, _idle_cooler_state
 
@@ -610,45 +903,66 @@ async def control_chamber_idle(
         return
 
     # Read chamber temperature
-    chamber_temp = await get_latest_chamber_temp(db)
+    chamber_temp, chamber_ts = await get_latest_chamber_reading(db)
     if chamber_temp is None:
         logger.debug("Chamber idle: no chamber temperature available")
         return
 
-    # Sync cached idle heater state with actual device state
-    if heater_entity:
-        actual_heater_state = await router.get_state(heater_entity)
-        if actual_heater_state in ("on", "off"):
-            if _idle_heater_state:
-                if _idle_heater_state.get("state") != actual_heater_state:
-                    logger.debug(f"Chamber idle: Syncing heater cache: {_idle_heater_state.get('state')} -> {actual_heater_state}")
-                _idle_heater_state["state"] = actual_heater_state
-            else:
-                _idle_heater_state = {"state": actual_heater_state}
-        elif actual_heater_state is None:
-            logger.warning(f"Chamber idle: Heater entity {heater_entity} is unavailable, skipping heater")
-            heater_entity = None  # Skip heater but continue with cooler
+    async def _idle_set(kind: str, entity: str, state: str, force: bool = False) -> bool:
+        states = _idle_heater_state if kind == "heater" else _idle_cooler_state
+        old_state = states.get("state")
+        success = await _set_entity_state(router, db, entity, kind, state, force=force)
+        if success:
+            states["state"] = state
+            states["last_change"] = _now()
+            logger.info(f"Chamber idle: {kind.capitalize()} state changed: {old_state} -> {state}")
+            action = ("heat_" if kind == "heater" else "cool_") + state
+            await log_control_event(db, action, chamber_temp, ambient_temp, target_temp, None, batch_id=None)
+        else:
+            logger.error(f"Chamber idle: {kind.capitalize()} not set to '{state}'")
+        return success
 
-    # Sync cached idle cooler state with actual device state
-    if cooler_entity:
-        actual_cooler_state = await router.get_state(cooler_entity)
-        if actual_cooler_state in ("on", "off"):
-            if _idle_cooler_state:
-                if _idle_cooler_state.get("state") != actual_cooler_state:
-                    logger.debug(f"Chamber idle: Syncing cooler cache: {_idle_cooler_state.get('state')} -> {actual_cooler_state}")
-                _idle_cooler_state["state"] = actual_cooler_state
+    # Stale chamber sensor: both off, no further action
+    age = None if chamber_ts is None else _now() - chamber_ts
+    if age is None or age > timedelta(minutes=SENSOR_STALE_MINUTES) or age < timedelta(minutes=-5):
+        logger.warning(f"Chamber idle: chamber reading is stale ({age}); heater and cooler forced OFF")
+        for kind, entity in (("heater", heater_entity), ("cooler", cooler_entity)):
+            if entity and await _read_state(router, entity) != "off":
+                await _idle_set(kind, entity, "off", force=True)
+        return
+
+    # Sync cached idle state with actual device state; enforce max-on
+    for kind, entity, states in (
+        ("heater", heater_entity, _idle_heater_state),
+        ("cooler", cooler_entity, _idle_cooler_state),
+    ):
+        if not entity:
+            continue
+        actual, exceeded = await _observe_entity(router, db, entity, kind)
+        if actual is None:
+            logger.warning(f"Chamber idle: {kind.capitalize()} entity {entity} is unavailable, skipping {kind}")
+            if kind == "heater":
+                heater_entity = None  # Skip heater but continue with cooler
             else:
-                _idle_cooler_state = {"state": actual_cooler_state}
-        elif actual_cooler_state is None:
-            logger.warning(f"Chamber idle: Cooler entity {cooler_entity} is unavailable, skipping cooler")
-            cooler_entity = None  # Skip cooler but continue with heater
+                cooler_entity = None
+            continue
+        if states:
+            if states.get("state") != actual:
+                logger.debug(f"Chamber idle: Syncing {kind} cache: {states.get('state')} -> {actual}")
+            states["state"] = actual
+        else:
+            states["state"] = actual
+        if exceeded:
+            logger.error(f"Chamber idle: {kind} {entity} on continuously for more than {_max_on_minutes(kind) / 60:g} h; forced OFF")
+            await _start_lockout(db, entity)
+            await _idle_set(kind, entity, "off", force=True)
 
     # If both unavailable, nothing to do
     if not heater_entity and not cooler_entity:
         return
 
-    current_heater = _idle_heater_state.get("state")
-    current_cooler = _idle_cooler_state.get("state")
+    current_heater = _idle_heater_state.get("state") if heater_entity else None
+    current_cooler = _idle_cooler_state.get("state") if cooler_entity else None
 
     # Asymmetric hysteresis thresholds (same logic as control_batch_temperature)
     heat_on_threshold = round(target_temp - hysteresis, 1)
@@ -661,72 +975,42 @@ async def control_chamber_idle(
         f"hysteresis={hysteresis:.1f}C, heater={current_heater}, cooler={current_cooler}"
     )
 
-    # Helper to check minimum cycle time for idle state changes
-    def _can_change_idle(state_dict: dict) -> bool:
-        last_change = state_dict.get("last_change")
-        if last_change is None:
-            return True
-        elapsed = datetime.now(timezone.utc) - last_change
-        return elapsed >= timedelta(minutes=MIN_CYCLE_MINUTES)
-
-    # Helper to set idle heater state
     async def _set_idle_heater(state: str) -> bool:
-        if not _can_change_idle(_idle_heater_state):
-            logger.debug(f"Chamber idle: Skipping heater change to '{state}' - min cycle time not met")
-            return False
-        success = await router.set_state(heater_entity, state)
-        if success:
-            old_state = _idle_heater_state.get("state")
-            _idle_heater_state["state"] = state
-            _idle_heater_state["last_change"] = datetime.now(timezone.utc)
-            logger.info(f"Chamber idle: Heater state changed: {old_state} -> {state}")
-            action = "heat_on" if state == "on" else "heat_off"
-            await log_control_event(db, action, chamber_temp, ambient_temp, target_temp, None, batch_id=None)
-        else:
-            logger.error(f"Chamber idle: Failed to set heater to '{state}'")
-        return success
+        return await _idle_set("heater", heater_entity, state)
 
-    # Helper to set idle cooler state
     async def _set_idle_cooler(state: str) -> bool:
-        if not _can_change_idle(_idle_cooler_state):
-            logger.debug(f"Chamber idle: Skipping cooler change to '{state}' - min cycle time not met")
-            return False
-        success = await router.set_state(cooler_entity, state)
-        if success:
-            old_state = _idle_cooler_state.get("state")
-            _idle_cooler_state["state"] = state
-            _idle_cooler_state["last_change"] = datetime.now(timezone.utc)
-            logger.info(f"Chamber idle: Cooler state changed: {old_state} -> {state}")
-            action = "cool_on" if state == "on" else "cool_off"
-            await log_control_event(db, action, chamber_temp, ambient_temp, target_temp, None, batch_id=None)
-        else:
-            logger.error(f"Chamber idle: Failed to set cooler to '{state}'")
-        return success
+        return await _idle_set("cooler", cooler_entity, state)
 
     # Control logic with mutual exclusion (same pattern as control_batch_temperature)
     if chamber_temp <= heat_on_threshold:
         # Need heating - FIRST ensure cooler is OFF
         if cooler_entity and current_cooler == "on":
             logger.info("Chamber idle: Turning cooler OFF (heater needs to run)")
-            await _set_idle_cooler("off")
-            current_cooler = _idle_cooler_state.get("state")
+            if await _set_idle_cooler("off"):
+                current_cooler = "off"
 
-        # THEN turn heater ON
+        # THEN turn heater ON, only if cooler is confirmed off
         if heater_entity and current_heater != "on":
-            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/below threshold {heat_on_threshold:.1f}C, turning heater ON")
-            await _set_idle_heater("on")
+            if cooler_entity and current_cooler != "off":
+                logger.warning("Chamber idle: heater ON withheld - cooler not confirmed off")
+            else:
+                logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/below threshold {heat_on_threshold:.1f}C, turning heater ON")
+                await _set_idle_heater("on")
 
     elif chamber_temp >= cool_on_threshold:
         # Need cooling - FIRST ensure heater is OFF
         if heater_entity and current_heater == "on":
             logger.info("Chamber idle: Turning heater OFF (cooler needs to run)")
-            await _set_idle_heater("off")
-            current_heater = _idle_heater_state.get("state")
+            if await _set_idle_heater("off"):
+                current_heater = "off"
 
-        # THEN turn cooler ON
+        # THEN turn cooler ON, only if heater is confirmed off
         if cooler_entity and current_cooler != "on":
-            logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/above threshold {cool_on_threshold:.1f}C, turning cooler ON")
-            await _set_idle_cooler("on")
+            if heater_entity and current_heater != "off":
+                logger.warning("Chamber idle: cooler ON withheld - heater not confirmed off")
+            else:
+                logger.info(f"Chamber idle: Chamber temp {chamber_temp:.1f}C at/above threshold {cool_on_threshold:.1f}C, turning cooler ON")
+                await _set_idle_cooler("on")
 
     else:
         # Within deadband - turn off at target to prevent overshoot
@@ -823,14 +1107,11 @@ async def temperature_control_loop() -> None:
                 )
                 batches = result.scalars().all()
 
-                # Control each batch's temperature concurrently for better performance
+                # Control each batch sequentially (shared DB session, shared per-entity state)
                 if batches:
-                    await asyncio.gather(*[
-                        control_batch_temperature(
-                            router, batch, db, global_target, global_hysteresis, ambient_temp
-                        )
-                        for batch in batches
-                    ], return_exceptions=True)
+                    await run_control_cycle(
+                        router, db, batches, global_target, global_hysteresis, ambient_temp
+                    )
 
                 # Chamber idle mode: control when no batches are active
                 if not batches:
@@ -985,7 +1266,7 @@ def set_manual_override(
 
     _batch_overrides[batch_id][device_type] = {
         "state": state,
-        "until": datetime.now(timezone.utc) + timedelta(minutes=duration_minutes) if duration_minutes > 0 else None,
+        "until": _now() + timedelta(minutes=duration_minutes) if duration_minutes > 0 else None,
     }
     logger.info(f"Batch {batch_id}: Manual override set: {device_type} {state} for {duration_minutes} minutes")
     _trigger_immediate_check()

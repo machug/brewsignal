@@ -26,6 +26,10 @@ class AlertType:
     TEMPERATURE_LOW = "temperature_low"
     ANOMALY = "anomaly"
     STALL = "stall"
+    # Temperature-controller safety alerts (tilt_ui-f50x, tilt_ui-8d49)
+    SENSOR_STALE = "sensor_stale"
+    MAX_ON_EXCEEDED = "max_on_exceeded"
+    EQUIPMENT_CONFLICT = "equipment_conflict"
 
 
 class AlertSeverity:

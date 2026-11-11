@@ -35,6 +35,8 @@ dependencies = [
     "prompty>=0.1",
     "scalar-fastapi>=1.8.2",
     "pydantic-ai-slim[openrouter]==2.66.0",
+    # Assistant long-term memory (embedded qdrant-client is a mem0ai dependency)
+    "mem0ai==2.2.1",
 ]
 
 [project.optional-dependencies]

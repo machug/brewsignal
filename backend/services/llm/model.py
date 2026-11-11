@@ -23,6 +23,17 @@ OPENAI_COMPATIBLE_URLS: dict[str, Optional[str]] = {
 }
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# Cheap per-provider models for background work (chat titles, memory fact extraction)
+FAST_MODELS = {
+    "openrouter": "anthropic/claude-haiku-4.5",
+    "openai": "gpt-4o-mini",
+    "google": "gemini-1.5-flash",
+    "groq": "llama-3.1-8b-instant",
+    "deepseek": "deepseek-chat",
+    "local": "smollm2:360m",
+    "hailo": "qwen2:1.5b",
+}
+
 
 class UnsupportedProvider(Exception):
     pass

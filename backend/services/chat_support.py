@@ -1,5 +1,6 @@
 """Helpers the /api/chat router needs: system prompt, lite-LLM check, background memory extraction."""
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -16,23 +17,33 @@ logger = logging.getLogger(__name__)
 PROMPTS_DIR = Path(__file__).parent / "llm" / "prompts"
 
 
-async def _extract_memories_background(messages: list[dict], user_id: str, llm_config):
-    """Background task to extract and store memories from conversation.
+MIN_EXTRACT_CHARS = 20  # shorter user turns ("ok", "thanks") carry nothing worth remembering
+_extracted: dict[str, None] = {}  # turns already extracted (insertion-ordered, bounded)
 
-    Runs after each successful agent run to extract facts, preferences,
-    and learnings from the conversation into long-term memory.
+
+async def _extract_memories_background(messages: list[dict], user_id: str, llm_config):
+    """Background task: extract long-term memories from the latest chat turn.
+
+    Only the last user message and the reply that followed go to mem0 (not the whole
+    thread, which would re-extract and re-bill old turns). Skips trivial turns and
+    never runs twice for the same turn.
     """
     try:
-        # Filter to just user/assistant messages for memory extraction
-        conversation = [
-            msg for msg in messages
-            if msg.get("role") in ("user", "assistant") and msg.get("content")
-        ]
+        turns = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+        user_idx = max((i for i, m in enumerate(turns) if m["role"] == "user"), default=None)
+        if user_idx is None:
+            return
+        turn = turns[user_idx:user_idx + 2]
+        if len(turn) < 2 or len(turn[0]["content"].strip()) < MIN_EXTRACT_CHARS:
+            return
+        key = hashlib.sha1(f"{user_id}\0{turn[0]['content']}\0{turn[1]['content']}".encode()).hexdigest()
+        if key in _extracted:
+            return
+        _extracted[key] = None
+        if len(_extracted) > 500:
+            _extracted.pop(next(iter(_extracted)))
 
-        if len(conversation) < 2:
-            return  # Need at least a user message and response
-
-        result = await add_memory(conversation, user_id=user_id, llm_config=llm_config)
+        result = await add_memory(turn, user_id=user_id, llm_config=llm_config)
         extracted = result.get("results", [])
         if extracted:
             logger.info(f"Extracted {len(extracted)} memories for user {user_id[:8]}...")

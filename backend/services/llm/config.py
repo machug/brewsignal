@@ -76,6 +76,7 @@ class LLMConfig(BaseModel):
     base_url: Optional[str] = None  # For Ollama: http://localhost:11434
     temperature: float = 0.7
     max_tokens: int = 2000
+    memory_auto_extract: bool = True  # ai_memory_auto_extract: mem0 fact extraction after each chat turn
 
     @field_validator("temperature")
     @classmethod

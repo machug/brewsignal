@@ -111,6 +111,7 @@ async def get_llm_config(db: AsyncSession) -> LLMConfig:
         base_url=get_value("ai_base_url") or None,
         temperature=get_value("ai_temperature", 0.7),
         max_tokens=get_value("ai_max_tokens", 2000),
+        memory_auto_extract=bool(get_value("ai_memory_auto_extract", True)),
     )
 
 

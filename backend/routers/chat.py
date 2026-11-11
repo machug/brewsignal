@@ -59,9 +59,10 @@ from backend.services.llm.model import (
     build_model,
     model_settings,
 )
+from backend.services.llm.model import FAST_MODELS
 from backend.services.llm.openrouter import resolve_openrouter_model
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
-from backend.services.memory import format_memories_for_context, search_memories
+from backend.services.memory import format_memories_for_context, keyword_search_learnings, search_memories_strict
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -70,16 +71,7 @@ ERROR_TEXT = "The assistant hit an error. Try again."
 MAX_MODEL_REQUESTS = 15  # per run, same cap as the old agent loop
 DENIED_TEXT = "The user did not approve this action."
 
-# Cheap models for title summarisation (bare model ids)
-FAST_TITLE_MODELS = {
-    "openrouter": "anthropic/claude-haiku-4.5",
-    "openai": "gpt-4o-mini",
-    "google": "gemini-1.5-flash",
-    "groq": "llama-3.1-8b-instant",
-    "deepseek": "deepseek-chat",
-    "local": "smollm2:360m",
-    "hailo": "qwen2:1.5b",
-}
+FAST_TITLE_MODELS = FAST_MODELS  # cheap models for title summarisation (bare model ids)
 LITE_TITLE_MODEL = "qwen2:1.5b"  # hailo-ollama
 
 # Threads with a run in flight. A second run on the same thread gets 409.
@@ -286,7 +278,9 @@ async def _instructions(db: AsyncSession, config: LLMConfig, user: AuthUser, que
         text += f"\n\nThe user is currently viewing batch #{batch_id}; questions about 'this batch' mean it."
     if user.user_id and query:
         try:
-            memories = await search_memories(query, user_id=user.user_id, llm_config=config, limit=5)
+            memories = await search_memories_strict(query, user_id=user.user_id, llm_config=config, limit=5)
+            if memories is None:  # mem0 unavailable: keyword recall over saved learnings
+                memories = await keyword_search_learnings(db, query, user.user_id, limit=5)
             if memory_context := format_memories_for_context(memories):
                 text += f"\n\n{memory_context}"
         except Exception as e:
@@ -480,7 +474,7 @@ async def run_chat(
             nonlocal completed
             messages = result.all_messages()
             await _save(db, thread, messages)
-            if user.user_id:
+            if user.user_id and config.memory_auto_extract:
                 _spawn(_extract_memories_background(_conversation(messages), user.user_id, config))
             if first_exchange:
                 _spawn(summarize_title(thread_id))

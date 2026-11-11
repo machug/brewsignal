@@ -15,16 +15,27 @@ LLM Configuration:
 - Memory features disabled if no LLM is configured
 """
 
+import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.config import settings
 from backend.services.llm.config import LLMConfig
-from backend.services.llm.model import UnsupportedProvider, api_key_for, model_name, openai_base_url
+from backend.services.llm.model import FAST_MODELS, UnsupportedProvider, api_key_for, openai_base_url
+
+os.environ.setdefault("MEM0_TELEMETRY", "False")  # no phone-home from a home appliance
 
 logger = logging.getLogger(__name__)
+
+EMBEDDING_DIMS = 1536  # openai/text-embedding-3-small; must match the qdrant collection
+# mem0 and its local qdrant are synchronous and single-process: run them in a thread, one at a time
+_mem_lock = asyncio.Lock()
 
 # Lazy-loaded memory instance
 _memory_instance = None
@@ -49,7 +60,13 @@ def _get_llm_provider_config(llm_config: LLMConfig) -> Optional[dict]:
         return None
 
     config = {
-        "model": model_name(llm_config),
+        # cheap/fast model: fact extraction does not need the main chat model
+        # (self-hosted local/hailo have no per-token cost: keep the user's own small model)
+        "model": (
+            llm_config.model
+            if llm_config._provider_str() in ("local", "hailo") and llm_config.model
+            else FAST_MODELS.get(llm_config._provider_str()) or llm_config.model
+        ),
         # Ollama-compatible servers ignore the key but the OpenAI client needs one
         "api_key": api_key_for(llm_config) or "ollama",
         "temperature": 0.1,  # Low temp for factual memory extraction
@@ -62,9 +79,10 @@ def _get_llm_provider_config(llm_config: LLMConfig) -> Optional[dict]:
 
 def _get_embedder_config(llm_config: LLMConfig) -> Optional[dict]:
     """Get embedder config. Uses OpenAI embeddings if available, else tries alternatives."""
-    # Check for OpenAI API key (best embeddings)
+    # Check for OpenAI API key (best embeddings). Skip it when chat runs on another
+    # OpenAI-compatible host: the key may not be valid there.
     openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
+    if openai_key and llm_config._provider_str() in ("openai", "openrouter"):
         return {
             "provider": "openai",
             "config": {
@@ -119,7 +137,9 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
         return None
 
     # Determine data directory
-    if settings.is_local:
+    if os.environ.get("BREWSIGNAL_MEMORY_DIR"):
+        data_dir = Path(os.environ["BREWSIGNAL_MEMORY_DIR"])
+    elif settings.is_local:
         data_dir = Path(__file__).parent.parent.parent / "data" / "memory"
     else:
         data_dir = Path("/tmp/brewsignal-memory")
@@ -130,6 +150,7 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
             "provider": "qdrant",
             "config": {
                 "path": str(data_dir / "qdrant"),
+                "embedding_model_dims": EMBEDDING_DIMS,
                 "on_disk": True,
             }
         },
@@ -162,7 +183,8 @@ def get_memory(llm_config: Optional[LLMConfig] = None):
 
     # Calculate config hash to detect changes
     if llm_config:
-        new_hash = f"{llm_config._provider_str()}:{llm_config.model}:{llm_config.enabled}"
+        # not the main model: changing it must not rebuild mem0 (local qdrant allows one client)
+        new_hash = f"{llm_config._provider_str()}:{llm_config.enabled}"
     else:
         new_hash = None
 
@@ -186,10 +208,38 @@ def get_memory(llm_config: Optional[LLMConfig] = None):
 
         _memory_instance = Memory.from_config(config)
         _memory_config_hash = new_hash
-        logger.info(f"Mem0 memory initialized (provider={llm_config._provider_str()})")
+        logger.info(
+            "Assistant memory enabled: embedder=%s, extraction model=%s",
+            config["embedder"]["config"]["model"],
+            config["llm"]["config"]["model"],
+        )
         return _memory_instance
     except Exception as e:
-        logger.warning(f"Failed to initialize Mem0: {e}. Memory features disabled.")
+        logger.warning(f"Assistant memory disabled: failed to initialize Mem0: {e}")
+        return None
+
+
+def _results(res) -> list[dict]:
+    return res.get("results", []) if isinstance(res, dict) else (res or [])
+
+
+async def search_memories_strict(
+    query: str,
+    user_id: str,
+    llm_config: Optional[LLMConfig] = None,
+    limit: int = 5,
+) -> Optional[list[dict]]:
+    """Semantic search. Returns None when mem0 is unavailable or errors (so callers can
+    fall back); an empty list means mem0 ran and found nothing."""
+    memory = get_memory(llm_config)
+    if not memory:
+        return None
+    try:
+        async with _mem_lock:
+            res = await asyncio.to_thread(memory.search, query, filters={"user_id": user_id}, top_k=limit)
+        return _results(res)
+    except Exception as e:
+        logger.warning(f"Memory search failed: {e}")
         return None
 
 
@@ -199,30 +249,28 @@ async def search_memories(
     llm_config: Optional[LLMConfig] = None,
     limit: int = 5,
 ) -> list[dict]:
-    """Search for relevant memories for a user.
+    """Search for relevant memories for a user. Empty list when mem0 is unavailable."""
+    return await search_memories_strict(query, user_id, llm_config, limit) or []
 
-    Args:
-        query: The search query (typically the user's message)
-        user_id: The user's ID for isolation
-        llm_config: LLM configuration (optional, uses cached if available)
-        limit: Maximum number of memories to return
 
-    Returns:
-        List of memory dicts with 'memory' and 'score' keys
-    """
-    memory = get_memory(llm_config)
-    if not memory:
+_WORD = re.compile(r"[a-z0-9]{3,}")
+
+
+async def keyword_search_learnings(db: AsyncSession, query: str, user_id: Optional[str], limit: int = 5) -> list[dict]:
+    """Fallback recall: rank this owner's brewing_learnings by shared words with the query."""
+    from backend.models import BrewingLearning
+
+    words = set(_WORD.findall(query.lower()))
+    if not words:
         return []
-
-    try:
-        results = memory.search(query, user_id=user_id, limit=limit)
-        # Handle both dict and list return types from mem0
-        if isinstance(results, dict):
-            return results.get("results", [])
-        return results or []
-    except Exception as e:
-        logger.warning(f"Memory search failed: {e}")
-        return []
+    rows = (await db.execute(select(BrewingLearning).where(BrewingLearning.user_id == user_id))).scalars().all()
+    scored = []
+    for r in rows:
+        hits = len(words & set(_WORD.findall(r.learning.lower())))
+        if hits:
+            scored.append((hits, r.created_at, r))
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return [{"memory": r.learning, "score": hits / len(words), "source": "keyword"} for hits, _, r in scored[:limit]]
 
 
 async def add_memory(
@@ -230,24 +278,21 @@ async def add_memory(
     user_id: str,
     llm_config: Optional[LLMConfig] = None,
     metadata: Optional[dict] = None,
+    infer: bool = True,
 ) -> dict:
-    """Extract and store memories from a conversation.
+    """Store memories from messages. infer=True runs LLM fact extraction; infer=False stores verbatim.
 
-    Args:
-        messages: List of message dicts with 'role' and 'content'
-        user_id: The user's ID for isolation
-        llm_config: LLM configuration (optional, uses cached if available)
-        metadata: Optional metadata to attach to memories
-
-    Returns:
-        Dict with 'results' containing extracted memories
+    Returns a dict with 'results' (each with 'id'); empty on failure.
     """
     memory = get_memory(llm_config)
     if not memory:
         return {"results": []}
 
     try:
-        result = memory.add(messages, user_id=user_id, metadata=metadata)
+        async with _mem_lock:
+            result = await asyncio.to_thread(
+                memory.add, messages, user_id=user_id, metadata=metadata, infer=infer
+            )
         return result or {"results": []}
     except Exception as e:
         logger.warning(f"Memory add failed: {e}")
@@ -258,28 +303,68 @@ async def get_all_memories(
     user_id: str,
     llm_config: Optional[LLMConfig] = None,
 ) -> list[dict]:
-    """Get all memories for a user.
-
-    Args:
-        user_id: The user's ID
-        llm_config: LLM configuration (optional, uses cached if available)
-
-    Returns:
-        List of all memory dicts for this user
-    """
+    """Get all memories for a user."""
     memory = get_memory(llm_config)
     if not memory:
         return []
 
     try:
-        results = memory.get_all(user_id=user_id)
-        # Handle both dict and list return types
-        if isinstance(results, dict):
-            return results.get("results", [])
-        return results or []
+        async with _mem_lock:
+            res = await asyncio.to_thread(memory.get_all, filters={"user_id": user_id}, top_k=1000)
+        return _results(res)
     except Exception as e:
         logger.warning(f"Get all memories failed: {e}")
         return []
+
+
+async def backfill_learnings(db: AsyncSession, llm_config: LLMConfig) -> int:
+    """Add brewing_learnings rows that have no mem0_memory_id into mem0 and store the ids.
+
+    Idempotent: rows with an id are skipped, a failed row stays unset and is retried next
+    start. Verbatim (infer=False): one embedding call per row, no LLM. Returns rows added.
+    """
+    from backend.models import BrewingLearning
+
+    if get_memory(llm_config) is None:
+        return 0
+    rows = (await db.execute(
+        select(BrewingLearning).where(BrewingLearning.mem0_memory_id.is_(None)).order_by(BrewingLearning.id)
+    )).scalars().all()
+    added = 0
+    for row in rows:
+        res = await add_memory(
+            [{"role": "user", "content": f"[{row.category}] {row.learning}"}],
+            user_id=row.user_id or "local",
+            llm_config=llm_config,
+            metadata={"category": row.category, "learning_id": row.id},
+            infer=False,
+        )
+        items = res.get("results") or []
+        if items and isinstance(items[0], dict) and items[0].get("id"):
+            row.mem0_memory_id = items[0]["id"]
+            await db.commit()
+            added += 1
+    return added
+
+
+async def backfill_learnings_background() -> None:
+    """Startup task: backfill with its own session; never raises, skips if memory is off."""
+    from backend.database import async_session_factory
+    from backend.routers.assistant import get_llm_config
+
+    try:
+        async with async_session_factory() as db:
+            llm_config = await get_llm_config(db)
+            if not llm_config.is_configured():
+                logger.info("Assistant memory off: LLM not configured")
+                return
+            if await asyncio.to_thread(get_memory, llm_config) is None:  # init off the loop; logs on/off once
+                return
+            n = await backfill_learnings(db, llm_config)
+            if n:
+                logger.info("Backfilled %d brewing learnings into assistant memory", n)
+    except Exception as e:
+        logger.warning("Memory backfill failed: %s", e)
 
 
 async def delete_memory(
@@ -300,7 +385,8 @@ async def delete_memory(
         return False
 
     try:
-        memory.delete(memory_id)
+        async with _mem_lock:
+            await asyncio.to_thread(memory.delete, memory_id)
         return True
     except Exception as e:
         logger.warning(f"Memory delete failed: {e}")
@@ -325,7 +411,8 @@ async def delete_all_memories(
         return False
 
     try:
-        memory.delete_all(user_id=user_id)
+        async with _mem_lock:
+            await asyncio.to_thread(memory.delete_all, user_id=user_id)
         return True
     except Exception as e:
         logger.warning(f"Delete all memories failed: {e}")

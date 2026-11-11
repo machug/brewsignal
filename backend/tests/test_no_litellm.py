@@ -75,7 +75,7 @@ def test_memory_config_without_litellm(monkeypatch):
     assert cfg["llm"]["provider"] == "openai"
     assert cfg["llm"]["config"]["openai_base_url"] == "https://openrouter.ai/api/v1"
     assert cfg["llm"]["config"]["api_key"] == "sk-or-test"
-    assert cfg["llm"]["config"]["model"] == "anthropic/claude-sonnet-4"  # bare id, no litellm prefix
+    assert cfg["llm"]["config"]["model"] == "anthropic/claude-haiku-4.5"  # fast model, bare id, no litellm prefix
     assert cfg["embedder"]["config"]["openai_base_url"] == "https://openrouter.ai/api/v1"
 
 

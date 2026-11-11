@@ -93,15 +93,17 @@ async def search_brewing_memories(
     Returns:
         Dict with count and list of memories with content and score
     """
-    from backend.services.memory import search_memories
+    from backend.services.memory import keyword_search_learnings, search_memories_strict
     from backend.routers.assistant import get_llm_config
 
     try:
         llm_config = await get_llm_config(db)
-        if not llm_config.is_configured():
-            return {"count": 0, "memories": [], "note": "LLM not configured"}
-
-        memories = await search_memories(query, user_id, llm_config, limit)
+        memories = None
+        if llm_config.is_configured():
+            memories = await search_memories_strict(query, user_id, llm_config, limit)
+        if not memories:
+            # mem0 off, failed, or found nothing: recall must not go silently empty
+            memories = await keyword_search_learnings(db, query, user_id, limit)
 
         return {
             "count": len(memories),
@@ -174,7 +176,8 @@ async def save_brewing_learning(
                 messages = [{"role": "assistant", "content": f"[{category}] {learning}"}]
                 mem_result = await add_memory(
                     messages, user_id=user_id, llm_config=llm_config,
-                    metadata={"category": category, "learning_id": record.id}
+                    metadata={"category": category, "learning_id": record.id},
+                    infer=False,  # explicit save: store verbatim, no extraction call
                 )
                 # Store Mem0 reference if available
                 extracted = mem_result.get("results", [])

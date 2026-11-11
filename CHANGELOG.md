@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster startup** (tilt_ui-h0j) - Recipe backfills run after boot instead of blocking it.
 
 ### Fixed
+- **Assistant memory recall works** (tilt_ui-scbr) - Memory (mem0) was never installed, so the assistant could save learnings but never recall them. It is now a dependency. Saved learnings are indexed on start, and old learnings are added once in the background. Embeddings go through OpenRouter (`openai/text-embedding-3-small`). Memory extraction uses the cheap fast model, skips short turns, and never runs twice for one turn. Set `ai_memory_auto_extract` to false to turn off automatic extraction. If memory search fails, the assistant falls back to a keyword search of your saved learnings.
 - **Legacy chat titles** (tilt_ui-qzk0.4) - Old chats titled with a fragment of message text (markdown, table pipes, line breaks, over 60 characters) are re-titled in the background after startup. Renamed chats are left alone. Without a model, the title is a cleaned start of your first message. New chats get a clean first-message title instead of raw text.
 - **Calibration** (tilt_ui-nv1r.6.1, tilt_ui-y5nm) - The API accepts empty and single-point calibration lists, so the first add, remove and clear work. A single point is stored but only applied with two or more points.
 - **Inventory hop names** (tilt_ui-vket) - Hop name matching ignores accents.

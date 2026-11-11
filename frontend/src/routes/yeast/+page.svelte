@@ -172,12 +172,12 @@
 		<div class="header-left">
 			<h1 class="page-title">Yeast Library</h1>
 			{#if !loading && strains.length > 0}
-				<span class="strain-count">{filteredStrains().length} of {strains.length}</span>
+				<span class="strain-count"><span class="num">{filteredStrains().length}</span> of <span class="num">{strains.length}</span></span>
 			{/if}
 		</div>
 		<div class="header-actions">
 			<button type="button" class="refresh-btn" onclick={handleRefresh} disabled={refreshing}>
-				<svg class="icon" class:spinning={refreshing} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<svg class="icon" class:spinning={refreshing} aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 				</svg>
 				{refreshing ? 'Refreshing...' : 'Refresh DB'}
@@ -225,12 +225,11 @@
 		</div>
 	{:else if error}
 		<div class="error-state">
-			<p class="error-message">{error}</p>
+			<p class="error-message" role="alert">{error}</p>
 			<button type="button" class="retry-btn" onclick={loadData}>Retry</button>
 		</div>
 	{:else if strains.length === 0}
 		<div class="empty-state">
-			<div class="empty-icon">🧫</div>
 			<h2 class="empty-title">No Yeast Strains</h2>
 			<p class="empty-description">Click "Refresh DB" to load the yeast database</p>
 		</div>
@@ -241,60 +240,55 @@
 	{:else}
 		<div class="strains-list">
 			{#each Object.entries(groupedStrains()) as [producer, groupStrains] (producer)}
-				<div class="producer-group">
-					<h2 class="producer-name">{producer} <span class="producer-count">({groupStrains.length})</span></h2>
-					<div class="strains-grid">
-						{#each groupStrains as strain (strain.id)}
-							<div class="strain-card" class:custom={strain.is_custom}>
-								<div class="strain-header">
-									<h3 class="strain-name">{strain.name}</h3>
-									{#if strain.is_custom}
-										<button
-											type="button"
-											class="delete-btn"
-											onclick={() => (deleteTarget = strain)}
-											aria-label="Delete"
-										>
-											<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-												<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-											</svg>
-										</button>
-									{/if}
-								</div>
-								<div class="strain-meta">
-									{#if strain.type}
-										<span class="strain-type" style="color: {getTypeColor(strain.type)}">{strain.type}</span>
-									{/if}
-									{#if strain.form}
-										<span class="strain-form">{strain.form}</span>
-									{/if}
-									{#if strain.is_custom}
-										<span class="custom-badge">custom</span>
-									{/if}
-								</div>
-								<div class="strain-specs">
-									<div class="spec">
-										<span class="spec-label">Attenuation</span>
-										<span class="spec-value">{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</span>
-									</div>
-									<div class="spec">
-										<span class="spec-label">Temp Range</span>
-										<span class="spec-value">{formatTempRange(strain.temp_low, strain.temp_high)}</span>
-									</div>
-									{#if strain.flocculation}
-										<div class="spec">
-											<span class="spec-label">Flocculation</span>
-											<span class="spec-value">{strain.flocculation}</span>
-										</div>
-									{/if}
-								</div>
-								{#if strain.description}
-									<p class="strain-description">{strain.description}</p>
-								{/if}
-							</div>
-						{/each}
+				<section class="producer-group">
+					<h2 class="producer-name">{producer} <span class="producer-count">{groupStrains.length}</span></h2>
+					<div class="scroll">
+						<table class="ledger">
+							<thead>
+								<tr>
+									<th>Strain</th>
+									<th>Type</th>
+									<th>Form</th>
+									<th class="r">Attenuation</th>
+									<th class="r">Temp range</th>
+									<th>Flocculation</th>
+									<th class="r"><span class="sr-only">Actions</span></th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each groupStrains as strain (strain.id)}
+									<tr>
+										<td data-label="Strain">
+											<div class="strain-name">{strain.name}{#if strain.is_custom} <span class="pill accent">Custom</span>{/if}</div>
+											{#if strain.description}
+												<p class="strain-description">{strain.description}</p>
+											{/if}
+										</td>
+										<td data-label="Type">
+											{#if strain.type}
+												<span class="pill" style="color: {getTypeColor(strain.type)}; border-color: {getTypeColor(strain.type)}">{strain.type}</span>
+											{:else}--{/if}
+										</td>
+										<td data-label="Form" class="muted cap">{strain.form || '--'}</td>
+										<td data-label="Attenuation" class="r num">{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</td>
+										<td data-label="Temp range" class="r num">{formatTempRange(strain.temp_low, strain.temp_high).replace('°C', '\u2009°C')}</td>
+										<td data-label="Flocculation" class="muted cap">{strain.flocculation || '--'}</td>
+										<td class="r actions">
+											{#if strain.is_custom}
+												<button
+													type="button"
+													class="delete-btn"
+													onclick={() => (deleteTarget = strain)}
+													aria-label="Delete {strain.name}"
+												>Delete</button>
+											{/if}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					</div>
-				</div>
+				</section>
 			{/each}
 		</div>
 	{/if}
@@ -412,519 +406,92 @@
 {/if}
 
 <style>
-	.page-container {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: var(--space-6);
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: var(--space-5);
-	}
-
-	.header-left {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-3);
-	}
-
-	.page-title {
-		font-size: 28px;
-		font-weight: 600;
-		margin: 0;
-		color: var(--text-primary);
-	}
-
-	.strain-count {
-		font-size: 14px;
-		color: var(--text-secondary);
-		font-family: var(--font-mono);
-	}
-
-	.header-actions {
-		display: flex;
-		gap: var(--space-3);
-	}
-
-	.add-btn,
-	.refresh-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4);
-		border-radius: 6px;
-		font-size: 14px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.add-btn {
-		background: var(--accent);
-		color: var(--accent-ink);
-		border: none;
-	}
-
-	.add-btn:hover {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.refresh-btn {
-		background: var(--bg-elevated);
-		color: var(--text-secondary);
-		border: 1px solid var(--border-default);
-	}
-
-	.refresh-btn:hover:not(:disabled) {
-		color: var(--text-primary);
-		border-color: var(--text-muted);
-	}
-
-	.refresh-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.icon {
-		width: 16px;
-		height: 16px;
-	}
-
-	.icon.spinning {
-		animation: spin 1s linear infinite;
-	}
-
-	.icon-sm {
-		width: 14px;
-		height: 14px;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* Filters */
-	.filters-bar {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		margin-bottom: var(--space-6);
-	}
-
-	.search-input {
-		flex: 1;
-		min-width: 200px;
-		max-width: 300px;
-		padding: var(--space-2) var(--space-3);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 6px;
-		color: var(--text-primary);
-		font-size: 14px;
-	}
-
-	.search-input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.filter-select {
-		padding: var(--space-2) var(--space-3);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 6px;
-		color: var(--text-primary);
-		font-size: 14px;
-		cursor: pointer;
-	}
-
-	.filter-select:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.custom-toggle {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
-		color: var(--text-secondary);
-		cursor: pointer;
-	}
-
-	.custom-toggle input {
-		width: 16px;
-		height: 16px;
-		cursor: pointer;
-	}
-
-	/* States */
-	.loading-state,
-	.empty-state,
-	.error-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-12);
-		text-align: center;
-	}
-
-	.spinner {
-		width: 32px;
-		height: 32px;
-		border: 3px solid var(--gray-700);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-		margin-bottom: var(--space-4);
-	}
-
-	.empty-icon {
-		font-size: 48px;
-		margin-bottom: var(--space-4);
-	}
-
-	.empty-title {
-		font-size: 20px;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 var(--space-2) 0;
-	}
-
-	.empty-description {
-		font-size: 14px;
-		color: var(--text-secondary);
-		margin: 0;
-	}
-
-	.error-message {
-		color: var(--negative);
-		margin-bottom: var(--space-4);
-	}
-
-	.retry-btn {
-		padding: var(--space-2) var(--space-4);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 6px;
-		color: var(--text-primary);
-		cursor: pointer;
-	}
-
-	/* Strains List */
-	.strains-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-6);
-	}
-
-	.producer-group {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-	}
-
-	.producer-name {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0;
-		padding-bottom: var(--space-2);
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.producer-count {
-		font-weight: 400;
-		color: var(--text-muted);
-	}
-
-	.strains-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-		gap: var(--space-3);
-	}
-
-	.strain-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
-		padding: var(--space-4);
-		transition: border-color var(--transition);
-	}
-
-	.strain-card:hover {
-		border-color: var(--border-default);
-	}
-
-	.strain-card.custom {
-		border-color: var(--accent);
-		background: rgba(59, 130, 246, 0.05);
-	}
-
-	.strain-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: var(--space-2);
-		margin-bottom: var(--space-2);
-	}
-
-	.strain-name {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-		line-height: 1.3;
-	}
-
-	.delete-btn {
-		flex-shrink: 0;
-		padding: var(--space-1);
-		background: transparent;
-		border: none;
-		color: var(--text-muted);
-		cursor: pointer;
-		border-radius: 4px;
-		transition: all var(--transition);
-	}
-
-	.delete-btn:hover {
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.1);
-	}
-
-	.strain-meta {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		margin-bottom: var(--space-3);
-	}
-
-	.strain-type {
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.strain-form {
-		font-size: 11px;
-		color: var(--text-muted);
-		text-transform: capitalize;
-	}
-
-	.custom-badge {
-		font-size: 10px;
-		font-weight: 500;
-		color: var(--accent);
-		background: rgba(59, 130, 246, 0.15);
-		padding: 2px 6px;
-		border-radius: 4px;
-	}
-
-	.strain-specs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-4);
-		margin-bottom: var(--space-3);
-	}
-
-	.spec {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.spec-label {
-		font-size: 10px;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-	}
-
-	.spec-value {
-		font-size: 13px;
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
-	}
-
-	.strain-description {
-		font-size: 12px;
-		color: var(--text-muted);
-		line-height: 1.5;
-		margin: 0;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	/* Modal */
-	.modal-overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 1000;
-		padding: var(--space-4);
-	}
-
-	.modal {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 12px;
-		padding: var(--space-6);
-		max-width: 500px;
-		width: 100%;
-		max-height: 90vh;
-		overflow-y: auto;
-	}
-
-	.modal-title {
-		font-size: 20px;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 var(--space-4) 0;
-	}
-
-	.modal-text {
-		font-size: 14px;
-		color: var(--text-secondary);
-		margin: 0 0 var(--space-6) 0;
-	}
-
-	.modal-form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-	}
-
-	.form-group {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-	}
-
-	.form-group label {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--text-secondary);
-	}
-
-	.form-group input,
-	.form-group select,
-	.form-group textarea {
-		padding: var(--space-2) var(--space-3);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 6px;
-		color: var(--text-primary);
-		font-size: 14px;
-	}
-
-	.form-group input:focus,
-	.form-group select:focus,
-	.form-group textarea:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.form-group textarea {
-		resize: vertical;
-		min-height: 80px;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: var(--space-3);
-	}
-
-	.modal-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: var(--space-3);
-		margin-top: var(--space-4);
-	}
-
-	.btn-cancel,
-	.btn-submit,
-	.btn-delete {
-		padding: var(--space-2) var(--space-4);
-		border-radius: 6px;
-		font-size: 14px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.btn-cancel {
-		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-primary);
-	}
-
-	.btn-cancel:hover {
-		background: var(--bg-hover);
-	}
-
-	.btn-submit {
-		background: var(--accent);
-		border: none;
-		color: var(--accent-ink);
-	}
-
-	.btn-submit:hover:not(:disabled) {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.btn-submit:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-delete {
-		background: var(--negative);
-		border: none;
-		color: white;
-	}
-
-	.btn-delete:hover:not(:disabled) {
-		background: var(--negative);
-	}
-
-	.btn-delete:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
+	.page-container { max-width: 1400px; margin: 0 auto; padding: var(--space-lg) var(--space-xl) var(--space-xl); }
+	.page-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: var(--space-md); margin-bottom: var(--space-md); }
+	.header-left { display: flex; align-items: baseline; gap: var(--space-sm); }
+	.page-title { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink-primary); }
+	.strain-count { font-size: var(--text-sm); color: var(--ink-secondary); }
+	.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+	.header-actions { display: flex; gap: var(--space-sm); }
+	.add-btn, .refresh-btn, .retry-btn { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); border-radius: 4px; font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+	.add-btn { background: var(--accent); color: var(--accent-ink); }
+	.add-btn:hover { background: var(--accent-hover); }
+	.refresh-btn, .retry-btn { background: var(--bg-surface); color: var(--ink-primary); border: 1px solid var(--rule-strong); }
+	.refresh-btn:hover:not(:disabled), .retry-btn:hover { background: var(--accent-tint); border-color: var(--accent-rule); }
+	.refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+	.add-btn:focus-visible, .refresh-btn:focus-visible, .retry-btn:focus-visible, .delete-btn:focus-visible, .btn-cancel:focus-visible, .btn-submit:focus-visible, .btn-delete:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.icon { width: 16px; height: 16px; }
+	.icon.spinning { animation: spin 1s linear infinite; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+	@media (prefers-reduced-motion: reduce) { .icon.spinning, .spinner { animation-duration: 3s; } }
+
+	.filters-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-lg); }
+	.search-input, .filter-select { min-height: 44px; padding: 0 var(--space-sm); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; color: var(--ink-primary); font-size: var(--text-sm); }
+	.search-input { flex: 1; min-width: 200px; max-width: 20rem; }
+	.search-input::placeholder { color: var(--ink-muted); }
+	.filter-select { cursor: pointer; }
+	.search-input:focus-visible, .filter-select:focus-visible, .form-group input:focus-visible, .form-group select:focus-visible, .form-group textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+	.custom-toggle { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; font-size: var(--text-sm); color: var(--ink-secondary); cursor: pointer; }
+	.custom-toggle input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+	.loading-state, .empty-state, .error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-2xl) var(--space-md); text-align: center; border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); color: var(--ink-secondary); }
+	.spinner { width: 32px; height: 32px; border: 3px solid var(--rule-hairline); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: var(--space-md); }
+	.empty-title { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; color: var(--ink-primary); margin-bottom: var(--space-xs); }
+	.empty-description { font-size: var(--text-sm); color: var(--ink-secondary); }
+	.error-message { color: var(--status-danger); margin-bottom: var(--space-md); padding: var(--space-xs) var(--space-sm); border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent); border-radius: 4px; }
+
+	.strains-list { display: flex; flex-direction: column; gap: var(--space-lg); }
+	.producer-name { display: flex; align-items: baseline; gap: var(--space-xs); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.07em; padding-bottom: var(--space-xs); border-bottom: 1px solid var(--rule-strong); }
+	.producer-count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 400; }
+	.scroll { overflow-x: auto; }
+	.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+	.ledger th { padding: var(--space-xs) var(--space-sm); text-align: left; font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border-bottom: 1px solid var(--rule-hairline); white-space: nowrap; }
+	.ledger td { padding: var(--space-sm); border-bottom: 1px solid var(--rule-hairline); color: var(--ink-primary); vertical-align: top; }
+	.ledger .r { text-align: right; }
+	.ledger .actions { white-space: nowrap; }
+	.muted, .ledger td.muted { color: var(--ink-secondary); }
+	.cap { text-transform: capitalize; }
+	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+	.strain-name { font-weight: 700; color: var(--ink-primary); line-height: 1.3; }
+	.strain-description { margin-top: var(--space-2xs); max-width: 60ch; font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.pill { display: inline-flex; align-items: center; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; line-height: 1.4; vertical-align: middle; }
+	.pill.accent { color: var(--accent); border-color: var(--accent-rule); }
+	.delete-btn { min-height: 32px; padding: 0 var(--space-xs); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--status-danger); border-radius: 4px; cursor: pointer; }
+	.delete-btn:hover { text-decoration: underline; }
+
+	.modal-overlay { position: fixed; inset: 0; background: color-mix(in oklch, var(--bg-canvas) 75%, transparent); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-md); }
+	.modal { background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; padding: var(--space-lg); max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
+	.modal-title { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700; color: var(--ink-primary); margin-bottom: var(--space-md); }
+	.modal-text { font-size: var(--text-sm); color: var(--ink-secondary); margin-bottom: var(--space-lg); }
+	.modal-form { display: flex; flex-direction: column; gap: var(--space-md); }
+	.form-group { display: flex; flex-direction: column; gap: var(--space-2xs); }
+	.form-group label { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+	.form-group input, .form-group select, .form-group textarea { min-height: 44px; padding: 0 var(--space-sm); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; color: var(--ink-primary); font-size: var(--text-sm); }
+	.form-group textarea { resize: vertical; min-height: 80px; padding: var(--space-xs) var(--space-sm); }
+	.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+	.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-md); }
+	.btn-cancel, .btn-submit, .btn-delete { min-height: 44px; padding: 0 var(--space-md); border-radius: 4px; font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+	.btn-cancel { background: var(--bg-surface); border: 1px solid var(--rule-strong); color: var(--ink-primary); }
+	.btn-cancel:hover { background: var(--accent-tint); border-color: var(--accent-rule); }
+	.btn-submit { background: var(--accent); color: var(--accent-ink); }
+	.btn-submit:hover:not(:disabled) { background: var(--accent-hover); }
+	.btn-delete { background: var(--bg-surface); color: var(--status-danger); border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent); }
+	.btn-delete:hover:not(:disabled) { background: var(--negative-muted); }
+	.btn-submit:disabled, .btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
 
 	@media (max-width: 640px) {
-		.page-header {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: var(--space-4);
-		}
-
-		.filters-bar {
-			flex-direction: column;
-		}
-
-		.search-input {
-			max-width: none;
-		}
-
-		.form-row {
-			grid-template-columns: 1fr;
-		}
+		.page-container { padding: var(--space-md); }
+		.filters-bar { flex-direction: column; align-items: stretch; }
+		.search-input { max-width: none; }
+		.form-row { grid-template-columns: 1fr; }
+		.ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+		.ledger, .ledger tbody, .ledger tr, .ledger td { display: block; }
+		.ledger tr { padding: var(--space-xs) 0; border-bottom: 1px solid var(--rule-hairline); }
+		.ledger td { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); padding: var(--space-2xs) var(--space-xs); border: 0; text-align: right; }
+		.ledger td[data-label]::before { content: attr(data-label); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); text-align: left; flex-shrink: 0; }
+		.ledger td[data-label="Strain"] { display: block; text-align: left; }
+		.ledger td[data-label="Strain"]::before { display: none; }
+		.ledger .actions { justify-content: flex-end; }
+		.delete-btn { min-height: 44px; padding: 0 var(--space-sm); }
 	}
 </style>

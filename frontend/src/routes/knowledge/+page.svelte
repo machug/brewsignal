@@ -5,11 +5,11 @@
 
 	const categories = ['all', 'equipment', 'technique', 'recipe', 'ingredient', 'correction'] as const;
 	const categoryColors: Record<string, string> = {
-		equipment: '#d97706',
-		technique: '#2563eb',
-		recipe: '#16a34a',
-		ingredient: '#9333ea',
-		correction: '#dc2626',
+		equipment: 'var(--accent)',
+		technique: 'var(--temp-trace)',
+		recipe: 'var(--status-steady)',
+		ingredient: 'var(--ink-secondary)',
+		correction: 'var(--status-danger)',
 	};
 
 	let learnings = $state<BrewingLearningResponse[]>([]);
@@ -96,7 +96,7 @@
 	<!-- Count -->
 	{#if !loading}
 		<div class="count-indicator">
-			{filtered.length} learning{filtered.length !== 1 ? 's' : ''}
+			<span class="num">{filtered.length}</span> learning{filtered.length !== 1 ? 's' : ''}
 		</div>
 	{/if}
 
@@ -108,7 +108,6 @@
 		</div>
 	{:else if filtered.length === 0}
 		<div class="empty-state">
-			<div class="empty-icon">📚</div>
 			<h2 class="empty-title">No learnings yet</h2>
 			<p class="empty-text">
 				{#if activeCategory === 'all'}
@@ -121,11 +120,11 @@
 	{:else}
 		<div class="learnings-list">
 			{#each filtered as learning (learning.id)}
-				<div class="learning-card">
+				<article class="learning-card">
 					<div class="card-header">
 						<span
 							class="category-badge"
-							style="background: {categoryColors[learning.category]}20; color: {categoryColors[learning.category]}"
+							style="color: {categoryColors[learning.category]}; border-color: {categoryColors[learning.category]}"
 						>
 							{learning.category}
 						</span>
@@ -204,304 +203,62 @@
 							{/if}
 						</div>
 					{/if}
-				</div>
+				</article>
 			{/each}
 		</div>
 	{/if}
 </div>
 
 <style>
-	.knowledge-page {
-		max-width: 48rem;
-		margin: 0 auto;
-	}
+	.knowledge-page { max-width: 68ch; margin: 0 auto; padding-bottom: var(--space-xl); }
+	.page-header { margin-bottom: var(--space-lg); }
+	.page-title { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink-primary); }
+	.page-subtitle { font-size: var(--text-sm); color: var(--ink-secondary); margin-top: var(--space-2xs); }
 
-	/* Header */
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
+	.category-tabs { display: flex; gap: var(--space-2xs); border-bottom: 1px solid var(--rule-hairline); margin-bottom: var(--space-md); overflow-x: auto; }
+	.category-tab { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-sm); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; transition: color 140ms var(--ease-out-quart); }
+	.category-tab:hover { color: var(--ink-primary); }
+	.category-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+	.category-tab:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.tab-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex-shrink: 0; }
+	.tab-label { line-height: 1; }
 
-	.page-title {
-		font-size: 1.5rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 0.25rem 0;
-	}
+	.count-indicator { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); margin-bottom: var(--space-sm); }
+	.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 
-	.page-subtitle {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin: 0;
-	}
+	.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-2xl) 0; color: var(--ink-muted); }
+	.spinner { width: 2rem; height: 2rem; border: 2px solid var(--rule-hairline); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: var(--space-md); }
+	@keyframes spin { to { transform: rotate(360deg); } }
+	@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 
-	/* Category tabs */
-	.category-tabs {
-		display: flex;
-		gap: 0.25rem;
-		padding: 0.25rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
-		overflow-x: auto;
-	}
+	.empty-state { padding: var(--space-xl) 0; border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); }
+	.empty-title { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; color: var(--ink-primary); margin-bottom: var(--space-xs); }
+	.empty-text { font-size: var(--text-sm); color: var(--ink-secondary); line-height: 1.6; max-width: 56ch; }
 
-	.category-tab {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		background: transparent;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: color 150ms, background 150ms;
-	}
+	.learnings-list { display: flex; flex-direction: column; }
+	.learning-card { padding: var(--space-md) 0; border-top: 1px solid var(--rule-hairline); }
+	.learning-card:last-child { border-bottom: 1px solid var(--rule-hairline); }
+	.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-xs); }
+	.category-badge { display: inline-block; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; border: 1px solid; border-radius: 3px; line-height: 1.4; }
+	.card-date { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--ink-muted); }
+	.learning-text { font-size: var(--text-base); color: var(--ink-primary); line-height: 1.65; white-space: pre-wrap; }
+	.card-source { margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; }
+	.card-actions { display: flex; align-items: center; gap: var(--space-xs); margin-top: var(--space-xs); }
 
-	.category-tab:hover {
-		color: var(--text-primary);
-		background: var(--bg-hover);
-	}
+	.edit-textarea { width: 100%; padding: var(--space-sm); font-size: var(--text-sm); font-family: inherit; color: var(--ink-primary); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; resize: vertical; line-height: 1.6; }
+	.edit-textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+	.edit-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-sm); }
 
-	.category-tab.active {
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-	}
-
-	.tab-dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.tab-label {
-		line-height: 1;
-	}
-
-	/* Count */
-	.count-indicator {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-bottom: 1rem;
-		font-family: var(--font-mono);
-	}
-
-	/* Loading */
-	.loading-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 4rem 0;
-		color: var(--text-muted);
-	}
-
-	.spinner {
-		width: 2rem;
-		height: 2rem;
-		border: 2px solid var(--border-subtle);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-		margin-bottom: 1rem;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* Empty state */
-	.empty-state {
-		text-align: center;
-		padding: 4rem 1rem;
-	}
-
-	.empty-icon {
-		font-size: 2.5rem;
-		margin-bottom: 1rem;
-	}
-
-	.empty-title {
-		font-size: 1.125rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 0.5rem 0;
-	}
-
-	.empty-text {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		max-width: 24rem;
-		margin: 0 auto;
-		line-height: 1.5;
-	}
-
-	/* Learnings list */
-	.learnings-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	/* Card */
-	.learning-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		overflow: hidden;
-	}
-
-	.card-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.category-badge {
-		display: inline-block;
-		padding: 0.125rem 0.5rem;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		border-radius: 9999px;
-	}
-
-	.card-date {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		font-family: var(--font-mono);
-	}
-
-	.card-body {
-		padding: 1rem;
-	}
-
-	.learning-text {
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		line-height: 1.6;
-		margin: 0;
-		white-space: pre-wrap;
-	}
-
-	.card-source {
-		padding: 0.75rem 1rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		background: var(--bg-elevated);
-		border-top: 1px solid var(--border-subtle);
-	}
-
-	.card-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		border-top: 1px solid var(--border-subtle);
-	}
-
-	/* Edit textarea */
-	.edit-textarea {
-		width: 100%;
-		padding: 0.75rem;
-		font-size: 0.875rem;
-		font-family: inherit;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
-		resize: vertical;
-		line-height: 1.6;
-	}
-
-	.edit-textarea:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.edit-actions {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-	}
-
-	/* Buttons */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: background 150ms, color 150ms;
-	}
-
-	.btn-primary {
-		padding: 0.5rem 1rem;
-		background: var(--accent);
-		color: var(--accent-ink);
-	}
-
-	.btn-primary:hover {
-		filter: brightness(1.1);
-	}
-
-	.btn-ghost {
-		padding: 0.5rem 1rem;
-		background: transparent;
-		color: var(--text-secondary);
-	}
-
-	.btn-ghost:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.btn-ghost-sm {
-		padding: 0.25rem 0.625rem;
-		font-size: 0.75rem;
-		background: transparent;
-		color: var(--text-muted);
-	}
-
-	.btn-ghost-sm:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.btn-danger-sm {
-		padding: 0.25rem 0.625rem;
-		font-size: 0.75rem;
-		background: rgba(220, 38, 38, 0.15);
-		color: #dc2626;
-	}
-
-	.btn-danger-sm:hover {
-		background: rgba(220, 38, 38, 0.25);
-	}
-
-	.btn-danger-text {
-		color: var(--text-muted);
-	}
-
-	.btn-danger-text:hover {
-		color: #dc2626;
-		background: rgba(220, 38, 38, 0.1);
-	}
-
-	.delete-confirm-text {
-		font-size: 0.75rem;
-		color: #dc2626;
-		margin-right: auto;
-	}
+	.btn { display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; border-radius: 4px; cursor: pointer; }
+	.btn-primary { min-height: 44px; padding: 0 var(--space-md); background: var(--accent); color: var(--accent-ink); }
+	.btn-primary:hover { background: var(--accent-hover); }
+	.btn-ghost { min-height: 44px; padding: 0 var(--space-md); background: var(--bg-surface); color: var(--ink-primary); border: 1px solid var(--rule-strong); }
+	.btn-ghost:hover { background: var(--accent-tint); border-color: var(--accent-rule); }
+	.btn-ghost-sm, .btn-danger-sm { min-height: 44px; padding: 0 var(--space-sm); font-size: var(--text-xs); background: transparent; color: var(--ink-secondary); }
+	.btn-ghost-sm:hover { color: var(--ink-primary); text-decoration: underline; }
+	.btn-danger-sm { color: var(--status-danger); border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent); }
+	.btn-danger-sm:hover { background: var(--negative-muted); }
+	.btn-danger-text { color: var(--status-danger); }
+	.btn-danger-text:hover { color: var(--status-danger); }
+	.delete-confirm-text { font-size: var(--text-xs); color: var(--status-danger); margin-right: auto; }
 </style>

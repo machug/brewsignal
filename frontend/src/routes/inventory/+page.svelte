@@ -605,261 +605,81 @@
 	function getExpiryClass(dateStr?: string): string {
 		const days = getDaysUntilExpiry(dateStr);
 		if (days === null) return '';
-		if (days < 0) return 'text-red-500';
-		if (days <= 30) return 'text-amber-500';
-		return 'text-green-600';
+		if (days < 0) return 'exp-past';
+		if (days <= 30) return 'exp-soon';
+		return 'exp-ok';
 	}
 
 	onMount(loadData);
 </script>
 
-<div class="space-y-6">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Inventory</h1>
-			<p class="text-sm text-zinc-500 dark:text-zinc-400">
-				Track your brewing equipment, hops, and yeast
-			</p>
-		</div>
-	</div>
+<div class="inv">
+	<header class="page-head">
+		<h1 class="page-title">Inventory</h1>
+		<p class="page-desc">Equipment, hops and yeast on hand</p>
+	</header>
 
-	<!-- Error display -->
 	{#if error}
-		<div class="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/20 dark:text-red-400">
-			{error}
-			<button onclick={() => (error = null)} class="ml-2 underline">Dismiss</button>
+		<div class="alert" role="alert">
+			<span><strong>Error</strong> {error}</span>
+			<button onclick={() => (error = null)} class="link-btn">Dismiss</button>
 		</div>
 	{/if}
 
-	<!-- Tabs -->
-	<div class="border-b border-zinc-200 dark:border-zinc-700">
-		<nav class="-mb-px flex space-x-8">
-			<button
-				onclick={() => (activeTab = 'equipment')}
-				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {activeTab === 'equipment'
-					? 'border-amber-500 text-amber-600 dark:text-amber-400'
-					: 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300'}"
-			>
-				Equipment
-				<span
-					class="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800"
-				>
-					{equipment.length}
-				</span>
-			</button>
-			<button
-				onclick={() => (activeTab = 'hops')}
-				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {activeTab === 'hops'
-					? 'border-amber-500 text-amber-600 dark:text-amber-400'
-					: 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300'}"
-			>
-				Hops
-				<span
-					class="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800"
-				>
-					{hops.length}
-				</span>
-			</button>
-			<button
-				onclick={() => (activeTab = 'yeast')}
-				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {activeTab === 'yeast'
-					? 'border-amber-500 text-amber-600 dark:text-amber-400'
-					: 'border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300'}"
-			>
-				Yeast
-				<span
-					class="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800"
-				>
-					{yeasts.length}
-				</span>
-				{#if yeastSummary && yeastSummary.expiring_soon > 0}
-					<span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-						{yeastSummary.expiring_soon} expiring
-					</span>
-				{/if}
-			</button>
-		</nav>
+	<div class="tabs" role="tablist">
+		<button role="tab" aria-selected={activeTab === 'equipment'} class="tab" class:active={activeTab === 'equipment'} onclick={() => (activeTab = 'equipment')}>
+			Equipment <span class="count">{equipment.length}</span>
+		</button>
+		<button role="tab" aria-selected={activeTab === 'hops'} class="tab" class:active={activeTab === 'hops'} onclick={() => (activeTab = 'hops')}>
+			Hops <span class="count">{hops.length}</span>
+		</button>
+		<button role="tab" aria-selected={activeTab === 'yeast'} class="tab" class:active={activeTab === 'yeast'} onclick={() => (activeTab = 'yeast')}>
+			Yeast <span class="count">{yeasts.length}</span>
+			{#if yeastSummary && yeastSummary.expiring_soon > 0}
+				<span class="pill warn">{yeastSummary.expiring_soon} expiring</span>
+			{/if}
+		</button>
 	</div>
 
 	{#if loading}
-		<div class="flex items-center justify-center py-12">
-			<div class="h-8 w-8 animate-spin rounded-full border-4 border-amber-500 border-t-transparent"></div>
-		</div>
+		<p class="empty" role="status">Loading inventory...</p>
 	{:else}
-		<!-- Equipment Tab -->
 		{#if activeTab === 'equipment'}
-			<div class="space-y-4">
-				<div class="flex items-center justify-between">
-					<p class="text-sm text-zinc-500 dark:text-zinc-400">
-						{equipment.length} items
-					</p>
-					<button
-						onclick={() => openEquipmentModal()}
-						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
-					>
-						Add Equipment
-					</button>
+			<section class="panel">
+				<div class="toolbar">
+					<p class="meta"><span class="num">{equipment.length}</span> items</p>
+					<button onclick={() => openEquipmentModal()} class="btn-primary">Add Equipment</button>
 				</div>
 
 				{#if equipment.length === 0}
-					<div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-						<p class="text-zinc-500 dark:text-zinc-400">No equipment added yet</p>
-						<button
-							onclick={() => openEquipmentModal()}
-							class="mt-2 text-amber-600 hover:underline dark:text-amber-400"
-						>
-							Add your first equipment
-						</button>
+					<div class="empty">
+						<p>No equipment added yet</p>
+						<button onclick={() => openEquipmentModal()} class="link-btn accent">Add your first equipment</button>
 					</div>
 				{:else}
-					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-						{#each equipment as item}
-							<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-								<div class="flex items-start justify-between">
-									<div>
-										<h3 class="font-medium text-zinc-900 dark:text-zinc-100">{item.name}</h3>
-										<p class="text-sm text-zinc-500 dark:text-zinc-400">
-											{equipmentTypes.find((t) => t.value === item.type)?.label || item.type}
-										</p>
-									</div>
-									<span
-										class="rounded-full px-2 py-0.5 text-xs {item.is_active
-											? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-											: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400'}"
-									>
-										{item.is_active ? 'Active' : 'Inactive'}
-									</span>
-								</div>
-								{#if item.brand || item.model}
-									<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-										{[item.brand, item.model].filter(Boolean).join(' ')}
-									</p>
-								{/if}
-								{#if item.capacity_liters}
-									<p class="text-sm text-zinc-500 dark:text-zinc-400">
-										{item.capacity_liters}L capacity
-									</p>
-								{/if}
-								<div class="mt-3 flex gap-2">
-									<button
-										onclick={() => openEquipmentModal(item)}
-										class="text-sm text-amber-600 hover:underline dark:text-amber-400"
-									>
-										Edit
-									</button>
-									<button
-										onclick={() => (deleteTarget = { type: 'equipment', item })}
-										class="text-sm text-red-600 hover:underline dark:text-red-400"
-									>
-										Delete
-									</button>
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		{/if}
-
-		<!-- Hops Tab -->
-		{#if activeTab === 'hops'}
-			<div class="space-y-4">
-				<!-- Summary cards -->
-				{#if hopSummary}
-					<div class="grid gap-4 sm:grid-cols-3">
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Total Weight</p>
-							<p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-								{(hopSummary.total_grams / 1000).toFixed(2)} kg
-							</p>
-						</div>
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Varieties</p>
-							<p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-								{hopSummary.unique_varieties}
-							</p>
-						</div>
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Lots</p>
-							<p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-								{hopSummary.total_items}
-							</p>
-						</div>
-					</div>
-				{/if}
-
-				<div class="flex items-center justify-between gap-4">
-					<input
-						type="text"
-						placeholder="Search hops..."
-						bind:value={hopSearchQuery}
-						class="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-					/>
-					<button
-						onclick={() => openHopModal()}
-						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
-					>
-						Add Hops
-					</button>
-				</div>
-
-				{#if filteredHops.length === 0}
-					<div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-						<p class="text-zinc-500 dark:text-zinc-400">
-							{hopSearchQuery ? 'No hops match your search' : 'No hops in inventory'}
-						</p>
-					</div>
-				{:else}
-					<div class="overflow-x-auto">
-						<table class="w-full text-sm">
+					<div class="scroll">
+						<table class="ledger">
 							<thead>
-								<tr class="border-b border-zinc-200 dark:border-zinc-700">
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Variety</th>
-									<th class="py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">Amount</th>
-									<th class="py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">AA%</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Form</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Year</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Location</th>
-									<th class="py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
+								<tr>
+									<th>Name</th>
+									<th>Type</th>
+									<th>Make / model</th>
+									<th class="r">Capacity</th>
+									<th>Status</th>
+									<th class="r">Actions</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredHops as hop}
-									<tr class="border-b border-zinc-100 dark:border-zinc-800">
-										<td class="py-3 font-medium text-zinc-900 dark:text-zinc-100">{hop.variety}</td>
-										<td class="py-3 text-right text-zinc-600 dark:text-zinc-300">
-											{hop.amount_grams >= 1000
-												? `${(hop.amount_grams / 1000).toFixed(2)} kg`
-												: `${hop.amount_grams.toFixed(0)} g`}
-										</td>
-										<td class="py-3 text-right text-zinc-600 dark:text-zinc-300">
-											{hop.alpha_acid_percent?.toFixed(1) || '--'}
-										</td>
-										<td class="py-3 capitalize text-zinc-600 dark:text-zinc-300">{hop.form}</td>
-										<td class="py-3 text-zinc-600 dark:text-zinc-300">{hop.crop_year || '--'}</td>
-										<td class="py-3 text-zinc-500 dark:text-zinc-400">{hop.storage_location || '--'}</td>
-										<td class="py-3 text-right">
-											<button
-												onclick={() => openAdjustModal(hop)}
-												class="text-amber-600 hover:underline dark:text-amber-400"
-											>
-												Adjust
-											</button>
-											<span class="mx-1 text-zinc-300">|</span>
-											<button
-												onclick={() => openHopModal(hop)}
-												class="text-zinc-600 hover:underline dark:text-zinc-400"
-											>
-												Edit
-											</button>
-											<span class="mx-1 text-zinc-300">|</span>
-											<button
-												onclick={() => (deleteTarget = { type: 'hop', item: hop })}
-												class="text-red-600 hover:underline dark:text-red-400"
-											>
-												Delete
-											</button>
+								{#each equipment as item}
+									<tr>
+										<td data-label="Name" class="strong">{item.name}</td>
+										<td data-label="Type" class="muted">{equipmentTypes.find((t) => t.value === item.type)?.label || item.type}</td>
+										<td data-label="Make / model" class="muted">{[item.brand, item.model].filter(Boolean).join(' ') || '--'}</td>
+										<td data-label="Capacity" class="r num">{item.capacity_liters ? `${item.capacity_liters} L` : '--'}</td>
+										<td data-label="Status"><span class="pill" class:steady={item.is_active}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
+										<td class="r actions">
+											<button onclick={() => openEquipmentModal(item)} class="link-btn">Edit</button>
+											<button onclick={() => (deleteTarget = { type: 'equipment', item })} class="link-btn danger">Delete</button>
 										</td>
 									</tr>
 								{/each}
@@ -867,151 +687,167 @@
 						</table>
 					</div>
 				{/if}
-			</div>
+			</section>
 		{/if}
 
-		<!-- Yeast Tab -->
-		{#if activeTab === 'yeast'}
-			<div class="space-y-4">
-				<!-- Summary cards -->
-				{#if yeastSummary}
-					<div class="grid gap-4 sm:grid-cols-4">
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Total Packs</p>
-							<p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-								{yeastSummary.total_quantity}
-							</p>
+		{#if activeTab === 'hops'}
+			<section class="panel">
+				{#if hopSummary}
+					<div class="strip">
+						<div class="cell">
+							<span class="label">Total weight</span>
+							<span class="value num">{(hopSummary.total_grams / 1000).toFixed(2)}<span class="unit">&thinsp;kg</span></span>
 						</div>
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Strains</p>
-							<p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-								{yeastSummary.total_items}
-							</p>
+						<div class="cell">
+							<span class="label">Varieties</span>
+							<span class="value num">{hopSummary.unique_varieties}</span>
 						</div>
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Expiring Soon</p>
-							<p class="text-2xl font-semibold {yeastSummary.expiring_soon > 0 ? 'text-amber-600' : 'text-zinc-900 dark:text-zinc-100'}">
-								{yeastSummary.expiring_soon}
-							</p>
-						</div>
-						<div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
-							<p class="text-sm text-zinc-500 dark:text-zinc-400">Expired</p>
-							<p class="text-2xl font-semibold {yeastSummary.expired > 0 ? 'text-red-600' : 'text-zinc-900 dark:text-zinc-100'}">
-								{yeastSummary.expired}
-							</p>
+						<div class="cell">
+							<span class="label">Lots</span>
+							<span class="value num">{hopSummary.total_items}</span>
 						</div>
 					</div>
 				{/if}
 
-				<!-- Expiring soon warning -->
+				<div class="toolbar">
+					<input type="text" placeholder="Search hops..." aria-label="Search hops" bind:value={hopSearchQuery} class="field search" />
+					<button onclick={() => openHopModal()} class="btn-primary">Add Hops</button>
+				</div>
+
+				{#if filteredHops.length === 0}
+					<div class="empty"><p>{hopSearchQuery ? 'No hops match your search' : 'No hops in inventory'}</p></div>
+				{:else}
+					<div class="scroll">
+						<table class="ledger">
+							<thead>
+								<tr>
+									<th>Variety</th>
+									<th class="r">Amount</th>
+									<th class="r">AA%</th>
+									<th class="pl">Form</th>
+									<th>Year</th>
+									<th>Location</th>
+									<th class="r">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each filteredHops as hop}
+									<tr>
+										<td data-label="Variety" class="strong">{hop.variety}</td>
+										<td data-label="Amount" class="r num">
+											{#if hop.amount_grams < 50}<span class="pill warn">Low</span>{/if}
+											{hop.amount_grams >= 1000
+												? `${(hop.amount_grams / 1000).toFixed(2)} kg`
+												: `${hop.amount_grams.toFixed(0)} g`}
+										</td>
+										<td data-label="AA%" class="r num">{hop.alpha_acid_percent?.toFixed(1) || '--'}</td>
+										<td data-label="Form" class="pl small muted cap">{hop.form}</td>
+										<td data-label="Year" class="small muted num">{hop.crop_year || '--'}</td>
+										<td data-label="Location" class="small muted">{hop.storage_location || '--'}</td>
+										<td class="r actions">
+											<button onclick={() => openAdjustModal(hop)} class="link-btn accent">Adjust</button>
+											<button onclick={() => openHopModal(hop)} class="link-btn">Edit</button>
+											<button onclick={() => (deleteTarget = { type: 'hop', item: hop })} class="link-btn danger">Delete</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</section>
+		{/if}
+
+		{#if activeTab === 'yeast'}
+			<section class="panel">
+				{#if yeastSummary}
+					<div class="strip">
+						<div class="cell">
+							<span class="label">Total packs</span>
+							<span class="value num">{yeastSummary.total_quantity}</span>
+						</div>
+						<div class="cell">
+							<span class="label">Strains</span>
+							<span class="value num">{yeastSummary.total_items}</span>
+						</div>
+						<div class="cell">
+							<span class="label">Expiring soon</span>
+							<span class="value num" class:warn-text={yeastSummary.expiring_soon > 0}>{yeastSummary.expiring_soon}</span>
+						</div>
+						<div class="cell">
+							<span class="label">Expired</span>
+							<span class="value num" class:danger-text={yeastSummary.expired > 0}>{yeastSummary.expired}</span>
+						</div>
+					</div>
+				{/if}
+
 				{#if expiringYeasts.length > 0}
-					<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-						<p class="font-medium text-amber-800 dark:text-amber-200">Yeast expiring within 30 days:</p>
-						<ul class="mt-2 space-y-1 text-sm text-amber-700 dark:text-amber-300">
+					<div class="notice">
+						<p class="notice-title"><span class="pill warn">Expiring</span> Yeast expiring within 30 days</p>
+						<ul>
 							{#each expiringYeasts.slice(0, 5) as yeast}
-								<li>
-									{yeast.yeast_strain?.name || yeast.custom_name} - expires {formatDate(yeast.expiry_date)}
-								</li>
+								<li>{yeast.yeast_strain?.name || yeast.custom_name} <span class="muted">expires</span> <span class="num">{formatDate(yeast.expiry_date)}</span></li>
 							{/each}
 							{#if expiringYeasts.length > 5}
-								<li class="text-amber-600">...and {expiringYeasts.length - 5} more</li>
+								<li class="muted">...and {expiringYeasts.length - 5} more</li>
 							{/if}
 						</ul>
 					</div>
 				{/if}
 
-				<div class="flex flex-wrap items-center justify-between gap-4">
-					<div class="flex items-center gap-4">
-						<input
-							type="text"
-							placeholder="Search yeast..."
-							bind:value={yeastSearchQuery}
-							class="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-						/>
-						<label class="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+				<div class="toolbar">
+					<div class="toolbar-left">
+						<input type="text" placeholder="Search yeast..." aria-label="Search yeast" bind:value={yeastSearchQuery} class="field search" />
+						<label class="check">
 							<input type="checkbox" bind:checked={includeExpired} onchange={loadData} />
 							Show expired
 						</label>
 					</div>
-					<button
-						onclick={() => openYeastModal()}
-						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
-					>
-						Add Yeast
-					</button>
+					<button onclick={() => openYeastModal()} class="btn-primary">Add Yeast</button>
 				</div>
 
 				{#if filteredYeasts.length === 0}
-					<div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-						<p class="text-zinc-500 dark:text-zinc-400">
-							{yeastSearchQuery ? 'No yeast matches your search' : 'No yeast in inventory'}
-						</p>
-					</div>
+					<div class="empty"><p>{yeastSearchQuery ? 'No yeast matches your search' : 'No yeast in inventory'}</p></div>
 				{:else}
-					<div class="overflow-x-auto">
-						<table class="w-full text-sm">
+					<div class="scroll">
+						<table class="ledger">
 							<thead>
-								<tr class="border-b border-zinc-200 dark:border-zinc-700">
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Strain</th>
-									<th class="py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">Qty</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Form</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Expiry</th>
-									<th class="py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Location</th>
-									<th class="py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
+								<tr>
+									<th>Strain</th>
+									<th class="r">Qty</th>
+									<th class="pl">Form</th>
+									<th>Expiry</th>
+									<th>Location</th>
+									<th class="r">Actions</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each filteredYeasts as yeast}
-									<tr class="border-b border-zinc-100 dark:border-zinc-800">
-										<td class="py-3">
-											<div class="font-medium text-zinc-900 dark:text-zinc-100">
-												{yeast.yeast_strain?.name || yeast.custom_name}
-											</div>
+									<tr>
+										<td data-label="Strain">
+											<div class="strong">{yeast.yeast_strain?.name || yeast.custom_name}</div>
 											{#if yeast.yeast_strain?.product_id}
-												<div class="text-xs text-zinc-500 dark:text-zinc-400">
-													{yeast.yeast_strain.producer} - {yeast.yeast_strain.product_id}
-												</div>
+												<div class="small muted">{yeast.yeast_strain.producer} - {yeast.yeast_strain.product_id}</div>
 											{/if}
 											{#if yeast.generation}
-												<div class="text-xs text-amber-600 dark:text-amber-400">
-													Gen {yeast.generation} (harvested)
-												</div>
+												<div class="small muted">Gen <span class="num">{yeast.generation}</span> (harvested)</div>
 											{/if}
 										</td>
-										<td class="py-3 text-right text-zinc-600 dark:text-zinc-300">{yeast.quantity}</td>
-										<td class="py-3 capitalize text-zinc-600 dark:text-zinc-300">{yeast.form}</td>
-										<td class="py-3 {getExpiryClass(yeast.expiry_date)}">
+										<td data-label="Qty" class="r num">{yeast.quantity}</td>
+										<td data-label="Form" class="pl small muted cap">{yeast.form}</td>
+										<td data-label="Expiry" class="num {getExpiryClass(yeast.expiry_date)}">
 											{formatDate(yeast.expiry_date)}
 											{#if getDaysUntilExpiry(yeast.expiry_date) !== null}
-												<span class="text-xs">
-													({getDaysUntilExpiry(yeast.expiry_date)}d)
-												</span>
+												<span class="small">({getDaysUntilExpiry(yeast.expiry_date)}d)</span>
 											{/if}
 										</td>
-										<td class="py-3 text-zinc-500 dark:text-zinc-400">{yeast.storage_location || '--'}</td>
-										<td class="py-3 text-right">
+										<td data-label="Location" class="small muted">{yeast.storage_location || '--'}</td>
+										<td class="r actions">
 											{#if yeast.quantity > 0}
-												<button
-													onclick={() => handleUseYeast(yeast)}
-													class="text-green-600 hover:underline dark:text-green-400"
-												>
-													Use 1
-												</button>
-												<span class="mx-1 text-zinc-300">|</span>
+												<button onclick={() => handleUseYeast(yeast)} class="link-btn accent">Use 1</button>
 											{/if}
-											<button
-												onclick={() => openYeastModal(yeast)}
-												class="text-zinc-600 hover:underline dark:text-zinc-400"
-											>
-												Edit
-											</button>
-											<span class="mx-1 text-zinc-300">|</span>
-											<button
-												onclick={() => (deleteTarget = { type: 'yeast', item: yeast })}
-												class="text-red-600 hover:underline dark:text-red-400"
-											>
-												Delete
-											</button>
+											<button onclick={() => openYeastModal(yeast)} class="link-btn">Edit</button>
+											<button onclick={() => (deleteTarget = { type: 'yeast', item: yeast })} class="link-btn danger">Delete</button>
 										</td>
 									</tr>
 								{/each}
@@ -1019,91 +855,55 @@
 						</table>
 					</div>
 				{/if}
-			</div>
+			</section>
 		{/if}
 	{/if}
 </div>
 
 <!-- Equipment Modal -->
 {#if showEquipmentModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-		<div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-800">
-			<h2 class="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-				{editingEquipment ? 'Edit Equipment' : 'Add Equipment'}
-			</h2>
-			<div class="space-y-4">
+	<div class="scrim">
+		<div class="modal" role="dialog" aria-modal="true" aria-label={editingEquipment ? 'Edit Equipment' : 'Add Equipment'}>
+			<h2 class="modal-title">{editingEquipment ? 'Edit Equipment' : 'Add Equipment'}</h2>
+			<div class="form">
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Name *</label>
-					<input
-						type="text"
-						bind:value={newEquipment.name}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						placeholder="My Fermenter"
-					/>
+					<label class="flabel">Name *</label>
+					<input type="text" bind:value={newEquipment.name} class="field" placeholder="My Fermenter" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Type *</label>
-					<select
-						bind:value={newEquipment.type}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					>
+					<label class="flabel">Type *</label>
+					<select bind:value={newEquipment.type} class="field">
 						{#each equipmentTypes as type}
 							<option value={type.value}>{type.label}</option>
 						{/each}
 					</select>
 				</div>
-				<div class="grid grid-cols-2 gap-4">
+				<div class="two">
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Brand</label>
-						<input
-							type="text"
-							bind:value={newEquipment.brand}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Brand</label>
+						<input type="text" bind:value={newEquipment.brand} class="field" />
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Model</label>
-						<input
-							type="text"
-							bind:value={newEquipment.model}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Model</label>
+						<input type="text" bind:value={newEquipment.model} class="field" />
 					</div>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Capacity (L)</label>
-					<input
-						type="number"
-						step="0.1"
-						bind:value={newEquipment.capacity_liters}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					/>
+					<label class="flabel">Capacity (L)</label>
+					<input type="number" step="0.1" bind:value={newEquipment.capacity_liters} class="field" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Notes</label>
-					<textarea
-						bind:value={newEquipment.notes}
-						rows="2"
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					></textarea>
+					<label class="flabel">Notes</label>
+					<textarea bind:value={newEquipment.notes} rows="2" class="field area"></textarea>
 				</div>
-				<label class="flex items-center gap-2">
+				<label class="check">
 					<input type="checkbox" bind:checked={newEquipment.is_active} />
-					<span class="text-sm text-zinc-700 dark:text-zinc-300">Active</span>
+					Active
 				</label>
 			</div>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					onclick={() => (showEquipmentModal = false)}
-					class="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handleSaveEquipment}
-					disabled={saving || !newEquipment.name.trim()}
-					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-				>
+			<div class="modal-actions">
+				<button onclick={() => (showEquipmentModal = false)} class="btn-secondary">Cancel</button>
+				<button onclick={handleSaveEquipment} disabled={saving || !newEquipment.name.trim()} class="btn-primary">
 					{saving ? 'Saving...' : 'Save'}
 				</button>
 			</div>
@@ -1113,15 +913,13 @@
 
 <!-- Hop Modal -->
 {#if showHopModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-		<div class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-800">
-			<h2 class="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-				{editingHop ? 'Edit Hop' : 'Add Hop'}
-			</h2>
-			<div class="space-y-4">
-				<div class="relative">
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Variety *</label>
-					<div class="relative mt-1">
+	<div class="scrim">
+		<div class="modal" role="dialog" aria-modal="true" aria-label={editingHop ? 'Edit Hop' : 'Add Hop'}>
+			<h2 class="modal-title">{editingHop ? 'Edit Hop' : 'Add Hop'}</h2>
+			<div class="form">
+				<div class="rel">
+					<label class="flabel">Variety *</label>
+					<div class="rel">
 						<input
 							type="text"
 							bind:value={varietySearchInput}
@@ -1130,114 +928,71 @@
 							onfocus={() => (showVarietyDropdown = true)}
 							onblur={() => setTimeout(() => (showVarietyDropdown = false), 200)}
 							placeholder="Search by name or origin..."
-							class="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-8 dark:border-zinc-600 dark:bg-zinc-700"
+							class="field has-clear"
 						/>
 						{#if selectedVariety}
-							<button
-								type="button"
-								onclick={() => selectHopVariety(null)}
-								class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-								aria-label="Clear hop variety selection"
-							>
-								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<button type="button" onclick={() => selectHopVariety(null)} class="clear-btn" aria-label="Clear hop variety selection">
+								<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</button>
 						{/if}
 					</div>
 					{#if showVarietyDropdown && searchedVarieties.length > 0}
-						<div class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+						<div class="dropdown">
 							{#each searchedVarieties as variety, i}
 								<button
 									type="button"
-									class="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-zinc-600 {highlightedVarietyIndex === i ? 'bg-amber-100 dark:bg-zinc-600' : ''}"
+									class="option"
+									class:hl={highlightedVarietyIndex === i}
 									onmouseenter={() => (highlightedVarietyIndex = i)}
 									onmousedown={() => selectHopVariety(variety)}
 								>
-									<div class="font-medium text-zinc-900 dark:text-zinc-100">{variety.name}</div>
-									<div class="text-xs text-zinc-500 dark:text-zinc-400">
-										{variety.origin} • Alpha: {variety.alpha_acid_low}-{variety.alpha_acid_high}%
-									</div>
+									<div class="strong">{variety.name}</div>
+									<div class="small muted">{variety.origin} &middot; Alpha <span class="num">{variety.alpha_acid_low}-{variety.alpha_acid_high}%</span></div>
 								</button>
 							{/each}
 						</div>
 					{:else if showVarietyDropdown && varietySearchInput.trim() && searchedVarieties.length === 0}
-						<div class="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-500 shadow-lg dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
-							No matching varieties found. Enter custom name.
-						</div>
+						<div class="dropdown pad muted">No matching varieties found. Enter custom name.</div>
 					{/if}
 				</div>
-				<div class="grid grid-cols-2 gap-4">
+				<div class="two">
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Amount (g) *</label>
-						<input
-							type="number"
-							step="1"
-							bind:value={newHop.amount_grams}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Amount (g) *</label>
+						<input type="number" step="1" bind:value={newHop.amount_grams} class="field" />
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Alpha Acid %</label>
-						<input
-							type="number"
-							step="0.1"
-							bind:value={newHop.alpha_acid_percent}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Alpha Acid %</label>
+						<input type="number" step="0.1" bind:value={newHop.alpha_acid_percent} class="field" />
 					</div>
 				</div>
-				<div class="grid grid-cols-2 gap-4">
+				<div class="two">
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Form</label>
-						<select
-							bind:value={newHop.form}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						>
+						<label class="flabel">Form</label>
+						<select bind:value={newHop.form} class="field">
 							<option value="pellet">Pellet</option>
 							<option value="leaf">Leaf</option>
 							<option value="plug">Plug</option>
 						</select>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Crop Year</label>
-						<input
-							type="number"
-							bind:value={newHop.crop_year}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Crop Year</label>
+						<input type="number" bind:value={newHop.crop_year} class="field" />
 					</div>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Storage Location</label>
-					<input
-						type="text"
-						bind:value={newHop.storage_location}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						placeholder="Freezer A"
-					/>
+					<label class="flabel">Storage Location</label>
+					<input type="text" bind:value={newHop.storage_location} class="field" placeholder="Freezer A" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Notes</label>
-					<textarea
-						bind:value={newHop.notes}
-						rows="2"
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					></textarea>
+					<label class="flabel">Notes</label>
+					<textarea bind:value={newHop.notes} rows="2" class="field area"></textarea>
 				</div>
 			</div>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					onclick={() => (showHopModal = false)}
-					class="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handleSaveHop}
-					disabled={saving || !newHop.variety.trim()}
-					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-				>
+			<div class="modal-actions">
+				<button onclick={() => (showHopModal = false)} class="btn-secondary">Cancel</button>
+				<button onclick={handleSaveHop} disabled={saving || !newHop.variety.trim()} class="btn-primary">
 					{saving ? 'Saving...' : 'Save'}
 				</button>
 			</div>
@@ -1247,40 +1002,20 @@
 
 <!-- Adjust Hop Amount Modal -->
 {#if showAdjustModal && adjustingHop}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-		<div class="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-800">
-			<h2 class="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-				Adjust {adjustingHop.variety}
-			</h2>
-			<p class="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
-				Current: {adjustingHop.amount_grams}g
-			</p>
-			<div>
-				<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-					Amount to add/subtract (g)
-				</label>
-				<input
-					type="number"
-					bind:value={adjustAmount}
-					class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					placeholder="-50 or 100"
-				/>
-				<p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-					Use negative numbers to subtract
-				</p>
+	<div class="scrim">
+		<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Adjust {adjustingHop.variety}">
+			<h2 class="modal-title">Adjust {adjustingHop.variety}</h2>
+			<p class="meta">Current: <span class="num">{adjustingHop.amount_grams}&thinsp;g</span></p>
+			<div class="form">
+				<div>
+					<label class="flabel">Amount to add/subtract (g)</label>
+					<input type="number" bind:value={adjustAmount} class="field" placeholder="-50 or 100" />
+					<p class="hint">Use negative numbers to subtract</p>
+				</div>
 			</div>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					onclick={() => (showAdjustModal = false)}
-					class="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handleAdjustHop}
-					disabled={saving || adjustAmount === 0}
-					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-				>
+			<div class="modal-actions">
+				<button onclick={() => (showAdjustModal = false)} class="btn-secondary">Cancel</button>
+				<button onclick={handleAdjustHop} disabled={saving || adjustAmount === 0} class="btn-primary">
 					{saving ? 'Adjusting...' : 'Adjust'}
 				</button>
 			</div>
@@ -1290,15 +1025,13 @@
 
 <!-- Yeast Modal -->
 {#if showYeastModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-		<div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-800">
-			<h2 class="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-				{editingYeast ? 'Edit Yeast' : 'Add Yeast'}
-			</h2>
-			<div class="space-y-4">
-				<div class="relative">
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Yeast Strain</label>
-					<div class="relative mt-1">
+	<div class="scrim">
+		<div class="modal" role="dialog" aria-modal="true" aria-label={editingYeast ? 'Edit Yeast' : 'Add Yeast'}>
+			<h2 class="modal-title">{editingYeast ? 'Edit Yeast' : 'Add Yeast'}</h2>
+			<div class="form">
+				<div class="rel">
+					<label class="flabel">Yeast Strain</label>
+					<div class="rel">
 						<input
 							type="text"
 							bind:value={strainSearchInput}
@@ -1307,70 +1040,49 @@
 							onfocus={() => (showStrainDropdown = true)}
 							onblur={() => setTimeout(() => (showStrainDropdown = false), 200)}
 							placeholder="Search by name, producer, or product ID..."
-							class="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-8 dark:border-zinc-600 dark:bg-zinc-700"
+							class="field has-clear"
 						/>
 						{#if selectedStrain}
-							<button
-								type="button"
-								onclick={() => selectYeastStrain(null)}
-								class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-								aria-label="Clear yeast strain selection"
-							>
-								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<button type="button" onclick={() => selectYeastStrain(null)} class="clear-btn" aria-label="Clear yeast strain selection">
+								<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</button>
 						{/if}
 					</div>
 					{#if showStrainDropdown && searchedStrains.length > 0}
-						<div class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-700">
+						<div class="dropdown">
 							{#each searchedStrains as strain, i}
 								<button
 									type="button"
-									class="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-zinc-600 {highlightedStrainIndex === i ? 'bg-amber-100 dark:bg-zinc-600' : ''}"
+									class="option"
+									class:hl={highlightedStrainIndex === i}
 									onmouseenter={() => (highlightedStrainIndex = i)}
 									onmousedown={() => selectYeastStrain(strain)}
 								>
-									<div class="font-medium text-zinc-900 dark:text-zinc-100">{strain.name}</div>
-									<div class="text-xs text-zinc-500 dark:text-zinc-400">
-										{strain.producer} {strain.product_id ? `- ${strain.product_id}` : ''}
-									</div>
+									<div class="strong">{strain.name}</div>
+									<div class="small muted">{strain.producer} {strain.product_id ? `- ${strain.product_id}` : ''}</div>
 								</button>
 							{/each}
 						</div>
 					{:else if showStrainDropdown && strainSearchInput.trim() && searchedStrains.length === 0}
-						<div class="absolute z-10 mt-1 w-full rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-500 shadow-lg dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
-							No matching strains found. Use "Custom Name" below.
-						</div>
+						<div class="dropdown pad muted">No matching strains found. Use "Custom Name" below.</div>
 					{/if}
 				</div>
 				{#if !newYeast.yeast_strain_id}
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Custom Name</label>
-						<input
-							type="text"
-							bind:value={newYeast.custom_name}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-							placeholder="My harvested strain"
-						/>
+						<label class="flabel">Custom Name</label>
+						<input type="text" bind:value={newYeast.custom_name} class="field" placeholder="My harvested strain" />
 					</div>
 				{/if}
-				<div class="grid grid-cols-2 gap-4">
+				<div class="two">
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Quantity</label>
-						<input
-							type="number"
-							min="0"
-							bind:value={newYeast.quantity}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						/>
+						<label class="flabel">Quantity</label>
+						<input type="number" min="0" bind:value={newYeast.quantity} class="field" />
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Form</label>
-						<select
-							bind:value={newYeast.form}
-							class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						>
+						<label class="flabel">Form</label>
+						<select bind:value={newYeast.form} class="field">
 							<option value="dry">Dry</option>
 							<option value="liquid">Liquid</option>
 							<option value="slant">Slant</option>
@@ -1379,43 +1091,21 @@
 					</div>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Expiry Date</label>
-					<input
-						type="date"
-						bind:value={newYeast.expiry_date}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					/>
+					<label class="flabel">Expiry Date</label>
+					<input type="date" bind:value={newYeast.expiry_date} class="field" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Storage Location</label>
-					<input
-						type="text"
-						bind:value={newYeast.storage_location}
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-						placeholder="Fridge A"
-					/>
+					<label class="flabel">Storage Location</label>
+					<input type="text" bind:value={newYeast.storage_location} class="field" placeholder="Fridge A" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Notes</label>
-					<textarea
-						bind:value={newYeast.notes}
-						rows="2"
-						class="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700"
-					></textarea>
+					<label class="flabel">Notes</label>
+					<textarea bind:value={newYeast.notes} rows="2" class="field area"></textarea>
 				</div>
 			</div>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					onclick={() => (showYeastModal = false)}
-					class="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handleSaveYeast}
-					disabled={saving}
-					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-				>
+			<div class="modal-actions">
+				<button onclick={() => (showYeastModal = false)} class="btn-secondary">Cancel</button>
+				<button onclick={handleSaveYeast} disabled={saving} class="btn-primary">
 					{saving ? 'Saving...' : 'Save'}
 				</button>
 			</div>
@@ -1425,10 +1115,10 @@
 
 <!-- Delete Confirmation Modal -->
 {#if deleteTarget}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-		<div class="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-800">
-			<h2 class="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">Confirm Delete</h2>
-			<p class="text-zinc-600 dark:text-zinc-300">
+	<div class="scrim">
+		<div class="modal narrow" role="alertdialog" aria-modal="true" aria-label="Confirm Delete">
+			<h2 class="modal-title">Confirm Delete</h2>
+			<p class="body-text">
 				Are you sure you want to delete
 				<strong>
 					{#if deleteTarget.type === 'equipment'}
@@ -1440,21 +1130,114 @@
 					{/if}
 				</strong>?
 			</p>
-			<div class="mt-6 flex justify-end gap-3">
-				<button
-					onclick={() => (deleteTarget = null)}
-					class="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={handleDelete}
-					disabled={deleting}
-					class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-				>
+			<div class="modal-actions">
+				<button onclick={() => (deleteTarget = null)} class="btn-secondary">Cancel</button>
+				<button onclick={handleDelete} disabled={deleting} class="btn-danger">
 					{deleting ? 'Deleting...' : 'Delete'}
 				</button>
 			</div>
 		</div>
 	</div>
 {/if}
+
+<style>
+	.inv { display: flex; flex-direction: column; gap: var(--space-md); padding-bottom: var(--space-xl); }
+	.page-title { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink-primary); }
+	.page-desc { font-size: var(--text-sm); color: var(--ink-secondary); margin-top: var(--space-2xs); }
+	.alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent); border-radius: 4px; color: var(--status-danger); font-size: var(--text-sm); }
+	.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--rule-hairline); }
+	.tab { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: color 140ms var(--ease-out-quart); }
+	.tab:hover { color: var(--ink-primary); }
+	.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+	.count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--ink-muted); }
+	.panel { display: flex; flex-direction: column; gap: var(--space-md); }
+	.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid var(--rule-hairline); background: var(--bg-surface); border-radius: 4px; }
+	.cell { display: flex; flex-direction: column; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border-right: 1px solid var(--rule-hairline); }
+	.cell:last-child { border-right: 0; }
+	.label { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+	.value { font-size: var(--text-lg); font-weight: 500; color: var(--ink-primary); line-height: 1.2; }
+	.unit { font-size: var(--text-sm); color: var(--ink-secondary); }
+	.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+	.warn-text { color: var(--status-warn); }
+	.danger-text { color: var(--status-danger); }
+	.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+	.toolbar-left { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); flex: 1; }
+	.meta { font-size: var(--text-sm); color: var(--ink-secondary); }
+	.search { max-width: 20rem; flex: 1; min-width: 12rem; }
+	.check { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; font-size: var(--text-sm); color: var(--ink-secondary); }
+	.check input { accent-color: var(--accent); width: 1rem; height: 1rem; }
+	.field { width: 100%; min-height: 44px; padding: 0 var(--space-sm); font-size: var(--text-sm); color: var(--ink-primary); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; }
+	.field::placeholder { color: var(--ink-muted); }
+	.field:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+	.area { padding: var(--space-xs) var(--space-sm); min-height: 4.5rem; }
+	.flabel { display: block; margin-bottom: var(--space-2xs); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+	.hint { margin-top: var(--space-2xs); font-size: var(--text-xs); color: var(--ink-muted); }
+	.btn-primary, .btn-secondary, .btn-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; border-radius: 4px; cursor: pointer; }
+	.btn-primary { color: var(--accent-ink); background: var(--accent); }
+	.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+	.btn-secondary { color: var(--ink-primary); background: var(--bg-surface); border: 1px solid var(--rule-strong); }
+	.btn-secondary:hover { background: var(--accent-tint); border-color: var(--accent-rule); }
+	.btn-danger { color: var(--status-danger); background: var(--bg-surface); border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent); }
+	.btn-danger:hover:not(:disabled) { background: var(--negative-muted); }
+	:is(.btn-primary, .btn-danger):disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn-primary:focus-visible, .btn-secondary:focus-visible, .btn-danger:focus-visible, .link-btn:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.link-btn { min-height: 32px; padding: 0 var(--space-xs); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-radius: 4px; cursor: pointer; }
+	.link-btn:hover { color: var(--ink-primary); text-decoration: underline; }
+	.link-btn.accent { color: var(--accent); }
+	.link-btn.danger { color: var(--status-danger); }
+	.pill { display: inline-flex; align-items: center; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; line-height: 1.4; }
+	.pill.warn { color: var(--status-warn); border-color: var(--status-warn); }
+	.pill.steady { color: var(--status-steady); border-color: var(--status-steady); }
+	.notice { padding: var(--space-sm) var(--space-md); border: 1px solid var(--rule-hairline); background: var(--bg-surface); border-radius: 4px; font-size: var(--text-sm); }
+	.notice-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); font-weight: 700; }
+	.notice ul { margin-top: var(--space-xs); display: flex; flex-direction: column; gap: var(--space-2xs); }
+	.empty { padding: var(--space-xl) var(--space-md); text-align: center; color: var(--ink-secondary); font-size: var(--text-sm); border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); }
+	.scroll { overflow-x: auto; }
+	.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+	.ledger th { padding: var(--space-xs) var(--space-sm); text-align: left; font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+	.ledger td { padding: var(--space-sm); border-bottom: 1px solid var(--rule-hairline); color: var(--ink-primary); vertical-align: middle; }
+	.ledger .r { text-align: right; }
+	.ledger .pl { padding-left: var(--space-lg); }
+	.ledger .actions { white-space: nowrap; }
+	.strong { font-weight: 700; color: var(--ink-primary); }
+	.ledger td.small { color: var(--ink-secondary); }
+	.muted, .ledger td.muted { color: var(--ink-secondary); }
+	.small { font-size: var(--text-xs); }
+	.cap { text-transform: capitalize; }
+	.ledger td.exp-past { color: var(--status-danger); }
+	.ledger td.exp-soon { color: var(--status-warn); }
+	.ledger td.exp-ok { color: var(--ink-secondary); }
+
+	.scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--space-md); background: color-mix(in oklch, var(--bg-canvas) 75%, transparent); }
+	.modal { width: 100%; max-width: 28rem; max-height: 92vh; overflow-y: auto; padding: var(--space-lg); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; }
+	.modal.narrow { max-width: 24rem; }
+	.modal-title { margin-bottom: var(--space-md); font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700; color: var(--ink-primary); }
+	.body-text { font-size: var(--text-sm); color: var(--ink-secondary); }
+	.form { display: flex; flex-direction: column; gap: var(--space-md); }
+	.two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+	.modal-actions { margin-top: var(--space-lg); display: flex; justify-content: flex-end; gap: var(--space-sm); }
+	.rel { position: relative; }
+	.has-clear { padding-right: 2.25rem; }
+	.clear-btn { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--ink-muted); cursor: pointer; }
+	.clear-btn:hover { color: var(--ink-primary); }
+	.dropdown { position: absolute; z-index: 10; margin-top: var(--space-2xs); width: 100%; max-height: 15rem; overflow: auto; background: var(--bg-elevated); border: 1px solid var(--rule-strong); border-radius: 4px; }
+	.dropdown.pad { padding: var(--space-sm); font-size: var(--text-sm); }
+	.option { display: block; width: 100%; min-height: 44px; padding: var(--space-xs) var(--space-sm); text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--rule-hairline); cursor: pointer; }
+	.option:hover, .option.hl { background: var(--accent-tint); }
+
+	@media (max-width: 640px) {
+		.strip { grid-template-columns: 1fr 1fr; }
+		.cell:nth-child(2n) { border-right: 0; }
+		.cell:nth-child(n + 3) { border-top: 1px solid var(--rule-hairline); }
+		.search { max-width: none; }
+		.two { grid-template-columns: 1fr; }
+		.ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+		.ledger, .ledger tbody, .ledger tr, .ledger td { display: block; }
+		.ledger tr { padding: var(--space-xs) 0; border-bottom: 1px solid var(--rule-hairline); }
+		.ledger td { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); padding: var(--space-2xs) var(--space-xs); border: 0; text-align: right; }
+		.ledger td[data-label]::before { content: attr(data-label); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); text-align: left; }
+		.ledger .pl { padding-left: var(--space-xs); }
+		.ledger .actions { justify-content: flex-end; flex-wrap: wrap; }
+		.link-btn { min-height: 44px; padding: 0 var(--space-sm); }
+	}
+</style>

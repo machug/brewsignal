@@ -113,3 +113,10 @@ def test_reload_refills_stall_window():
     pipe.load_history(sgs=sgs, temps=[19.0] * len(sgs), times=list(hours))
     slope = pipe.anomaly_detector.check_reading(1.030, 20.0)["sg_slope_12h"]
     assert slope is not None and abs(slope) < 2.5e-5
+
+
+def test_slope_none_after_long_outage():
+    """Codex P2: a >12 h gap left one reading in the window and a bogus slope."""
+    det = FermentationAnomalyDetector()
+    feed(det, np.arange(0, 12.5, 0.5), np.full(25, 1.030))
+    assert det.check_reading(1.030, 36.0)["sg_slope_12h"] is None

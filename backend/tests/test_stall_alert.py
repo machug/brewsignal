@@ -113,3 +113,25 @@ async def test_step_alert_stays_until_dismissed(test_db):
         FermentationAlert.cleared_at.is_(None),
     ))).scalars().all()
     assert len(rows) == 1 and "lifted" in rows[0].message
+
+
+@pytest.mark.asyncio
+async def test_reload_uses_batch_start_as_time_origin(test_db):
+    """Codex P2: replay measured from the first reading, live from batch.start_time."""
+    from datetime import datetime, timedelta, timezone
+
+    from backend.ml.pipeline_manager import MLPipelineManager
+
+    start = datetime.now(timezone.utc) - timedelta(hours=20)
+    batch = Batch(name="APA", status="fermenting", device_id="BLUE", start_time=start)
+    test_db.add(batch)
+    await test_db.flush()
+    first = start + timedelta(hours=6)  # tilt dropped in 6 h after start
+    for i in range(12):
+        test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_raw=1.030, sg_calibrated=1.030,
+                            temp_calibrated=19.0, timestamp=first + timedelta(hours=i)))
+    await test_db.commit()
+
+    mgr = MLPipelineManager()
+    assert (await mgr.reload_from_database("BLUE", batch.id, test_db))["success"]
+    assert mgr.pipelines["BLUE"].time_history[0] == pytest.approx(6.0, abs=1e-6)

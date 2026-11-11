@@ -30,12 +30,14 @@ class FermentationAnomalyDetector:
         step_count: int = 6,
         baseline_hours: float = 2.0,
         min_baseline_readings: int = 6,
+        min_slope_readings: int = 6,
     ):
         self.slope_window_hours = slope_window_hours
         self.step_threshold = step_threshold
         self.step_count = step_count
         self.baseline_hours = baseline_hours
         self.min_baseline_readings = min_baseline_readings
+        self.min_slope_readings = min_slope_readings
         self.reset()
 
     def reset(self) -> None:
@@ -93,7 +95,12 @@ class FermentationAnomalyDetector:
         if len(t) < 3 or t[-1] - t[0] < self.slope_window_hours:
             return None
         window = t >= t[-1] - self.slope_window_hours
-        return float(np.polyfit(t[window], np.array(self.sg_history)[window], 1)[0])
+        wt = t[window]
+        # The window itself must be covered: after a long outage the history
+        # spans 12 h but the window may hold only the newest reading.
+        if len(wt) < self.min_slope_readings or wt[-1] - wt[0] < 0.75 * self.slope_window_hours:
+            return None
+        return float(np.polyfit(wt, np.array(self.sg_history)[window], 1)[0])
 
     def _check_step(self) -> str:
         n = self.step_count

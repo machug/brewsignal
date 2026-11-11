@@ -259,7 +259,12 @@ class MLPipelineManager:
             temps = []
             times = []
 
-            batch_start = readings[0].timestamp
+            # Same time origin as live ingestion (batch.start_time), else the
+            # replayed window and the next live reading disagree (tilt_ui-zbhm).
+            from backend.models import Batch
+            batch_start = (await db_session.execute(
+                select(Batch.start_time).where(Batch.id == batch_id)
+            )).scalar_one_or_none() or readings[0].timestamp
             for reading in readings:
                 # Curve fitting must use calibrated (real measurement)
                 # values, not Kalman-filtered ones. The filter can take
@@ -278,7 +283,10 @@ class MLPipelineManager:
                     continue  # Skip readings with missing data
 
                 # Calculate hours since batch start
-                time_delta = reading.timestamp - batch_start
+                ts, start = reading.timestamp, batch_start
+                if (ts.tzinfo is None) != (start.tzinfo is None):
+                    ts, start = ts.replace(tzinfo=None), start.replace(tzinfo=None)
+                time_delta = ts - start
                 hours = time_delta.total_seconds() / 3600
 
                 sgs.append(float(sg))

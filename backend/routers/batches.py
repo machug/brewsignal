@@ -284,6 +284,7 @@ async def create_batch(
         measured_og=batch.measured_og,
         notes=batch.notes,
         heater_entity_id=batch.heater_entity_id,
+        cooler_entity_id=batch.cooler_entity_id,
         temp_target=batch.temp_target,
         temp_hysteresis=batch.temp_hysteresis,
     )

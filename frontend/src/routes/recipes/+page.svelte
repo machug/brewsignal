@@ -100,10 +100,9 @@
 	{:else}
 		<div class="recipe-table" role="table" aria-label="Recipes">
 			<div class="row head" role="row">
-				<span class="c-swatch" role="columnheader"><span class="sr-only">Colour</span></span>
 				<span class="c-name" role="columnheader">Recipe</span>
 				<span class="c-type" role="columnheader">Type</span>
-				<span class="c-gravity num" role="columnheader">OG&thinsp;→&thinsp;FG</span>
+				<span class="c-gravity num" role="columnheader">OG → FG</span>
 				<span class="c-abv num" role="columnheader">ABV</span>
 				<span class="c-ibu num" role="columnheader">IBU</span>
 				<span class="c-srm num" role="columnheader">SRM</span>
@@ -116,14 +115,6 @@
 					onclick={(e) => handleRecipeClick(e, recipe.id)}
 					aria-label="View {recipe.name} details"
 				>
-					<span class="c-swatch" role="cell">
-						<!-- Beer colour is data (SRM), not theme -->
-						<span
-							class="swatch"
-							class:empty={!recipe.color_srm}
-							style={recipe.color_srm ? `background: ${srmToHex(recipe.color_srm)}` : undefined}
-						></span>
-					</span>
 					<span class="c-name" role="cell">
 						<span class="recipe-name">{recipe.name}</span>
 						{#if recipe.style?.name || recipe.author}
@@ -132,16 +123,16 @@
 					</span>
 					<span class="c-type" role="cell">{recipe.type ?? ''}</span>
 					<span class="c-gravity num" role="cell" data-label="OG → FG">
-						{#if recipe.og && recipe.fg}{recipe.og.toFixed(3)}&thinsp;→&thinsp;{recipe.fg.toFixed(3)}{:else}<span class="dash">--</span>{/if}
+						{#if recipe.og && recipe.fg}{recipe.og.toFixed(3)}&nbsp;→&nbsp;{recipe.fg.toFixed(3)}{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-abv num" role="cell" data-label="ABV">
-						{#if recipe.abv}{recipe.abv.toFixed(1)}&thinsp;%{:else}<span class="dash">--</span>{/if}
+						{#if recipe.abv}{recipe.abv.toFixed(1)}%{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-ibu num" role="cell" data-label="IBU">
 						{#if recipe.ibu}{recipe.ibu.toFixed(0)}{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-srm num" role="cell" data-label="SRM">
-						{#if recipe.color_srm}{recipe.color_srm.toFixed(0)}{:else}<span class="dash">--</span>{/if}
+						{#if recipe.color_srm}<!-- Beer colour is data (SRM), not theme --><span class="swatch" style="background: {srmToHex(recipe.color_srm)}"></span>{recipe.color_srm.toFixed(0)}{:else}<span class="dash">--</span>{/if}
 					</span>
 				</a>
 			{/each}
@@ -202,6 +193,7 @@
 		font-family: var(--font-display);
 		font-size: var(--text-sm);
 		font-weight: 600;
+		white-space: nowrap;
 		text-decoration: none;
 		transition: background var(--transition), border-color var(--transition), color var(--transition);
 	}
@@ -224,7 +216,7 @@
 	}
 
 	.btn-secondary:hover {
-		border-color: var(--accent-rule);
+		border-color: var(--ink-secondary);
 		color: var(--ink-primary);
 	}
 
@@ -267,7 +259,7 @@
 
 	.row {
 		display: grid;
-		grid-template-columns: 12px minmax(0, 1fr) 150px 140px 72px 56px 56px;
+		grid-template-columns: minmax(0, 1fr) 150px 140px 72px 56px 64px;
 		align-items: center;
 		column-gap: var(--space-md);
 		padding: var(--space-sm) var(--space-md);
@@ -302,16 +294,15 @@
 		outline-offset: -2px;
 	}
 
+	/* Calibrated SRM swatch: beer colour is data, outlined so dark beers stay visible */
 	.swatch {
-		display: block;
-		width: 12px;
-		height: 28px;
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		margin-right: var(--space-xs);
 		border-radius: 2px;
-	}
-
-	.swatch.empty {
-		background: var(--bg-subtle);
 		border: 1px solid var(--rule-strong);
+		vertical-align: -1px;
 	}
 
 	.c-name {
@@ -360,14 +351,6 @@
 		color: var(--ink-muted);
 	}
 
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
 
 	.state-block {
 		display: flex;
@@ -426,7 +409,7 @@
 	/* Tablet: drop the type column */
 	@media (max-width: 1040px) {
 		.row {
-			grid-template-columns: 12px minmax(0, 1fr) 130px 64px 48px 48px;
+			grid-template-columns: minmax(0, 1fr) 140px 64px 48px 64px;
 			column-gap: var(--space-sm);
 		}
 
@@ -445,23 +428,19 @@
 			display: none;
 		}
 
+		.btn-primary,
+		.btn-secondary,
+		.search-input {
+			min-height: 44px;
+		}
+
 		.row {
-			grid-template-columns: 12px minmax(0, 1fr) auto auto auto;
+			grid-template-columns: minmax(0, 1fr) auto auto auto;
 			grid-template-areas:
-				'swatch name name name name'
-				'swatch gravity abv ibu srm';
+				'name name name name'
+				'gravity abv ibu srm';
 			row-gap: var(--space-xs);
 			column-gap: var(--space-md);
-		}
-
-		.c-swatch {
-			grid-area: swatch;
-			align-self: stretch;
-		}
-
-		.swatch {
-			height: 100%;
-			min-height: 40px;
 		}
 
 		.c-name {
@@ -483,6 +462,10 @@
 
 		.c-srm {
 			grid-area: srm;
+		}
+
+		.c-srm .swatch {
+			margin-right: var(--space-2xs);
 		}
 
 		.num::before {

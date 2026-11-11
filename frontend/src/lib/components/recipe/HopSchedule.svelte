@@ -74,7 +74,7 @@
 
 	function formatAlpha(percent?: number | null): string {
 		if (percent === undefined || percent === null) return '--';
-		return percent.toFixed(1) + '\u2009%';
+		return percent.toFixed(1) + '%';
 	}
 
 	function formatTime(timing?: Hop['timing']): string {
@@ -134,7 +134,7 @@
 							<th class="num">Amount</th>
 							<th class="num">AA</th>
 							<th class="num">Time</th>
-							<th>Form</th>
+							<th class="col-sec">Form</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -148,6 +148,7 @@
 									{#if hop.is_extract}
 										<div class="hop-type">Aroma-only · no IBU</div>
 									{/if}
+									<div class="sec-inline">{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</div>
 								</td>
 								<td class="num">
 									{#if hop.is_extract}
@@ -158,7 +159,7 @@
 								</td>
 								<td class="num">{hop.is_extract ? '—' : formatAlpha(hop.alpha_acid_percent)}</td>
 								<td class="num">{formatTime(hop.timing)}</td>
-								<td class="form">{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</td>
+								<td class="form col-sec">{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -256,5 +257,67 @@
 	.form {
 		color: var(--ink-secondary);
 		text-transform: capitalize;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	.sec-inline {
+		display: none;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
+		text-transform: capitalize;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+			table-layout: auto;
+		}
+
+		.col-sec {
+			display: none;
+		}
+
+		.sec-inline {
+			display: block;
+		}
+
+		th,
+		td {
+			padding-inline: var(--space-xs);
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
+
+		/* Fixed layout: tighter numeric columns, time may wrap */
+		table {
+			table-layout: fixed;
+		}
+
+		th:nth-child(2) { width: 56px; }
+		th:nth-child(3) { width: 52px; }
+		th:nth-child(4) { width: 92px; }
+
+		td.num {
+			white-space: normal;
+		}
 	}
 </style>

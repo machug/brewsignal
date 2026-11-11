@@ -20,7 +20,7 @@
 
 	function getPercent(amount?: number): string {
 		if (!amount || !totalKg) return '--';
-		return ((amount / totalKg) * 100).toFixed(1) + ' %';
+		return ((amount / totalKg) * 100).toFixed(1) + '%';
 	}
 
 	function formatKg(kg?: number): string {
@@ -50,7 +50,7 @@
 				<thead>
 					<tr>
 						<th>Fermentable</th>
-						<th>Type</th>
+						<th class="col-sec">Type</th>
 						<th class="num">Amount</th>
 						<th class="num">%</th>
 						<th class="num">Color</th>
@@ -64,11 +64,14 @@
 								{#if ferm.origin}
 									<span class="origin">({ferm.origin})</span>
 								{/if}
+								{#if ferm.type}
+									<div class="sec-inline">{ferm.type}</div>
+								{/if}
 								{#if ferm.supplier}
 									<div class="supplier">{ferm.supplier}</div>
 								{/if}
 							</td>
-							<td class="type">{ferm.type || '--'}</td>
+							<td class="type col-sec">{ferm.type || '--'}</td>
 							<td class="num">{formatKg(ferm.amount_kg)}</td>
 							<td class="num">{getPercent(ferm.amount_kg)}</td>
 							<td class="num">{formatColor(ferm)}</td>
@@ -77,9 +80,10 @@
 				</tbody>
 				<tfoot>
 					<tr>
-						<td colspan="2">Total</td>
+						<td>Total</td>
+						<td class="col-sec"></td>
 						<td class="num">{formatKg(totalKg)}</td>
-						<td class="num">100&thinsp;%</td>
+						<td class="num">100%</td>
 						<td class="num">--</td>
 					</tr>
 				</tfoot>
@@ -175,5 +179,54 @@
 		color: var(--ink-primary);
 		text-transform: none;
 		letter-spacing: 0;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	.sec-inline {
+		display: none;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
+		text-transform: capitalize;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+			table-layout: auto;
+		}
+
+		.col-sec {
+			display: none;
+		}
+
+		.sec-inline {
+			display: block;
+		}
+
+		th,
+		td {
+			padding-inline: var(--space-xs);
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
 	}
 </style>

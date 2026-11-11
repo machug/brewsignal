@@ -109,4 +109,36 @@
 	.name {
 		font-weight: 600;
 	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+			table-layout: auto;
+		}
+
+		th,
+		td {
+			padding-inline: var(--space-xs);
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
+	}
 </style>

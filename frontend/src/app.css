@@ -95,7 +95,7 @@
   --rule-strong: oklch(0.735 0.015 195);
   --ink-primary: oklch(0.195 0.012 195);
   --ink-secondary: oklch(0.425 0.014 195);
-  --ink-muted: oklch(0.52 0.012 195);
+  --ink-muted: oklch(0.48 0.014 195);
   --accent: oklch(0.54 0.142 70);
   --accent-hover: oklch(0.48 0.14 68);
   --accent-ink: oklch(0.985 0.006 76);
@@ -112,7 +112,7 @@
   --gray-800: oklch(0.918 0.010 195);
   --gray-700: oklch(0.80 0.012 195);
   --gray-600: oklch(0.62 0.013 195);
-  --gray-500: oklch(0.52 0.012 195);
+  --gray-500: oklch(0.48 0.014 195);
   --gray-400: oklch(0.425 0.014 195);
   --gray-300: oklch(0.34 0.013 195);
   --gray-200: oklch(0.27 0.012 195);

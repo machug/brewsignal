@@ -60,7 +60,7 @@
 			<thead>
 				<tr>
 					<th>Ingredient</th>
-					<th>Type</th>
+					<th class="col-sec">Type</th>
 					<th>Use</th>
 					<th class="num">Amount</th>
 					<th class="num">Time</th>
@@ -71,11 +71,14 @@
 					<tr>
 						<td class="name">
 							{misc.name}
+							{#if misc.type}
+								<div class="sec-inline">{misc.type}</div>
+							{/if}
 							{#if misc.use_for}
 								<div class="use-for">{misc.use_for}</div>
 							{/if}
 						</td>
-						<td class="type">{misc.type || '--'}</td>
+						<td class="type col-sec">{misc.type || '--'}</td>
 						<td>{formatUse(misc)}</td>
 						<td class="num">{formatAmount(misc)}</td>
 						<td class="num">{formatTime(misc)}</td>
@@ -151,5 +154,54 @@
 	.type {
 		color: var(--ink-secondary);
 		text-transform: capitalize;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	.sec-inline {
+		display: none;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
+		text-transform: capitalize;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+			table-layout: auto;
+		}
+
+		.col-sec {
+			display: none;
+		}
+
+		.sec-inline {
+			display: block;
+		}
+
+		th,
+		td {
+			padding-inline: var(--space-xs);
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
 	}
 </style>

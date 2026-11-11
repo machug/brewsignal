@@ -25,6 +25,37 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 
+	// Phone "More" action menu
+	let moreOpen = $state(false);
+	let moreWrap = $state<HTMLElement | null>(null);
+	let moreBtn = $state<HTMLButtonElement | null>(null);
+
+	function toggleMore() {
+		moreOpen = !moreOpen;
+		if (moreOpen) {
+			// Move focus into the menu once it is rendered
+			queueMicrotask(() => moreWrap?.querySelector<HTMLElement>('.menu-item:not(:disabled)')?.focus());
+		}
+	}
+
+	function closeMore(restoreFocus = false) {
+		if (!moreOpen) return;
+		moreOpen = false;
+		if (restoreFocus) moreBtn?.focus();
+	}
+
+	function onMoreKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && moreOpen) {
+			e.stopPropagation();
+			closeMore(true);
+		}
+	}
+
+	function onMoreFocusout(e: FocusEvent) {
+		const next = e.relatedTarget as Node | null;
+		if (moreOpen && next && !moreWrap?.contains(next)) moreOpen = false;
+	}
+
 	// Scale dialog state
 	let showScaleDialog = $state(false);
 	let scaleTarget = $state<number | null>(null);
@@ -394,6 +425,8 @@
 	}
 </script>
 
+<svelte:window onclick={(e) => { if (moreOpen && moreWrap && !moreWrap.contains(e.target as Node)) moreOpen = false; }} />
+
 <svelte:head>
 	<title>{recipe?.name || 'Recipe'} | BrewSignal</title>
 </svelte:head>
@@ -432,57 +465,77 @@
 				</div>
 			</div>
 			<div class="header-actions">
-				<button
-					type="button"
-					class="btn-secondary"
-					onclick={handleReview}
-					disabled={reviewLoading}
-				>
-					{#if reviewLoading}
-						<span class="btn-spinner"></span>
-						Analyzing...
-					{:else}
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-						</svg>
-						AI Review
-					{/if}
-				</button>
-				<button
-					type="button"
-					class="btn-secondary"
-					onclick={() => openScaleDialog()}
-					disabled={!recipe.batch_size_liters}
-					title={recipe.batch_size_liters ? 'Scale recipe to a new batch size' : 'Recipe has no batch size to scale from'}
-				>
-					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-					</svg>
-					Scale
-				</button>
-				<a href="/recipes/{recipe.id}/edit" class="btn-secondary">
-					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-					</svg>
-					Edit
-				</a>
-				<a href="/api/recipes/{recipe.id}/export/brewfather?download=true" class="btn-secondary" download>
-					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-					</svg>
-					Export
-				</a>
-				<button type="button" class="btn-primary" onclick={handleBrewThis}>
+				<button type="button" class="btn-primary act-brew" onclick={handleBrewThis}>
 					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
 					</svg>
 					Brew This
 				</button>
-				<button type="button" class="btn-ghost-danger" onclick={() => (showDeleteConfirm = true)} aria-label="Delete recipe">
+				<a href="/recipes/{recipe.id}/edit" class="btn-secondary act-edit">
 					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
 					</svg>
-				</button>
+					Edit
+				</a>
+				<!-- Desk: these render inline (display: contents). Phone: they live in the More menu. -->
+				<div class="more-wrap" bind:this={moreWrap} onkeydown={onMoreKeydown} onfocusout={onMoreFocusout} role="presentation">
+					<button
+						type="button"
+						class="btn-secondary more-btn"
+						aria-haspopup="true"
+						aria-expanded={moreOpen}
+						aria-controls="recipe-more-menu"
+						bind:this={moreBtn}
+						onclick={toggleMore}
+					>
+						More
+						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+					<div id="recipe-more-menu" class="more-menu" class:open={moreOpen}>
+						<button
+							type="button"
+							class="btn-secondary menu-item act-review"
+							onclick={() => { closeMore(); handleReview(); }}
+							disabled={reviewLoading}
+						>
+							{#if reviewLoading}
+								<span class="btn-spinner"></span>
+								Analyzing...
+							{:else}
+								<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+								</svg>
+								AI Review
+							{/if}
+						</button>
+						<button
+							type="button"
+							class="btn-secondary menu-item act-scale"
+							onclick={() => { closeMore(); openScaleDialog(); }}
+							disabled={!recipe.batch_size_liters}
+							title={recipe.batch_size_liters ? 'Scale recipe to a new batch size' : 'Recipe has no batch size to scale from'}
+						>
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+							</svg>
+							Scale
+						</button>
+						<a href="/api/recipes/{recipe.id}/export/brewfather?download=true" class="btn-secondary menu-item act-export" download onclick={() => closeMore()}>
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+							</svg>
+							Export
+						</a>
+						<button type="button" class="btn-ghost-danger menu-item act-delete" onclick={() => { closeMore(); showDeleteConfirm = true; }} aria-label="Delete recipe">
+							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+							</svg>
+							<span class="menu-label">Delete</span>
+						</button>
+					</div>
+				</div>
 			</div>
 		</header>
 
@@ -523,7 +576,8 @@
 			onBigJumpScaled={handleReview}
 		/>
 
-		<div class="recipe-content">
+		<div class="workbench">
+		<div class="main-col">
 			<!-- Fermentables Section -->
 			{#if recipe.fermentables && recipe.fermentables.length > 0}
 				<section class="block">
@@ -547,21 +601,21 @@
 							<thead>
 								<tr>
 									<th>Strain</th>
-									<th>Lab</th>
+									<th class="col-sec">Lab</th>
 									<th class="num">Temp Range</th>
 									<th class="num">Attenuation</th>
 								</tr>
 							</thead>
 							<tbody>
 								<tr>
-									<td class="name">{recipe.yeast_name}</td>
-									<td class="muted">{recipe.yeast_lab ?? '--'}</td>
+									<td class="name">{recipe.yeast_name}{#if recipe.yeast_lab}<div class="sec-inline">{recipe.yeast_lab}</div>{/if}</td>
+									<td class="muted col-sec">{recipe.yeast_lab ?? '--'}</td>
 									<td class="num">
 										{#if recipe.yeast_temp_min != null && recipe.yeast_temp_max != null}
 											{recipe.yeast_temp_min.toFixed(0)}–{recipe.yeast_temp_max.toFixed(0)}&thinsp;°C
 										{:else}--{/if}
 									</td>
-									<td class="num">{recipe.yeast_attenuation ? `${recipe.yeast_attenuation.toFixed(0)} %` : '--'}</td>
+									<td class="num">{recipe.yeast_attenuation ? `${recipe.yeast_attenuation.toFixed(0)}%` : '--'}</td>
 								</tr>
 							</tbody>
 						</table>
@@ -601,31 +655,9 @@
 				</section>
 			{/if}
 
-			<!-- Water Volumes (calculated from grain bill + batch size) -->
-			{#if waterVolumes}
-				<section class="block">
-					<h2 class="section-title">Water</h2>
-					<dl class="readouts">
-						<div class="readout">
-							<dt>Mash water</dt>
-							<dd>{waterVolumes.mashWater.toFixed(2)}&thinsp;L</dd>
-						</div>
-						<div class="readout">
-							<dt>Sparge water</dt>
-							<dd>{waterVolumes.spargeWater.toFixed(2)}&thinsp;L</dd>
-						</div>
-						<div class="readout total">
-							<dt>Total water</dt>
-							<dd>{waterVolumes.totalWater.toFixed(2)}&thinsp;L</dd>
-						</div>
-						<div class="readout">
-							<dt>Mash volume (water + grain)</dt>
-							<dd>{waterVolumes.mashVolume.toFixed(2)}&thinsp;L</dd>
-						</div>
-					</dl>
-				</section>
-			{/if}
+		</div>
 
+		<aside class="rail">
 			<!-- Batch Details -->
 			{#if recipe.batch_size_liters || recipe.efficiency_percent || recipe.boil_time_minutes}
 				<section class="block">
@@ -634,21 +666,46 @@
 						{#if recipe.batch_size_liters}
 							<div class="readout">
 								<dt>Batch size</dt>
-								<dd>{recipe.batch_size_liters.toFixed(1)}&thinsp;L</dd>
+								<dd>{recipe.batch_size_liters.toFixed(1)}<span class="unit">L</span></dd>
 							</div>
 						{/if}
 						{#if recipe.efficiency_percent}
 							<div class="readout">
 								<dt>Efficiency</dt>
-								<dd>{recipe.efficiency_percent.toFixed(0)}&thinsp;%</dd>
+								<dd>{recipe.efficiency_percent.toFixed(0)}<span class="unit pct">%</span></dd>
 							</div>
 						{/if}
 						{#if recipe.boil_time_minutes}
 							<div class="readout">
 								<dt>Boil time</dt>
-								<dd>{recipe.boil_time_minutes}&thinsp;min</dd>
+								<dd>{recipe.boil_time_minutes}<span class="unit">min</span></dd>
 							</div>
 						{/if}
+					</dl>
+				</section>
+			{/if}
+
+			<!-- Water Volumes (calculated from grain bill + batch size) -->
+			{#if waterVolumes}
+				<section class="block">
+					<h2 class="section-title">Water</h2>
+					<dl class="readouts">
+						<div class="readout">
+							<dt>Mash water</dt>
+							<dd>{waterVolumes.mashWater.toFixed(2)}<span class="unit">L</span></dd>
+						</div>
+						<div class="readout">
+							<dt>Sparge water</dt>
+							<dd>{waterVolumes.spargeWater.toFixed(2)}<span class="unit">L</span></dd>
+						</div>
+						<div class="readout">
+							<dt>Total water</dt>
+							<dd>{waterVolumes.totalWater.toFixed(2)}<span class="unit">L</span></dd>
+						</div>
+						<div class="readout">
+							<dt>Mash volume (water + grain)</dt>
+							<dd>{waterVolumes.mashVolume.toFixed(2)}<span class="unit">L</span></dd>
+						</div>
 					</dl>
 				</section>
 			{/if}
@@ -669,6 +726,10 @@
 				</section>
 			{/if}
 
+		</aside>
+		</div>
+
+		<div class="recipe-content">
 			<!-- Footer -->
 			<div class="recipe-footer">
 				<span class="created-date">Created {new Date(recipe.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
@@ -851,8 +912,9 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: var(--accent);
-		border: 1px solid var(--accent-rule);
+		color: var(--ink-secondary);
+		background: transparent;
+		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 	}
 
@@ -872,7 +934,26 @@
 	.btn-icon {
 		width: 16px;
 		height: 16px;
+		flex-shrink: 0;
 	}
+
+	/* Desk: More wrapper dissolves; actions keep their original order */
+	.more-wrap,
+	.more-menu {
+		display: contents;
+	}
+
+	.btn-secondary.more-btn,
+	.menu-label {
+		display: none;
+	}
+
+	.act-review { order: 1; }
+	.act-scale { order: 2; }
+	.act-edit { order: 3; }
+	.act-export { order: 4; }
+	.act-brew { order: 5; }
+	.act-delete { order: 6; }
 
 	.btn-secondary,
 	.btn-primary {
@@ -885,6 +966,7 @@
 		font-family: var(--font-display);
 		font-size: var(--text-sm);
 		font-weight: 600;
+		white-space: nowrap;
 		border-radius: 4px;
 		text-decoration: none;
 		cursor: pointer;
@@ -898,7 +980,7 @@
 	}
 
 	.btn-secondary:hover:not(:disabled) {
-		border-color: var(--accent-rule);
+		border-color: var(--ink-secondary);
 		color: var(--ink-primary);
 	}
 
@@ -948,9 +1030,39 @@
 	}
 
 	/* Content: hairline-separated sections, no cards */
+	.workbench {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0 var(--space-xl);
+	}
+
+	.main-col,
+	.rail {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.main-col > .block:first-child,
+	.rail > .block:first-child {
+		border-top: none;
+		padding-top: 0;
+	}
+
 	.recipe-content {
 		display: flex;
 		flex-direction: column;
+	}
+
+	/* Desk: ingredient tables in the main column, secondary readings in the right rail */
+	@media (min-width: 1041px) {
+		.page-container {
+			max-width: 1280px;
+		}
+
+		.workbench {
+			grid-template-columns: minmax(0, 1fr) 22rem;
+		}
 	}
 
 	.block {
@@ -1016,11 +1128,30 @@
 		color: var(--ink-secondary);
 	}
 
+	.spec-table th:first-child,
+	.spec-table td:first-child {
+		padding-left: 0;
+	}
+
+	.spec-table th:last-child,
+	.spec-table td:last-child {
+		padding-right: 0;
+	}
+
+	.sec-inline {
+		display: none;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
+	}
+
 	/* Readouts (batch details, water volumes): hairline instrument row */
 	.readouts {
 		display: flex;
 		flex-wrap: wrap;
 		margin: 0;
+		background: var(--bg-surface);
 		border-top: 1px solid var(--rule-hairline);
 		border-left: 1px solid var(--rule-hairline);
 		overflow: hidden;
@@ -1052,13 +1183,21 @@
 		margin: 0;
 		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
-		font-size: var(--text-lg);
+		font-size: var(--text-xl);
 		font-weight: 500;
+		line-height: 1.2;
 		color: var(--ink-primary);
 	}
 
-	.readout.total dd {
-		color: var(--accent);
+	.unit {
+		margin-left: 0.25em;
+		font-size: 0.875rem;
+		font-weight: 400;
+		color: var(--ink-muted);
+	}
+
+	.unit.pct {
+		margin-left: 0;
 	}
 
 	/* Notes */
@@ -1204,21 +1343,104 @@
 		animation: spin 0.8s linear infinite;
 	}
 
-	/* Phone */
-	@media (max-width: 640px) {
+	/* Phone and tablet action menu */
+	@media (max-width: 760px) {
 		.page-container {
 			padding: var(--space-md);
 		}
 
 		.header-actions {
 			width: 100%;
+			flex-wrap: nowrap;
 		}
 
-		.header-actions .btn-secondary,
-		.header-actions .btn-primary {
-			flex: 1 1 calc(33% - var(--space-xs));
+		.btn-secondary,
+		.btn-primary,
+		.modal-btn {
+			min-height: 44px;
+		}
+
+		.spec-table {
+			min-width: 0;
+		}
+
+		.col-sec {
+			display: none;
+		}
+
+		.sec-inline {
+			display: block;
+		}
+
+		.act-brew,
+		.act-edit,
+		.more-btn {
+			flex: 1 1 0;
 			min-width: 0;
 			padding-inline: var(--space-sm);
+		}
+
+		.act-brew,
+		.act-edit {
+			order: 0;
+		}
+
+		.more-wrap {
+			display: block;
+			position: relative;
+			flex: 1 1 0;
+			min-width: 0;
+		}
+
+		.btn-secondary.more-btn {
+			display: inline-flex;
+			width: 100%;
+		}
+
+		.more-menu {
+			display: none;
+			position: absolute;
+			right: 0;
+			top: calc(100% + var(--space-2xs));
+			z-index: 30;
+			min-width: 12rem;
+			flex-direction: column;
+			padding: var(--space-2xs);
+			background: var(--bg-surface);
+			border: 1px solid var(--rule-strong);
+			border-radius: 6px;
+		}
+
+		.more-menu.open {
+			display: flex;
+		}
+
+		.menu-item {
+			order: 0;
+			width: 100%;
+			justify-content: flex-start;
+			min-height: 44px;
+			padding-inline: var(--space-sm);
+			border: none;
+			white-space: nowrap;
+		}
+
+		.menu-item:hover:not(:disabled) {
+			background: var(--bg-subtle);
+		}
+
+		.btn-ghost-danger.menu-item {
+			width: 100%;
+			height: auto;
+			gap: var(--space-xs);
+			color: var(--status-danger);
+			font-family: var(--font-display);
+			font-size: var(--text-sm);
+			font-weight: 600;
+		}
+
+		.menu-label {
+			display: inline;
 		}
 	}
 </style>

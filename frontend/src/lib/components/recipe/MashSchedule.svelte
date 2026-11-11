@@ -31,9 +31,9 @@
 			<table>
 				<thead>
 					<tr>
-						<th class="idx">#</th>
+						<th class="idx col-sec">#</th>
 						<th>Step</th>
-						<th>Type</th>
+						<th class="col-sec">Type</th>
 						<th class="num">Temp</th>
 						<th class="num">Time</th>
 						<th class="num">Ramp</th>
@@ -42,9 +42,9 @@
 				<tbody>
 					{#each sortedSteps as step, i}
 						<tr>
-							<td class="idx num">{i + 1}</td>
-							<td class="name">{step.name}</td>
-							<td class="type">{formatType(step.type)}</td>
+							<td class="idx num col-sec">{i + 1}</td>
+							<td class="name">{step.name}<div class="sec-inline">{formatType(step.type)}</div></td>
+							<td class="type col-sec">{formatType(step.type)}</td>
 							<td class="num">{step.temp_c.toFixed(0)}&thinsp;°C</td>
 							<td class="num">{step.time_minutes}&thinsp;min</td>
 							<td class="num">{step.ramp_time_minutes ? `${step.ramp_time_minutes}\u2009min` : '--'}</td>
@@ -118,5 +118,54 @@
 	.type {
 		color: var(--ink-secondary);
 		text-transform: capitalize;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	.sec-inline {
+		display: none;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
+		text-transform: capitalize;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+			table-layout: auto;
+		}
+
+		.col-sec {
+			display: none;
+		}
+
+		.sec-inline {
+			display: block;
+		}
+
+		th,
+		td {
+			padding-inline: var(--space-xs);
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
 	}
 </style>

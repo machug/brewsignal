@@ -383,4 +383,38 @@
 		color: var(--ink-secondary);
 		white-space: nowrap;
 	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 0;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
+	}
+
+	@media (max-width: 760px) {
+		table {
+			min-width: 0;
+		}
+
+		th,
+		td {
+			padding-inline: 3px;
+			font-size: var(--text-xs);
+			letter-spacing: 0;
+		}
+
+		th:first-child,
+		td:first-child {
+			padding-left: 0;
+			white-space: normal;
+		}
+
+		th:last-child,
+		td:last-child {
+			padding-right: 0;
+		}
+	}
 </style>

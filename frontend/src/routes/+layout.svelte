@@ -388,7 +388,10 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="more-backdrop" onclick={() => closeMore()}></div>
 		<div class="more-sheet" id="more-sheet" role="dialog" aria-modal="true" aria-labelledby="more-title" bind:this={moreSheet}>
-			<div class="more-title" id="more-title">More</div>
+			<div class="more-head">
+				<div class="more-title" id="more-title">More</div>
+				<button type="button" class="more-close" onclick={() => closeMore()}>Close</button>
+			</div>
 			{#each moreLinks as link}
 				<a
 					href={link.href}
@@ -879,9 +882,29 @@
 			background: var(--bg-elevated);
 			border-top: 1px solid var(--rule-strong);
 		}
+		.more-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			border-bottom: 1px solid var(--rule-hairline);
+		}
+		.more-close {
+			min-height: 44px;
+			padding: 0 var(--space-md);
+			background: none;
+			border: none;
+			font-family: var(--font-display);
+			font-size: var(--text-sm);
+			font-weight: 500;
+			color: var(--ink-secondary);
+			cursor: pointer;
+		}
+		.more-close:hover,
+		.more-close:focus-visible {
+			color: var(--ink-primary);
+		}
 		.more-title {
 			padding: var(--space-xs) var(--space-md);
-			border-bottom: 1px solid var(--rule-hairline);
 			font-family: var(--font-display);
 			font-size: var(--text-xs);
 			font-weight: 600;

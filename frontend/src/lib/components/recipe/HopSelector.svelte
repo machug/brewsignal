@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import type { HopVarietyResponse } from '$lib/api';
 	import { fetchHopVarieties, fetchHopOrigins } from '$lib/api';
 	import { calculateIBU_Tinseth, calculateTotalIBU, calculateBUGU, describeBUGU, type Hop } from '$lib/brewing';
@@ -50,6 +50,20 @@
 	let originFilter = $state('');
 	let purposeFilter = $state('');
 	let showBrowser = $state(false);
+	let modalEl = $state<HTMLElement | undefined>();
+	let triggerEl: HTMLElement | null = null;
+
+	function openBrowser(e: MouseEvent) {
+		triggerEl = e.currentTarget as HTMLElement;
+		showBrowser = true;
+		tick().then(() => modalEl?.focus());
+	}
+
+	// Close the picker and return focus to the button that opened it
+	function closeBrowser() {
+		showBrowser = false;
+		tick().then(() => triggerEl?.focus());
+	}
 
 	// Editor-level mode toggle. When set to `extract`, the "+ Add Hop"
 	// flow creates Abstrax-Quantum-style extracts (mL dosing, cold-side
@@ -310,6 +324,8 @@
 
 </script>
 
+<svelte:window onkeydown={(e) => { if (showBrowser && e.key === 'Escape') closeBrowser(); }} />
+
 <div class="hop-selector">
 	<div class="selector-header">
 		<div class="header-left">
@@ -350,14 +366,14 @@
 					Extract
 				</button>
 			</div>
-			<button type="button" class="add-btn" onclick={() => (showBrowser = true)}> + Add Hop </button>
+			<button type="button" class="add-btn" onclick={openBrowser}> + Add Hop </button>
 		</div>
 	</div>
 
 	{#if hops.length === 0}
 		<div class="empty-state">
 			<p>No hops added. Add a hop to build the schedule and calculate IBU.</p>
-			<button type="button" class="add-btn" onclick={() => (showBrowser = true)}>+ Add Hop</button>
+			<button type="button" class="add-btn" onclick={openBrowser}>+ Add Hop</button>
 		</div>
 	{:else}
 		<div class="hops-list">
@@ -526,13 +542,13 @@
 	{#if showBrowser}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="browser-overlay" onclick={() => (showBrowser = false)} role="presentation">
-			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="hop-browser-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+		<div class="browser-overlay" onclick={closeBrowser} role="presentation">
+			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="hop-browser-title" tabindex="-1" bind:this={modalEl} onclick={(e) => e.stopPropagation()}>
 				<div class="browser-header">
 					<h4 id="hop-browser-title">
 						{editorMode === 'extract' ? 'Add Hop Extract' : 'Add Hop'}
 					</h4>
-					<button type="button" class="close-btn" aria-label="Close" onclick={() => (showBrowser = false)}>×</button>
+					<button type="button" class="close-btn" aria-label="Close" onclick={closeBrowser}>×</button>
 				</div>
 				{#if editorMode === 'extract'}
 					<p class="extract-hint">
@@ -802,6 +818,10 @@
 		padding: var(--space-md);
 	}
 
+	.browser-modal:focus {
+		outline: none;
+	}
+
 	.browser-modal {
 		width: 100%;
 		max-width: 600px;
@@ -1037,6 +1057,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-md);
+		container-type: inline-size;
 	}
 
 	.use-group {
@@ -1059,7 +1080,7 @@
 	.hop-head,
 	.hop-item {
 		display: grid;
-		grid-template-columns: minmax(0, 2fr) 90px 88px 72px 80px 110px 100px 44px;
+		grid-template-columns: minmax(8rem, 1fr) 90px 88px 72px 80px 110px 100px 44px;
 		gap: var(--space-xs);
 		align-items: center;
 	}
@@ -1176,7 +1197,8 @@
 	}
 
 	/* Phone: name + remove on top, Amount/AA%/Time then Type/Use/Form */
-	@media (max-width: 760px) {
+	/* Compact two-row layout when the LIST (not the viewport) is narrower than the 8-column grid needs */
+	@container (max-width: 780px) {
 		.hop-head {
 			display: none;
 		}

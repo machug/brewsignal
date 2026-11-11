@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import type { FermentableResponse } from '$lib/api';
 	import { fetchFermentables, fetchFermentableTypes, fetchFermentableOrigins } from '$lib/api';
 	import { calculateOG, calculateSRM, srmToHex, type Fermentable } from '$lib/brewing';
@@ -26,6 +26,20 @@
 	let typeFilter = $state('');
 	let originFilter = $state('');
 	let showBrowser = $state(false);
+	let modalEl = $state<HTMLElement | undefined>();
+	let triggerEl: HTMLElement | null = null;
+
+	function openBrowser(e: MouseEvent) {
+		triggerEl = e.currentTarget as HTMLElement;
+		showBrowser = true;
+		tick().then(() => modalEl?.focus());
+	}
+
+	// Close the picker and return focus to the button that opened it
+	function closeBrowser() {
+		showBrowser = false;
+		tick().then(() => triggerEl?.focus());
+	}
 
 	// Calculate totals
 	let totalKg = $derived(fermentables.reduce((sum, f) => sum + f.amount_kg, 0));
@@ -157,6 +171,8 @@
 
 </script>
 
+<svelte:window onkeydown={(e) => { if (showBrowser && e.key === 'Escape') closeBrowser(); }} />
+
 <div class="fermentable-selector">
 	<div class="selector-header">
 		<div class="header-left">
@@ -171,7 +187,7 @@
 				</span>
 			{/if}
 		</div>
-		<button type="button" class="add-btn" onclick={() => (showBrowser = true)}>
+		<button type="button" class="add-btn" onclick={openBrowser}>
 			+ Add Fermentable
 		</button>
 	</div>
@@ -179,7 +195,7 @@
 	{#if fermentables.length === 0}
 		<div class="empty-state">
 			<p>No fermentables added. Add the grain bill to calculate OG and color.</p>
-			<button type="button" class="add-btn" onclick={() => (showBrowser = true)}>+ Add Fermentable</button>
+			<button type="button" class="add-btn" onclick={openBrowser}>+ Add Fermentable</button>
 		</div>
 	{:else}
 		<div class="fermentables-list">
@@ -236,11 +252,11 @@
 	{#if showBrowser}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="browser-overlay" onclick={() => (showBrowser = false)} role="presentation">
-			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="fermentable-browser-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+		<div class="browser-overlay" onclick={closeBrowser} role="presentation">
+			<div class="browser-modal" role="dialog" aria-modal="true" aria-labelledby="fermentable-browser-title" tabindex="-1" bind:this={modalEl} onclick={(e) => e.stopPropagation()}>
 				<div class="browser-header">
 					<h4 id="fermentable-browser-title">Add Fermentable</h4>
-					<button type="button" class="close-btn" aria-label="Close" onclick={() => (showBrowser = false)}>×</button>
+					<button type="button" class="close-btn" aria-label="Close" onclick={closeBrowser}>×</button>
 				</div>
 
 				{#if loading}
@@ -515,6 +531,10 @@
 		padding: var(--space-md);
 	}
 
+	.browser-modal:focus {
+		outline: none;
+	}
+
 	.browser-modal {
 		width: 100%;
 		max-width: 600px;
@@ -701,6 +721,7 @@
 	.fermentables-list {
 		display: flex;
 		flex-direction: column;
+		container-type: inline-size;
 	}
 
 	.ferm-head,
@@ -841,7 +862,7 @@
 		border: 1px solid var(--rule-strong);
 	}
 
-	@media (max-width: 760px) {
+	@container (max-width: 480px) {
 		.ferm-head {
 			display: none;
 		}

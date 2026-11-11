@@ -84,3 +84,4 @@ hpa_recipes/
 
 # beads: issues tracked at parent repo (/brewsignal/.beads) — legacy local dir untracked
 .beads/
+.deploy-incomplete

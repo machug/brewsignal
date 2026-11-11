@@ -62,6 +62,13 @@ ssh_pi "bash -s" <<REMOTE
 set -euo pipefail
 cd "$REMOTE_DIR"
 
+# A previous deploy that never passed verification may have left HEAD, deps or
+# the build half-updated (a rerun or rollback would then see no diff and skip
+# them). The marker is cleared only after verification; if it is still here,
+# force the dep sync, npm ci and build.
+FORCE=0
+[ -f .deploy-incomplete ] && { echo "[pi] previous deploy incomplete -> forcing full sync + build"; FORCE=1; }
+touch .deploy-incomplete
 OLD=\$(git rev-parse HEAD)
 git fetch origin
 NEW=\$(git rev-parse "origin/$BRANCH")
@@ -75,7 +82,7 @@ echo "[pi] HEAD: \$(git log --oneline -1)"
 # uv sync --locked installs exactly what uv.lock pins (and prunes removed
 # deps), matching how Railway builds; --locked also fails loudly if the lock
 # is stale relative to pyproject instead of silently re-resolving on the Pi.
-if ! git diff --quiet "\$OLD" "\$NEW" -- pyproject.toml uv.lock; then
+if [ "\$FORCE" = 1 ] || ! git diff --quiet "\$OLD" "\$NEW" -- pyproject.toml uv.lock; then
   echo "[pi] dependency manifest changed -> uv sync --locked"
   command -v uv >/dev/null 2>&1 || .venv/bin/pip install -q 'uv==0.9.0'
   UV_BIN=\$(command -v uv || echo .venv/bin/uv)
@@ -85,9 +92,17 @@ else
   echo "[pi] no dependency changes -> skipping dep sync"
 fi
 
+# Install frontend packages when package.json or the lockfile changed, else the
+# build fails on an unresolved import (bit us with ai/@ai-sdk/svelte, 2026-11-11).
+if [ "\$FORCE" = 1 ] || ! git diff --quiet "\$OLD" "\$NEW" -- frontend/package.json frontend/package-lock.json; then
+  echo "[pi] frontend packages changed -> npm ci"
+  ( cd frontend && npm ci --no-audit --no-fund >/tmp/brewsignal-npm.log 2>&1 ) \
+    || { echo "[pi] NPM CI FAILED — tail of log:"; tail -20 /tmp/brewsignal-npm.log; exit 1; }
+fi
+
 # Rebuild the frontend only when frontend/ changed between OLD and NEW, or when
 # the built output is missing. Avoids a slow npm build on backend-only deploys.
-if [ ! -f backend/static/index.html ] || ! git diff --quiet "\$OLD" "\$NEW" -- frontend/; then
+if [ "\$FORCE" = 1 ] || [ ! -f backend/static/index.html ] || ! git diff --quiet "\$OLD" "\$NEW" -- frontend/; then
   echo "[pi] frontend changed (or no build present) -> BUILD_TARGET=pi npm run build"
   ( cd frontend && BUILD_TARGET=pi npm run build >/tmp/brewsignal-build.log 2>&1 ) \
     || { echo "[pi] BUILD FAILED — tail of log:"; tail -20 /tmp/brewsignal-build.log; exit 1; }
@@ -107,6 +122,7 @@ CODE="$(curl -s -m 8 -o /dev/null -w '%{http_code}' "http://$PI_HOST:$PORT/" 2>/
 log "service=$ACTIVE  http=$CODE"
 
 if [ "$ACTIVE" = "active" ] && [ "$CODE" = "200" ]; then
+  ssh_pi "rm -f '$REMOTE_DIR/.deploy-incomplete'"
   log "DEPLOY OK"
 else
   die "DEPLOY FAILED (service=$ACTIVE http=$CODE) — check: ssh $PI_USER@$PI_HOST 'journalctl -u brewsignal -n 50'"

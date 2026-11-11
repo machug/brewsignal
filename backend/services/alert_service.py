@@ -32,11 +32,77 @@ class AlertType:
     EQUIPMENT_CONFLICT = "equipment_conflict"
 
 
+# Stall rule thresholds (tilt_ui-zbhm; tuned on synthetic curves, re-tune on real batches)
+STALL_MAX_SLOPE = 2.5e-5  # SG/hour, i.e. 0.6 gravity points/day
+STALL_MIN_DROP = 0.004  # must have fermented 4 points first
+STALL_FG_MARGIN = 0.004  # and still be 4 points above expected FG
+
+
 class AlertSeverity:
     """Alert severity constants."""
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
+
+
+async def get_alert_context(
+    session,
+    batch_id: int,
+    current_sg: Optional[float],
+) -> dict:
+    """Get context needed for alert detection (yeast temp range, progress)."""
+    from sqlalchemy.orm import selectinload
+
+    context = {
+        "yeast_temp_min": None,
+        "yeast_temp_max": None,
+        "progress_percent": None,
+        "og": None,
+        "fg": None,
+    }
+
+    # Fetch batch with recipe and yeast eagerly loaded
+    stmt = (
+        select(Batch)
+        .where(Batch.id == batch_id)
+        .options(
+            selectinload(Batch.recipe).selectinload(Recipe.cultures),
+            selectinload(Batch.yeast_strain),
+        )
+    )
+    result = await session.execute(stmt)
+    batch = result.scalar_one_or_none()
+
+    if not batch:
+        return context
+
+    # Get yeast temperature range (prefer batch override, then recipe yeast)
+    if batch.yeast_strain:
+        context["yeast_temp_min"] = batch.yeast_strain.temp_low
+        context["yeast_temp_max"] = batch.yeast_strain.temp_high
+    elif batch.recipe:
+        culture = next(
+            (c for c in batch.recipe.cultures if c.temp_min_c is not None or c.temp_max_c is not None),
+            None,
+        )
+        if culture:
+            context["yeast_temp_min"] = culture.temp_min_c
+            context["yeast_temp_max"] = culture.temp_max_c
+
+    # Calculate progress if we have OG and current SG
+    og = batch.measured_og or (batch.recipe.og if batch.recipe else None)
+    fg = batch.recipe.fg if batch.recipe else None
+    context["og"] = og
+    context["fg"] = fg
+
+    if og and fg and current_sg:
+        expected_drop = og - fg
+        if expected_drop > 0:
+            actual_drop = og - current_sg
+            progress = (actual_drop / expected_drop) * 100
+            context["progress_percent"] = min(max(progress, 0), 100)
+
+    return context
 
 
 async def detect_and_persist_alerts(
@@ -48,6 +114,8 @@ async def detect_and_persist_alerts(
     yeast_temp_min: Optional[float] = None,
     yeast_temp_max: Optional[float] = None,
     progress_percent: Optional[float] = None,
+    og: Optional[float] = None,
+    fg: Optional[float] = None,
 ) -> list[FermentationAlert]:
     """
     Detect alert conditions and persist to database.
@@ -61,6 +129,8 @@ async def detect_and_persist_alerts(
         yeast_temp_min: Minimum yeast temperature tolerance (Celsius)
         yeast_temp_max: Maximum yeast temperature tolerance (Celsius)
         progress_percent: Fermentation progress percentage (0-100)
+        og: Batch OG (measured, else recipe) for the stall rule
+        fg: Expected FG (recipe) for the stall rule
 
     Returns:
         List of active alerts for this batch
@@ -70,7 +140,6 @@ async def detect_and_persist_alerts(
 
     # Get current temperature
     current_temp = live_reading.get("temp") if live_reading else None
-    sg_rate = live_reading.get("sg_rate") if live_reading else None
 
     # --- Temperature Alerts ---
     if current_temp is not None and yeast_temp_min is not None and yeast_temp_max is not None:
@@ -149,29 +218,43 @@ async def detect_and_persist_alerts(
         # No anomaly - clear alert if one exists
         await _clear_alert(db, batch_id, AlertType.ANOMALY, now)
 
-    # --- Stall Alerts ---
-    # Only check for stall if we have sg_rate and fermentation isn't near completion
-    if sg_rate is not None and progress_percent is not None:
-        if abs(sg_rate) < 0.0001 and progress_percent < 90:
-            alert = await _upsert_alert(
-                db=db,
-                batch_id=batch_id,
-                device_id=device_id,
-                alert_type=AlertType.STALL,
-                severity=AlertSeverity.WARNING,
-                message="Fermentation appears stalled - gravity not changing",
-                context=json.dumps({
-                    "sg_rate": sg_rate,
-                    "progress_percent": progress_percent,
-                    "sg": live_reading.get("sg") if live_reading else None,
-                }),
-                trigger_reading_id=reading.id,
-                now=now,
-            )
-            current_alerts.append(alert)
-        else:
-            # Fermentation active or near completion - clear stall alert
-            await _clear_alert(db, batch_id, AlertType.STALL, now)
+    # --- Stall Alerts (tilt_ui-zbhm) ---
+    # Stalled = the trailing 12 h slope is flatter than 0.6 pt/day, AFTER the
+    # beer has dropped at least 4 pt from OG (so lag phase never counts), and
+    # it is still more than 4 pt above the expected FG. Without an FG the
+    # alert is only INFO. Without OG or a full 12 h window: no judgement.
+    slope_12h = live_reading.get("sg_slope_12h") if live_reading else None
+    current_sg = live_reading.get("sg") if live_reading else None
+    stalled = (
+        slope_12h is not None
+        and og is not None
+        and current_sg is not None
+        and slope_12h > -STALL_MAX_SLOPE
+        and og - current_sg >= STALL_MIN_DROP
+        and (fg is None or current_sg - fg > STALL_FG_MARGIN)
+    )
+    if stalled:
+        alert = await _upsert_alert(
+            db=db,
+            batch_id=batch_id,
+            device_id=device_id,
+            alert_type=AlertType.STALL,
+            severity=AlertSeverity.WARNING if fg is not None else AlertSeverity.INFO,
+            message="Fermentation appears stalled - gravity has barely moved in 12 hours",
+            context=json.dumps({
+                "sg_slope_12h": slope_12h,
+                "points_per_day": round(-slope_12h * 24 * 1000, 2),
+                "og": og,
+                "expected_fg": fg,
+                "progress_percent": progress_percent,
+                "sg": current_sg,
+            }),
+            trigger_reading_id=reading.id,
+            now=now,
+        )
+        current_alerts.append(alert)
+    else:
+        await _clear_alert(db, batch_id, AlertType.STALL, now)
 
     return current_alerts
 

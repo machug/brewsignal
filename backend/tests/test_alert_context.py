@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.main import get_alert_context
+from backend.services.alert_service import get_alert_context
 from backend.models import Batch, Recipe, RecipeCulture
 
 

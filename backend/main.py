@@ -29,7 +29,7 @@ from .mqtt_manager import start_mqtt_manager, stop_mqtt_manager, publish_batch_r
 from .scanner import RAPTPillReading, TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
-from .services.alert_service import detect_and_persist_alerts  # noqa: E402
+from .services.alert_service import detect_and_persist_alerts, get_alert_context  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
@@ -129,62 +129,6 @@ async def calculate_time_since_batch_start(
 
     # Absolute fallback: return 0.0 for very first reading
     return 0.0
-
-
-async def get_alert_context(
-    session,
-    batch_id: int,
-    current_sg: Optional[float],
-) -> dict:
-    """Get context needed for alert detection (yeast temp range, progress)."""
-    from sqlalchemy.orm import selectinload
-
-    context = {
-        "yeast_temp_min": None,
-        "yeast_temp_max": None,
-        "progress_percent": None,
-    }
-
-    # Fetch batch with recipe and yeast eagerly loaded
-    stmt = (
-        select(models.Batch)
-        .where(models.Batch.id == batch_id)
-        .options(
-            selectinload(models.Batch.recipe).selectinload(models.Recipe.cultures),
-            selectinload(models.Batch.yeast_strain),
-        )
-    )
-    result = await session.execute(stmt)
-    batch = result.scalar_one_or_none()
-
-    if not batch:
-        return context
-
-    # Get yeast temperature range (prefer batch override, then recipe yeast)
-    if batch.yeast_strain:
-        context["yeast_temp_min"] = batch.yeast_strain.temp_low
-        context["yeast_temp_max"] = batch.yeast_strain.temp_high
-    elif batch.recipe:
-        culture = next(
-            (c for c in batch.recipe.cultures if c.temp_min_c is not None or c.temp_max_c is not None),
-            None,
-        )
-        if culture:
-            context["yeast_temp_min"] = culture.temp_min_c
-            context["yeast_temp_max"] = culture.temp_max_c
-
-    # Calculate progress if we have OG and current SG
-    og = batch.measured_og or (batch.recipe.og if batch.recipe else None)
-    fg = batch.recipe.fg if batch.recipe else None
-
-    if og and fg and current_sg:
-        expected_drop = og - fg
-        if expected_drop > 0:
-            actual_drop = og - current_sg
-            progress = (actual_drop / expected_drop) * 100
-            context["progress_percent"] = min(max(progress, 0), 100)
-
-    return context
 
 
 async def handle_tilt_reading(reading: TiltReading):
@@ -302,6 +246,7 @@ async def handle_tilt_reading(reading: TiltReading):
                     "temp": temp_calibrated_c,
                     "sg": sg_calibrated,
                     "sg_rate": ml_outputs.get("sg_rate"),
+                    "sg_slope_12h": ml_outputs.get("sg_slope_12h"),
                     "is_anomaly": ml_outputs.get("is_anomaly", False),
                     "anomaly_score": ml_outputs.get("anomaly_score"),
                     "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
@@ -322,6 +267,8 @@ async def handle_tilt_reading(reading: TiltReading):
                     yeast_temp_min=alert_context.get("yeast_temp_min"),
                     yeast_temp_max=alert_context.get("yeast_temp_max"),
                     progress_percent=alert_context.get("progress_percent"),
+                    og=alert_context.get("og"),
+                    fg=alert_context.get("fg"),
                 )
             except Exception as e:
                 logging.warning("Alert detection failed: %s", e)
@@ -471,6 +418,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                     "temp": temp_calibrated_c,
                     "sg": sg_calibrated,
                     "sg_rate": ml_outputs.get("sg_rate"),
+                    "sg_slope_12h": ml_outputs.get("sg_slope_12h"),
                     "is_anomaly": ml_outputs.get("is_anomaly", False),
                     "anomaly_score": ml_outputs.get("anomaly_score"),
                     "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
@@ -485,6 +433,8 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                     yeast_temp_min=alert_context.get("yeast_temp_min"),
                     yeast_temp_max=alert_context.get("yeast_temp_max"),
                     progress_percent=alert_context.get("progress_percent"),
+                    og=alert_context.get("og"),
+                    fg=alert_context.get("fg"),
                 )
             except Exception as e:
                 logging.warning("Alert detection failed: %s", e)

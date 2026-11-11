@@ -134,6 +134,7 @@ class MLPipelineManager:
             flat_result["anomaly_score"] = anomaly.get("score")
             reason = anomaly.get("reason")
             flat_result["anomaly_reasons"] = [reason] if reason and reason not in ("normal", "insufficient_history") else []
+            flat_result["sg_slope_12h"] = anomaly.get("sg_slope_12h")
         else:
             flat_result["is_anomaly"] = False
             flat_result["anomaly_reasons"] = []

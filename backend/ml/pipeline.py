@@ -51,10 +51,7 @@ class MLPipeline:
             self.kalman_filter = None
 
         if self.config.enable_anomaly_detection:
-            self.anomaly_detector = FermentationAnomalyDetector(
-                min_history=self.config.anomaly_min_history,
-                sg_rate_threshold=self.config.anomaly_sg_rate_threshold,
-            )
+            self.anomaly_detector = FermentationAnomalyDetector()
         else:
             self.anomaly_detector = None
 
@@ -146,6 +143,7 @@ class MLPipeline:
             anomaly_result = self.anomaly_detector.check_reading(
                 sg=filtered_sg,
                 time_hours=time_hours,
+                raw_sg=sg,
             )
             result["anomaly"] = anomaly_result
         else:

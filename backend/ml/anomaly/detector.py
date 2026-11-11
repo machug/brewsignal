@@ -1,178 +1,120 @@
-"""Anomaly detection for fermentation data.
+"""Anomaly detection for fermentation data (tilt_ui-zbhm).
 
-Detects unusual patterns in gravity readings that may indicate:
-- Stuck fermentation (SG not declining)
-- Contamination (unusual SG increases)
-- Sensor drift or calibration issues
+Two explainable rules, tuned in the Nov 2026 research (sensing-anomaly.md):
 
-Uses rule-based detection with domain-specific thresholds.
+- Step change: the last N raw readings all sit more than ``step_threshold``
+  above (or all below) the line fitted to the readings just before them. That
+  is a persistent level shift (dry hop, hydrometer lifted or moved), not
+  bubble noise, which flips sign from reading to reading. Flagged once per
+  event.
+- 12 h slope: least-squares slope of the filtered SG over the trailing
+  ``slope_window_hours``. Reported, not flagged here: whether a flat slope is
+  a stall depends on the batch OG/FG, which alert_service knows.
+
+The old rules (instant rate thresholds, OG = first filtered reading, no
+lag-phase guard) flagged ~82% of normal readings and were removed.
 """
 
-import numpy as np
 from typing import Optional
+
+import numpy as np
 
 
 class FermentationAnomalyDetector:
-    """Detects anomalies in fermentation gravity readings.
-
-    Uses domain knowledge and rule-based detection:
-    - SG rate threshold catches stuck fermentation (rate near zero)
-    - SG increase detection flags potential contamination
-    - Temperature spike detection identifies environmental issues
-
-    The detector requires a minimum history before making predictions.
-    """
+    """Rule-based step-change detector plus trailing-slope estimate."""
 
     def __init__(
         self,
-        min_history: int = 20,
-        sg_rate_threshold: float = 0.001,  # SG per hour
-        min_hours_for_stuck: float = 24.0,  # Minimum hours before flagging stuck
-        min_sg_drop_for_stuck: float = 0.005,  # Must have fermented at least this much
+        slope_window_hours: float = 12.0,
+        step_threshold: float = 0.001,  # 1 gravity point
+        step_count: int = 6,  # ~30 min at the 5-min storage cadence
+        baseline_hours: float = 2.0,
+        min_baseline_readings: int = 6,
     ):
-        """Initialize the anomaly detector.
+        self.slope_window_hours = slope_window_hours
+        self.step_threshold = step_threshold
+        self.step_count = step_count
+        self.baseline_hours = baseline_hours
+        self.min_baseline_readings = min_baseline_readings
+        self.reset()
 
-        Args:
-            min_history: Minimum readings required before scoring
-            sg_rate_threshold: Minimum acceptable SG decline rate (SG/hour)
-                              Below this = stuck fermentation
-            min_hours_for_stuck: Minimum hours of fermentation before flagging stuck
-                                 (accounts for lag phase)
-            min_sg_drop_for_stuck: Minimum SG drop from first reading required before
-                                   flagging stuck (fermentation must have started first)
-        """
-        self.min_history = min_history
-        self.sg_rate_threshold = sg_rate_threshold
-        self.min_hours_for_stuck = min_hours_for_stuck
-        self.min_sg_drop_for_stuck = min_sg_drop_for_stuck
-
-        # History buffers
-        self.sg_history: list[float] = []
-        self.time_history: list[float] = []  # hours since start
+    def reset(self) -> None:
+        """Reset detector state for a new batch."""
+        self.time_history: list[float] = []
+        self.sg_history: list[float] = []  # filtered SG
+        self.raw_history: list[float] = []
+        self._step_active = False
 
     def check_reading(
         self,
         sg: float,
         time_hours: float,
+        raw_sg: Optional[float] = None,
     ) -> dict:
-        """Check if a reading is anomalous.
+        """Check one reading.
 
         Args:
-            sg: Specific gravity reading
-            time_hours: Time in hours since fermentation start
+            sg: Filtered specific gravity
+            time_hours: Hours since fermentation start
+            raw_sg: Unfiltered SG for step detection (defaults to ``sg``)
 
         Returns:
-            Dictionary with detection results:
-            - anomaly_score: Anomaly score (lower = more anomalous), None if not fitted
-            - is_anomaly: True if reading is anomalous
-            - reason: Why it's anomalous (if applicable)
-            - sg_rate: Estimated SG change rate (SG/hour)
+            is_anomaly, reason ("normal" / "step_change_up" / "step_change_down"),
+            sg_slope_12h (SG/hour, None until the window is covered).
         """
-        # Add to history
-        self.sg_history.append(sg)
         self.time_history.append(time_hours)
+        self.sg_history.append(sg)
+        self.raw_history.append(sg if raw_sg is None else raw_sg)
+        self._trim()
 
-        # Need minimum history to make predictions
-        if len(self.sg_history) < self.min_history:
-            return {
-                "is_anomaly": False,
-                "reason": "insufficient_history",
-                "sg_rate": None,
-            }
-
-        # Calculate recent SG rate
-        sg_rate = self._calculate_sg_rate()
-
-        # Determine if anomalous and why
-        is_anomaly = False
-        reason = "normal"
-
-        # Check for unusual SG increase (contamination)
-        # First check for spike in last reading (not smoothed by window)
-        if len(self.sg_history) >= 2:
-            last_dt = self.time_history[-1] - self.time_history[-2]
-            last_rate = ((self.sg_history[-1] - self.sg_history[-2]) / last_dt
-                        if last_dt > 0 else 0)
-
-            # Flag significant positive rate (> threshold)
-            if last_rate > self.sg_rate_threshold:
-                is_anomaly = True
-                reason = "unusual_increase"
-
-        # Also check window-averaged rate for sustained increases
-        if not is_anomaly and sg_rate is not None and sg_rate > self.sg_rate_threshold * 3:
-            is_anomaly = True
-            reason = "unusual_increase"
-
-        # Check for stuck fermentation (average SG rate near zero)
-        # Must have enough data and the rate should be consistently near zero
-        # Using abs(rate) catches both stuck and reverse fermentation
-        #
-        # IMPORTANT: Requires additional conditions to avoid false positives:
-        # 1. Minimum time elapsed (default 24h) - accounts for lag phase
-        # 2. Fermentation must have started first (OG dropped by min threshold)
-        elif (sg_rate is not None and
-              abs(sg_rate) < self.sg_rate_threshold * 2 and  # Increased tolerance
-              len(self.sg_history) >= self.min_history + 10):
-
-            # Check minimum time elapsed (avoid flagging during lag phase)
-            time_elapsed = self.time_history[-1] - self.time_history[0]
-
-            # Check if fermentation has actually started (OG has dropped)
-            og = self.sg_history[0]  # First reading is approximate OG
-            current_sg = self.sg_history[-1]
-            total_drop = og - current_sg
-
-            # Only flag stuck if:
-            # 1. At least min_hours_for_stuck have passed (default 24h)
-            # 2. Fermentation had started (dropped at least min_sg_drop_for_stuck)
-            # 3. Last 10 readings show < 0.002 change (truly stuck, not lag phase)
-            if (time_elapsed >= self.min_hours_for_stuck and
-                total_drop >= self.min_sg_drop_for_stuck):
-                # Verify it's truly stuck by checking last 10 readings (excluding current)
-                # Use [-2] to [-11] to avoid including the current reading
-                recent_sg_change = abs(self.sg_history[-2] - self.sg_history[-11])
-                if recent_sg_change < 0.002:  # Less than 0.002 SG change over 10 readings
-                    is_anomaly = True
-                    reason = "stuck_fermentation"
-
+        reason = self._check_step()
         return {
-            "is_anomaly": is_anomaly,
+            "is_anomaly": reason != "normal",
             "reason": reason,
-            "sg_rate": sg_rate,
+            "sg_slope_12h": self._slope_12h(),
         }
 
-    def _calculate_sg_rate(self, window: int = 5) -> Optional[float]:
-        """Calculate recent SG change rate using linear regression.
+    def _trim(self) -> None:
+        """Keep only what the longest window needs (bounded memory)."""
+        keep_hours = max(self.slope_window_hours, self.baseline_hours) + 1.0
+        cutoff = self.time_history[-1] - keep_hours
+        drop = 0
+        while drop < len(self.time_history) and self.time_history[drop] < cutoff:
+            drop += 1
+        if drop:
+            del self.time_history[:drop]
+            del self.sg_history[:drop]
+            del self.raw_history[:drop]
 
-        Args:
-            window: Number of recent readings to use (default: 5)
-
-        Returns:
-            SG change rate in SG per hour, or None if insufficient data
-        """
-        if len(self.sg_history) < 2:
+    def _slope_12h(self) -> Optional[float]:
+        t = np.array(self.time_history)
+        if len(t) < 3 or t[-1] - t[0] < self.slope_window_hours:
             return None
+        window = t >= t[-1] - self.slope_window_hours
+        return float(np.polyfit(t[window], np.array(self.sg_history)[window], 1)[0])
 
-        # Use last N readings
-        n = min(window, len(self.sg_history))
-        times = np.array(self.time_history[-n:])
-        sgs = np.array(self.sg_history[-n:])
+    def _check_step(self) -> str:
+        n = self.step_count
+        if len(self.raw_history) < n + self.min_baseline_readings:
+            return "normal"
+        t = np.array(self.time_history)
+        z = np.array(self.raw_history)
+        recent_t, recent_z = t[-n:], z[-n:]
+        base = (t[:-n] >= recent_t[0] - self.baseline_hours)
+        base_t, base_z = t[:-n][base], z[:-n][base]
+        if len(base_t) < self.min_baseline_readings or base_t[-1] - base_t[0] <= 0:
+            return "normal"
+        slope, intercept = np.polyfit(base_t, base_z, 1)
+        resid = recent_z - (slope * recent_t + intercept)
 
-        # Linear regression: sg = slope * time + intercept
-        if len(times) < 2:
-            return None
-
-        # Handle constant time (dt = 0)
-        dt = times[-1] - times[0]
-        if dt == 0:
-            return 0.0
-
-        # Simple least squares slope
-        slope = np.polyfit(times, sgs, deg=1)[0]
-        return float(slope)
-
-    def reset(self) -> None:
-        """Reset detector state for a new batch."""
-        self.sg_history = []
-        self.time_history = []
+        if np.all(resid > self.step_threshold):
+            direction = "step_change_up"
+        elif np.all(resid < -self.step_threshold):
+            direction = "step_change_down"
+        else:
+            self._step_active = False
+            return "normal"
+        if self._step_active:
+            return "normal"  # already flagged this event
+        self._step_active = True
+        return direction

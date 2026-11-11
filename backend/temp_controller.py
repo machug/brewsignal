@@ -1390,6 +1390,47 @@ def sync_cached_heater_state(state: Optional[str], batch_id: Optional[int] = Non
     sync_cached_state(state, batch_id, device_type="heater")
 
 
+async def manual_switch(
+    router: DeviceControlRouter,
+    db,
+    entity_id: str,
+    kind: str,
+    state: str,
+    batch_id: Optional[int] = None,
+) -> tuple[bool, str]:
+    """Manual on/off through the controller's safe switching (tilt_ui-xrq5.1).
+
+    'off' always goes through. 'on' respects the min-cycle, max-on lockout and
+    failure back-off, and only happens once every opposite device paired with
+    this one on a live batch is confirmed off.
+    """
+    if state == "off":
+        ok = await _set_entity_state(router, db, entity_id, kind, "off", force=True)
+        return ok, "turned off" if ok else "command failed"
+
+    q = select(Batch).where(
+        Batch.deleted_at.is_(None),
+        (Batch.heater_entity_id == entity_id) | (Batch.cooler_entity_id == entity_id),
+    )
+    if batch_id is not None:
+        q = select(Batch).where(Batch.id == batch_id)
+    opposites = set()
+    for b in (await db.execute(q)).scalars():
+        if b.status not in ("fermenting", "conditioning", "planning", "brewing") and batch_id is None:
+            continue
+        other = b.cooler_entity_id if kind == "heater" else b.heater_entity_id
+        if other and other != entity_id:
+            opposites.add(other)
+    for other in opposites:
+        if await _read_state(router, other) != "off":
+            other_kind = "cooler" if kind == "heater" else "heater"
+            if not await _set_entity_state(router, db, other, other_kind, "off", force=True) \
+                    or await _read_state(router, other) != "off":
+                return False, f"refused: opposite device {other} is not confirmed off"
+    ok = await _set_entity_state(router, db, entity_id, kind, "on", force=False)
+    return ok, "turned on" if ok else "refused: minimum cycle time, max-on lockout or a recent failed command"
+
+
 def start_temp_controller() -> None:
     """Start the temperature control background task."""
     global _controller_task

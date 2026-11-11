@@ -18,7 +18,9 @@ from ..temp_controller import (
     get_device_temp,
     sync_cached_state,
     get_chamber_idle_status,
+    manual_switch,
 )
+from ..services.device_control import get_device_router, init_device_router, RouterConfig
 from ..services.ha_client import get_ha_client, init_ha_client
 from .config import get_config_value
 
@@ -517,15 +519,16 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
             batch_id=request.batch_id
         )
 
-    # Get or initialize HA client
-    ha_client = get_ha_client()
-    if not ha_client:
+    # Route through the controller's safe switching (mutual exclusion, min-cycle,
+    # max-on lockout) instead of calling Home Assistant directly.
+    router_ = get_device_router()
+    if not router_:
         ha_url = await get_config_value(db, "ha_url")
         ha_token = await get_config_value(db, "ha_token")
         if ha_url and ha_token:
-            ha_client = init_ha_client(ha_url, ha_token)
+            router_ = init_device_router(RouterConfig(ha_enabled=True, ha_url=ha_url, ha_token=ha_token))
 
-    if not ha_client:
+    if not router_:
         return HeaterToggleResponse(
             success=False,
             message="Failed to connect to Home Assistant",
@@ -533,9 +536,9 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
             batch_id=request.batch_id
         )
 
-    # Call HA service to toggle heater
-    service = "turn_on" if request.state == "on" else "turn_off"
-    success = await ha_client.call_service("switch", service, heater_entity)
+    success, detail = await manual_switch(
+        router_, db, heater_entity, "heater", request.state, batch_id=request.batch_id
+    )
 
     if success:
         batch_info = f" (batch {request.batch_id})" if request.batch_id else ""
@@ -552,7 +555,7 @@ async def toggle_heater(request: HeaterToggleRequest, db: AsyncSession = Depends
     else:
         return HeaterToggleResponse(
             success=False,
-            message="Failed to control heater via Home Assistant",
+            message=f"Heater not turned {request.state}: {detail}",
             new_state=None,
             batch_id=request.batch_id
         )

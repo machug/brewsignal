@@ -2606,6 +2606,22 @@ class AgUiMessage(Base):
             self.tool_calls = None
 
 
+class ChatHistory(Base):
+    """Server-held Pydantic AI message history for a chat thread (tilt_ui-qzk0).
+
+    The thread header (title, owner) stays in ag_ui_threads. `messages` is
+    ModelMessagesTypeAdapter JSON; the client never supplies it. A tool call
+    still unanswered at the end of it is the only thing an approval may answer.
+    """
+    __tablename__ = "chat_histories"
+
+    thread_id: Mapped[str] = mapped_column(String(100), ForeignKey("ag_ui_threads.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
+    messages: Mapped[str] = mapped_column(Text, default="[]")
+    message_count: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 # AG-UI Pydantic Schemas
 
 # =============================================================================

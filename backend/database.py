@@ -520,6 +520,7 @@ async def init_db():
         async with engine.begin() as conn:
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_migrate_legacy_chat_threads)
         # create_all adds missing TABLES but not missing COLUMNS. Supabase's
         # schema drifts behind the models because its migrations are applied by
         # hand; reconcile additive column drift so full-model SELECTs don't hit
@@ -643,6 +644,8 @@ async def init_db():
         await conn.run_sync(_migrate_create_inventory_deductions_table)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
+        # Import ag_ui threads into the server-held chat history (tilt_ui-qzk0.1)
+        await conn.run_sync(_migrate_legacy_chat_threads)
 
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
@@ -2306,6 +2309,16 @@ def _migrate_add_batch_timer_columns(conn):
 
     if added:
         print(f"Migration: Added batch timer columns: {', '.join(added)}")
+
+
+def _migrate_legacy_chat_threads(conn):
+    """Copy ag_ui threads into chat_histories so old chats open in /api/chat."""
+    from backend.services.chat_store import migrate_legacy_threads
+    try:
+        with conn.begin_nested():  # savepoint: a failure must not poison the startup transaction
+            migrate_legacy_threads(conn)
+    except Exception as e:  # never block startup on a best-effort import
+        print(f"Migration: legacy chat import skipped - {e}")
 
 
 def _migrate_add_tool_call_id_to_ag_ui_messages(conn):

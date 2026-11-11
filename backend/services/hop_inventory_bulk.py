@@ -87,9 +87,13 @@ async def bulk_update_hops(
     it. With replace=True, rows not in the list are removed. A listed hop
     with 0 g is removed in either mode.
 
-    Raises StaleStockError when applying with an expected_stock_version that
+    Raises ValueError when applying without an expected_stock_version (an empty
+    one would skip the stale check) and StaleStockError when applying with an expected_stock_version that
     no longer matches the current stock.
     """
+    if not dry_run and not expected_stock_version:
+        raise ValueError("expected_stock_version (from a preview) is required to apply changes")
+
     library = {
         _norm(v.name): v for v in (await db.execute(select(HopVariety))).scalars()
     }

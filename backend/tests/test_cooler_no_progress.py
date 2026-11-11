@@ -176,7 +176,62 @@ def test_migration_adds_progress_columns_to_existing_table():
     _migrate_add_control_progress_columns(conn)
     _migrate_add_control_progress_columns(conn)  # idempotent
     cols = {r[1] for r in conn.execute(text("PRAGMA table_info(control_entity_state)"))}
-    assert {"progress_ref_temp", "progress_ref_at"} <= cols
+    assert {"progress_ref_temp", "progress_ref_at", "progress_ref_source"} <= cols
     assert conn.execute(text("SELECT count(*) FROM control_entity_state")).scalar() == 1
     # no table at all: no-op
     _migrate_add_control_progress_columns(create_engine("sqlite://").connect())
+
+
+@pytest.mark.asyncio
+async def test_idle_to_batch_handover_does_not_trip_on_foreign_reference(test_db, clock):
+    from backend.models import ChamberReading
+    done = await make_batch(test_db, status="completed")
+    router = FakeRouter({HEATER: "off", COOLER: "off"})
+    test_db.add(ChamberReading(timestamp=clock(), temperature=25.0))
+    await test_db.commit()
+    await tc.control_chamber_idle(router, test_db, 15.0, 2.0, None)   # cooler on, chamber ref 25 C
+    clock.advance(minutes=1)
+    test_db.add(ChamberReading(timestamp=clock(), temperature=25.0))
+    await test_db.commit()
+    await tc.control_chamber_idle(router, test_db, 15.0, 2.0, None)   # reference taken
+    assert (await test_db.get(ControlEntityState, COOLER)).progress_ref_source == "chamber"
+
+    # a batch starts; wort is 40 C and cools steadily. Chamber reference (25 C) would
+    # look like "no progress" for hours if it were reused.
+    b = await make_batch(test_db, target=2.0)
+    await db_set(test_db, done)
+    tripped = await run(test_db, clock, router, b, 12, lambda h: 40 - 1.0 * h)
+    assert tripped is None
+    assert router.states[COOLER] == "on"
+    row = await test_db.get(ControlEntityState, COOLER)
+    assert row.progress_ref_source == f"batch:{b.id}:BLUE"
+
+
+async def db_set(db, batch):  # keep the idle fixture batch out of the way
+    batch.heater_entity_id = batch.cooler_entity_id = None
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_device_change_resets_progress_reference(test_db, clock):
+    b = await make_batch(test_db, device="BLUE")
+    router = FakeRouter({HEATER: "off", COOLER: "off"})
+    set_reading(clock, 23.0, device="BLUE")
+    await cycle(router, test_db, b)
+    clock.advance(minutes=1)
+    set_reading(clock, 23.0, device="BLUE")
+    await cycle(router, test_db, b)
+    clock.advance(hours=5)
+    b.device_id = "RED"                       # sensor swapped
+    set_reading(clock, 23.0, device="RED")
+    await cycle(router, test_db, b)
+    row = await test_db.get(ControlEntityState, COOLER)
+    assert row.progress_ref_source == f"batch:{b.id}:RED"
+    clock.advance(hours=2)                    # old ref would have tripped at 6 h
+    set_reading(clock, 23.0, device="RED")
+    await cycle(router, test_db, b)
+    assert router.states[COOLER] == "on"
+    clock.advance(hours=4, minutes=5)         # 6 h on the new sensor with no progress
+    set_reading(clock, 23.0, device="RED")
+    await cycle(router, test_db, b)
+    assert router.states[COOLER] == "off"

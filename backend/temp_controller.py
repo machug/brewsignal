@@ -316,7 +316,7 @@ async def _entity(db, entity_id: str) -> dict:
     ent = _entity_state.get(entity_id)
     if ent is None:
         ent = {"last_switch": None, "on_since": None, "locked_until": None, "fail_until": None,
-               "ref_temp": None, "ref_at": None}
+               "ref_temp": None, "ref_at": None, "ref_source": None}
         try:
             row = await db.get(ControlEntityState, entity_id)
             if row is not None:
@@ -325,6 +325,7 @@ async def _entity(db, entity_id: str) -> dict:
                 ent["locked_until"] = _utc(row.locked_until)
                 ent["ref_temp"] = row.progress_ref_temp
                 ent["ref_at"] = _utc(row.progress_ref_at)
+                ent["ref_source"] = row.progress_ref_source
         except Exception as e:
             # Unknown history: fall back to "never switched". Logged, not fatal.
             logger.error(f"Could not load persisted switch state for {entity_id}: {e}")
@@ -343,6 +344,7 @@ async def _persist_entity(db, entity_id: str) -> None:
             locked_until=ent["locked_until"],
             progress_ref_temp=ent["ref_temp"],
             progress_ref_at=ent["ref_at"],
+            progress_ref_source=ent["ref_source"],
         ))
         await db.commit()
     except Exception as e:
@@ -413,7 +415,7 @@ async def _set_entity_state(
         ent["on_since"] = (ent["on_since"] if already_on else now) if state == "on" else None
         ent["fail_until"] = None
         if state == "off":
-            ent["ref_temp"] = ent["ref_at"] = None  # progress reference starts fresh next run
+            ent["ref_temp"] = ent["ref_at"] = ent["ref_source"] = None  # progress reference starts fresh next run
         await _persist_entity(db, entity_id)
     elif state == "on":
         ent["fail_until"] = now + timedelta(minutes=FAILURE_BACKOFF_MINUTES)
@@ -559,13 +561,15 @@ def _max_on_minutes(kind: str) -> float:
 
 async def _observe_entity(
     router, db, entity_id: str, kind: str, temp: Optional[float] = None,
+    source: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     """Read the real state and track the continuous on-run.
 
     Returns (state, trip). state is None when unavailable. trip is None, or the
     reason the device must be forced off: "max_on" (heater 4 h; cooler 72 h
     absolute backstop) or "no_progress" (cooler on >= 6 h without the wort
-    cooling by 0.5 C; `temp` is the temperature being controlled).
+    cooling by 0.5 C; `temp` is the temperature being controlled and `source` identifies where it
+    comes from, so a reference from another sensor is discarded).
     A switch found 'on' with no recorded start (manual toggle in HA, or a
     record lost) starts counting now.
     """
@@ -581,8 +585,10 @@ async def _observe_entity(
         elif now - ent["on_since"] > timedelta(minutes=_max_on_minutes(kind)):
             trip = "max_on"
         if kind == "cooler" and temp is not None and trip is None:
-            if ent["ref_at"] is None or ent["ref_temp"] is None:
-                ent["ref_temp"], ent["ref_at"] = temp, now
+            if ent["ref_at"] is None or ent["ref_temp"] is None or ent["ref_source"] != source:
+                # no reference, or it came from another sensor (idle chamber air vs
+                # a batch's wort, or a different device): start over
+                ent["ref_temp"], ent["ref_at"], ent["ref_source"] = temp, now, source
                 dirty = True
             elif temp <= ent["ref_temp"] - COOLER_MIN_PROGRESS_C:
                 ent["ref_temp"], ent["ref_at"] = temp, now
@@ -593,7 +599,7 @@ async def _observe_entity(
             await _persist_entity(db, entity_id)
     elif state == "off" and (ent["on_since"] is not None or ent["ref_at"] is not None):
         ent["on_since"] = None
-        ent["ref_temp"] = ent["ref_at"] = None
+        ent["ref_temp"] = ent["ref_at"] = ent["ref_source"] = None
         await _persist_entity(db, entity_id)
     return state, trip
 
@@ -811,7 +817,9 @@ async def control_batch_temperature(
     ):
         if not entity:
             continue
-        actual, exceeded = await _observe_entity(router, db, entity, kind, wort_temp)
+        actual, exceeded = await _observe_entity(
+            router, db, entity, kind, wort_temp, source=f"batch:{batch_id}:{device_id}"
+        )
         if actual is None:
             # Keep going: the other device's max-on must still be enforced
             logger.warning(f"Batch {batch_id}: {kind.capitalize()} entity {entity} is unavailable")
@@ -1075,7 +1083,7 @@ async def control_chamber_idle(
     ):
         if not entity:
             continue
-        actual, exceeded = await _observe_entity(router, db, entity, kind, chamber_temp)
+        actual, exceeded = await _observe_entity(router, db, entity, kind, chamber_temp, source="chamber")
         if actual is None:
             logger.warning(f"Chamber idle: {kind.capitalize()} entity {entity} is unavailable")
             unavailable = True

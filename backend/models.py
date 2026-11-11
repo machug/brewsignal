@@ -235,6 +235,7 @@ class ControlEntityState(Base):
     # Cooler no-progress rule: wort temp and time of the last 0.5 C of progress
     progress_ref_temp: Mapped[Optional[float]] = mapped_column()
     progress_ref_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    progress_ref_source: Mapped[Optional[str]] = mapped_column(String(100))  # "chamber" or "batch:<id>:<device>"
 
 
 class FermentationAlert(Base):

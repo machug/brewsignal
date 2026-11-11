@@ -1162,7 +1162,7 @@ def _migrate_add_control_progress_columns(conn) -> None:
     columns = {row[1] for row in conn.execute(text("PRAGMA table_info(control_entity_state)"))}
     if not columns:
         return  # table missing: create_all makes it with the columns
-    for name, ddl in (("progress_ref_temp", "FLOAT"), ("progress_ref_at", "DATETIME")):
+    for name, ddl in (("progress_ref_temp", "FLOAT"), ("progress_ref_at", "DATETIME"), ("progress_ref_source", "VARCHAR(100)")):
         if name not in columns:
             conn.execute(text(f"ALTER TABLE control_entity_state ADD COLUMN {name} {ddl}"))
             print(f"Migration: Added {name} column to control_entity_state")

@@ -1,0 +1,1766 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BrewSignal — Home</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Big+Shoulders+Display:wght@600;700;800&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-display: 'Big Shoulders Display', sans-serif;
+      --font-body: 'Atkinson Hyperlegible', sans-serif;
+      --font-gauge: 'Chakra Petch', sans-serif;
+
+      --space-2xs: 0.25rem;
+      --space-xs: 0.5rem;
+      --space-sm: 0.75rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --space-xl: 2rem;
+      --space-2xl: 3rem;
+
+      --text-xs: 0.75rem;
+      --text-sm: 0.875rem;
+      --text-base: 1rem;
+      --text-lg: 1.25rem;
+      --text-xl: 1.5625rem;
+      --text-2xl: 1.953rem;
+      --text-3xl: 2.65rem;
+
+      --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+      --radius-sm: 2px;
+      --radius-md: 4px;
+    }
+
+    html[data-theme="dark"] {
+      --bg-canvas: oklch(0.165 0.012 52);
+      --bg-surface: oklch(0.205 0.014 52);
+      --bg-elevated: oklch(0.245 0.016 52);
+      --bg-well: oklch(0.142 0.011 52);
+      
+      --border-hairline: oklch(0.295 0.016 52);
+      --border-strong: oklch(0.39 0.022 52);
+      
+      --text-primary: oklch(0.935 0.014 74);
+      --text-secondary: oklch(0.73 0.018 66);
+      --text-muted: oklch(0.56 0.016 60);
+      
+      --copper: oklch(0.71 0.148 50);
+      --copper-surface: oklch(0.25 0.045 50);
+      --copper-border: oklch(0.46 0.095 50);
+      --copper-text: oklch(0.82 0.115 54);
+      
+      --tilt-red: oklch(0.65 0.185 26);
+      --cooling-blue: oklch(0.74 0.095 232);
+      --ok-sage: oklch(0.75 0.095 148);
+      --ok-surface: oklch(0.22 0.028 148);
+      --warn-amber: oklch(0.78 0.135 76);
+
+      --rivet: oklch(0.35 0.018 52);
+      --grid-line: oklch(0.255 0.013 52);
+    }
+
+    html[data-theme="light"] {
+      --bg-canvas: oklch(0.945 0.016 78);
+      --bg-surface: oklch(0.978 0.01 80);
+      --bg-elevated: oklch(0.918 0.02 75);
+      --bg-well: oklch(0.905 0.02 75);
+      
+      --border-hairline: oklch(0.83 0.022 70);
+      --border-strong: oklch(0.67 0.028 64);
+      
+      --text-primary: oklch(0.205 0.018 50);
+      --text-secondary: oklch(0.41 0.022 52);
+      --text-muted: oklch(0.54 0.02 55);
+      
+      --copper: oklch(0.52 0.145 46);
+      --copper-surface: oklch(0.925 0.036 56);
+      --copper-border: oklch(0.66 0.11 48);
+      --copper-text: oklch(0.43 0.13 45);
+      
+      --tilt-red: oklch(0.52 0.185 26);
+      --cooling-blue: oklch(0.46 0.11 235);
+      --ok-sage: oklch(0.44 0.1 148);
+      --ok-surface: oklch(0.925 0.03 148);
+      --warn-amber: oklch(0.50 0.135 68);
+
+      --rivet: oklch(0.72 0.024 66);
+      --grid-line: oklch(0.88 0.018 74);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: 1.55;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 4.75rem;
+    }
+
+    @media (min-width: 1080px) {
+      body {
+        padding-bottom: 0;
+      }
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--copper);
+      outline-offset: 2px;
+    }
+
+    button, a {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    .num {
+      font-family: var(--font-gauge);
+      font-variant-numeric: tabular-nums lining-nums;
+      letter-spacing: 0.01em;
+    }
+
+    .stamp-label {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--text-secondary);
+    }
+
+    /* App Frame */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 1fr;
+      max-width: 1520px;
+      margin: 0 auto;
+    }
+
+    @media (min-width: 1080px) {
+      .app-shell {
+        grid-template-columns: 224px minmax(0, 1fr);
+        min-height: 100dvh;
+      }
+    }
+
+    /* Navigation Rail (Desktop) & Top Bar (Mobile/Tablet) */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-hairline);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+
+    @media (min-width: 1080px) {
+      .top-bar {
+        display: none;
+      }
+    }
+
+    .brand-plate {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--copper-border);
+      background: var(--copper-surface);
+      color: var(--copper);
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.35rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+
+    .brand-sub {
+      font-family: var(--font-gauge);
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: block;
+      margin-top: 2px;
+    }
+
+    .side-rail {
+      display: none;
+    }
+
+    @media (min-width: 1080px) {
+      .side-rail {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: var(--bg-surface);
+        border-right: 1px solid var(--border-hairline);
+        padding: var(--space-lg) var(--space-md);
+        position: sticky;
+        top: 0;
+        height: 100dvh;
+      }
+    }
+
+    .rail-nav {
+      list-style: none;
+      margin-top: var(--space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2xs);
+    }
+
+    .rail-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.625rem var(--space-sm);
+      text-decoration: none;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      font-weight: 700;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      transition: background-color 160ms var(--ease-out-quart), color 160ms var(--ease-out-quart);
+    }
+
+    .rail-link:hover {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+
+    .rail-link[aria-current="page"] {
+      background: var(--copper-surface);
+      color: var(--text-primary);
+      border-color: var(--copper-border);
+    }
+
+    .rail-link-inner {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .rail-link svg {
+      width: 17px;
+      height: 17px;
+      color: currentColor;
+      opacity: 0.85;
+    }
+
+    .rail-link[aria-current="page"] svg {
+      color: var(--copper);
+      opacity: 1;
+    }
+
+    .rail-count {
+      font-family: var(--font-gauge);
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-well);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
+    }
+
+    .rail-footer {
+      border-top: 1px solid var(--border-hairline);
+      padding-top: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .pi-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .status-pip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+    }
+
+    .pip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok-sage);
+    }
+
+    .theme-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      background: var(--bg-well);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      padding: 0.5rem 0.75rem;
+      min-height: 40px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: border-color 150ms var(--ease-out-quart), background-color 150ms var(--ease-out-quart);
+    }
+
+    .theme-btn:hover {
+      border-color: var(--copper);
+      background: var(--bg-elevated);
+    }
+
+    .theme-btn svg {
+      width: 15px;
+      height: 15px;
+      color: var(--copper);
+    }
+
+    /* Bottom Mobile/Tablet Navigation */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 40;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-strong);
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      padding: 2px var(--space-2xs);
+    }
+
+    @media (min-width: 1080px) {
+      .bottom-bar {
+        display: none;
+      }
+    }
+
+    .bottom-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 54px;
+      text-decoration: none;
+      color: var(--text-muted);
+      font-family: var(--font-gauge);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border-radius: var(--radius-sm);
+    }
+
+    .bottom-link svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .bottom-link[aria-current="page"] {
+      color: var(--copper-text);
+      background: var(--copper-surface);
+    }
+
+    /* Main Content Workspace */
+    .workspace {
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+      container-type: inline-size;
+    }
+
+    @media (min-width: 760px) {
+      .workspace {
+        padding: var(--space-lg) var(--space-xl);
+        gap: var(--space-xl);
+      }
+    }
+
+    /* Header & Calm Telemetry Banner */
+    .CommandHeader {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .page-heading {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .page-heading h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.85rem, 3vw, 2.35rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1;
+    }
+
+    .cellar-clock {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Alert / Telemetry Check Pill (Full border, no side-stripe) */
+    .telemetry-notice {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 0.5rem 0.875rem;
+      background: var(--ok-surface);
+      border: 1px solid color-mix(in oklch, var(--ok-sage) 42%, var(--border-hairline));
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      max-width: 100%;
+    }
+
+    .notice-badge {
+      font-family: var(--font-gauge);
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-well);
+      color: var(--ok-sage);
+      border: 1px solid color-mix(in oklch, var(--ok-sage) 35%, transparent);
+      white-space: nowrap;
+    }
+
+    .notice-text {
+      color: var(--text-primary);
+      line-height: 1.35;
+    }
+
+    .notice-text strong {
+      font-weight: 700;
+    }
+
+    /* Main Asymmetric Brewhouse Grid */
+    .brewhouse-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+      align-items: start;
+    }
+
+    @container (min-width: 920px) {
+      .brewhouse-grid {
+        grid-template-columns: minmax(0, 1.42fr) minmax(340px, 0.95fr);
+        gap: var(--space-xl);
+      }
+    }
+
+    .primary-column,
+    .secondary-column {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* Enamel Batch Tag Plate — Active Batch #7 */
+    .batch-plate {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Corner Rivets */
+    .rivet-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-lg);
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-hairline);
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .batch-tag-id {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .stamped-number {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: 0.08em;
+      padding: 2px 8px;
+      background: var(--bg-well);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      border-radius: var(--radius-sm);
+    }
+
+    .ferm-state {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--copper-text);
+      background: var(--copper-surface);
+      border: 1px solid var(--copper-border);
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+    }
+
+    .sensor-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      background: var(--bg-well);
+      padding: 3px 9px;
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-sm);
+    }
+
+    .tilt-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--tilt-red);
+      display: inline-block;
+    }
+
+    .batch-hero {
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+    }
+
+    .batch-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: var(--space-md);
+    }
+
+    .batch-name {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 2.85rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+      line-height: 0.98;
+    }
+
+    .batch-style {
+      color: var(--text-secondary);
+      font-size: var(--text-sm);
+      margin-top: var(--space-2xs);
+      letter-spacing: 0.02em;
+    }
+
+    .chamber-readout {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-well);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-sm);
+    }
+
+    .cooling-badge {
+      font-family: var(--font-gauge);
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--cooling-blue);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Instrument Gauge Strip */
+    .gauge-manifold {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-well);
+      border-radius: var(--radius-sm);
+    }
+
+    @media (min-width: 640px) {
+      .gauge-manifold {
+        grid-template-columns: 1.35fr 1fr 1fr 1.15fr;
+      }
+    }
+
+    .gauge-cell {
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border-hairline);
+      border-right: 1px solid var(--border-hairline);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+
+    .gauge-cell:nth-child(2n) {
+      border-right: none;
+    }
+
+    @media (min-width: 640px) {
+      .gauge-cell {
+        border-bottom: none;
+        border-right: 1px solid var(--border-hairline);
+      }
+      .gauge-cell:nth-child(2n) {
+        border-right: 1px solid var(--border-hairline);
+      }
+      .gauge-cell:last-child {
+        border-right: none;
+      }
+    }
+
+    .gauge-value-lg {
+      font-family: var(--font-gauge);
+      font-variant-numeric: tabular-nums lining-nums;
+      font-size: clamp(1.75rem, 2.8vw, 2.35rem);
+      font-weight: 700;
+      line-height: 1.05;
+      color: var(--text-primary);
+    }
+
+    .gauge-value-lg.is-copper {
+      color: var(--copper-text);
+    }
+
+    .gauge-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: 3px;
+    }
+
+    .gauge-sub {
+      font-family: var(--font-gauge);
+      font-variant-numeric: tabular-nums;
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+
+    .attenuation-track {
+      height: 5px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 1px;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+
+    .attenuation-fill {
+      height: 100%;
+      width: 63%;
+      background: var(--copper);
+    }
+
+    /* Gravity & Temp SVG Chart */
+    .chart-enclosure {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .chart-legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+
+    .legend-items {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+    }
+
+    .legend-swatch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .line-sample-sg {
+      width: 16px;
+      height: 2.5px;
+      background: var(--copper);
+      display: inline-block;
+    }
+
+    .line-sample-temp {
+      width: 16px;
+      height: 0;
+      border-top: 2px dashed var(--cooling-blue);
+      display: inline-block;
+    }
+
+    .ferm-svg-wrap {
+      background: var(--bg-well);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-sm);
+      padding: var(--space-sm) var(--space-sm) var(--space-xs);
+    }
+
+    .ferm-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    /* Next Brew Step Ticket */
+    .step-ticket {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: var(--copper-surface);
+      border-top: 1px solid var(--copper-border);
+    }
+
+    .step-ticket-main {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .day-stamp {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.65rem;
+      background: var(--bg-well);
+      border: 1px solid var(--copper-border);
+      color: var(--copper-text);
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+    }
+
+    .step-detail-title {
+      font-weight: 700;
+      font-size: var(--text-base);
+      color: var(--text-primary);
+    }
+
+    .step-detail-sub {
+      font-size: var(--text-xs);
+      font-family: var(--font-gauge);
+      color: var(--text-secondary);
+    }
+
+    /* Section Headings (Unboxed Ledger Style) */
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding-bottom: var(--space-xs);
+      border-bottom: 2px solid var(--border-strong);
+      margin-bottom: var(--space-md);
+    }
+
+    .section-head h2 {
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .section-link {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--copper-text);
+      text-decoration: none;
+      padding: 4px 2px;
+    }
+
+    .section-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Other Batches — Cellar Log Ledger (Not cards!) */
+    .batch-ledger {
+      list-style: none;
+      border-top: 1px solid var(--border-hairline);
+    }
+
+    .ledger-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-xs) var(--space-md);
+      padding: 0.875rem 0.25rem;
+      border-bottom: 1px solid var(--border-hairline);
+      align-items: center;
+    }
+
+    @media (min-width: 560px) {
+      .ledger-row {
+        grid-template-columns: 112px minmax(0, 1fr) auto;
+      }
+    }
+
+    .ledger-status {
+      font-family: var(--font-gauge);
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      width: fit-content;
+    }
+
+    .ledger-status.is-planning {
+      color: var(--warn-amber);
+      border-color: color-mix(in oklch, var(--warn-amber) 50%, var(--border-hairline));
+      background: color-mix(in oklch, var(--warn-amber) 10%, var(--bg-canvas));
+    }
+
+    .ledger-status.is-complete {
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border-color: var(--border-hairline);
+    }
+
+    .ledger-name {
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .ledger-meta {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    /* Secondary Column: Assistant Log & Hop/Yeast Stock */
+    .assistant-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .assistant-header {
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .assistant-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.2rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .assistant-body {
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .user-prompt-row {
+      align-self: flex-end;
+      background: var(--bg-well);
+      border: 1px solid var(--border-strong);
+      padding: 0.5rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      max-width: 90%;
+    }
+
+    .prompt-tag {
+      display: block;
+      font-family: var(--font-gauge);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .agent-trace {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-family: var(--font-gauge);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      padding: 0.375rem 0.625rem;
+      background: var(--bg-well);
+      border: 1px dashed var(--border-hairline);
+      border-radius: var(--radius-sm);
+    }
+
+    .agent-trace svg {
+      width: 13px;
+      height: 13px;
+      color: var(--copper);
+      flex-shrink: 0;
+    }
+
+    .assistant-prose {
+      font-size: var(--text-sm);
+      color: var(--text-primary);
+      line-height: 1.6;
+      max-width: 65ch;
+    }
+
+    .assistant-prose strong {
+      color: var(--copper-text);
+      font-family: var(--font-gauge);
+      font-weight: 600;
+    }
+
+    /* Write-Action Approval Card (Full copper frame, never a left border stripe) */
+    .approval-ticket {
+      background: var(--bg-well);
+      border: 1px solid var(--copper-border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .approval-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+
+    .approval-type {
+      font-family: var(--font-gauge);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--copper-text);
+    }
+
+    .approval-question {
+      font-weight: 700;
+      font-size: var(--text-sm);
+      color: var(--text-primary);
+    }
+
+    .approval-delta {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      display: flex;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .approval-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-2xs);
+    }
+
+    .btn-primary {
+      background: var(--copper);
+      color: oklch(0.14 0.015 50);
+      border: 1px solid var(--copper);
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding: 0.55rem 1rem;
+      min-height: 40px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: opacity 150ms var(--ease-out-quart), transform 150ms var(--ease-out-quart);
+    }
+
+    .btn-primary:hover {
+      opacity: 0.92;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-strong);
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding: 0.55rem 0.9rem;
+      min-height: 40px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-primary);
+      border-color: var(--text-secondary);
+    }
+
+    .approval-feedback {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--ok-sage);
+      padding: 0.35rem 0;
+      display: none;
+    }
+
+    .approval-ticket[data-resolved="approved"] .approval-actions,
+    .approval-ticket[data-resolved="cancelled"] .approval-actions {
+      display: none;
+    }
+
+    .approval-ticket[data-resolved="approved"] .approval-feedback.is-approved {
+      display: block;
+    }
+
+    .approval-ticket[data-resolved="cancelled"] .approval-feedback.is-cancelled {
+      display: block;
+      color: var(--text-muted);
+    }
+
+    /* Cold Store Inventory Glance */
+    .inventory-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hop-scale-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .hop-row {
+      display: grid;
+      grid-template-columns: minmax(128px, 1.1fr) minmax(80px, 1.4fr) 62px;
+      align-items: center;
+      gap: var(--space-sm);
+      font-size: var(--text-sm);
+    }
+
+    .hop-variety {
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .low-tag {
+      font-family: var(--font-gauge);
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding: 1px 5px;
+      border-radius: var(--radius-sm);
+      color: var(--warn-amber);
+      border: 1px solid color-mix(in oklch, var(--warn-amber) 55%, transparent);
+      background: color-mix(in oklch, var(--warn-amber) 12%, transparent);
+    }
+
+    .hop-bar-track {
+      height: 8px;
+      background: var(--bg-well);
+      border: 1px solid var(--border-hairline);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    .hop-bar-fill {
+      height: 100%;
+      background: var(--text-secondary);
+      transition: transform 280ms var(--ease-out-quart);
+      transform-origin: left center;
+    }
+
+    .hop-row.is-low .hop-bar-fill {
+      background: var(--warn-amber);
+    }
+
+    .hop-mass {
+      text-align: right;
+      font-family: var(--font-gauge);
+      font-variant-numeric: tabular-nums;
+      font-size: var(--text-sm);
+      color: var(--text-primary);
+    }
+
+    .hop-mass span {
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+    }
+
+    .yeast-locker {
+      margin-top: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .yeast-strain {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-size: var(--text-sm);
+      font-weight: 700;
+    }
+
+    .yeast-meta {
+      font-family: var(--font-gauge);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+    }
+
+    /* Subtle Staggered Load Entrance */
+    @media (prefers-reduced-motion: no-preference) {
+      .batch-plate,
+      .assistant-panel,
+      .inventory-section,
+      .cellar-log-section {
+        animation: settleIn 380ms var(--ease-out-quart) both;
+      }
+      .assistant-panel { animation-delay: 55ms; }
+      .cellar-log-section { animation-delay: 95ms; }
+      .inventory-section { animation-delay: 130ms; }
+
+      @keyframes settleIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    }
+  </style>
+</head>
+<body>
+<!-- Direction: WARM INDUSTRIAL | Fonts: Big Shoulders Display + Atkinson Hyperlegible + Chakra Petch | Accent: Kettle Copper oklch(0.71 0.148 50) | Stamped enamel batch plates, precision sight-glass telemetry, and unboxed cellar ledger logs -->
+
+  <header class="top-bar">
+    <a href="#home" class="brand-plate">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M6 3h12l2 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9l2-6Z"/>
+          <path d="M4 9h16M12 13v4"/>
+        </svg>
+      </span>
+      <span>
+        <span class="brand-title">BrewSignal</span>
+        <span class="brand-sub">pi-brewhouse · local</span>
+      </span>
+    </a>
+    <button type="button" class="theme-btn" data-theme-toggle aria-label="Switch color theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/>
+      </svg>
+      <span data-theme-label>Light Desk</span>
+    </button>
+  </header>
+
+  <div class="app-shell">
+    <!-- Desktop Side Rail -->
+    <aside class="side-rail" aria-label="Primary Navigation">
+      <div>
+        <a href="#home" class="brand-plate">
+          <span class="brand-mark" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M6 3h12l2 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9l2-6Z"/>
+              <path d="M4 9h16M12 13v4"/>
+            </svg>
+          </span>
+          <span>
+            <span class="brand-title">BrewSignal</span>
+            <span class="brand-sub">Fermenter Telemetry</span>
+          </span>
+        </a>
+
+        <ul class="rail-nav">
+          <li>
+            <a href="#home" class="rail-link" aria-current="page">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3V10.5Z"/><path d="M9 21v-6h6v6"/></svg>
+                Home
+              </span>
+            </a>
+          </li>
+          <li>
+            <a href="#batches" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h10l2 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8l2-5Z"/><path d="M5 8h14"/></svg>
+                Batches
+              </span>
+              <span class="rail-count">1 active</span>
+            </a>
+          </li>
+          <li>
+            <a href="#recipes" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+                Recipes
+              </span>
+            </a>
+          </li>
+          <li>
+            <a href="#inventory" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2 8 4.5v11L12 22l-8-4.5v-11L12 2Z"/><path d="m12 22 0-11M20 6.5 12 11 4 6.5"/></svg>
+                Inventory
+              </span>
+              <span class="rail-count">1 low</span>
+            </a>
+          </li>
+          <li>
+            <a href="#library" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+                Library
+              </span>
+            </a>
+          </li>
+          <li>
+            <a href="#assistant" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Assistant
+              </span>
+              <span class="rail-count">1</span>
+            </a>
+          </li>
+          <li>
+            <a href="#system" class="rail-link">
+              <span class="rail-link-inner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1 7 17m10-10 2.1-2.1"/></svg>
+                System
+              </span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="rail-footer">
+        <div class="pi-status">
+          <span class="status-pip"><span class="pip-dot" aria-hidden="true"></span> HA + Tilt BLE</span>
+          <span>pi4 · 41°C</span>
+        </div>
+        <button type="button" class="theme-btn" data-theme-toggle>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/>
+          </svg>
+          <span data-theme-label>Light Desk</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Screen Content -->
+    <main class="workspace">
+      <div class="CommandHeader">
+        <div class="page-heading">
+          <h1>Cellar Floor</h1>
+          <span class="cellar-clock num">Wed 11 Nov · 20:42</span>
+        </div>
+
+        <!-- Calm Status / Alert Notice -->
+        <div class="telemetry-notice" role="status">
+          <span class="notice-badge">Steady Drop</span>
+          <span class="notice-text">
+            <strong>Batch 7:</strong> gravity stable 12 h? Not yet — still dropping <span class="num">0.004/day</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="brewhouse-grid">
+        <!-- LEFT / PRIMARY COLUMN: Active Batch #7 + Other Batches -->
+        <div class="primary-column">
+          <article class="batch-plate" aria-labelledby="batch7-heading">
+            <div class="rivet-bar">
+              <div class="batch-tag-id">
+                <span class="stamped-number">BATCH #7</span>
+                <span class="ferm-state">Fermenting · Day 4</span>
+              </div>
+              <div class="sensor-pill">
+                <span class="tilt-dot" aria-hidden="true"></span>
+                <span>Tilt Red · <span class="num">-64 dBm</span> · 2m ago</span>
+              </div>
+            </div>
+
+            <div class="batch-hero">
+              <div class="batch-title-row">
+                <div>
+                  <h2 id="batch7-heading" class="batch-name">Hugh's Hoppy Pale</h2>
+                  <p class="batch-style">American Pale Ale · BJCP 18B · US-05 @ Day 4.2</p>
+                </div>
+
+                <div class="chamber-readout" aria-label="Fermentation chamber status">
+                  <span class="cooling-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                      <path d="M12 2v20M2 12h20m-3.5-6.5L5.5 18.5m13 0L5.5 5.5"/>
+                    </svg>
+                    Chamber Cooling On
+                  </span>
+                </div>
+              </div>
+
+              <!-- 4-Cell Instrument Manifold -->
+              <div class="gauge-manifold">
+                <div class="gauge-cell">
+                  <span class="stamp-label">Current Gravity</span>
+                  <div class="gauge-value-lg is-copper"><span id="sg-live">1.021</span><span class="gauge-unit">SG</span></div>
+                  <div class="gauge-sub">
+                    <span>OG 1.056</span>
+                    <span>Target 1.012</span>
+                  </div>
+                </div>
+
+                <div class="gauge-cell">
+                  <span class="stamp-label">Attenuation</span>
+                  <div class="gauge-value-lg">63<span class="gauge-unit">%</span></div>
+                  <div>
+                    <div class="gauge-sub"><span>Apparent</span><span>78% est.</span></div>
+                    <div class="attenuation-track" aria-hidden="true">
+                      <div class="attenuation-fill"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="gauge-cell">
+                  <span class="stamp-label">Est. ABV</span>
+                  <div class="gauge-value-lg">4.6<span class="gauge-unit">%</span></div>
+                  <div class="gauge-sub">
+                    <span>Proj. 5.8%</span>
+                  </div>
+                </div>
+
+                <div class="gauge-cell">
+                  <span class="stamp-label">Wort Temp</span>
+                  <div class="gauge-value-lg">19.2<span class="gauge-unit">°C</span></div>
+                  <div class="gauge-sub">
+                    <span>Target 19.0 °C</span>
+                    <span>+0.2 °C</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4-Day Fermentation Curve SVG -->
+              <div class="chart-enclosure">
+                <div class="chart-legend-bar">
+                  <span class="stamp-label">4-Day Telemetry Log</span>
+                  <div class="legend-items">
+                    <span class="legend-swatch"><span class="line-sample-sg"></span> Specific Gravity (SG)</span>
+                    <span class="legend-swatch"><span class="line-sample-temp"></span> Wort Temp (°C)</span>
+                  </div>
+                </div>
+
+                <div class="ferm-svg-wrap">
+                  <svg class="ferm-svg" viewBox="0 0 680 218" role="img" aria-label="Gravity falling from 1.056 on Day 0 to 1.021 on Day 4, flattening gradually; temperature steady near 19.2 degrees Celsius.">
+                    <!-- Horizontal SG Reference Grid -->
+                    <g stroke="var(--grid-line)" stroke-width="1">
+                      <line x1="52" y1="24" x2="628" y2="24"/>
+                      <line x1="52" y1="67" x2="628" y2="67"/>
+                      <line x1="52" y1="110" x2="628" y2="110"/>
+                      <line x1="52" y1="153" x2="628" y2="153"/>
+                    </g>
+
+                    <!-- Target FG 1.012 Reference Line -->
+                    <line x1="52" y1="176" x2="628" y2="176" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 4"/>
+                    <text x="624" y="171" text-anchor="end" fill="var(--text-muted)" font-family="Chakra Petch, sans-serif" font-size="10">TARGET FG 1.012</text>
+
+                    <!-- Vertical Day Markers -->
+                    <g stroke="var(--grid-line)" stroke-width="1">
+                      <line x1="52" y1="20" x2="52" y2="184"/>
+                      <line x1="196" y1="20" x2="196" y2="184"/>
+                      <line x1="340" y1="20" x2="340" y2="184"/>
+                      <line x1="484" y1="20" x2="484" y2="184"/>
+                      <line x1="628" y1="20" x2="628" y2="184"/>
+                    </g>
+
+                    <!-- Left Y-Axis Labels (SG) -->
+                    <g fill="var(--text-secondary)" font-family="Chakra Petch, sans-serif" font-size="11" text-anchor="end">
+                      <text x="45" y="28">1.056</text>
+                      <text x="45" y="71">1.044</text>
+                      <text x="45" y="114">1.032</text>
+                      <text x="45" y="157">1.020</text>
+                    </g>
+
+                    <!-- Right Y-Axis Labels (Temp °C) -->
+                    <g fill="var(--cooling-blue)" font-family="Chakra Petch, sans-serif" font-size="11" text-anchor="start">
+                      <text x="635" y="54">21°C</text>
+                      <text x="635" y="102">19°C</text>
+                      <text x="635" y="150">17°C</text>
+                    </g>
+
+                    <!-- X-Axis Day Labels -->
+                    <g fill="var(--text-muted)" font-family="Chakra Petch, sans-serif" font-size="11" text-anchor="middle">
+                      <text x="52" y="204">DAY 0</text>
+                      <text x="196" y="204">DAY 1</text>
+                      <text x="340" y="204">DAY 2</text>
+                      <text x="484" y="204">DAY 3</text>
+                      <text x="628" y="204">DAY 4</text>
+                    </g>
+
+                    <!-- Subtle Area Fill Under Gravity Curve -->
+                    <path d="M 52 24 C 115 25, 150 32, 196 53 C 255 80, 290 102, 340 121 C 398 139, 438 143, 484 146 C 540 148, 585 149, 628 150 L 628 184 L 52 184 Z"
+                          fill="var(--copper)" fill-opacity="0.09"/>
+
+                    <!-- Secondary Line: Wort Temperature (~18.6°C pitch rising gently to 19.6°C high krausen, held at 19.2°C) -->
+                    <path d="M 52 112 C 110 108, 155 96, 196 92 C 250 87, 295 88, 340 91 C 400 95, 440 99, 484 97 C 540 95, 585 98, 628 97"
+                          fill="none" stroke="var(--cooling-blue)" stroke-width="2" stroke-dasharray="5 4"/>
+
+                    <!-- Primary Curve: Specific Gravity (1.056 -> 1.048 -> 1.030 -> 1.023 -> 1.021) -->
+                    <path d="M 52 24 C 115 25, 150 32, 196 53 C 255 80, 290 102, 340 121 C 398 139, 438 143, 484 146 C 540 148, 585 149, 628 150"
+                          fill="none" stroke="var(--copper)" stroke-width="2.75" stroke-linecap="round"/>
+
+                    <!-- Sample Nodes -->
+                    <g fill="var(--bg-well)" stroke="var(--copper)" stroke-width="2">
+                      <circle cx="52" cy="24" r="3.5"/>
+                      <circle cx="196" cy="53" r="3.5"/>
+                      <circle cx="340" cy="121" r="3.5"/>
+                      <circle cx="484" cy="146" r="3.5"/>
+                    </g>
+                    <!-- Live Reading Endpoint -->
+                    <circle cx="628" cy="150" r="5" fill="var(--copper)"/>
+                    <text x="618" y="139" text-anchor="end" fill="var(--copper-text)" font-family="Chakra Petch, sans-serif" font-weight="700" font-size="11">1.021</text>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Next Step Ticket Footer -->
+            <div class="step-ticket">
+              <div class="step-ticket-main">
+                <span class="day-stamp">Next · Day 5</span>
+                <div>
+                  <p class="step-detail-title">Dry hop day 5: Citra 50 g, Mosaic 50 g</p>
+                  <p class="step-detail-sub">Tomorrow morning · Biotransformation tail (~1.017 SG)</p>
+                </div>
+              </div>
+              <span class="stamp-label">100 g total charge</span>
+            </div>
+          </article>
+
+          <!-- Other Batches (Unboxed Cellar Schedule & Archive) -->
+          <section class="cellar-log-section" aria-labelledby="other-batches-heading">
+            <div class="section-head">
+              <h2 id="other-batches-heading">Batch Log &amp; Queue</h2>
+              <a href="#batches" class="section-link">All 7 Batches →</a>
+            </div>
+
+            <ul class="batch-ledger">
+              <li class="ledger-row">
+                <span class="ledger-status is-planning">Planning</span>
+                <span class="ledger-name">American Pale Ale</span>
+                <span class="ledger-meta">Brew day Sat 14 Nov</span>
+              </li>
+              <li class="ledger-row">
+                <span class="ledger-status is-complete">Completed</span>
+                <span class="ledger-name">Harrowing Oatmeal Stout</span>
+                <span class="ledger-meta">6.1% ABV · 9 Jun</span>
+              </li>
+              <li class="ledger-row">
+                <span class="ledger-status is-complete">Completed</span>
+                <span class="ledger-name">Galactic Dry Stout</span>
+                <span class="ledger-meta">Completed</span>
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- RIGHT / SECONDARY COLUMN: Brewing Assistant + Cold Store Inventory -->
+        <div class="secondary-column">
+          <!-- AI Brewing Assistant Preview -->
+          <section class="assistant-panel" aria-labelledby="assistant-heading">
+            <div class="assistant-header">
+              <h2 id="assistant-heading" class="assistant-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" stroke-width="2.2" aria-hidden="true">
+                  <path d="M12 3v4M12 17v4M3 12h4M17 12h4m-2.6-6.4-2.8 2.8M8.4 15.6l-2.8 2.8m0-12.8 2.8 2.8m7.2 7.2 2.8 2.8"/>
+                </svg>
+                Brewhouse Assistant
+              </h2>
+              <a href="#assistant" class="section-link">Open Thread →</a>
+            </div>
+
+            <div class="assistant-body">
+              <div class="user-prompt-row">
+                <span class="prompt-tag">Brewer</span>
+                Plan a dry hop for batch 7
+              </div>
+
+              <div class="agent-trace" aria-label="Agent tool activity">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span>Checked batch 7 · Checked hop stock · 2 steps</span>
+              </div>
+
+              <p class="assistant-prose">
+                Batch #7 is at <strong>1.021 SG</strong> (63% AA) and dropping <strong>0.004/day</strong> — right on pace for your Day 5 charge tomorrow (~4.5 g/L). You have <strong>Citra 200 g</strong> and <strong>Mosaic 165 g</strong> sealed in freezer bin A; pull both 30 min prior and purge the port at 2 psi CO₂:
+              </p>
+
+              <!-- Write-Action Approval Card -->
+              <div class="approval-ticket" id="dryhop-approval">
+                <div class="approval-head">
+                  <span class="approval-type">Write Action · Inventory Hold</span>
+                  <span class="stamp-label num">100 g</span>
+                </div>
+                <p class="approval-question">Reserve Citra 50 g + Mosaic 50 g for batch 7?</p>
+                <div class="approval-delta">
+                  <span>Citra: <span data-citra-preview>200 g → 150 g</span></span>
+                  <span>Mosaic: <span data-mosaic-preview>165 g → 115 g</span></span>
+                </div>
+                <div class="approval-actions">
+                  <button type="button" class="btn-primary" data-approve-btn>Approve</button>
+                  <button type="button" class="btn-ghost" data-cancel-btn>Cancel</button>
+                </div>
+                <p class="approval-feedback is-approved" role="status">Reserved 50 g Citra + 50 g Mosaic for Batch #7.</p>
+                <p class="approval-feedback is-cancelled" role="status">Reservation skipped — stock unchanged.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Inventory Glance (Hops + Yeast) -->
+          <section class="inventory-section" aria-labelledby="inventory-heading">
+            <div class="section-head">
+              <h2 id="inventory-heading">Cold Store Stock</h2>
+              <a href="#inventory" class="section-link">Manage Stock →</a>
+            </div>
+
+            <ul class="hop-scale-list" aria-label="Hop stock in grams">
+              <li class="hop-row">
+                <span class="hop-variety">Melba</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" style="width: 100%"></div></div>
+                <span class="hop-mass">260 <span>g</span></span>
+              </li>
+              <li class="hop-row">
+                <span class="hop-variety">Vic Secret</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" style="width: 84.6%"></div></div>
+                <span class="hop-mass">220 <span>g</span></span>
+              </li>
+              <li class="hop-row" data-hop="citra">
+                <span class="hop-variety">Citra</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" data-citra-bar style="width: 76.9%"></div></div>
+                <span class="hop-mass"><strong data-citra-val style="font-weight:500">200</strong> <span>g</span></span>
+              </li>
+              <li class="hop-row" data-hop="mosaic">
+                <span class="hop-variety">Mosaic</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" data-mosaic-bar style="width: 63.5%"></div></div>
+                <span class="hop-mass"><strong data-mosaic-val style="font-weight:500">165</strong> <span>g</span></span>
+              </li>
+              <li class="hop-row">
+                <span class="hop-variety">Galaxy</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" style="width: 26.9%"></div></div>
+                <span class="hop-mass">70 <span>g</span></span>
+              </li>
+              <li class="hop-row">
+                <span class="hop-variety">Hallertau Mittelfrüh</span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" style="width: 19.2%"></div></div>
+                <span class="hop-mass">50 <span>g</span></span>
+              </li>
+              <li class="hop-row is-low">
+                <span class="hop-variety">Simcoe <span class="low-tag">Low</span></span>
+                <div class="hop-bar-track" aria-hidden="true"><div class="hop-bar-fill" style="width: 11.5%"></div></div>
+                <span class="hop-mass">30 <span>g</span></span>
+              </li>
+            </ul>
+
+            <div class="yeast-locker">
+              <div class="yeast-strain">
+                <span class="stamp-label">Yeast</span>
+                <span>SafAle US-05 <span class="num">×1</span></span>
+              </div>
+              <span class="yeast-meta">Expires Sep 2027</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Mobile / Tablet Bottom Navigation Bar -->
+  <nav class="bottom-bar" aria-label="Mobile Navigation">
+    <a href="#home" class="bottom-link" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H3V10.5Z"/></svg>
+      <span>Home</span>
+    </a>
+    <a href="#batches" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h10l2 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8l2-5Z"/><path d="M5 8h14"/></svg>
+      <span>Batches</span>
+    </a>
+    <a href="#recipes" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8"/></svg>
+      <span>Recipes</span>
+    </a>
+    <a href="#inventory" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2 8 4.5v11L12 22l-8-4.5v-11L12 2Z"/></svg>
+      <span>Inventory</span>
+    </a>
+    <a href="#library" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+      <span>Library</span>
+    </a>
+    <a href="#assistant" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span>Assistant</span>
+    </a>
+    <a href="#system" class="bottom-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+      <span>System</span>
+    </a>
+  </nav>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const toggles = document.querySelectorAll('[data-theme-toggle]');
+      const labels = document.querySelectorAll('[data-theme-label]');
+
+      function syncThemeLabels(theme) {
+        const nextLabel = theme === 'dark' ? 'Light Desk' : 'Dark Cellar';
+        labels.forEach(el => { el.textContent = nextLabel; });
+      }
+
+      toggles.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+          root.setAttribute('data-theme', next);
+          syncThemeLabels(next);
+        });
+      });
+
+      // Optimistic UI for Assistant Write-Action Approval
+      const ticket = document.getElementById('dryhop-approval');
+      const approveBtn = document.querySelector('[data-approve-btn]');
+      const cancelBtn = document.querySelector('[data-cancel-btn]');
+      const citraVal = document.querySelector('[data-citra-val]');
+      const mosaicVal = document.querySelector('[data-mosaic-val]');
+      const citraBar = document.querySelector('[data-citra-bar]');
+      const mosaicBar = document.querySelector('[data-mosaic-bar]');
+
+      if (approveBtn && ticket) {
+        approveBtn.addEventListener('click', () => {
+          ticket.setAttribute('data-resolved', 'approved');
+          if (citraVal) citraVal.textContent = '150';
+          if (mosaicVal) mosaicVal.textContent = '115';
+          if (citraBar) citraBar.style.transform = 'scaleX(0.75)';
+          if (mosaicBar) mosaicBar.style.transform = 'scaleX(0.697)';
+        });
+      }
+
+      if (cancelBtn && ticket) {
+        cancelBtn.addEventListener('click', () => {
+          ticket.setAttribute('data-resolved', 'cancelled');
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

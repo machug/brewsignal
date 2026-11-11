@@ -1,0 +1,1799 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BrewSignal — Home</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@90..110,500;90..110,600;90..110,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Chivo+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       TOKENS & OKLCH PALETTE — B: CLEAN INSTRUMENT
+       Neutral hue tinted to 195 (laboratory slate-glass)
+       Signature accent: Hop Lupulin Amber (hue 76)
+       ========================================================================== */
+    :root,
+    [data-theme="dark"] {
+      --bg-canvas: oklch(0.145 0.008 195);
+      --bg-surface: oklch(0.175 0.009 195);
+      --bg-elevated: oklch(0.205 0.011 195);
+      --bg-subtle: oklch(0.235 0.012 195);
+
+      --rule-hairline: oklch(0.265 0.012 195);
+      --rule-strong: oklch(0.355 0.015 195);
+
+      --ink-primary: oklch(0.935 0.007 195);
+      --ink-secondary: oklch(0.715 0.012 195);
+      --ink-muted: oklch(0.545 0.012 195);
+
+      --accent: oklch(0.79 0.148 76);
+      --accent-ink: oklch(0.16 0.025 76);
+      --accent-tint: oklch(0.23 0.032 76);
+      --accent-rule: oklch(0.42 0.075 76);
+
+      --tilt-red: oklch(0.67 0.175 26);
+      --temp-trace: oklch(0.69 0.075 205);
+      --status-steady: oklch(0.73 0.095 162);
+      --status-warn: oklch(0.77 0.135 68);
+
+      --chart-grid: oklch(0.23 0.009 195);
+      --chart-area-top: oklch(0.79 0.148 76 / 0.14);
+      --chart-area-bot: oklch(0.79 0.148 76 / 0.0);
+    }
+
+    [data-theme="light"] {
+      --bg-canvas: oklch(0.968 0.006 195);
+      --bg-surface: oklch(0.988 0.004 195);
+      --bg-elevated: oklch(0.945 0.008 195);
+      --bg-subtle: oklch(0.918 0.010 195);
+
+      --rule-hairline: oklch(0.855 0.011 195);
+      --rule-strong: oklch(0.735 0.015 195);
+
+      --ink-primary: oklch(0.195 0.012 195);
+      --ink-secondary: oklch(0.425 0.014 195);
+      --ink-muted: oklch(0.565 0.012 195);
+
+      --accent: oklch(0.54 0.142 70);
+      --accent-ink: oklch(0.985 0.006 76);
+      --accent-tint: oklch(0.94 0.028 76);
+      --accent-rule: oklch(0.74 0.085 72);
+
+      --tilt-red: oklch(0.54 0.185 26);
+      --temp-trace: oklch(0.48 0.085 205);
+      --status-steady: oklch(0.47 0.095 162);
+      --status-warn: oklch(0.52 0.135 65);
+
+      --chart-grid: oklch(0.90 0.008 195);
+      --chart-area-top: oklch(0.54 0.142 70 / 0.13);
+      --chart-area-bot: oklch(0.54 0.142 70 / 0.0);
+    }
+
+    :root {
+      --font-display: 'Archivo', sans-serif;
+      --font-body: 'Atkinson Hyperlegible', sans-serif;
+      --font-num: 'Chivo Mono', monospace;
+
+      --text-xs: 0.75rem;     /* 12px */
+      --text-sm: 0.875rem;    /* 14px */
+      --text-base: 1rem;      /* 16px */
+      --text-lg: 1.25rem;     /* 20px */
+      --text-xl: 1.625rem;    /* 26px */
+      --text-inst: 2.125rem;  /* 34px */
+
+      --space-2xs: 4px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+
+      --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* ==========================================================================
+       RESET & BASE
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 16px;
+      background-color: var(--bg-canvas);
+      color: var(--ink-primary);
+      font-family: var(--font-body);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--bg-canvas);
+    }
+
+    button, input {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: none;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    .num {
+      font-family: var(--font-num);
+      font-variant-numeric: tabular-nums lining-nums;
+      letter-spacing: -0.02em;
+    }
+
+    .unit {
+      font-family: var(--font-body);
+      font-size: 0.78em;
+      font-weight: 400;
+      color: var(--ink-muted);
+      margin-left: 0.2em;
+      letter-spacing: 0;
+    }
+
+    .eyebrow {
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-muted);
+    }
+
+    /* ==========================================================================
+       TOP INSTRUMENT HEADER & DESK NAVIGATION
+       ========================================================================== */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background-color: var(--bg-canvas);
+      border-bottom: 1px solid var(--rule-hairline);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: var(--space-lg);
+      padding: 0 var(--space-lg);
+      height: 56px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: var(--text-base);
+      letter-spacing: -0.01em;
+    }
+
+    .brand-reticle {
+      width: 18px;
+      height: 18px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .brand-node {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      font-weight: 400;
+      color: var(--ink-muted);
+      padding-left: var(--space-sm);
+      border-left: 1px solid var(--rule-hairline);
+    }
+
+    .primary-nav {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2xs);
+      height: 100%;
+    }
+
+    .nav-link {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 100%;
+      padding: 0 var(--space-sm);
+      font-family: var(--font-display);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      color: var(--ink-secondary);
+      transition: color 160ms var(--ease-out-quart);
+    }
+
+    .nav-link:hover {
+      color: var(--ink-primary);
+    }
+
+    .nav-link[aria-current="page"] {
+      color: var(--ink-primary);
+      font-weight: 600;
+    }
+
+    .nav-link[aria-current="page"]::after {
+      content: "";
+      position: absolute;
+      left: var(--space-sm);
+      right: var(--space-sm);
+      bottom: -1px;
+      height: 2px;
+      background-color: var(--accent);
+    }
+
+    .nav-badge {
+      font-family: var(--font-num);
+      font-size: 0.6875rem;
+      padding: 1px 5px;
+      border-radius: 2px;
+      background-color: var(--accent-tint);
+      color: var(--accent);
+      border: 1px solid var(--accent-rule);
+    }
+
+    .topbar-controls {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .pi-telemetry {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      font-size: var(--text-xs);
+      color: var(--ink-muted);
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--status-steady);
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-height: 36px;
+      padding: 0 var(--space-sm);
+      border: 1px solid var(--rule-hairline);
+      border-radius: 3px;
+      background-color: var(--bg-surface);
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-secondary);
+      transition: border-color 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--rule-strong);
+      color: var(--ink-primary);
+    }
+
+    .theme-toggle svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* ==========================================================================
+       CALM INSTRUMENT STATUS STRIP (ITEM 6: ALERT)
+       ========================================================================== */
+    .status-strip {
+      border-bottom: 1px solid var(--rule-hairline);
+      background-color: var(--bg-surface);
+      padding: var(--space-sm) var(--space-lg);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm) var(--space-lg);
+    }
+
+    .status-strip-main {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--space-xs) var(--space-sm);
+      font-size: var(--text-sm);
+    }
+
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      color: var(--status-steady);
+      padding: 2px 7px;
+      border: 1px solid color-mix(in oklch, var(--status-steady) 38%, transparent);
+      border-radius: 2px;
+      background-color: color-mix(in oklch, var(--status-steady) 10%, transparent);
+    }
+
+    .status-tag::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: currentColor;
+    }
+
+    .status-message {
+      color: var(--ink-primary);
+    }
+
+    .status-message strong {
+      font-weight: 700;
+    }
+
+    .status-meta {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-muted);
+    }
+
+    /* ==========================================================================
+       WORKBENCH GRID (ADAPTIVE 1280px -> 820px -> 390px)
+       ========================================================================== */
+    .workbench {
+      flex: 1;
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1.68fr) minmax(340px, 1fr);
+      align-items: stretch;
+    }
+
+    .col-primary {
+      border-right: 1px solid var(--rule-hairline);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .col-secondary {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background-color: var(--bg-canvas);
+    }
+
+    /* ==========================================================================
+       PRIMARY INSTRUMENT: FOCUSED BATCH #7
+       ========================================================================== */
+    .batch-instrument {
+      padding: var(--space-xl) var(--space-xl) var(--space-lg);
+      border-bottom: 1px solid var(--rule-hairline);
+      container-type: inline-size;
+    }
+
+    .batch-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .batch-id-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      margin-bottom: 6px;
+    }
+
+    .batch-code {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    .sep-dot {
+      color: var(--rule-strong);
+    }
+
+    .batch-style {
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+      letter-spacing: 0.02em;
+    }
+
+    .batch-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 2.4vw, 2rem);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--ink-primary);
+    }
+
+    .sensor-cluster {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .tilt-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px;
+      border: 1px solid var(--rule-hairline);
+      border-radius: 2px;
+      background-color: var(--bg-surface);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      font-family: var(--font-display);
+    }
+
+    .tilt-swatch {
+      width: 8px;
+      height: 8px;
+      border-radius: 1px;
+      background-color: var(--tilt-red);
+    }
+
+    .ferm-day {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    /* Hairline Instrument Readout Strip */
+    .readout-matrix {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr 1fr 1.25fr;
+      border-top: 1px solid var(--rule-strong);
+      border-bottom: 1px solid var(--rule-hairline);
+      background-color: var(--bg-surface);
+    }
+
+    .readout-cell {
+      padding: var(--space-md);
+      border-right: 1px solid var(--rule-hairline);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+
+    .readout-cell:last-child {
+      border-right: none;
+    }
+
+    .readout-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--ink-muted);
+    }
+
+    .readout-delta {
+      font-family: var(--font-num);
+      font-size: 0.7rem;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--accent);
+    }
+
+    .readout-primary {
+      font-family: var(--font-num);
+      font-size: var(--text-inst);
+      font-weight: 600;
+      line-height: 1.05;
+      color: var(--ink-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .readout-sub {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    .chamber-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-num);
+      font-size: 0.72rem;
+      color: var(--temp-trace);
+    }
+
+    .chamber-state::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--temp-trace);
+    }
+
+    @container (max-width: 680px) {
+      .readout-matrix {
+        grid-template-columns: 1fr 1fr;
+      }
+      .readout-cell:nth-child(2) {
+        border-right: none;
+      }
+      .readout-cell:nth-child(1),
+      .readout-cell:nth-child(2) {
+        border-bottom: 1px solid var(--rule-hairline);
+      }
+    }
+
+    /* ==========================================================================
+       TELEMETRY CURVE (INLINE SVG — 4 DAYS SG + TEMP)
+       ========================================================================== */
+    .telemetry-block {
+      padding-top: var(--space-lg);
+    }
+
+    .telemetry-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+
+    .legend-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .swatch-line {
+      width: 16px;
+      height: 2px;
+      background-color: var(--accent);
+    }
+
+    .swatch-line.temp {
+      background: repeating-linear-gradient(
+        to right,
+        var(--temp-trace) 0 4px,
+        transparent 4px 7px
+      );
+    }
+
+    .swatch-line.target {
+      height: 1px;
+      background: repeating-linear-gradient(
+        to right,
+        var(--ink-muted) 0 3px,
+        transparent 3px 6px
+      );
+    }
+
+    .chart-frame {
+      width: 100%;
+      border: 1px solid var(--rule-hairline);
+      background-color: var(--bg-surface);
+      padding: var(--space-sm) var(--space-xs) var(--space-2xs);
+    }
+
+    .ferm-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    .svg-axis-label {
+      font-family: var(--font-num);
+      font-size: 10.5px;
+      fill: var(--ink-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .svg-axis-temp {
+      font-family: var(--font-num);
+      font-size: 10.5px;
+      fill: var(--temp-trace);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .svg-annotation {
+      font-family: var(--font-num);
+      font-size: 10.5px;
+      fill: var(--ink-secondary);
+    }
+
+    /* Next Scheduled Step Row */
+    .next-step-bar {
+      margin-top: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--rule-hairline);
+      background-color: var(--bg-elevated);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+
+    .next-step-left {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--space-xs) var(--space-sm);
+    }
+
+    .step-kicker {
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .step-detail {
+      font-size: var(--text-sm);
+      color: var(--ink-primary);
+    }
+
+    .step-timing {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    /* ==========================================================================
+       OTHER BATCHES LEDGER (ITEM 3)
+       ========================================================================== */
+    .ledger-section {
+      padding: var(--space-lg) var(--space-xl) var(--space-xl);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .section-link {
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--ink-secondary);
+      border-bottom: 1px solid transparent;
+      padding-bottom: 1px;
+    }
+
+    .section-link:hover {
+      color: var(--ink-primary);
+      border-bottom-color: var(--accent);
+    }
+
+    .batch-ledger {
+      width: 100%;
+      border-top: 1px solid var(--rule-hairline);
+    }
+
+    .ledger-row {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1.5fr) 112px minmax(120px, 1fr);
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-xs);
+      border-bottom: 1px solid var(--rule-hairline);
+      font-size: var(--text-sm);
+      transition: background-color 140ms var(--ease-out-quart);
+    }
+
+    .ledger-row:hover {
+      background-color: var(--bg-surface);
+    }
+
+    .ledger-num {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-muted);
+    }
+
+    .ledger-name {
+      font-weight: 700;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .state-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-self: start;
+      font-family: var(--font-display);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 7px;
+      border-radius: 2px;
+      border: 1px solid var(--rule-strong);
+      color: var(--ink-secondary);
+    }
+
+    .state-badge.planning {
+      border-color: var(--accent-rule);
+      color: var(--accent);
+      background-color: var(--accent-tint);
+    }
+
+    .ledger-meta {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+      text-align: right;
+    }
+
+    /* ==========================================================================
+       SECONDARY COLUMN: ASSISTANT PREVIEW (ITEM 5)
+       ========================================================================== */
+    .assistant-panel {
+      padding: var(--space-xl) var(--space-lg) var(--space-lg);
+      border-bottom: 1px solid var(--rule-hairline);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .chat-prompt {
+      align-self: flex-end;
+      max-width: 90%;
+      padding: var(--space-xs) var(--space-sm);
+      background-color: var(--bg-elevated);
+      border: 1px solid var(--rule-hairline);
+      border-radius: 2px;
+      font-size: var(--text-sm);
+      color: var(--ink-primary);
+    }
+
+    .prompt-label {
+      display: block;
+      font-family: var(--font-num);
+      font-size: 0.6875rem;
+      color: var(--ink-muted);
+      margin-bottom: 2px;
+    }
+
+    .agent-trace {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 6px var(--space-xs);
+      border-top: 1px solid var(--rule-hairline);
+      border-bottom: 1px solid var(--rule-hairline);
+      font-family: var(--font-num);
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+    }
+
+    .trace-check {
+      color: var(--status-steady);
+    }
+
+    .assistant-prose {
+      font-size: var(--text-sm);
+      color: var(--ink-secondary);
+      max-width: 65ch;
+      line-height: 1.6;
+    }
+
+    .assistant-prose strong {
+      color: var(--ink-primary);
+      font-weight: 700;
+    }
+
+    /* Write Action Approval Card (No side stripe — full hairline + header bar) */
+    .approval-box {
+      border: 1px solid var(--accent-rule);
+      background-color: var(--bg-surface);
+      border-radius: 2px;
+    }
+
+    .approval-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px var(--space-sm);
+      background-color: var(--accent-tint);
+      border-bottom: 1px solid var(--accent-rule);
+      font-family: var(--font-display);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .approval-body {
+      padding: var(--space-sm);
+    }
+
+    .approval-question {
+      font-size: var(--text-sm);
+      font-weight: 700;
+      color: var(--ink-primary);
+      margin-bottom: var(--space-xs);
+    }
+
+    .approval-deltas {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-xs);
+      padding: var(--space-xs);
+      background-color: var(--bg-canvas);
+      border: 1px solid var(--rule-hairline);
+      margin-bottom: var(--space-sm);
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    .approval-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .btn-approve {
+      min-height: 38px;
+      padding: 0 var(--space-md);
+      background-color: var(--accent);
+      color: var(--accent-ink);
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-radius: 2px;
+      transition: opacity 140ms var(--ease-out-quart);
+    }
+
+    .btn-approve:hover {
+      opacity: 0.9;
+    }
+
+    .btn-cancel {
+      min-height: 38px;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--rule-strong);
+      background-color: transparent;
+      color: var(--ink-secondary);
+      font-family: var(--font-display);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-radius: 2px;
+    }
+
+    .btn-cancel:hover {
+      color: var(--ink-primary);
+      border-color: var(--ink-secondary);
+    }
+
+    .approval-confirmed {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--status-steady);
+      padding: var(--space-xs) 0 2px;
+    }
+
+    .assistant-input-row {
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--rule-hairline);
+      background-color: var(--bg-surface);
+      padding: 2px 6px 2px var(--space-sm);
+    }
+
+    .assistant-input-row input {
+      flex: 1;
+      min-height: 36px;
+      font-size: var(--text-sm);
+      color: var(--ink-primary);
+    }
+
+    .assistant-input-row input::placeholder {
+      color: var(--ink-muted);
+    }
+
+    .assistant-input-row input:focus {
+      outline: none;
+    }
+
+    .assistant-input-row:focus-within {
+      border-color: var(--accent);
+    }
+
+    .send-btn {
+      min-height: 32px;
+      padding: 0 var(--space-sm);
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    .send-btn:hover {
+      color: var(--accent);
+    }
+
+    /* ==========================================================================
+       SECONDARY COLUMN: INVENTORY GLANCE (ITEM 4)
+       ========================================================================== */
+    .inventory-panel {
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .sub-eyebrow {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: var(--font-num);
+      font-size: 0.72rem;
+      color: var(--ink-muted);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--rule-hairline);
+    }
+
+    .hop-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hop-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) 1fr auto;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 7px 0;
+      border-bottom: 1px solid var(--rule-hairline);
+      font-size: var(--text-sm);
+    }
+
+    .hop-name {
+      color: var(--ink-primary);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .low-flag {
+      font-family: var(--font-num);
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border: 1px solid color-mix(in oklch, var(--status-warn) 50%, transparent);
+      color: var(--status-warn);
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .hop-meter {
+      height: 4px;
+      background-color: var(--bg-subtle);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hop-meter-fill {
+      height: 100%;
+      background-color: var(--ink-muted);
+      transition: transform 240ms var(--ease-out-quart);
+      transform-origin: left center;
+    }
+
+    .hop-row[data-low="true"] .hop-meter-fill {
+      background-color: var(--status-warn);
+    }
+
+    .hop-mass {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-primary);
+      min-width: 52px;
+      text-align: right;
+    }
+
+    .yeast-block {
+      padding-top: var(--space-xs);
+    }
+
+    .yeast-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: var(--space-xs) 0;
+      font-size: var(--text-sm);
+    }
+
+    .yeast-meta {
+      font-family: var(--font-num);
+      font-size: var(--text-xs);
+      color: var(--ink-secondary);
+    }
+
+    /* ==========================================================================
+       MOBILE BOTTOM NAVIGATION + COMPACT OVERFLOW MENU
+       ========================================================================== */
+    .mobile-dock {
+      display: none;
+    }
+
+    /* ==========================================================================
+       RESPONSIVE ADAPTATIONS (TABLET 820px & PHONE 390px)
+       ========================================================================== */
+    @media (max-width: 1040px) {
+      .brand-node,
+      .pi-telemetry {
+        display: none;
+      }
+
+      .workbench {
+        grid-template-columns: 1fr;
+      }
+
+      .col-primary {
+        border-right: none;
+      }
+
+      .col-secondary {
+        display: grid;
+        grid-template-columns: 1.15fr 1fr;
+        border-top: 1px solid var(--rule-strong);
+      }
+
+      .assistant-panel {
+        border-bottom: none;
+        border-right: 1px solid var(--rule-hairline);
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding-bottom: 68px;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr auto;
+        padding: 0 var(--space-md);
+        height: 52px;
+      }
+
+      .primary-nav {
+        display: none;
+      }
+
+      .status-strip {
+        padding: var(--space-xs) var(--space-md);
+      }
+
+      .batch-instrument {
+        padding: var(--space-lg) var(--space-md);
+      }
+
+      .sensor-cluster {
+        align-items: flex-start;
+        flex-direction: row;
+        gap: var(--space-sm);
+        align-items: center;
+      }
+
+      .readout-primary {
+        font-size: 1.75rem;
+      }
+
+      .ledger-section {
+        padding: var(--space-lg) var(--space-md);
+      }
+
+      .ledger-row {
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+        row-gap: 4px;
+      }
+
+      .ledger-meta {
+        grid-column: 2 / -1;
+        text-align: left;
+      }
+
+      .col-secondary {
+        grid-template-columns: 1fr;
+      }
+
+      .assistant-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--rule-hairline);
+        padding: var(--space-lg) var(--space-md);
+      }
+
+      .inventory-panel {
+        padding: var(--space-lg) var(--space-md);
+      }
+
+      /* Phone Bottom Bar + More Sheet */
+      .mobile-dock {
+        display: block;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 40;
+        background-color: var(--bg-surface);
+        border-top: 1px solid var(--rule-strong);
+      }
+
+      .dock-bar {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        height: 60px;
+      }
+
+      .dock-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        font-family: var(--font-display);
+        font-size: 0.6875rem;
+        font-weight: 600;
+        color: var(--ink-secondary);
+        position: relative;
+        min-height: 48px;
+      }
+
+      .dock-item svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .dock-item[aria-current="page"] {
+        color: var(--accent);
+      }
+
+      .dock-item[aria-current="page"]::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 24%;
+        right: 24%;
+        height: 2px;
+        background-color: var(--accent);
+      }
+
+      .more-drawer {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 200ms var(--ease-out-quart);
+        background-color: var(--bg-elevated);
+        border-bottom: 1px solid var(--rule-hairline);
+      }
+
+      .more-drawer[data-open="true"] {
+        grid-template-rows: 1fr;
+      }
+
+      .more-drawer-inner {
+        overflow: hidden;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+      }
+
+      .more-link {
+        padding: var(--space-sm) var(--space-md);
+        font-family: var(--font-display);
+        font-size: var(--text-xs);
+        font-weight: 600;
+        color: var(--ink-primary);
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+    }
+
+    /* ==========================================================================
+       ENTRANCE MOTION & REDUCED MOTION
+       ========================================================================== */
+    @keyframes instrumentReveal {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .batch-instrument,
+    .ledger-section,
+    .assistant-panel,
+    .inventory-panel {
+      animation: instrumentReveal 360ms var(--ease-out-quart) both;
+    }
+
+    .ledger-section { animation-delay: 50ms; }
+    .assistant-panel { animation-delay: 90ms; }
+    .inventory-panel { animation-delay: 130ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Direction: Clean Instrument | Fonts: Archivo + Atkinson Hyperlegible + Chivo Mono | Accent: Hop Lupulin Amber oklch(0.79 0.148 76) | Laboratory-grade fermentation workbench built on hairline rules, calibrated tabular readouts, and quiet precision. -->
+
+  <!-- TOP HEADER & DESK/TABLET NAVIGATION -->
+  <header class="topbar">
+    <a href="#home" class="brand" aria-label="BrewSignal Home">
+      <svg class="brand-reticle" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="10" y1="0.5" x2="10" y2="5" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="10" y1="15" x2="10" y2="19.5" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="0.5" y1="10" x2="5" y2="10" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="15" y1="10" x2="19.5" y2="10" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="10" cy="10" r="1.75" fill="currentColor"/>
+      </svg>
+      <span>BrewSignal</span>
+      <span class="brand-node">pi4-brewhouse.local</span>
+    </a>
+
+    <nav class="primary-nav" aria-label="Primary">
+      <a href="#home" class="nav-link" aria-current="page">Home</a>
+      <a href="#batches" class="nav-link">Batches <span class="nav-badge">1</span></a>
+      <a href="#recipes" class="nav-link">Recipes</a>
+      <a href="#inventory" class="nav-link">Inventory</a>
+      <a href="#library" class="nav-link">Library</a>
+      <a href="#assistant" class="nav-link">Assistant <span class="nav-badge">1</span></a>
+      <a href="#system" class="nav-link">System</a>
+    </nav>
+
+    <div class="topbar-controls">
+      <div class="pi-telemetry num" title="Tilt BLE & Home Assistant bridge healthy">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <span>BLE 18 s ago</span>
+      </div>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch color theme">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <circle cx="8" cy="8" r="3.5"/>
+          <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/>
+        </svg>
+        <span id="themeLabel">Light</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- CALM STATUS STRIP (ALERT / STABILITY CHECK) -->
+  <section class="status-strip" aria-label="Fermentation status">
+    <div class="status-strip-main">
+      <span class="status-tag">ACTIVE ATTENUATION</span>
+      <p class="status-message">
+        <strong>Batch 7:</strong> gravity stable 12 h? Not yet — still dropping <span class="num">0.004/day</span>
+      </p>
+    </div>
+    <span class="status-meta">Slope <span class="num">-0.00017 SG/h</span> · Est. terminal in ~48 h</span>
+  </section>
+
+  <!-- MAIN TWO-COLUMN INSTRUMENT WORKBENCH -->
+  <main class="workbench">
+    <!-- LEFT / PRIMARY COLUMN: ACTIVE BATCH + OTHER BATCHES -->
+    <div class="col-primary">
+
+      <!-- FOCUSED ACTIVE BATCH #7 -->
+      <article class="batch-instrument" aria-labelledby="batch7-heading">
+        <div class="batch-header">
+          <div>
+            <div class="batch-id-row">
+              <span class="batch-code">BATCH #7</span>
+              <span class="sep-dot" aria-hidden="true">·</span>
+              <span class="batch-style">American Pale Ale (BJCP 18B)</span>
+            </div>
+            <h1 id="batch7-heading" class="batch-title">Hugh's Hoppy Pale</h1>
+          </div>
+
+          <div class="sensor-cluster">
+            <div class="tilt-pill">
+              <span class="tilt-swatch" aria-hidden="true"></span>
+              <span>Tilt Red</span>
+              <span class="num" style="color: var(--ink-muted); font-weight: 400;">-64 dBm</span>
+            </div>
+            <span class="ferm-day">Fermenting · Day 4 (96 h)</span>
+          </div>
+        </div>
+
+        <!-- 4-CELL INSTRUMENT READOUT -->
+        <div class="readout-matrix" role="group" aria-label="Batch 7 instrument readings">
+          <div class="readout-cell">
+            <div class="readout-label">
+              <span>Current SG</span>
+              <span class="readout-delta">-0.035</span>
+            </div>
+            <div class="readout-primary">1.021</div>
+            <div class="readout-sub num">
+              <span>OG 1.056</span>
+              <span class="sep-dot">·</span>
+              <span>Target 1.012</span>
+            </div>
+          </div>
+
+          <div class="readout-cell">
+            <div class="readout-label">
+              <span>Attenuation</span>
+            </div>
+            <div class="readout-primary">63<span class="unit">%</span></div>
+            <div class="readout-sub">
+              <span>Apparent · Target <span class="num">78%</span></span>
+            </div>
+          </div>
+
+          <div class="readout-cell">
+            <div class="readout-label">
+              <span>Est. ABV</span>
+            </div>
+            <div class="readout-primary">4.6<span class="unit">%</span></div>
+            <div class="readout-sub">
+              <span>Projected <span class="num">5.8%</span></span>
+            </div>
+          </div>
+
+          <div class="readout-cell">
+            <div class="readout-label">
+              <span>Wort Temp</span>
+              <span class="num" style="color: var(--ink-secondary);">+0.2</span>
+            </div>
+            <div class="readout-primary">19.2<span class="unit">°C</span></div>
+            <div class="readout-sub">
+              <span class="num">Target 19.0 °C</span>
+              <span class="chamber-state">Cooling on</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- INLINE SVG GRAVITY + TEMPERATURE CURVE (4 DAYS) -->
+        <div class="telemetry-block">
+          <div class="telemetry-bar">
+            <span class="eyebrow">4-Day Telemetry Log</span>
+            <div class="legend-group">
+              <span class="legend-item"><span class="swatch-line"></span>Specific Gravity</span>
+              <span class="legend-item"><span class="swatch-line temp"></span>Temp (°C)</span>
+              <span class="legend-item"><span class="swatch-line target"></span>Target FG 1.012</span>
+            </div>
+          </div>
+
+          <div class="chart-frame">
+            <svg class="ferm-svg" viewBox="0 0 680 218" role="img" aria-label="Gravity curve falling from 1.056 on Day 0 to 1.021 on Day 4, flattening gradually, with wort temperature steady near 19.2 degrees Celsius.">
+              <defs>
+                <linearGradient id="sgFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--chart-area-top)"/>
+                  <stop offset="100%" stop-color="var(--chart-area-bot)"/>
+                </linearGradient>
+              </defs>
+
+              <!-- Horizontal Reference Grid (SG 1.060 -> 1.010) -->
+              <g stroke="var(--chart-grid)" stroke-width="1">
+                <line x1="50" y1="20" x2="628" y2="20"/>
+                <line x1="50" y1="54" x2="628" y2="54"/>
+                <line x1="50" y1="88" x2="628" y2="88"/>
+                <line x1="50" y1="122" x2="628" y2="122"/>
+                <line x1="50" y1="156" x2="628" y2="156"/>
+                <line x1="50" y1="184" x2="628" y2="184"/>
+              </g>
+
+              <!-- Vertical Day Ticks (Day 0 -> Day 4 + Day 5 Dry Hop Window) -->
+              <g stroke="var(--chart-grid)" stroke-width="1">
+                <line x1="50" y1="20" x2="50" y2="184"/>
+                <line x1="176" y1="20" x2="176" y2="184"/>
+                <line x1="302" y1="20" x2="302" y2="184"/>
+                <line x1="428" y1="20" x2="428" y2="184"/>
+                <line x1="554" y1="20" x2="554" y2="184"/>
+              </g>
+
+              <!-- Target FG 1.012 Reference Rule -->
+              <line x1="50" y1="177" x2="628" y2="177" stroke="var(--ink-muted)" stroke-width="1" stroke-dasharray="3 4"/>
+              <text x="624" y="172" text-anchor="end" class="svg-annotation">FG 1.012</text>
+
+              <!-- Secondary Line: Wort Temperature (18.6°C -> 19.6°C -> 19.2°C) -->
+              <path d="M 50 115 C 95 118, 130 104, 176 96 C 225 88, 260 89, 302 93 C 350 97, 390 102, 428 100 C 475 98, 515 103, 554 102"
+                    fill="none"
+                    stroke="var(--temp-trace)"
+                    stroke-width="1.5"
+                    stroke-dasharray="5 4"/>
+
+              <!-- Area under SG Curve -->
+              <path d="M 50 33.6 C 95 34.5, 132 42, 176 64.2 C 222 88, 258 112, 302 125.4 C 348 139, 386 143.5, 428 145.8 C 472 148.2, 514 151, 554 152.6 L 554 184 L 50 184 Z"
+                    fill="url(#sgFill)"/>
+
+              <!-- Primary Line: Specific Gravity (1.056 -> 1.047 -> 1.029 -> 1.023 -> 1.021) -->
+              <path d="M 50 33.6 C 95 34.5, 132 42, 176 64.2 C 222 88, 258 112, 302 125.4 C 348 139, 386 143.5, 428 145.8 C 472 148.2, 514 151, 554 152.6"
+                    fill="none"
+                    stroke="var(--accent)"
+                    stroke-width="2.25"/>
+
+              <!-- Projected Tail toward Day 5 -->
+              <path d="M 554 152.6 C 580 154, 604 157, 628 160"
+                    fill="none"
+                    stroke="var(--accent)"
+                    stroke-opacity="0.45"
+                    stroke-width="1.5"
+                    stroke-dasharray="2 4"/>
+
+              <!-- Calibrated Sample Nodes -->
+              <circle cx="50" cy="33.6" r="3" fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="2"/>
+              <circle cx="176" cy="64.2" r="2.5" fill="var(--accent)"/>
+              <circle cx="302" cy="125.4" r="2.5" fill="var(--accent)"/>
+              <circle cx="428" cy="145.8" r="2.5" fill="var(--accent)"/>
+              <circle cx="554" cy="152.6" r="4" fill="var(--accent)"/>
+              <circle cx="554" cy="102" r="3" fill="var(--temp-trace)"/>
+
+              <!-- Current Readout Callout on Curve -->
+              <text x="554" y="142" text-anchor="middle" class="svg-axis-label" style="fill: var(--ink-primary); font-weight: 600;">1.021</text>
+              <text x="554" y="92" text-anchor="middle" class="svg-axis-temp">19.2°C</text>
+
+              <!-- Left Y-Axis Labels (SG) -->
+              <text x="43" y="23" text-anchor="end" class="svg-axis-label">1.060</text>
+              <text x="43" y="57" text-anchor="end" class="svg-axis-label">1.050</text>
+              <text x="43" y="91" text-anchor="end" class="svg-axis-label">1.040</text>
+              <text x="43" y="125" text-anchor="end" class="svg-axis-label">1.030</text>
+              <text x="43" y="159" text-anchor="end" class="svg-axis-label">1.020</text>
+              <text x="43" y="187" text-anchor="end" class="svg-axis-label">1.010</text>
+
+              <!-- Right Y-Axis Labels (Temp °C) -->
+              <text x="635" y="57" text-anchor="start" class="svg-axis-temp">21°C</text>
+              <text x="635" y="105" text-anchor="start" class="svg-axis-temp">19°C</text>
+              <text x="635" y="159" text-anchor="start" class="svg-axis-temp">17°C</text>
+
+              <!-- Bottom X-Axis Labels -->
+              <text x="50" y="204" text-anchor="middle" class="svg-axis-label">Day 0</text>
+              <text x="176" y="204" text-anchor="middle" class="svg-axis-label">Day 1</text>
+              <text x="302" y="204" text-anchor="middle" class="svg-axis-label">Day 2</text>
+              <text x="428" y="204" text-anchor="middle" class="svg-axis-label">Day 3</text>
+              <text x="554" y="204" text-anchor="middle" class="svg-axis-label" style="fill: var(--ink-primary);">Day 4 (Now)</text>
+              <text x="628" y="204" text-anchor="end" class="svg-axis-label">Day 5</text>
+            </svg>
+          </div>
+
+          <!-- NEXT STEP BAR -->
+          <div class="next-step-bar">
+            <div class="next-step-left">
+              <span class="step-kicker">Next Step</span>
+              <span class="step-detail">Dry hop day 5: <strong>Citra <span class="num">50 g</span>, Mosaic <span class="num">50 g</span></strong></span>
+            </div>
+            <span class="step-timing">Tomorrow · ~22 h remaining</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- OTHER BATCHES LEDGER -->
+      <section class="ledger-section" aria-labelledby="other-batches-heading">
+        <div class="section-head">
+          <h2 id="other-batches-heading" class="eyebrow">Batch Log &amp; Schedule</h2>
+          <a href="#batches" class="section-link">All batches (8) →</a>
+        </div>
+
+        <div class="batch-ledger" role="list">
+          <a href="#batch-8" class="ledger-row" role="listitem">
+            <span class="ledger-num">#8</span>
+            <span class="ledger-name">American Pale Ale</span>
+            <span class="state-badge planning">Planning</span>
+            <span class="ledger-meta">Brew day Sat 14 Nov</span>
+          </a>
+
+          <a href="#batch-6" class="ledger-row" role="listitem">
+            <span class="ledger-num">#6</span>
+            <span class="ledger-name">Harrowing Oatmeal Stout</span>
+            <span class="state-badge">Completed</span>
+            <span class="ledger-meta">6.1% ABV · 9 Jun</span>
+          </a>
+
+          <a href="#batch-5" class="ledger-row" role="listitem">
+            <span class="ledger-num">#5</span>
+            <span class="ledger-name">Galactic Dry Stout</span>
+            <span class="state-badge">Completed</span>
+            <span class="ledger-meta">4.4% ABV · Kegged</span>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT / SECONDARY COLUMN: ASSISTANT PREVIEW + INVENTORY GLANCE -->
+    <aside class="col-secondary" aria-label="Brewing assistant and stock">
+
+      <!-- AI BREWING ASSISTANT PREVIEW -->
+      <section class="assistant-panel" aria-labelledby="assistant-heading">
+        <div class="section-head" style="margin-bottom: 0;">
+          <h2 id="assistant-heading" class="eyebrow">Brewing Assistant</h2>
+          <a href="#assistant" class="section-link">Open thread →</a>
+        </div>
+
+        <div class="chat-prompt">
+          <span class="prompt-label">You · 20:14</span>
+          Plan a dry hop for batch 7
+        </div>
+
+        <div class="agent-trace" aria-label="Assistant activity">
+          <span class="trace-check" aria-hidden="true">✓</span>
+          <span>Checked batch 7</span>
+          <span>·</span>
+          <span>Checked hop stock</span>
+          <span>·</span>
+          <span>2 steps</span>
+        </div>
+
+        <p class="assistant-prose">
+          Batch #7 is at <strong class="num">1.021</strong> (<span class="num">63%</span> AA) and slowing smoothly. Adding <strong class="num">50 g Citra</strong> + <strong class="num">50 g Mosaic</strong> (<span class="num">4.8 g/L</span> total) tomorrow on Day 5 at <span class="num">19.0 °C</span> catches tail biotransformation while safeguarding hop creep. Both lots are sealed in freezer stock:
+        </p>
+
+        <!-- WRITE ACTION APPROVAL BOX -->
+        <div class="approval-box" id="approvalBox">
+          <div class="approval-header">
+            <span>Write Action · Inventory Reservation</span>
+            <span class="num">100 g</span>
+          </div>
+          <div class="approval-body">
+            <p class="approval-question">Reserve Citra 50 g + Mosaic 50 g for batch 7?</p>
+            <div class="approval-deltas" id="approvalDeltas">
+              <div>Citra: 200 g → 150 g</div>
+              <div>Mosaic: 165 g → 115 g</div>
+            </div>
+            <div class="approval-actions" id="approvalActions">
+              <button type="button" class="btn-approve" id="btnApprove">Approve</button>
+              <button type="button" class="btn-cancel" id="btnCancel">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <form class="assistant-input-row" onsubmit="event.preventDefault();">
+          <label for="askInput" class="eyebrow" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Ask assistant</label>
+          <input id="askInput" type="text" placeholder="Ask about Batch #7, water, or stock…">
+          <button type="submit" class="send-btn">↵</button>
+        </form>
+      </section>
+
+      <!-- INVENTORY GLANCE -->
+      <section class="inventory-panel" aria-labelledby="inventory-heading">
+        <div class="section-head" style="margin-bottom: 0;">
+          <h2 id="inventory-heading" class="eyebrow">Inventory Glance</h2>
+          <a href="#inventory" class="section-link">Full stock →</a>
+        </div>
+
+        <div>
+          <div class="sub-eyebrow">
+            <span>HOPS (COLD STORAGE)</span>
+            <span id="hopTotalLabel">1,095 g total</span>
+          </div>
+
+          <ul class="hop-list">
+            <li class="hop-row">
+              <span class="hop-name">Melba</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" style="width: 100%;"></span></span>
+              <span class="hop-mass">260 g</span>
+            </li>
+            <li class="hop-row">
+              <span class="hop-name">Vic Secret</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" style="width: 84.6%;"></span></span>
+              <span class="hop-mass">220 g</span>
+            </li>
+            <li class="hop-row" id="rowCitra">
+              <span class="hop-name">Citra</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" id="barCitra" style="width: 76.9%;"></span></span>
+              <span class="hop-mass" id="massCitra">200 g</span>
+            </li>
+            <li class="hop-row" id="rowMosaic">
+              <span class="hop-name">Mosaic</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" id="barMosaic" style="width: 63.5%;"></span></span>
+              <span class="hop-mass" id="massMosaic">165 g</span>
+            </li>
+            <li class="hop-row">
+              <span class="hop-name">Galaxy</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" style="width: 26.9%;"></span></span>
+              <span class="hop-mass">70 g</span>
+            </li>
+            <li class="hop-row">
+              <span class="hop-name">Hallertau Mittelfrüh</span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" style="width: 19.2%;"></span></span>
+              <span class="hop-mass">50 g</span>
+            </li>
+            <li class="hop-row" data-low="true">
+              <span class="hop-name">Simcoe <span class="low-flag">Low</span></span>
+              <span class="hop-meter" aria-hidden="true"><span class="hop-meter-fill" style="width: 11.5%;"></span></span>
+              <span class="hop-mass">30 g</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="yeast-block">
+          <div class="sub-eyebrow">
+            <span>YEAST BANK</span>
+            <span>1 pack</span>
+          </div>
+          <div class="yeast-row">
+            <span>SafAle US-05 <span class="num" style="color: var(--ink-secondary);">×1</span></span>
+            <span class="yeast-meta">Expires Sep 2027</span>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- PHONE ADAPTIVE BOTTOM DOCK (ALL 7 DESTINATIONS ACCESSIBLE) -->
+  <nav class="mobile-dock" aria-label="Mobile Navigation">
+    <div class="more-drawer" id="moreDrawer" data-open="false">
+      <div class="more-drawer-inner">
+        <a href="#library" class="more-link">Library</a>
+        <a href="#system" class="more-link">System</a>
+      </div>
+    </div>
+    <div class="dock-bar">
+      <a href="#home" class="dock-item" aria-current="page">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M3 9.5L10 3.5l7 6V17H3V9.5z"/>
+        </svg>
+        <span>Home</span>
+      </a>
+      <a href="#batches" class="dock-item">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="5" y="3" width="10" height="14" rx="1.5"/>
+          <line x1="5" y1="8" x2="15" y2="8"/>
+        </svg>
+        <span>Batches</span>
+      </a>
+      <a href="#recipes" class="dock-item">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <line x1="4" y1="6" x2="16" y2="6"/>
+          <line x1="4" y1="10" x2="16" y2="10"/>
+          <line x1="4" y1="14" x2="12" y2="14"/>
+        </svg>
+        <span>Recipes</span>
+      </a>
+      <a href="#inventory" class="dock-item">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M3.5 6.5L10 3l6.5 3.5v7L10 17l-6.5-3.5v-7z"/>
+        </svg>
+        <span>Inventory</span>
+      </a>
+      <button type="button" class="dock-item" id="moreBtn" aria-expanded="false" aria-controls="moreDrawer">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <circle cx="5" cy="10" r="1.2" fill="currentColor"/>
+          <circle cx="10" cy="10" r="1.2" fill="currentColor"/>
+          <circle cx="15" cy="10" r="1.2" fill="currentColor"/>
+        </svg>
+        <span>More</span>
+      </button>
+    </div>
+  </nav>
+
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const toggleBtn = document.getElementById('themeToggle');
+      const themeLabel = document.getElementById('themeLabel');
+
+      function syncThemeLabel(theme) {
+        themeLabel.textContent = theme === 'dark' ? 'Light' : 'Dark';
+      }
+
+      toggleBtn.addEventListener('click', function () {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        syncThemeLabel(next);
+      });
+
+      // Optimistic UI for Assistant Write Approval — updates hop inventory live
+      const btnApprove = document.getElementById('btnApprove');
+      const btnCancel = document.getElementById('btnCancel');
+      const approvalActions = document.getElementById('approvalActions');
+      const massCitra = document.getElementById('massCitra');
+      const massMosaic = document.getElementById('massMosaic');
+      const barCitra = document.getElementById('barCitra');
+      const barMosaic = document.getElementById('barMosaic');
+      const hopTotalLabel = document.getElementById('hopTotalLabel');
+
+      btnApprove.addEventListener('click', function () {
+        massCitra.textContent = '150 g';
+        massMosaic.textContent = '115 g';
+        barCitra.style.width = '57.7%';
+        barMosaic.style.width = '44.2%';
+        hopTotalLabel.textContent = '995 g unreserved · 100 g held';
+        approvalActions.innerHTML = '<div class="approval-confirmed">✓ Reserved 50 g Citra + 50 g Mosaic for Batch #7</div>';
+      });
+
+      btnCancel.addEventListener('click', function () {
+        approvalActions.innerHTML = '<div class="approval-confirmed" style="color: var(--ink-muted);">Reservation dismissed — stock unchanged</div>';
+      });
+
+      // Mobile compact overflow drawer (Library & System)
+      const moreBtn = document.getElementById('moreBtn');
+      const moreDrawer = document.getElementById('moreDrawer');
+      if (moreBtn && moreDrawer) {
+        moreBtn.addEventListener('click', function () {
+          const isOpen = moreDrawer.getAttribute('data-open') === 'true';
+          moreDrawer.setAttribute('data-open', String(!isOpen));
+          moreBtn.setAttribute('aria-expanded', String(!isOpen));
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -224,6 +224,10 @@
   --chart-battery: var(--status-steady);
   --chart-grid: var(--rule-hairline);
   --chart-axis: var(--ink-muted);
+  --chart-filtered: var(--ink-primary);
+  --chart-filtered-temp: var(--ink-secondary);
+  --chart-heating-band: color-mix(in oklch, var(--status-danger) 12%, transparent);
+  --chart-cooling-band: color-mix(in oklch, var(--temp-trace) 14%, transparent);
   --chart-text: var(--ink-muted);
 
   /* Spacing: 4pt scale (legacy numeric + semantic names) */

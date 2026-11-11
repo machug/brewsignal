@@ -67,53 +67,58 @@
 	// Chart colors - read from CSS tokens at runtime
 	// These are initialized with fallbacks and updated on mount
 	let chartColors = $state({
-		sg: '#f59e0b',
-		sgGlow: 'rgba(245, 158, 11, 0.3)',
-		textMuted: '#71717a',
-		textSecondary: '#a1a1aa',
-		grid: 'rgba(255, 255, 255, 0.04)',
-		ambient: '#22d3ee',
-		chamber: '#a78bfa',
-		trend: 'rgba(245, 158, 11, 0.5)',
-		anomaly: '#ef4444',
-		battery: '#22c55e',
-		filtered: '#e4e4e7',
-		filteredTemp: '#94a3b8',
-		heatingBand: 'rgba(239, 68, 68, 0.10)',
-		coolingBand: 'rgba(96, 165, 250, 0.12)'
+		sg: '',
+		sgFill: '',
+		temp: '',
+		surface: '',
+		textMuted: '',
+		textSecondary: '',
+		grid: '',
+		ambient: '',
+		chamber: '',
+		trend: '',
+		anomaly: '',
+		battery: '',
+		filtered: '',
+		filteredTemp: '',
+		heatingBand: '',
+		coolingBand: ''
 	});
+
 
 	// Color mapping for tilt accent in chart (reads --tilt-* tokens)
 	function getTiltColorMap(): Record<string, string> {
 		return {
-			RED: getCssVar('--tilt-red', '#f87171'),
-			GREEN: getCssVar('--tilt-green', '#4ade80'),
-			BLACK: getCssVar('--tilt-black', '#71717a'),
-			PURPLE: getCssVar('--tilt-purple', '#a78bfa'),
-			ORANGE: getCssVar('--tilt-orange', '#fb923c'),
-			BLUE: getCssVar('--tilt-blue', '#60a5fa'),
-			YELLOW: getCssVar('--tilt-yellow', '#facc15'),
-			PINK: getCssVar('--tilt-pink', '#f472b6')
+			RED: getCssVar('--tilt-red'),
+			GREEN: getCssVar('--tilt-green'),
+			BLACK: getCssVar('--tilt-black'),
+			PURPLE: getCssVar('--tilt-purple'),
+			ORANGE: getCssVar('--tilt-orange'),
+			BLUE: getCssVar('--tilt-blue'),
+			YELLOW: getCssVar('--tilt-yellow'),
+			PINK: getCssVar('--tilt-pink')
 		};
 	}
 
 	// Initialize chart colors from CSS tokens
 	function initChartColors() {
 		chartColors = {
-			sg: getCssVar('--chart-sg', '#f59e0b'),
-			sgGlow: getCssVar('--chart-sg-glow', 'rgba(245, 158, 11, 0.3)'),
-			textMuted: getCssVar('--text-muted', '#71717a'),
-			textSecondary: getCssVar('--text-secondary', '#a1a1aa'),
-			grid: getCssVar('--chart-grid', 'rgba(255, 255, 255, 0.04)'),
-			ambient: getCssVar('--chart-ambient', '#22d3ee'),
-			chamber: getCssVar('--chart-chamber', '#a78bfa'),
-			trend: getCssVar('--chart-trend', 'rgba(245, 158, 11, 0.5)'),
-			anomaly: getCssVar('--chart-anomaly', '#ef4444'),
-			battery: getCssVar('--chart-battery', '#22c55e'),
-			filtered: getCssVar('--chart-filtered', '#e4e4e7'),
-			filteredTemp: getCssVar('--chart-filtered-temp', '#94a3b8'),
-			heatingBand: getCssVar('--chart-heating-band', 'rgba(239, 68, 68, 0.10)'),
-			coolingBand: getCssVar('--chart-cooling-band', 'rgba(96, 165, 250, 0.12)')
+			sg: getCssVar('--chart-sg'),
+			sgFill: getCssVar('--chart-sg-fill'),
+			temp: getCssVar('--chart-temp'),
+			surface: getCssVar('--bg-surface'),
+			textMuted: getCssVar('--chart-axis'),
+			textSecondary: getCssVar('--ink-secondary'),
+			grid: getCssVar('--chart-grid'),
+			ambient: getCssVar('--chart-ambient'),
+			chamber: getCssVar('--chart-chamber'),
+			trend: getCssVar('--chart-trend'),
+			anomaly: getCssVar('--chart-anomaly'),
+			battery: getCssVar('--chart-battery'),
+			filtered: getCssVar('--chart-filtered'),
+			filteredTemp: getCssVar('--chart-filtered-temp'),
+			heatingBand: getCssVar('--chart-heating-band'),
+			coolingBand: getCssVar('--chart-cooling-band')
 		};
 	}
 
@@ -336,7 +341,7 @@
 	function getChartOptions(width: number, celsius: boolean, tz: string): uPlot.Options {
 		const tiltColors = getTiltColorMap();
 		const sgColor = chartColors.sg;
-		const tempColor = tiltColors[deviceColor] || chartColors.textSecondary;
+		const tempColor = chartColors.temp;
 
 		return {
 			width,
@@ -394,15 +399,13 @@
 							position: absolute;
 							top: 12px;
 							left: 12px;
-							background: rgba(24, 24, 27, 0.95);
-							border: 1px solid var(--border-default);
-							border-radius: 0.5rem;
-							padding: 0.75rem;
-							font-family: 'JetBrains Mono', monospace;
+							background: var(--bg-elevated);
+							border: 1px solid var(--rule-strong);
+							border-radius: 4px;
+							padding: 0.5rem 0.75rem;
+							font-family: var(--font-num);
 							font-size: 0.6875rem;
 							pointer-events: none;
-							box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
-							backdrop-filter: blur(8px);
 						`;
 					}
 				]
@@ -441,8 +444,8 @@
 					stroke: chartColors.textMuted,
 					grid: { stroke: chartColors.grid, width: 1 },
 					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
-					font: '11px "JetBrains Mono", monospace',
-					labelFont: '11px "JetBrains Mono", monospace',
+					font: '11px "Chivo Mono", ui-monospace, monospace',
+					labelFont: '11px "Chivo Mono", ui-monospace, monospace',
 					values: (u, vals) =>
 						vals.map((v) => formatTimeInTz(v, tz, selectedRange <= 24))
 				},
@@ -452,8 +455,8 @@
 					stroke: sgColor,
 					grid: { stroke: chartColors.grid, width: 1 },
 					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
-					font: '11px "JetBrains Mono", monospace',
-					labelFont: '11px "JetBrains Mono", monospace',
+					font: '11px "Chivo Mono", ui-monospace, monospace',
+					labelFont: '11px "Chivo Mono", ui-monospace, monospace',
 					values: (u, vals) => vals.map((v) => formatGravity(v)),
 					side: 3 // left
 				},
@@ -463,8 +466,8 @@
 					stroke: tempColor,
 					grid: { show: false },
 					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
-					font: '11px "JetBrains Mono", monospace',
-					labelFont: '11px "JetBrains Mono", monospace',
+					font: '11px "Chivo Mono", ui-monospace, monospace',
+					labelFont: '11px "Chivo Mono", ui-monospace, monospace',
 					values: (u, vals) => vals.map((v) => v.toFixed(0) + '°'),
 					side: 1 // right
 				}
@@ -483,7 +486,7 @@
 					value: (u: uPlot, v: number | null) => v !== null ? formatGravity(v) : '--',
 					fill: (u: uPlot, idx: number) => {
 						const gradient = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
-						gradient.addColorStop(0, chartColors.sgGlow);
+						gradient.addColorStop(0, chartColors.sgFill);
 						gradient.addColorStop(1, 'transparent');
 						return gradient;
 					},
@@ -549,7 +552,7 @@
 						size: 12,
 						space: 0,
 						fill: chartColors.anomaly,
-						stroke: '#ffffff',
+						stroke: chartColors.surface,
 						width: 2
 					},
 					show: showAnomalies
@@ -1180,7 +1183,7 @@ onMount(async () => {
 				<span class="legend-item">
 					<span
 						class="legend-line"
-						style="background: {chartColors.textSecondary}; background: var(--tilt-{deviceColor.toLowerCase()}, {chartColors.textSecondary});"
+						style="background: var(--chart-temp);"
 					></span>
 					<span>Wort</span>
 				</span>
@@ -1367,7 +1370,7 @@ onMount(async () => {
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.6875rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-num);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -1380,7 +1383,7 @@ onMount(async () => {
 	.refresh-select {
 		padding: 0.25rem 0.5rem;
 		font-size: 0.6875rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-num);
 		border-radius: 0.375rem;
 		border: 1px solid var(--border-default);
 		background: var(--bg-elevated);
@@ -1398,7 +1401,7 @@ onMount(async () => {
 	.range-btn {
 		padding: 0.25rem 0.625rem;
 		font-size: 0.6875rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-num);
 		font-weight: 500;
 		border-radius: 0.375rem;
 		color: var(--text-muted);
@@ -1430,7 +1433,7 @@ onMount(async () => {
 		align-items: center;
 		gap: 0.375rem;
 		font-size: 0.625rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-num);
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -1448,7 +1451,7 @@ onMount(async () => {
 
 	.legend-dot-anomaly {
 		background: var(--chart-anomaly);
-		box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+		
 	}
 
 	.legend-line {
@@ -1478,11 +1481,11 @@ onMount(async () => {
 	}
 
 	.legend-line-filtered {
-		background: var(--chart-filtered, #e4e4e7);
+		background: var(--chart-filtered);
 	}
 
 	.legend-line-filtered-temp {
-		background: linear-gradient(90deg, var(--chart-filtered-temp, #94a3b8) 6px, transparent 6px);
+		background: linear-gradient(90deg, var(--chart-filtered-temp) 6px, transparent 6px);
 		background-size: 9px 2px;
 	}
 
@@ -1493,12 +1496,12 @@ onMount(async () => {
 	}
 
 	.legend-band-heating {
-		background: var(--chart-heating-band, rgba(239, 68, 68, 0.35));
+		background: var(--chart-heating-band);
 		margin-right: -0.25rem;
 	}
 
 	.legend-band-cooling {
-		background: var(--chart-cooling-band, rgba(96, 165, 250, 0.35));
+		background: var(--chart-cooling-band);
 	}
 
 	.legend-toggle {
@@ -1560,7 +1563,7 @@ onMount(async () => {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(24, 24, 27, 0.6);
+		background: color-mix(in oklch, var(--bg-surface) 70%, transparent);
 		backdrop-filter: blur(2px);
 		z-index: 10;
 	}
@@ -1646,8 +1649,8 @@ onMount(async () => {
 		flex-direction: column;
 		gap: 0.25rem;
 		padding: 0.5rem 0.75rem;
-		background: rgba(239, 68, 68, 0.06);
-		border: 1px solid rgba(239, 68, 68, 0.15);
+		background: color-mix(in oklch, var(--status-danger) 8%, transparent);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 25%, transparent);
 		border-radius: 0.375rem;
 		margin-top: 0.5rem;
 	}
@@ -1664,7 +1667,7 @@ onMount(async () => {
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
-		background: var(--chart-anomaly, #ef4444);
+		background: var(--chart-anomaly);
 		flex-shrink: 0;
 	}
 

@@ -1,61 +1,44 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
-	import { weatherState } from '$lib/stores/weather.svelte';
-	import FermentationCard from '$lib/components/FermentationCard.svelte';
+	import { configState } from '$lib/stores/config.svelte';
+	import StatusStrip, { type ChamberIdleStatus } from '$lib/components/home/StatusStrip.svelte';
+	import BatchInstrument from '$lib/components/home/BatchInstrument.svelte';
+	import BatchLog from '$lib/components/home/BatchLog.svelte';
+	import InventoryGlance from '$lib/components/home/InventoryGlance.svelte';
+	import AssistantEntry from '$lib/components/home/AssistantEntry.svelte';
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
 	import { fetchBatches, fetchBatchProgress } from '$lib/api';
 	import { onConfigLoaded } from '$lib/config';
 
-	let alertsDismissed = $state(false);
-	let alertsCollapsed = $state(false);
-
 	// Batch state
-	let batches = $state<BatchResponse[]>([]);
+	let allBatches = $state<BatchResponse[]>([]);
+	let batches = $state<BatchResponse[]>([]); // active: fermenting or conditioning
 	let progressMap = $state<Map<number, BatchProgressResponse>>(new Map());
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	// Chamber idle state
-	interface ChamberIdleStatus {
-		enabled: boolean;
-		active: boolean;
-		chamber_temp: number | null;
-		target_temp: number | null;
-		hysteresis: number | null;
-		heater_state: string | null;
-		cooler_state: string | null;
-	}
 	let chamberIdle = $state<ChamberIdleStatus | null>(null);
 
-	onMount(async () => {
-		// Load alert dismissal state from localStorage
-		const dismissed = localStorage.getItem('brewsignal_alerts_dismissed');
-		const dismissedTime = localStorage.getItem('brewsignal_alerts_dismissed_time');
-		if (dismissed === 'true' && dismissedTime) {
-			const elapsed = Date.now() - parseInt(dismissedTime, 10);
-			// Auto-restore alerts after 6 hours
-			if (elapsed < 6 * 60 * 60 * 1000) {
-				alertsDismissed = true;
-			}
-		}
-
+	onMount(() => {
+		let idleTimer: ReturnType<typeof setInterval> | undefined;
 		// Wait for config to be initialized before loading batches
 		// This ensures auth token is available for Cloud Sync users
 		onConfigLoaded(() => {
 			loadBatches();
 			loadChamberIdleStatus();
-			setInterval(loadChamberIdleStatus, 30000);
+			idleTimer = setInterval(loadChamberIdleStatus, 30000);
 		});
+		return () => clearInterval(idleTimer);
 	});
 
 	async function loadBatches() {
 		loading = true;
 		error = null;
 		try {
-			// Fetch only active batches (fermenting or conditioning)
-			const allBatches = await fetchBatches();
-			batches = allBatches.filter(b => b.status === 'fermenting' || b.status === 'conditioning');
+			allBatches = await fetchBatches(undefined, undefined, 200);
+			batches = allBatches.filter((b) => b.status === 'fermenting' || b.status === 'conditioning');
 
 			// Load progress for each active batch
 			const progressPromises = batches.map(async (b) => {
@@ -140,223 +123,192 @@
 		return enhanced;
 	});
 
-	// Track which batch card is expanded (only one at a time)
+	// Only one batch instrument open at a time; the first opens by default
 	let expandedBatchId = $state<number | null>(null);
+	let expandTouched = false;
+
+	$effect(() => {
+		if (!expandTouched && expandedBatchId === null && batches.length > 0) {
+			expandedBatchId = batches[0].id;
+		}
+	});
 
 	function toggleExpand(batchId: number) {
+		expandTouched = true;
 		expandedBatchId = expandedBatchId === batchId ? null : batchId;
 	}
 
-	function dismissAlerts() {
-		alertsDismissed = true;
-		localStorage.setItem('brewsignal_alerts_dismissed', 'true');
-		localStorage.setItem('brewsignal_alerts_dismissed_time', Date.now().toString());
-	}
-
-	function toggleAlertsCollapse() {
-		alertsCollapsed = !alertsCollapsed;
-	}
+	// Active batches with wort temperature outside the yeast range (for the status strip)
+	let outOfRange = $derived(
+		batches.flatMap((b) => {
+			const st = liveProgressMap.get(b.id)?.temperature.status;
+			return st === 'too_hot' || st === 'too_cold'
+				? [`Batch #${b.batch_number ?? b.id} ${st === 'too_hot' ? 'above' : 'below'} yeast range`]
+				: [];
+		})
+	);
 </script>
 
 <svelte:head>
-	<title>Dashboard | BrewSignal</title>
+	<title>Home | BrewSignal</title>
 </svelte:head>
 
-<!-- Alerts Banner -->
-{#if weatherState.alerts.length > 0 && !alertsDismissed}
-	<div class="alerts-banner">
-		<div class="alerts-header">
-			<div class="alerts-title">
-				<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-				</svg>
-				<span>Weather Alerts</span>
-				<span class="alerts-count">{weatherState.alerts.length}</span>
-			</div>
-			<button type="button" class="dismiss-btn" onclick={dismissAlerts} aria-label="Dismiss alerts">
-				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-				</svg>
-			</button>
+<div class="workbench">
+	<div class="col-primary">
+		<div class="rise" style="--i: 0">
+			<StatusStrip {chamberIdle} {outOfRange} activeCount={batches.length} />
 		</div>
-		{#if !alertsCollapsed}
-			<div class="alerts-list">
-				{#each weatherState.alerts as alert}
-					<div class="alert-item" class:warning={alert.level === 'warning'} class:critical={alert.level === 'critical'}>
-						<span class="alert-day">{alert.day}:</span>
-						<span class="alert-message">{alert.message}</span>
-					</div>
-				{/each}
-			</div>
-		{/if}
-		{#if weatherState.alerts.length > 3}
-			<button type="button" class="show-more-btn" onclick={toggleAlertsCollapse}>
-				{alertsCollapsed ? `Show ${weatherState.alerts.length} alerts` : 'Show less'}
-			</button>
-		{/if}
-	</div>
-{/if}
 
-<!-- Chamber Idle Status -->
-{#if chamberIdle?.active}
-	<div class="idle-card">
-		<div class="idle-header">
-			<span class="idle-icon">🏠</span>
-			<span class="idle-title">Chamber Idle</span>
-			{#if chamberIdle.heater_state === 'on'}
-				<span class="idle-badge heating">🔥 Heating</span>
-			{:else if chamberIdle.cooler_state === 'on'}
-				<span class="idle-badge cooling">❄️ Cooling</span>
-			{:else}
-				<span class="idle-badge idle">🎯 Idle</span>
-			{/if}
-		</div>
-		<div class="idle-temps">
-			{#if chamberIdle.chamber_temp != null}
-				<span class="idle-current">{chamberIdle.chamber_temp.toFixed(1)}°</span>
-			{/if}
-			<span class="idle-arrow">→</span>
-			{#if chamberIdle.target_temp != null}
-				<span class="idle-target">{chamberIdle.target_temp.toFixed(1)}°</span>
-			{/if}
-		</div>
-	</div>
-{/if}
+		{#if loading}
+			<section class="empty rise" style="--i: 1" aria-live="polite">
+				<p class="empty-line"><span class="connecting-dots">Loading batches</span></p>
+			</section>
+		{:else if error}
+			<section class="empty rise" style="--i: 1" role="alert">
+				<p class="empty-title">Could not load batches</p>
+				<p class="empty-line">{error}</p>
+			</section>
+		{:else if batches.length === 0}
+			<section class="empty rise" style="--i: 1" aria-labelledby="empty-h">
+				<h2 id="empty-h" class="empty-title">No batch fermenting</h2>
+				<p class="empty-line">
+					Start one from a recipe, then set its status to Fermenting or Conditioning to track it here.
+				</p>
+				<div class="empty-links">
+					<a class="action" href="/recipes">Choose a recipe</a>
+					<a class="link" href="/batches">Go to batches &rarr;</a>
+				</div>
+			</section>
+		{:else}
+			{#each batches as batch, i (batch.id)}
+				<div class="rise" style="--i: {i + 1}">
+					<BatchInstrument
+						{batch}
+						progress={liveProgressMap.get(batch.id)}
+						expanded={expandedBatchId === batch.id}
+						onToggleExpand={() => toggleExpand(batch.id)}
+						onBatchUpdated={loadBatches}
+					/>
+				</div>
+			{/each}
+		{/if}
 
-{#if loading}
-	<div class="empty-state">
-		<div class="empty-icon">
-			<span class="text-5xl">🍺</span>
-		</div>
-		<h2 class="empty-title">Loading Batches</h2>
-		<p class="empty-description">
-			<span class="connecting-dots">Fetching active fermentations</span>
-		</p>
-	</div>
-{:else if error}
-	<div class="empty-state">
-		<div class="empty-icon">
-			<span class="text-5xl">⚠️</span>
-		</div>
-		<h2 class="empty-title">Error Loading Batches</h2>
-		<p class="empty-description">{error}</p>
-	</div>
-{:else if batches.length === 0}
-	<div class="empty-state">
-		<div class="empty-icon">
-			<span class="text-5xl">🍺</span>
-		</div>
-		<h2 class="empty-title">No Active Fermentations</h2>
-		<p class="empty-description">
-			Start a batch and set status to "Fermenting" or "Conditioning" to track it here
-		</p>
-		<div class="empty-hint">
-			<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
-				/>
-			</svg>
-			<span>Go to Batches → Create a new batch or update an existing batch status</span>
+		<div class="rise" style="--i: {batches.length + 1}">
+			<BatchLog batches={allBatches} />
 		</div>
 	</div>
-{:else}
-	<div class="tilt-grid" class:single-tilt={batches.length === 1}>
-		{#each batches as batch (batch.id)}
-			<FermentationCard
-				{batch}
-				progress={liveProgressMap.get(batch.id)}
-				expanded={expandedBatchId === batch.id}
-				wide={batches.length === 1}
-				onToggleExpand={() => toggleExpand(batch.id)}
-				onBatchUpdated={loadBatches}
-			/>
-		{/each}
+
+	<div class="col-secondary">
+		{#if configState.config.ai_enabled}
+			<div class="rise" style="--i: 2"><AssistantEntry /></div>
+		{/if}
+		<div class="rise" style="--i: 3"><InventoryGlance /></div>
 	</div>
-{/if}
+</div>
 
 <style>
-	.tilt-grid {
+	.workbench {
 		display: grid;
-		grid-template-columns: repeat(1, 1fr);
-		gap: 1.5rem;
+		grid-template-columns: minmax(0, 1.68fr) minmax(300px, 1fr);
+		align-items: stretch;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
-	@media (min-width: 768px) {
-		.tilt-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-	}
-
-	@media (min-width: 1024px) {
-		.tilt-grid {
-			grid-template-columns: repeat(3, 1fr);
-		}
-	}
-
-	@media (min-width: 1280px) {
-		.tilt-grid {
-			grid-template-columns: repeat(4, 1fr);
-		}
-	}
-
-	.tilt-grid.single-tilt {
-		display: flex;
-		justify-content: center;
-	}
-
-	.empty-state {
+	.col-primary {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		padding: 4rem 1.5rem;
-		min-height: 50vh;
+		min-width: 0;
+		border-right: 1px solid var(--rule-hairline);
 	}
-
-	.empty-icon {
-		width: 5rem;
-		height: 5rem;
+	.col-secondary {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 1rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		margin-bottom: 1.5rem;
-		animation: float 3s ease-in-out infinite;
+		flex-direction: column;
+		min-width: 0;
 	}
 
-	@keyframes float {
-		0%,
-		100% {
-			transform: translateY(0);
+	/* One subtle staggered fade on load; content is visible at rest */
+	.rise {
+		animation: rise 420ms var(--ease-out-quart) both;
+		animation-delay: calc(var(--i, 0) * 60ms);
+	}
+	@keyframes rise {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
 		}
-		50% {
-			transform: translateY(-8px);
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rise {
+			animation: none;
+		}
+		.connecting-dots::after {
+			animation: none;
 		}
 	}
 
+	/* Empty instrument: compact, teaches the next action */
+	.empty {
+		padding: var(--space-xl);
+		border-bottom: 1px solid var(--rule-hairline);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
 	.empty-title {
-		font-size: 1.25rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		color: var(--ink-primary);
+	}
+	.empty-line {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		max-width: 60ch;
+	}
+	.empty-links {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-md);
+		margin-top: var(--space-xs);
+	}
+	.action {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+		padding: 0 var(--space-md);
+		background-color: var(--accent);
+		color: var(--accent-ink);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		border-radius: 2px;
+	}
+	.action:hover {
+		background-color: var(--accent-hover);
+	}
+	.link {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.5rem;
+		color: var(--ink-secondary);
+		border-bottom: 1px solid transparent;
+		padding-bottom: 1px;
 	}
-
-	.empty-description {
-		color: var(--text-muted);
-		font-size: 0.875rem;
-		margin-bottom: 1.5rem;
+	.link:hover {
+		color: var(--ink-primary);
+		border-bottom-color: var(--accent);
 	}
-
 	.connecting-dots::after {
 		content: '';
 		animation: dots 1.5s steps(4, end) infinite;
 	}
-
 	@keyframes dots {
 		0%,
 		20% {
@@ -374,196 +326,33 @@
 		}
 	}
 
-	.empty-hint {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		color: var(--text-muted);
-		font-size: 0.75rem;
-		max-width: 24rem;
+	@media (max-width: 1040px) {
+		.workbench {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.col-primary {
+			border-right: none;
+		}
+		.col-secondary {
+			display: grid;
+			grid-template-columns: 1.15fr 1fr;
+			border-top: 1px solid var(--rule-strong);
+		}
+		.col-secondary > .rise:first-child :global(section) {
+			border-right: 1px solid var(--rule-hairline);
+			border-bottom: none;
+		}
 	}
-
-	.empty-hint svg {
-		flex-shrink: 0;
-		color: var(--text-secondary);
-	}
-
-	/* Alerts Banner */
-	.alerts-banner {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-left: 3px solid var(--warning);
-		border-radius: 0.375rem;
-		padding: 1rem 1.25rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.alerts-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 0.75rem;
-	}
-
-	.alerts-title {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.alerts-title svg {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--warning);
-	}
-
-	.alerts-count {
-		background: var(--warning);
-		color: var(--gray-950);
-		font-size: 0.625rem;
-		font-weight: 700;
-		padding: 0.125rem 0.375rem;
-		border-radius: 9999px;
-		margin-left: 0.5rem;
-	}
-
-	.dismiss-btn {
-		padding: 0.25rem;
-		background: transparent;
-		border: none;
-		color: var(--text-muted);
-		cursor: pointer;
-		border-radius: 0.25rem;
-	}
-
-	.dismiss-btn:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.dismiss-btn svg {
-		width: 1rem;
-		height: 1rem;
-	}
-
-	.alerts-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.alert-item {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		padding-left: 0.5rem;
-		border-left: 2px solid var(--gray-700);
-	}
-
-	.alert-item.warning {
-		border-left-color: var(--warning);
-	}
-
-	.alert-item.critical {
-		border-left-color: var(--negative);
-	}
-
-	.alert-day {
-		font-weight: 600;
-		color: var(--text-primary);
-		margin-right: 0.25rem;
-	}
-
-	.show-more-btn {
-		font-size: 0.75rem;
-		color: var(--accent);
-		background: none;
-		border: none;
-		padding: 0.25rem 0.5rem;
-		cursor: pointer;
-		margin-top: 0.25rem;
-	}
-
-	.show-more-btn:hover {
-		text-decoration: underline;
-	}
-
-	/* Chamber Idle Status Card */
-	.idle-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1rem 1.25rem;
-		margin-bottom: 1.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.idle-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.idle-icon {
-		font-size: 1.125rem;
-	}
-
-	.idle-title {
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.idle-badge {
-		font-size: 0.6875rem;
-		font-weight: 600;
-		padding: 0.125rem 0.5rem;
-		border-radius: 9999px;
-	}
-
-	.idle-badge.heating {
-		background: color-mix(in srgb, var(--negative) 15%, transparent);
-		color: var(--negative);
-	}
-
-	.idle-badge.cooling {
-		background: color-mix(in srgb, var(--accent) 15%, transparent);
-		color: var(--accent);
-	}
-
-	.idle-badge.idle {
-		background: var(--bg-elevated);
-		color: var(--text-secondary);
-	}
-
-	.idle-temps {
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.idle-current {
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: var(--text-primary);
-	}
-
-	.idle-arrow {
-		color: var(--text-muted);
-		font-size: 0.875rem;
-	}
-
-	.idle-target {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
+	@media (max-width: 760px) {
+		.empty {
+			padding: var(--space-lg) var(--space-md);
+		}
+		.col-secondary {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.col-secondary > .rise:first-child :global(section) {
+			border-right: none;
+			border-bottom: 1px solid var(--rule-hairline);
+		}
 	}
 </style>

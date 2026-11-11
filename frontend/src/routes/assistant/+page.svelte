@@ -270,6 +270,12 @@
 	}
 
 	onMount(() => {
+		// Prefill from the Home screen's assistant entry (?q=...); user still sends it
+		const q = new URLSearchParams(window.location.search).get('q');
+		if (q) {
+			input = q;
+			setTimeout(() => inputRef && autoResize(inputRef), 0);
+		}
 		inputRef?.focus();
 		fetchThreads();
 		checkMobile();

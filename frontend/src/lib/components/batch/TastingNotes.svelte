@@ -462,7 +462,7 @@
 	.score-btn.selected {
 		background: var(--primary);
 		border-color: var(--primary);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.category-notes {
@@ -513,7 +513,7 @@
 	.save-btn {
 		background: var(--primary);
 		border: none;
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.save-btn:hover {

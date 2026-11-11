@@ -439,7 +439,7 @@
 
 	.add-btn:hover {
 		background: var(--primary);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.add-btn svg {
@@ -1078,6 +1078,7 @@
 		font-weight: 500;
 		color: white;
 		background: var(--primary);
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 0.5rem;
 		cursor: pointer;
@@ -1086,6 +1087,7 @@
 
 	.empty-add-btn:hover {
 		background: var(--primary-hover);
+		color: var(--accent-ink);
 	}
 
 	.empty-add-btn svg {

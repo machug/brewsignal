@@ -4,7 +4,7 @@
 
 /* Clean Instrument design system (frontend/.impeccable.md, tilt_ui-nv1r.1).
    Archivo = display/headings/nav, Atkinson Hyperlegible = body, Chivo Mono = all numbers. */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@90..110,500..700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Chivo+Mono:wght@400;500;600&display=swap');
+/* Fonts load via <link> in app.html (an @import here is dropped by the Tailwind build). */
 
 /* `dark:` utilities follow the app theme (dark unless data-theme="light"),
    not the device's prefers-color-scheme. */
@@ -156,6 +156,21 @@
   --border-subtle: var(--rule-hairline);
   --border-default: var(--rule-strong);
   --accent-muted: var(--accent-tint);
+
+  /* Generic names used by older components (were undefined before) */
+  --primary: var(--accent);
+  --primary-hover: var(--accent-hover);
+  --primary-bg: var(--accent-tint);
+  --amber: var(--accent);
+  --info: var(--temp-trace);
+  --error: var(--status-danger);
+  --border: var(--rule-hairline);
+  --border-hover: var(--rule-strong);
+  --bg-secondary: var(--bg-elevated);
+  --text-tertiary: var(--ink-muted);
+  --positive-bg: var(--positive-muted);
+  --negative-bg: var(--negative-muted);
+  --warning-bg: var(--warning-muted);
 
   /* Recipe accent is the one accent now */
   --recipe-accent: var(--accent);

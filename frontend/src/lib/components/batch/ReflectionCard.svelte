@@ -498,7 +498,7 @@
 
 	.add-reflection-btn:hover {
 		background: var(--primary);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	/* Responsive */

@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deploy script** - `deploy/deploy.sh` runs the Pi deploy in one command: fetch, reset, frontend build when needed, restart, health check.
 
 ### Changed
+- **Assistant chat rebuilt** (tilt_ui-qzk0) - The assistant now runs on Pydantic AI and the Vercel AI SDK instead of a hand-built chat loop.
+  - The server keeps the chat history. The browser sends only the new message, so a client cannot fake a tool result or an approval.
+  - Hop stock changes show one card that goes from Proposed to Applied. An approval only works once, and only for the change the assistant actually proposed.
+  - New chat page in the Clean Instrument style: chat list in a slide-over drawer, one activity row per answer (raw tool data behind a toggle), and a compact composer with Send and Stop.
+  - Existing chats are copied to the new store and still open. The assistant's past-chat search covers new chats too.
+  - A finished hop update is saved even if the reply after it fails or the page is closed. Two tabs cannot run the same chat at once.
 - **Clean Instrument UI redesign** (tilt_ui-nv1r, tilt_ui-bf4p) - New design system and app shell across the whole app. Direction chosen from four mockups.
   - Foundation: new colour and type tokens, brand fonts loaded by link, new top bar and phone "More" menu.
   - Home: new layout. Chart gravity ticks no longer repeat, and the chart hides its stats on Home (tilt_ui-nv1r.2).

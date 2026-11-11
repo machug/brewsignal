@@ -150,7 +150,7 @@ async def get_alert_context(
         select(models.Batch)
         .where(models.Batch.id == batch_id)
         .options(
-            selectinload(models.Batch.recipe).selectinload(models.Recipe.yeast),
+            selectinload(models.Batch.recipe).selectinload(models.Recipe.cultures),
             selectinload(models.Batch.yeast_strain),
         )
     )
@@ -161,14 +161,21 @@ async def get_alert_context(
         return context
 
     # Get yeast temperature range (prefer batch override, then recipe yeast)
-    yeast = batch.yeast_strain or (batch.recipe.yeast if batch.recipe else None)
-    if yeast:
-        context["yeast_temp_min"] = yeast.temp_low
-        context["yeast_temp_max"] = yeast.temp_high
+    if batch.yeast_strain:
+        context["yeast_temp_min"] = batch.yeast_strain.temp_low
+        context["yeast_temp_max"] = batch.yeast_strain.temp_high
+    elif batch.recipe:
+        culture = next(
+            (c for c in batch.recipe.cultures if c.temp_min_c is not None or c.temp_max_c is not None),
+            None,
+        )
+        if culture:
+            context["yeast_temp_min"] = culture.temp_min_c
+            context["yeast_temp_max"] = culture.temp_max_c
 
     # Calculate progress if we have OG and current SG
-    og = batch.og or (batch.recipe.og if batch.recipe else None)
-    fg = batch.fg or (batch.recipe.fg if batch.recipe else None)
+    og = batch.measured_og or (batch.recipe.og if batch.recipe else None)
+    fg = batch.recipe.fg if batch.recipe else None
 
     if og and fg and current_sg:
         expected_drop = og - fg

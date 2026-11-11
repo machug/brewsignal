@@ -240,3 +240,55 @@ async def test_rename_delete_and_legacy_import(client, test_db, chat_env):
     assert (await client.delete("/api/chat/threads/old")).status_code == 204
     assert (await client.get("/api/chat/threads/old")).status_code == 404
     assert await test_db.get(ChatHistory, "old") is None
+
+
+@pytest.mark.asyncio
+async def test_executed_apply_is_persisted_when_run_fails_afterwards(client, test_db, chat_env):
+    await _pending_flow(client, test_db)
+
+    def after_apply_fails(messages, info):
+        last = messages[-1]
+        if isinstance(last, ModelRequest) and any(
+            isinstance(p, ToolReturnPart) and p.tool_name == "apply_hop_inventory" for p in last.parts
+        ):
+            raise RuntimeError("provider down")
+        return _model_fn(messages, info)
+
+    async def stream_fails(messages, info):
+        after_apply_fails(messages, info)
+        async for x in _stream(messages, info):
+            yield x
+
+    chat_env["model"] = FunctionModel(after_apply_fails, stream_function=stream_fails)
+    r = await _send(client, "t1", _approval("call_apply", ITEMS))
+    assert any(e["type"] == "error" for e in _events(r))
+    assert await _stock(test_db) == [("Citra", 100.0)]  # the apply committed
+    thread = (await client.get("/api/chat/threads/t1")).json()
+    states = [p["state"] for m in thread["messages"] for p in m["parts"] if p["type"] == "tool-apply_hop_inventory"]
+    assert states == ["output-available"]  # no longer shown as pending
+    assert (await _send(client, "t1", _approval("call_apply", ITEMS))).status_code == 400  # not replayable
+    assert "t1" not in chat._active
+
+
+@pytest.mark.asyncio
+async def test_second_run_on_same_thread_gets_409(client, chat_env):
+    assert (await _send(client, "busy", _user_msg())).status_code == 200
+    chat._active.add("busy")  # a run is in flight
+    try:
+        assert (await _send(client, "busy", _user_msg(id="u2"))).status_code == 409
+    finally:
+        chat._active.discard("busy")
+    assert (await _send(client, "busy", _user_msg(id="u3"))).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_status_without_api_key_is_disabled_not_500(client, monkeypatch):
+    config = LLMConfig(enabled=True, provider="openrouter", model="m")
+
+    async def cfg(db):
+        return config
+
+    monkeypatch.setattr(chat, "get_llm_config", cfg)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    r = await client.get("/api/chat/status")
+    assert r.status_code == 200 and r.json()["enabled"] is False

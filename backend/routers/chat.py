@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Optional
 
@@ -88,6 +88,9 @@ FAST_TITLE_MODELS = {
 }
 LITE_TITLE_MODEL = "qwen2:1.5b"  # hailo-ollama
 
+# Threads with a run in flight. A second run on the same thread gets 409.
+# ponytail: in-process set, correct for the single-process Pi; use a DB lock if workers > 1
+_active: set[str] = set()
 _background: set[asyncio.Task] = set()  # keep refs so tasks are not garbage collected
 
 
@@ -141,6 +144,8 @@ class ChatDeps:
     db: AsyncSession
     user_id: Optional[str]
     thread_id: str
+    # approval-gated calls that already ran: tool_call_id -> (tool_name, result)
+    executed: dict = field(default_factory=dict)
 
 
 def _bridge(name: str, description: str, schema: dict) -> Tool:
@@ -210,14 +215,17 @@ async def apply_hop_inventory(
     expected_stock_version must be the stock_version from the latest preview.
     """
     try:
-        return await bulk_update_hops(
+        result = await bulk_update_hops(
             ctx.deps.db, ctx.deps.user_id, items, replace=replace, dry_run=False,
             expected_stock_version=expected_stock_version,
         )
     except StaleStockError:
-        return {"error": "Hop inventory changed since the preview. Preview again before saving."}
+        result = {"error": "Hop inventory changed since the preview. Preview again before saving."}
     except ValueError as e:
-        return {"error": str(e)}
+        result = {"error": str(e)}
+    # Remembered so the approval is consumed even if the run dies after this commit
+    ctx.deps.executed[ctx.tool_call_id] = ("apply_hop_inventory", result)
+    return result
 
 
 # =============================================================================
@@ -294,6 +302,20 @@ async def _save(db: AsyncSession, thread: AgUiThread, messages: list[ModelMessag
     row.message_count = len(to_ui_messages(messages))
     row.updated_at = thread.updated_at = datetime.now(timezone.utc)
     await db.commit()
+
+
+async def _save_executed(
+    db: AsyncSession, thread: AgUiThread, history: list[ModelMessage], executed: dict
+) -> None:
+    """Store the results of approval-gated calls that ran in a run that did not finish."""
+    await db.rollback()  # the run may have died mid-transaction; the tool's own commit is already durable
+    open_ids = {c.tool_call_id for c in pending_tool_calls(history)}
+    parts = [
+        ToolReturnPart(tool_name=name, tool_call_id=cid, content=result)
+        for cid, (name, result) in executed.items() if cid in open_ids
+    ]
+    if parts:
+        await _save(db, thread, [*history, ModelRequest(parts=parts)])
 
 
 async def _instructions(db: AsyncSession, config: LLMConfig, user: AuthUser, query: str, context: Optional[dict]) -> str:
@@ -430,54 +452,78 @@ async def run_chat(
 
     user_text = _text_of(message) if message.get("role") == "user" else ""
     thread = await _get_or_create_thread(db, thread_id, user, user_text)  # 404 before any dispatch
-    history = await _load(db, thread_id)
+    if thread_id in _active:
+        raise HTTPException(status_code=409, detail="This chat already has a run in progress")
+    _active.add(thread_id)  # released when the stream ends (or below on a rejected request)
+    try:
+        history = await _load(db, thread_id)
 
-    pending = {c.tool_call_id: c for c in pending_tool_calls(history)}
-    if approvals:
-        # Only a call the server stored and has not yet answered can be approved
-        if not set(approvals.approvals) <= set(pending):
-            raise HTTPException(status_code=400, detail="Approval does not match a pending request")
-    elif pending:
-        # The user moved on instead of answering: close the open calls as denied
-        history = [*history, ModelRequest(parts=[
-            ToolReturnPart(tool_name=c.tool_name, tool_call_id=c.tool_call_id, content=DENIED_TEXT, outcome="denied")
-            for c in pending.values()
-        ])]
+        pending = {c.tool_call_id: c for c in pending_tool_calls(history)}
+        if approvals:
+            # Only a call the server stored and has not yet answered can be approved
+            if not set(approvals.approvals) <= set(pending):
+                raise HTTPException(status_code=400, detail="Approval does not match a pending request")
+        elif pending:
+            # The user moved on instead of answering: close the open calls as denied
+            history = [*history, ModelRequest(parts=[
+                ToolReturnPart(tool_name=c.tool_name, tool_call_id=c.tool_call_id, content=DENIED_TEXT, outcome="denied")
+                for c in pending.values()
+            ])]
 
-    deps = ChatDeps(db=db, user_id=user.user_id, thread_id=thread_id)
-    first_exchange = not history
-    instructions = await _instructions(db, config, user, user_text, body.get("context"))
-    shown_model = config.model or DEFAULT_MODELS[LLMProvider(config._provider_str())]
+        deps = ChatDeps(db=db, user_id=user.user_id, thread_id=thread_id)
+        first_exchange = not history
+        instructions = await _instructions(db, config, user, user_text, body.get("context"))
+        shown_model = config.model or DEFAULT_MODELS[LLMProvider(config._provider_str())]
 
-    async def on_complete(result) -> AsyncIterator[BaseChunk]:
-        messages = result.all_messages()
-        await _save(db, thread, messages)
-        if user.user_id:
-            _spawn(_extract_memories_background(_conversation(messages), user.user_id, config))
-        if first_exchange:
-            _spawn(summarize_title(thread_id))
-        yield MessageMetadataChunk(message_metadata={"model": result.response.model_name or shown_model})
+        completed = False
 
-    return adapter.streaming_response(adapter.run_stream(
-        message_history=history,
-        deps=deps,
-        model=model,
-        model_settings=model_settings(config),
-        usage_limits=UsageLimits(request_limit=MAX_MODEL_REQUESTS),
-        instructions=instructions,
-        on_complete=on_complete,
-    ))
+        async def on_complete(result) -> AsyncIterator[BaseChunk]:
+            nonlocal completed
+            messages = result.all_messages()
+            await _save(db, thread, messages)
+            if user.user_id:
+                _spawn(_extract_memories_background(_conversation(messages), user.user_id, config))
+            if first_exchange:
+                _spawn(summarize_title(thread_id))
+            completed = True
+            yield MessageMetadataChunk(message_metadata={"model": result.response.model_name or shown_model})
+
+        async def guarded() -> AsyncIterator[BaseChunk]:
+            stream = adapter.run_stream(
+                message_history=history,
+                deps=deps,
+                model=model,
+                model_settings=model_settings(config),
+                usage_limits=UsageLimits(request_limit=MAX_MODEL_REQUESTS),
+                instructions=instructions,
+                on_complete=on_complete,
+            )
+            try:
+                async for chunk in stream:
+                    yield chunk
+            finally:
+                try:
+                    if not completed and deps.executed:
+                        # Run failed or was cancelled after a tool committed: store its
+                        # result so the call is no longer pending and the UI shows the outcome.
+                        await _save_executed(db, thread, history, deps.executed)
+                except Exception:
+                    logger.exception("Could not persist executed tool results")
+                finally:
+                    _active.discard(thread_id)
+
+        return adapter.streaming_response(guarded())
+    except BaseException:
+        _active.discard(thread_id)
+        raise
 
 
 @router.get("/status")
 async def get_status(db: AsyncSession = Depends(get_db)) -> dict:
     config = await get_llm_config(db)
     provider = config._provider_str()
-    try:
-        build_model(config)
-        supported = True
-    except UnsupportedProvider:
-        supported = False
+    # No client is built here: that needs credentials and would raise without them
+    supported = provider in ("openrouter", "local", "hailo", *OPENAI_COMPATIBLE_URLS)
     return {
         "enabled": config.is_configured() and supported,
         "provider": provider,

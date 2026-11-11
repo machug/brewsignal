@@ -55,7 +55,10 @@
 	</div>
 
 	{#if localItems.length === 0}
-		<p class="empty-state">No miscellaneous ingredients defined. Click "Add Item" to add one.</p>
+		<div class="empty-state">
+			<p>No miscellaneous ingredients defined. Add one to get started.</p>
+			<button type="button" class="btn-add" onclick={addItem}>+ Add Item</button>
+		</div>
 	{:else}
 		<div class="items-list">
 			{#each localItems as item, i}
@@ -115,14 +118,13 @@
 						</select>
 					</div>
 					<div class="time-group">
-						<input
+						<span class="field-unit"><input
 							type="number"
 							class="input-time" aria-label="Time in minutes"
 							value={item.time_min ?? ''}
 							placeholder="0"
 							onchange={(e) => updateItem(i, 'time_min', parseFloat(e.currentTarget.value) || 0)}
-						/>
-						<span class="unit">min</span>
+						/><span class="unit" aria-hidden="true">min</span></span>
 					</div>
 					<button type="button" class="btn-remove" aria-label="Remove" onclick={() => removeItem(i)}>×</button>
 				</div>
@@ -188,10 +190,20 @@
 	}
 
 	.empty-state {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	.empty-state p {
+		flex: 1 1 14rem;
+		margin: 0;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 	}
@@ -228,10 +240,26 @@
 		border-color: var(--accent);
 	}
 
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
+	}
+
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
-		white-space: nowrap;
+		pointer-events: none;
 	}
 
 	.btn-remove {
@@ -313,5 +341,9 @@
 		.item-row .btn-remove {
 			margin-left: auto;
 		}
+	}
+
+	.time-group .field-unit {
+		width: 104px;
 	}
 </style>

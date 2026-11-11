@@ -69,7 +69,10 @@
 	</div>
 
 	{#if localProfiles.length === 0}
-		<p class="empty-state">No water profiles defined. Click "Add Profile" to add one.</p>
+		<div class="empty-state">
+			<p>No water profiles defined. Add one to get started.</p>
+			<button type="button" class="btn-add" onclick={addProfile}>+ Add Profile</button>
+		</div>
 	{:else}
 		<div class="profiles-list">
 			{#each localProfiles as profile, i}
@@ -98,63 +101,57 @@
 					<div class="ion-grid">
 						<div class="ion-field">
 							<label>Ca</label>
-							<input aria-label="Ca"
+							<span class="field-unit"><input aria-label="Ca"
 								type="number"
 								value={profile.calcium_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'calcium_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 						<div class="ion-field">
 							<label>Mg</label>
-							<input aria-label="Mg"
+							<span class="field-unit"><input aria-label="Mg"
 								type="number"
 								value={profile.magnesium_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'magnesium_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 						<div class="ion-field">
 							<label>Na</label>
-							<input aria-label="Na"
+							<span class="field-unit"><input aria-label="Na"
 								type="number"
 								value={profile.sodium_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'sodium_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 						<div class="ion-field">
 							<label>Cl</label>
-							<input aria-label="Cl"
+							<span class="field-unit"><input aria-label="Cl"
 								type="number"
 								value={profile.chloride_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'chloride_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 						<div class="ion-field">
 							<label>SO4</label>
-							<input aria-label="SO4"
+							<span class="field-unit"><input aria-label="SO4"
 								type="number"
 								value={profile.sulfate_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'sulfate_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 						<div class="ion-field">
 							<label>HCO3</label>
-							<input aria-label="HCO3"
+							<span class="field-unit"><input aria-label="HCO3"
 								type="number"
 								value={profile.bicarbonate_ppm ?? ''}
 								placeholder="0"
 								onchange={(e) => updateProfile(i, 'bicarbonate_ppm', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">ppm</span>
+							/><span class="unit" aria-hidden="true">ppm</span></span>
 						</div>
 					</div>
 
@@ -233,10 +230,20 @@
 	}
 
 	.empty-state {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	.empty-state p {
+		flex: 1 1 14rem;
+		margin: 0;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 	}
@@ -281,10 +288,26 @@
 		letter-spacing: 0.08em;
 	}
 
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
+	}
+
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
-		white-space: nowrap;
+		pointer-events: none;
 	}
 
 	.btn-remove {
@@ -379,4 +402,9 @@
 	.input-name {
 		flex: 1 1 160px;
 	}
+
+	.ion-field .field-unit {
+		grid-column: 1 / -1;
+	}
+
 </style>

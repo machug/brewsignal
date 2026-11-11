@@ -50,7 +50,10 @@
 	</div>
 
 	{#if localSteps.length === 0}
-		<p class="empty-state">No fermentation steps defined. Click "Add Step" to add one.</p>
+		<div class="empty-state">
+			<p>No fermentation steps defined. Add one to get started.</p>
+			<button type="button" class="btn-add" onclick={addStep}>+ Add Step</button>
+		</div>
 	{:else}
 		<div class="steps-list">
 			{#each localSteps as step, i}
@@ -67,24 +70,22 @@
 						<option value="conditioning">Conditioning</option>
 						<option value="lagering">Lagering</option>
 					</select>
-					<input
+					<span class="field-unit"><input
 						type="number"
 						class="input-temp"
 						aria-label="Temperature in °C"
 						value={step.temp_c}
 						placeholder="Temp"
 						onchange={(e) => updateStep(i, 'temp_c', parseFloat(e.currentTarget.value) || 0)}
-					/>
-					<span class="unit">°C</span>
-					<input
+					/><span class="unit" aria-hidden="true">°C</span></span>
+					<span class="field-unit"><input
 						type="number"
 						class="input-days"
 						aria-label="Duration in days"
 						value={step.time_days}
 						placeholder="Days"
 						onchange={(e) => updateStep(i, 'time_days', parseInt(e.currentTarget.value) || 0)}
-					/>
-					<span class="unit">days</span>
+					/><span class="unit" aria-hidden="true">days</span></span>
 					<button type="button" class="btn-remove" aria-label="Remove" onclick={() => removeStep(i)}>×</button>
 				</div>
 			{/each}
@@ -149,10 +150,20 @@
 	}
 
 	.empty-state {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	.empty-state p {
+		flex: 1 1 14rem;
+		margin: 0;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 	}
@@ -189,10 +200,26 @@
 		border-color: var(--accent);
 	}
 
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
+	}
+
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
-		white-space: nowrap;
+		pointer-events: none;
 	}
 
 	.btn-remove {
@@ -257,5 +284,10 @@
 		.step-row .btn-remove {
 			margin-left: auto;
 		}
+	}
+
+	.step-row .field-unit {
+		width: 104px;
+		flex: none;
 	}
 </style>

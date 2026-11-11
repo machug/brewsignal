@@ -101,10 +101,11 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { fetchYeastStrains, getStyle, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
 	import RecipeReviewModal from './RecipeReviewModal.svelte';
 	import RecipeStatsPanel from './RecipeStatsPanel.svelte';
+	import { computeStyleWarnings } from '$lib/brewing/styleWarnings';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
 	import YeastSelector from '$lib/components/batch/YeastSelector.svelte';
@@ -122,9 +123,11 @@
 		initialData?: RecipeResponse;
 		onSave?: (recipe: RecipeData) => void;
 		onCancel?: () => void;
+		/** Extra editors rendered at the end of the primary column (edit page accordions) */
+		children?: Snippet;
 	}
 
-	let { initialData, onSave, onCancel }: Props = $props();
+	let { initialData, onSave, onCancel, children }: Props = $props();
 
 	// Expose methods and state for parent to render actions
 	export function save() {
@@ -426,89 +429,7 @@
 	});
 
 	// Style warnings (proactive validation against BJCP guidelines)
-	interface StyleWarning {
-		stat: string;
-		value: string;
-		range: string;
-		severity: 'warning' | 'error';
-	}
-
-	let styleWarnings = $derived(() => {
-		if (!selectedStyle) return [];
-
-		const stats = recipeStats();
-		const warnings: StyleWarning[] = [];
-		const style = selectedStyle;
-
-		// Check OG
-		if (style.og_min !== undefined && style.og_max !== undefined) {
-			if (stats.og < style.og_min) {
-				warnings.push({
-					stat: 'OG',
-					value: stats.og.toFixed(3),
-					range: `${style.og_min.toFixed(3)} - ${style.og_max.toFixed(3)}`,
-					severity: 'warning'
-				});
-			} else if (stats.og > style.og_max) {
-				warnings.push({
-					stat: 'OG',
-					value: stats.og.toFixed(3),
-					range: `${style.og_min.toFixed(3)} - ${style.og_max.toFixed(3)}`,
-					severity: 'warning'
-				});
-			}
-		}
-
-		// Check FG
-		if (style.fg_min !== undefined && style.fg_max !== undefined) {
-			if (stats.fg < style.fg_min || stats.fg > style.fg_max) {
-				warnings.push({
-					stat: 'FG',
-					value: stats.fg.toFixed(3),
-					range: `${style.fg_min.toFixed(3)} - ${style.fg_max.toFixed(3)}`,
-					severity: 'warning'
-				});
-			}
-		}
-
-		// Check ABV
-		if (style.abv_min !== undefined && style.abv_max !== undefined) {
-			if (stats.abv < style.abv_min || stats.abv > style.abv_max) {
-				warnings.push({
-					stat: 'ABV',
-					value: `${stats.abv.toFixed(1)}%`,
-					range: `${style.abv_min.toFixed(1)}% - ${style.abv_max.toFixed(1)}%`,
-					severity: 'warning'
-				});
-			}
-		}
-
-		// Check IBU
-		if (style.ibu_min !== undefined && style.ibu_max !== undefined) {
-			if (stats.ibu < style.ibu_min || stats.ibu > style.ibu_max) {
-				warnings.push({
-					stat: 'IBU',
-					value: stats.ibu.toFixed(0),
-					range: `${style.ibu_min} - ${style.ibu_max}`,
-					severity: 'warning'
-				});
-			}
-		}
-
-		// Check Color (SRM)
-		if (style.srm_min !== undefined && style.srm_max !== undefined) {
-			if (stats.srm < style.srm_min || stats.srm > style.srm_max) {
-				warnings.push({
-					stat: 'Color',
-					value: `${stats.srm.toFixed(0)} SRM`,
-					range: `${style.srm_min} - ${style.srm_max} SRM`,
-					severity: 'warning'
-				});
-			}
-		}
-
-		return warnings;
-	});
+	let styleWarnings = $derived(() => computeStyleWarnings(selectedStyle, recipeStats()));
 
 	// Style search with debounce
 	async function handleStyleSearch(query: string) {
@@ -896,7 +817,8 @@
 
 				{#if !selectedYeast}
 					<div class="empty-state yeast-empty">
-						<p>No yeast selected yet.</p>
+						<p>No yeast selected. Choose a strain to set attenuation and temperature range.</p>
+						<button type="button" class="add-btn" onclick={() => (showYeastModal = true)}>+ Add Yeast</button>
 					</div>
 				{:else}
 					<div class="yeast-item">
@@ -937,6 +859,8 @@
 					class="notes-input"
 				></textarea>
 			</section>
+
+			{@render children?.()}
 		</div>
 
 		<!-- Live readings: always visible; top of page on phone, sticky rail on desk -->
@@ -951,7 +875,7 @@
 						ibu={stats.ibu}
 						colorSrm={stats.srm}
 						{batchSizeLiters}
-						styleName={selectedStyle?.name}
+						styleName={selectedStyle?.name ?? 'No style selected'}
 						styleCategory={selectedStyle?.category_number ? `${selectedStyle.category_number}${selectedStyle.style_letter ?? ''}` : undefined}
 					/>
 
@@ -1105,11 +1029,12 @@
 
 		.rail {
 			order: 0;
+			align-self: stretch;
 		}
 
 		.rail-sticky {
 			position: sticky;
-			top: var(--space-lg);
+			top: calc(56px + 16px);
 		}
 	}
 
@@ -1155,10 +1080,18 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: var(--space-2xs) var(--space-xs);
-		padding: var(--space-xs) 0;
-		border-bottom: 1px solid var(--rule-hairline);
+		margin-bottom: var(--space-xs);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid var(--status-warn);
+		border-radius: 4px;
+		background: color-mix(in oklch, var(--status-warn) 8%, transparent);
 		font-size: var(--text-sm);
 		color: var(--ink-secondary);
+	}
+
+	.warning-row.error {
+		border-color: var(--status-danger);
+		background: color-mix(in oklch, var(--status-danger) 8%, transparent);
 	}
 
 	.warning-row .badge-icon {
@@ -1265,26 +1198,27 @@
 	}
 
 	.input-with-unit {
-		display: flex;
-		align-items: center;
-		gap: var(--space-xs);
+		position: relative;
+		display: block;
 	}
 
 	.input-with-unit .form-input {
 		min-width: 0;
+		padding-right: 2.25rem;
 		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
 		text-align: right;
 	}
 
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
-		min-width: 2ch;
-	}
-
-	.unit.pct {
-		min-width: 2ch;
+		pointer-events: none;
 	}
 
 	.notes-input {
@@ -1469,12 +1403,19 @@
 	}
 
 	.yeast-empty {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.yeast-empty p {
+		flex: 1 1 14rem;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 		margin: 0;
@@ -1634,15 +1575,5 @@
 			gap: var(--space-sm);
 		}
 
-		.input-with-unit {
-			flex-direction: column;
-			align-items: stretch;
-			gap: 2px;
-		}
-
-		.input-with-unit .unit {
-			text-align: right;
-			font-size: var(--text-xs);
-		}
 	}
 </style>

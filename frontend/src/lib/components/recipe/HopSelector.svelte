@@ -356,10 +356,21 @@
 
 	{#if hops.length === 0}
 		<div class="empty-state">
-			<p>No hops added yet.</p>
+			<p>No hops added. Add a hop to build the schedule and calculate IBU.</p>
+			<button type="button" class="add-btn" onclick={() => (showBrowser = true)}>+ Add Hop</button>
 		</div>
 	{:else}
 		<div class="hops-list">
+			<div class="hop-head" aria-hidden="true">
+				<span>Hop</span>
+				<span>Type</span>
+				<span>Amount</span>
+				<span>AA%</span>
+				<span>Time</span>
+				<span>Use</span>
+				<span>Form</span>
+				<span></span>
+			</div>
 			{#each Object.entries(groupedHops()) as [use, hopGroup]}
 				<div class="use-group">
 					<h4 class="use-name">{formatUse(use as HopUse)}</h4>
@@ -367,177 +378,144 @@
 						{@const hopIndex = hops.indexOf(hop)}
 						{@const hopIBU = getHopIBU(hop)}
 						<div class="hop-item">
-							<div class="hop-main">
-								<div class="hop-info">
-									<span class="hop-name">{hop.name}</span>
-									{#if hop.origin}
-										<span class="hop-origin">{hop.origin}</span>
-									{/if}
-								</div>
-								<div class="hop-ibu">
+							<div class="cell c-name">
+								<span class="hop-name">{hop.name}</span>
+								<span class="hop-sub">
+									{#if hop.origin}<span class="hop-origin">{hop.origin}</span>{/if}
 									{#if hopIBU > 0}
 										<span class="ibu-value">+{hopIBU.toFixed(0)}&thinsp;IBU</span>
 									{:else}
 										<span class="ibu-zero">0&thinsp;IBU</span>
 									{/if}
-								</div>
-							</div>
-							<div class="hop-controls">
-								<div class="control-row">
-									<div class="control-group mode-control-group">
-										<label id="hop-mode-label-{hopIndex}">Type</label>
-										<div
-											class="mode-toggle mode-toggle-row"
-											role="radiogroup"
-											aria-labelledby="hop-mode-label-{hopIndex}"
-										>
-											<button
-												type="button"
-												class="mode-btn"
-												class:active={!hop.is_extract}
-												role="radio"
-												aria-checked={!hop.is_extract}
-												onclick={() => toggleHopMode(hopIndex, false)}
-											>
-												Hop
-											</button>
-											<button
-												type="button"
-												class="mode-btn"
-												class:active={Boolean(hop.is_extract)}
-												role="radio"
-												aria-checked={Boolean(hop.is_extract)}
-												onclick={() => toggleHopMode(hopIndex, true)}
-											>
-												Extract
-											</button>
-										</div>
-									</div>
-
 									{#if hop.is_extract}
-										<div class="control-group">
-											<label for="hop-ml-{hopIndex}">Amount</label>
-											<div class="input-with-unit">
-												<input
-													id="hop-ml-{hopIndex}"
-													type="number"
-													step="0.1"
-													min="0.1"
-													value={hop.amount_ml ?? 1}
-													onchange={(e) =>
-														updateHop(
-															hopIndex,
-															'amount_ml',
-															parseFloat(e.currentTarget.value) || 0,
-														)}
-												/>
-												<span class="unit">mL</span>
-											</div>
-											<small class="ml-helper">1 mL ≈ 28 g pellet equivalent</small>
-										</div>
-									{:else}
-										<div class="control-group">
-											<label for="hop-amount-{hopIndex}">Amount</label>
-											<div class="input-with-unit">
-												<input
-													id="hop-amount-{hopIndex}"
-													type="number"
-													step="5"
-													min="0"
-													value={hop.amount_grams}
-													onchange={(e) =>
-														updateHop(hopIndex, 'amount_grams', parseFloat(e.currentTarget.value) || 0)}
-												/>
-												<span class="unit">g</span>
-											</div>
-										</div>
-
-										<div class="control-group">
-											<label for="hop-aa-{hopIndex}">AA%</label>
-											<input
-												id="hop-aa-{hopIndex}"
-												type="number"
-												step="0.1"
-												min="0"
-												max="25"
-												class="aa-input"
-												value={hop.alpha_acid_percent}
-												onchange={(e) =>
-													updateHop(
-														hopIndex,
-														'alpha_acid_percent',
-														parseFloat(e.currentTarget.value) || 0
-													)}
-											/>
-										</div>
-
-										{#if hop.use === 'boil' || hop.use === 'whirlpool'}
-											<div class="control-group">
-												<label for="hop-time-{hopIndex}"
-													>{hop.use === 'whirlpool' ? 'Stand' : 'Time'}</label
-												>
-												<div class="input-with-unit">
-													<input
-														id="hop-time-{hopIndex}"
-														type="number"
-														step="5"
-														min="0"
-														max={hop.use === 'whirlpool' ? 60 : 90}
-														value={hop.boil_time_minutes}
-														onchange={(e) =>
-															updateHop(
-																hopIndex,
-																'boil_time_minutes',
-																parseInt(e.currentTarget.value) || 0
-															)}
-													/>
-													<span class="unit">min</span>
-												</div>
-											</div>
-										{/if}
+										<span class="ml-helper">1&thinsp;mL ≈ 28&thinsp;g pellet</span>
 									{/if}
-
-									<div class="control-group">
-										<label for="hop-use-{hopIndex}">Use</label>
-										<select
-											id="hop-use-{hopIndex}"
-											value={hop.use}
-											onchange={(e) =>
-												updateHop(hopIndex, 'use', e.currentTarget.value as HopUse)}
-										>
-											{#if hop.is_extract}
-												{#each EXTRACT_USE_OPTIONS as opt (opt.value)}
-													<option value={opt.value}>{opt.label}</option>
-												{/each}
-											{:else}
-												{#each HOT_USE_OPTIONS as opt (opt.value)}
-													<option value={opt.value}>{opt.label}</option>
-												{/each}
-											{/if}
-										</select>
-									</div>
-
-									{#if !hop.is_extract}
-										<div class="control-group">
-											<label for="hop-form-{hopIndex}">Form</label>
-											<select
-												id="hop-form-{hopIndex}"
-												value={hop.form}
-												onchange={(e) =>
-													updateHop(hopIndex, 'form', e.currentTarget.value as HopForm)}
-											>
-												<option value="pellet">Pellet</option>
-												<option value="whole">Whole</option>
-												<option value="plug">Plug</option>
-											</select>
-										</div>
-									{/if}
-								</div>
-
-								<button type="button" class="remove-btn" aria-label="Remove {hop.name}" onclick={() => removeHop(hopIndex)}>
-									×
-								</button>
+								</span>
 							</div>
+
+							<div class="cell c-type">
+								<label class="cell-label" for="hop-mode-{hopIndex}">Type</label>
+								<select
+									id="hop-mode-{hopIndex}"
+									value={hop.is_extract ? 'extract' : 'hop'}
+									onchange={(e) => toggleHopMode(hopIndex, e.currentTarget.value === 'extract')}
+								>
+									<option value="hop">Hop</option>
+									<option value="extract">Extract</option>
+								</select>
+							</div>
+
+							{#if hop.is_extract}
+								<div class="cell c-amount">
+									<label class="cell-label" for="hop-ml-{hopIndex}">Amount</label>
+									<span class="field-unit">
+										<input
+											id="hop-ml-{hopIndex}"
+											type="number"
+											step="0.1"
+											min="0.1"
+											value={hop.amount_ml ?? 1}
+											onchange={(e) =>
+												updateHop(hopIndex, 'amount_ml', parseFloat(e.currentTarget.value) || 0)}
+										/>
+										<span class="unit" aria-hidden="true">mL</span>
+									</span>
+								</div>
+								<div class="cell c-aa cell-empty"></div>
+								<div class="cell c-time cell-empty"></div>
+							{:else}
+								<div class="cell c-amount">
+									<label class="cell-label" for="hop-amount-{hopIndex}">Amount</label>
+									<span class="field-unit">
+										<input
+											id="hop-amount-{hopIndex}"
+											type="number"
+											step="5"
+											min="0"
+											value={hop.amount_grams}
+											onchange={(e) =>
+												updateHop(hopIndex, 'amount_grams', parseFloat(e.currentTarget.value) || 0)}
+										/>
+										<span class="unit" aria-hidden="true">g</span>
+									</span>
+								</div>
+								<div class="cell c-aa">
+									<label class="cell-label" for="hop-aa-{hopIndex}">AA%</label>
+									<span class="field-unit">
+										<input
+											id="hop-aa-{hopIndex}"
+											type="number"
+											step="0.1"
+											min="0"
+											max="25"
+											value={hop.alpha_acid_percent}
+											onchange={(e) =>
+												updateHop(hopIndex, 'alpha_acid_percent', parseFloat(e.currentTarget.value) || 0)}
+										/>
+										<span class="unit" aria-hidden="true">%</span>
+									</span>
+								</div>
+								{#if hop.use === 'boil' || hop.use === 'whirlpool'}
+									<div class="cell c-time">
+										<label class="cell-label" for="hop-time-{hopIndex}">{hop.use === 'whirlpool' ? 'Stand' : 'Time'}</label>
+										<span class="field-unit">
+											<input
+												id="hop-time-{hopIndex}"
+												type="number"
+												step="5"
+												min="0"
+												max={hop.use === 'whirlpool' ? 60 : 90}
+												value={hop.boil_time_minutes}
+												onchange={(e) =>
+													updateHop(hopIndex, 'boil_time_minutes', parseInt(e.currentTarget.value) || 0)}
+											/>
+											<span class="unit" aria-hidden="true">min</span>
+										</span>
+									</div>
+								{:else}
+									<div class="cell c-time cell-empty"></div>
+								{/if}
+							{/if}
+
+							<div class="cell c-use">
+								<label class="cell-label" for="hop-use-{hopIndex}">Use</label>
+								<select
+									id="hop-use-{hopIndex}"
+									value={hop.use}
+									onchange={(e) => updateHop(hopIndex, 'use', e.currentTarget.value as HopUse)}
+								>
+									{#if hop.is_extract}
+										{#each EXTRACT_USE_OPTIONS as opt (opt.value)}
+											<option value={opt.value}>{opt.label}</option>
+										{/each}
+									{:else}
+										{#each HOT_USE_OPTIONS as opt (opt.value)}
+											<option value={opt.value}>{opt.label}</option>
+										{/each}
+									{/if}
+								</select>
+							</div>
+
+							{#if !hop.is_extract}
+								<div class="cell c-form">
+									<label class="cell-label" for="hop-form-{hopIndex}">Form</label>
+									<select
+										id="hop-form-{hopIndex}"
+										value={hop.form}
+										onchange={(e) => updateHop(hopIndex, 'form', e.currentTarget.value as HopForm)}
+									>
+										<option value="pellet">Pellet</option>
+										<option value="whole">Whole</option>
+										<option value="plug">Plug</option>
+									</select>
+								</div>
+							{:else}
+								<div class="cell c-form cell-empty"></div>
+							{/if}
+
+							<button type="button" class="remove-btn c-remove" aria-label="Remove {hop.name}" onclick={() => removeHop(hopIndex)}>
+								×
+							</button>
 						</div>
 					{/each}
 				</div>
@@ -717,21 +695,27 @@
 	}
 
 	.empty-state {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.empty-state p {
+		flex: 1 1 14rem;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 		margin: 0;
 	}
 
 	/* Fields: 44px, 1px strong rule, visible accent focus ring */
-	.input-with-unit input,
-	.aa-input,
-	.control-group select,
+	.cell input,
+	.cell select,
 	.search-input,
 	.filter-select {
 		min-height: 44px;
@@ -748,13 +732,12 @@
 
 	.search-input,
 	.filter-select,
-	.control-group select {
+	.cell select {
 		font-family: var(--font-body);
 	}
 
-	.input-with-unit input:focus-visible,
-	.aa-input:focus-visible,
-	.control-group select:focus-visible,
+	.cell input:focus-visible,
+	.cell select:focus-visible,
 	.search-input:focus-visible,
 	.filter-select:focus-visible {
 		outline: 2px solid var(--accent);
@@ -762,15 +745,26 @@
 		border-color: var(--accent);
 	}
 
-	.input-with-unit {
-		display: flex;
-		align-items: center;
-		gap: var(--space-xs);
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
 	}
 
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
+		pointer-events: none;
 	}
 
 	.remove-btn {
@@ -991,11 +985,9 @@
 		margin: 0;
 	}
 
-	/* Hop / Extract segmented toggle */
+	/* Hop / Extract segmented toggle (add mode) */
 	.mode-toggle {
 		display: inline-flex;
-		gap: 1px;
-		background: var(--rule-strong);
 		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 		overflow: hidden;
@@ -1004,8 +996,8 @@
 	.mode-btn {
 		min-height: 44px;
 		padding: var(--space-xs) var(--space-md);
-		background: var(--bg-surface);
-		border: none;
+		background: transparent;
+		border: 1px solid transparent;
 		color: var(--ink-secondary);
 		font-family: var(--font-display);
 		font-size: var(--text-sm);
@@ -1019,8 +1011,9 @@
 	}
 
 	.mode-btn.active {
-		background: var(--ink-primary);
-		color: var(--bg-canvas);
+		background: var(--bg-elevated);
+		color: var(--ink-primary);
+		border-color: var(--rule-strong);
 	}
 
 	.mode-btn:focus-visible {
@@ -1062,82 +1055,17 @@
 		border-bottom: 1px solid var(--rule-strong);
 	}
 
+	/* Shared column template: header row and every hop row line up on desk */
+	.hop-head,
 	.hop-item {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: minmax(0, 2fr) 90px 88px 72px 80px 110px 100px 44px;
 		gap: var(--space-xs);
-		padding: var(--space-sm) 0;
-		border-bottom: 1px solid var(--rule-hairline);
+		align-items: center;
 	}
 
-	.hop-main {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		gap: var(--space-sm);
-	}
-
-	.hop-info {
-		display: flex;
-		align-items: baseline;
-		flex-wrap: wrap;
-		gap: var(--space-xs);
-		min-width: 0;
-	}
-
-	.hop-name {
-		font-size: var(--text-sm);
-		font-weight: 600;
-		color: var(--ink-primary);
-	}
-
-	.hop-origin {
-		font-size: var(--text-xs);
-		color: var(--ink-muted);
-	}
-
-	.hop-ibu {
-		text-align: right;
-		white-space: nowrap;
-	}
-
-	.ibu-value,
-	.ibu-zero {
-		font-family: var(--font-num);
-		font-variant-numeric: tabular-nums;
-		font-size: var(--text-sm);
-	}
-
-	.ibu-value {
-		font-weight: 600;
-		color: var(--ink-primary);
-	}
-
-	.ibu-zero {
-		color: var(--ink-muted);
-	}
-
-	.hop-controls {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		gap: var(--space-sm);
-	}
-
-	.control-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-sm);
-		min-width: 0;
-	}
-
-	.control-group {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2xs);
-	}
-
-	.control-group label {
+	.hop-head {
+		padding: var(--space-xs) 0;
 		font-size: var(--text-xs);
 		font-weight: 600;
 		color: var(--ink-muted);
@@ -1145,18 +1073,71 @@
 		letter-spacing: 0.08em;
 	}
 
-	.input-with-unit input {
-		width: 80px;
-		text-align: right;
+	.hop-item {
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
-	.aa-input {
-		width: 72px;
-		text-align: right;
+	.cell {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
 	}
 
-	.control-group select {
-		min-width: 110px;
+	.cell-empty {
+		visibility: hidden;
+	}
+
+	/* Labels stay accessible; shown only on phone */
+	.cell-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.c-name {
+		gap: 2px;
+	}
+
+	.hop-name {
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		overflow-wrap: anywhere;
+	}
+
+	.hop-sub {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0 var(--space-xs);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.ibu-value,
+	.ibu-zero {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.ibu-value {
+		color: var(--ink-primary);
+	}
+
+	.cell input,
+	.cell select {
+		width: 100%;
+	}
+
+	.c-aa .field-unit input {
+		padding-right: 1.5rem;
+	}
+
+	.cell input[type='number'] {
+		text-align: right;
 	}
 
 	.library-item {
@@ -1194,9 +1175,52 @@
 		color: var(--ink-muted);
 	}
 
+	/* Phone: name + remove on top, Amount/AA%/Time then Type/Use/Form */
 	@media (max-width: 760px) {
-		.hop-controls {
-			align-items: flex-start;
+		.hop-head {
+			display: none;
+		}
+
+		.hop-item {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: var(--space-xs);
+			padding: var(--space-sm) 0;
+		}
+
+		.c-name {
+			grid-column: 1 / 3;
+			grid-row: 1;
+		}
+
+		.c-remove {
+			grid-column: 3;
+			grid-row: 1;
+			justify-self: end;
+		}
+
+		.c-amount { grid-column: 1; grid-row: 2; }
+		.c-aa { grid-column: 2; grid-row: 2; }
+		.c-time { grid-column: 3; grid-row: 2; }
+		.c-type { grid-column: 1; grid-row: 3; }
+		.c-use { grid-column: 2; grid-row: 3; }
+		.c-form { grid-column: 3; grid-row: 3; }
+
+		.cell-label {
+			position: static;
+			width: auto;
+			height: auto;
+			overflow: visible;
+			clip-path: none;
+			font-size: var(--text-xs);
+			font-weight: 600;
+			color: var(--ink-muted);
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			margin-bottom: 2px;
+		}
+
+		.cell-empty {
+			display: none;
 		}
 
 		.item-details {

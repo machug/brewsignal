@@ -406,9 +406,8 @@
 			initialData={recipe}
 			onSave={handleSave}
 			onCancel={handleCancel}
-		/>
-
-		<!-- Nested Collections Editors -->
+		>
+		<!-- Nested Collections Editors (rendered in the builder's primary column) -->
 		<div class="nested-editors">
 			<details class="editor-accordion">
 				<summary>Mash Schedule ({mashSteps.length} steps)</summary>
@@ -505,6 +504,7 @@
 				</div>
 			</details>
 		</div>
+		</RecipeBuilder>
 	{/if}
 </div>
 
@@ -805,7 +805,6 @@
 	.nested-editors {
 		display: flex;
 		flex-direction: column;
-		margin-top: var(--space-xl);
 		border-top: 1px solid var(--rule-hairline);
 	}
 

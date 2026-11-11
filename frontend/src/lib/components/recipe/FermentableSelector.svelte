@@ -178,19 +178,24 @@
 
 	{#if fermentables.length === 0}
 		<div class="empty-state">
-			<p>No fermentables added yet.</p>
+			<p>No fermentables added. Add the grain bill to calculate OG and color.</p>
+			<button type="button" class="add-btn" onclick={() => (showBrowser = true)}>+ Add Fermentable</button>
 		</div>
 	{:else}
 		<div class="fermentables-list">
+			<div class="ferm-head" aria-hidden="true">
+				<span>Fermentable</span>
+				<span>Amount</span>
+				<span>Share</span>
+				<span></span>
+			</div>
 			{#each fermentables as ferm (ferm.id)}
 				<div class="ferm-item">
 					<div class="ferm-main">
 						<div class="ferm-info">
 							<span class="ferm-name">{ferm.name}</span>
 							{#if ferm.type}
-								<span class="ferm-type">
-									{ferm.type}
-								</span>
+								<span class="ferm-type">{ferm.type}</span>
 							{/if}
 						</div>
 						<div class="ferm-details">
@@ -205,23 +210,24 @@
 							{/if}
 						</div>
 					</div>
-					<div class="ferm-controls">
-						<div class="amount-input">
+					<div class="cell c-amount">
+						<label class="cell-label" for="ferm-amount-{ferm.id}">Amount</label>
+						<span class="field-unit">
 							<input
+								id="ferm-amount-{ferm.id}"
 								type="number"
 								step="0.1"
 								min="0"
-								aria-label="Amount in kg for {ferm.name}"
 								value={ferm.amount_kg}
 								onchange={(e) => updateAmount(ferm.id, parseFloat(e.currentTarget.value) || 0)}
 							/>
-							<span class="unit">kg</span>
-						</div>
-						<span class="percent">{getPercent(ferm.amount_kg)}</span>
-						<button type="button" class="remove-btn" aria-label="Remove {ferm.name}" onclick={() => removeFermentable(ferm.id)}>
-							×
-						</button>
+							<span class="unit" aria-hidden="true">kg</span>
+						</span>
 					</div>
+					<span class="percent" aria-label="Share of grain bill">{getPercent(ferm.amount_kg)}</span>
+					<button type="button" class="remove-btn" aria-label="Remove {ferm.name}" onclick={() => removeFermentable(ferm.id)}>
+						×
+					</button>
 				</div>
 			{/each}
 		</div>
@@ -405,19 +411,26 @@
 	}
 
 	.empty-state {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.empty-state p {
+		flex: 1 1 14rem;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 		margin: 0;
 	}
 
 	/* Fields: 44px, 1px strong rule, visible accent focus ring */
-	.amount-input input,
+	.cell input,
 	.search-input,
 	.filter-select {
 		min-height: 44px;
@@ -437,7 +450,7 @@
 		font-family: var(--font-body);
 	}
 
-	.amount-input input:focus-visible,
+	.cell input:focus-visible,
 	.search-input:focus-visible,
 	.filter-select:focus-visible {
 		outline: 2px solid var(--accent);
@@ -445,15 +458,26 @@
 		border-color: var(--accent);
 	}
 
-	.amount-input {
-		display: flex;
-		align-items: center;
-		gap: var(--space-xs);
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
 	}
 
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
+		pointer-events: none;
 	}
 
 	.remove-btn {
@@ -679,12 +703,29 @@
 		flex-direction: column;
 	}
 
+	.ferm-head,
 	.ferm-item {
-		display: flex;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 120px 64px 44px;
+		gap: var(--space-xs);
 		align-items: center;
-		flex-wrap: wrap;
-		gap: var(--space-xs) var(--space-md);
+	}
+
+	.ferm-head {
+		padding: var(--space-xs) 0;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	.ferm-head span:nth-child(3),
+	.percent {
+		text-align: right;
+	}
+
+	.ferm-item {
 		padding: var(--space-xs) 0;
 		border-bottom: 1px solid var(--rule-hairline);
 	}
@@ -693,7 +734,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		flex: 1 1 200px;
 		min-width: 0;
 	}
 
@@ -735,15 +775,23 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.ferm-controls {
+	.cell {
 		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		margin-left: auto;
+		flex-direction: column;
+		min-width: 0;
 	}
 
-	.amount-input input {
-		width: 88px;
+	.cell-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.cell input {
+		width: 100%;
 		text-align: right;
 	}
 
@@ -752,8 +800,6 @@
 		color: var(--ink-secondary);
 		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
-		min-width: 4ch;
-		text-align: right;
 	}
 
 	.type-group {
@@ -796,13 +842,30 @@
 	}
 
 	@media (max-width: 760px) {
-		.ferm-controls {
-			width: 100%;
-			justify-content: space-between;
+		.ferm-head {
+			display: none;
 		}
 
-		.ferm-controls .percent {
-			margin-left: auto;
+		.ferm-item {
+			grid-template-columns: minmax(0, 1fr) 64px 44px;
+		}
+
+		.ferm-main {
+			grid-column: 1 / -1;
+		}
+
+		.cell-label {
+			position: static;
+			width: auto;
+			height: auto;
+			overflow: visible;
+			clip-path: none;
+			font-size: var(--text-xs);
+			font-weight: 600;
+			color: var(--ink-muted);
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			margin-bottom: 2px;
 		}
 	}
 </style>

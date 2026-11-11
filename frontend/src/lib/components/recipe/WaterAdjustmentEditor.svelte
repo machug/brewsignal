@@ -69,7 +69,10 @@
 	</div>
 
 	{#if localAdjustments.length === 0}
-		<p class="empty-state">No water adjustments defined. Click "Add Adjustment" to add one.</p>
+		<div class="empty-state">
+			<p>No water adjustments defined. Add one to get started.</p>
+			<button type="button" class="btn-add" onclick={addAdjustment}>+ Add Adjustment</button>
+		</div>
 	{:else}
 		<div class="adjustments-list">
 			{#each localAdjustments as adjustment, i}
@@ -86,14 +89,13 @@
 						</select>
 						<div class="volume-field">
 							<label>Volume</label>
-							<input aria-label="Volume"
+							<span class="field-unit"><input aria-label="Volume"
 								type="number"
 								step="0.1"
 								value={adjustment.volume_liters ?? ''}
 								placeholder="0"
 								onchange={(e) => updateAdjustment(i, 'volume_liters', parseFloat(e.currentTarget.value) || 0)}
-							/>
-							<span class="unit">L</span>
+							/><span class="unit" aria-hidden="true">L</span></span>
 						</div>
 						<button type="button" class="btn-remove" aria-label="Remove" onclick={() => removeAdjustment(i)}>×</button>
 					</div>
@@ -103,69 +105,63 @@
 						<div class="salt-grid">
 							<div class="salt-field">
 								<label>Gypsum (CaSO4)</label>
-								<input aria-label="Gypsum (CaSO4)"
+								<span class="field-unit"><input aria-label="Gypsum (CaSO4)"
 									type="number"
 									step="0.01"
 									value={adjustment.calcium_sulfate_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'calcium_sulfate_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 							<div class="salt-field">
 								<label>Calcium Chloride</label>
-								<input aria-label="Calcium Chloride"
+								<span class="field-unit"><input aria-label="Calcium Chloride"
 									type="number"
 									step="0.01"
 									value={adjustment.calcium_chloride_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'calcium_chloride_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 							<div class="salt-field">
 								<label>Epsom Salt (MgSO4)</label>
-								<input aria-label="Epsom Salt (MgSO4)"
+								<span class="field-unit"><input aria-label="Epsom Salt (MgSO4)"
 									type="number"
 									step="0.01"
 									value={adjustment.magnesium_sulfate_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'magnesium_sulfate_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 							<div class="salt-field">
 								<label>Baking Soda</label>
-								<input aria-label="Baking Soda"
+								<span class="field-unit"><input aria-label="Baking Soda"
 									type="number"
 									step="0.01"
 									value={adjustment.sodium_bicarbonate_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'sodium_bicarbonate_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 							<div class="salt-field">
 								<label>Table Salt (NaCl)</label>
-								<input aria-label="Table Salt (NaCl)"
+								<span class="field-unit"><input aria-label="Table Salt (NaCl)"
 									type="number"
 									step="0.01"
 									value={adjustment.sodium_chloride_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'sodium_chloride_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 							<div class="salt-field">
 								<label>Chalk (CaCO3)</label>
-								<input aria-label="Chalk (CaCO3)"
+								<span class="field-unit"><input aria-label="Chalk (CaCO3)"
 									type="number"
 									step="0.01"
 									value={adjustment.calcium_carbonate_g ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'calcium_carbonate_g', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">g</span>
+								/><span class="unit" aria-hidden="true">g</span></span>
 							</div>
 						</div>
 					</div>
@@ -188,25 +184,23 @@
 							</div>
 							<div class="acid-field">
 								<label>Amount</label>
-								<input aria-label="Amount"
+								<span class="field-unit"><input aria-label="Amount"
 									type="number"
 									step="0.1"
 									value={adjustment.acid_ml ?? ''}
 									placeholder="0"
 									onchange={(e) => updateAdjustment(i, 'acid_ml', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">ml</span>
+								/><span class="unit" aria-hidden="true">ml</span></span>
 							</div>
 							<div class="acid-field">
 								<label>Concentration</label>
-								<input aria-label="Concentration"
+								<span class="field-unit"><input aria-label="Concentration"
 									type="number"
 									step="1"
 									value={adjustment.acid_concentration_percent ?? ''}
 									placeholder="88"
 									onchange={(e) => updateAdjustment(i, 'acid_concentration_percent', parseFloat(e.currentTarget.value) || 0)}
-								/>
-								<span class="unit">%</span>
+								/><span class="unit" aria-hidden="true">%</span></span>
 							</div>
 						</div>
 					</div>
@@ -283,10 +277,20 @@
 	}
 
 	.empty-state {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 		padding: var(--space-md);
-		border: 1px dashed var(--rule-strong);
-		border-radius: 4px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	.empty-state p {
+		flex: 1 1 14rem;
+		margin: 0;
 		color: var(--ink-secondary);
 		font-size: var(--text-sm);
 	}
@@ -331,10 +335,26 @@
 		letter-spacing: 0.08em;
 	}
 
+	.field-unit {
+		position: relative;
+		display: block;
+		min-width: 0;
+	}
+
+	.field-unit input {
+		width: 100%;
+		padding-right: 2.25rem;
+	}
+
 	.unit {
-		font-size: var(--text-sm);
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		color: var(--ink-muted);
-		white-space: nowrap;
+		pointer-events: none;
 	}
 
 	.btn-remove {
@@ -437,4 +457,18 @@
 		flex: 0 1 140px;
 	}
 
+
+	.salt-field .field-unit,
+	.acid-field .field-unit {
+		grid-column: 1 / -1;
+	}
+
+	.volume-field {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.volume-field .field-unit {
+		grid-column: auto;
+		width: 112px;
+	}
 </style>

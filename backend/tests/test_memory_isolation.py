@@ -195,3 +195,20 @@ class TestPoolLifecycle:
         monkeypatch.setattr(mem0.Memory, "from_config", classmethod(lambda cls, c: (_ for _ in ()).throw(RuntimeError("boom"))))
         assert mem.get_memory(CFG) is None
         assert len(pools) == 1 and pools[0].closed
+
+
+async def test_memory_disabled_by_config_delete_all_204(client, test_db, monkeypatch, as_user):
+    """Groq chat without an OpenAI key: no embedder, memory is off by design. Deletes must not 503."""
+    from backend.routers import assistant
+    groq = LLMConfig(enabled=True, provider=LLMProvider.GROQ, api_key="k", model="m")
+    async def cfg(db): return groq
+    monkeypatch.setattr(assistant, "get_llm_config", cfg)
+    monkeypatch.setattr(memory_router, "get_llm_config", cfg)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(mem, "_memory_instance", None)
+    monkeypatch.setattr(mem, "_memory_config_hash", None)
+    test_db.add(BrewingLearning(user_id=A, category="technique", learning="no vector", mem0_memory_id=None))
+    await test_db.commit()
+    as_user(A)
+    assert (await client.delete("/api/memory")).status_code == 204
+    assert (await client.get("/api/memory")).json() == []

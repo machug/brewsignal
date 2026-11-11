@@ -412,7 +412,10 @@ def _store_or_raise(llm_config: Optional[LLMConfig]):
     """The mem0 instance, None when memory is off by configuration, MemoryUnavailable when it
     should be on but failed to start."""
     memory = get_memory(llm_config)
-    if memory is None and _memory_instance is None and llm_config is not None and llm_config.is_configured():
+    # 'should be on' = the same checks get_memory_config makes (LLM provider + embedder), without opening a pool
+    if memory is None and _memory_instance is None and llm_config is not None and (
+        _get_llm_provider_config(llm_config) and _get_embedder_config(llm_config)
+    ):
         raise MemoryUnavailable("memory store is not available")
     return memory
 

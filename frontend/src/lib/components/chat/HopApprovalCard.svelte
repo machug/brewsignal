@@ -13,8 +13,9 @@
 		onKeepUnlisted: (approvalId: string) => void;
 		/** Ask the assistant to prepare the update again (after a failure). */
 		onRetry: () => void;
+		retryDisabled?: boolean;
 	}
-	let { part, error = '', onApprove, onCancel, onKeepUnlisted, onRetry }: Props = $props();
+	let { part, error = '', onApprove, onCancel, onKeepUnlisted, onRetry, retryDisabled = false }: Props = $props();
 
 	const outcome = $derived(error ? ({ phase: 'failed', message: error } as const) : applyOutcome(part));
 	const replace = $derived(Boolean(part.input?.replace));
@@ -77,7 +78,7 @@
 	{:else if outcome.phase === 'failed'}
 		<p class="alert" role="alert">{outcome.message}</p>
 		<p class="muted">Nothing was changed.</p>
-		<div class="actions"><button type="button" onclick={onRetry}>Prepare again</button></div>
+		<div class="actions"><button type="button" onclick={onRetry} disabled={retryDisabled}>Prepare again</button></div>
 	{:else if showPlan}
 		{#if shown}
 			<HopPlan plan={shown} {replace} applied={outcome.phase === 'applied'} />

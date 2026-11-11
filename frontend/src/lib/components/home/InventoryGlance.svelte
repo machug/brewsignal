@@ -106,7 +106,7 @@
 
 <style>
 	.panel {
-		padding: var(--space-lg);
+		padding: var(--space-xl) var(--space-lg) var(--space-lg);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-md);

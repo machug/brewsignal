@@ -10,6 +10,7 @@
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
 	import { fetchBatches, fetchBatchProgress } from '$lib/api';
 	import { onConfigLoaded } from '$lib/config';
+	import { batchWarnings } from '$lib/home/batchWarnings';
 
 	// Batch state
 	let allBatches = $state<BatchResponse[]>([]);
@@ -138,13 +139,14 @@
 		expandedBatchId = expandedBatchId === batchId ? null : batchId;
 	}
 
-	// Active batches with wort temperature outside the yeast range (for the status strip)
-	let outOfRange = $derived(
+	// Warnings across ALL active batches (anomaly, not logging, out of range) for the status strip
+	let warnings = $derived(
 		batches.flatMap((b) => {
-			const st = liveProgressMap.get(b.id)?.temperature.status;
-			return st === 'too_hot' || st === 'too_cold'
-				? [`Batch #${b.batch_number ?? b.id} ${st === 'too_hot' ? 'above' : 'below'} yeast range`]
-				: [];
+			const w = batchWarnings({
+				reading: b.device_id ? tiltsState.tilts.get(b.device_id) : null,
+				tempStatus: liveProgressMap.get(b.id)?.temperature.status
+			});
+			return w.length ? [`Batch #${b.batch_number ?? b.id}: ${w.join(', ')}`] : [];
 		})
 	);
 </script>
@@ -154,10 +156,10 @@
 </svelte:head>
 
 <div class="workbench">
+	<div class="strip-row rise" style="--i: 0">
+		<StatusStrip {chamberIdle} {warnings} activeCount={batches.length} />
+	</div>
 	<div class="col-primary">
-		<div class="rise" style="--i: 0">
-			<StatusStrip {chamberIdle} {outOfRange} activeCount={batches.length} />
-		</div>
 
 		{#if loading}
 			<section class="empty rise" style="--i: 1" aria-live="polite">
@@ -212,6 +214,9 @@
 		grid-template-columns: minmax(0, 1.68fr) minmax(300px, 1fr);
 		align-items: stretch;
 		border-top: 1px solid var(--rule-hairline);
+	}
+	.strip-row {
+		grid-column: 1 / -1;
 	}
 	.col-primary {
 		display: flex;
@@ -281,8 +286,9 @@
 		align-items: center;
 		min-height: 40px;
 		padding: 0 var(--space-md);
-		background-color: var(--accent);
-		color: var(--accent-ink);
+		background-color: var(--accent-tint);
+		color: var(--accent);
+		border: 1px solid var(--accent-rule);
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
 		font-weight: 700;
@@ -291,7 +297,7 @@
 		border-radius: 2px;
 	}
 	.action:hover {
-		background-color: var(--accent-hover);
+		border-color: var(--accent);
 	}
 	.link {
 		font-family: var(--font-display);
@@ -336,6 +342,7 @@
 		.col-secondary {
 			display: grid;
 			grid-template-columns: 1.15fr 1fr;
+			align-items: start;
 			border-top: 1px solid var(--rule-strong);
 		}
 		.col-secondary > .rise:first-child :global(section) {

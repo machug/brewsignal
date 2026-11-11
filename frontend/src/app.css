@@ -218,12 +218,12 @@
   --chart-temp-fill: color-mix(in oklch, var(--temp-trace) 10%, transparent);
   --chart-ambient: var(--temp-ambient);
   --chart-ambient-fill: color-mix(in oklch, var(--temp-ambient) 10%, transparent);
-  --chart-chamber: var(--tilt-purple);
+  --chart-chamber: var(--ink-muted);
   --chart-trend: color-mix(in oklch, var(--accent) 50%, transparent);
   --chart-anomaly: var(--status-danger);
   --chart-battery: var(--status-steady);
   --chart-grid: var(--rule-hairline);
-  --chart-axis: var(--ink-muted);
+  --chart-axis: var(--ink-secondary);
   --chart-filtered: var(--ink-primary);
   --chart-filtered-temp: var(--ink-secondary);
   --chart-heating-band: color-mix(in oklch, var(--status-danger) 12%, transparent);

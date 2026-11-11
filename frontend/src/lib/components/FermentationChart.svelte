@@ -13,7 +13,8 @@
 		type ControlEvent
 	} from '$lib/api';
 	import { configState, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
-	import FermentationStats from './FermentationStats.svelte';
+	import FermentationStats, { analyseSg, formatRate, formatDuration } from './FermentationStats.svelte';
+	import { gravityIncrs } from '$lib/chart/gravityTicks';
 
 	const REFRESH_STORAGE_KEY = 'brewsignal_chart_refresh_minutes';
 	const REFRESH_OPTIONS = [
@@ -40,9 +41,11 @@
 		controlEvents?: ControlEvent[];
 		/** Show the stats block under the chart (off on Home, where readouts sit above). */
 		showStats?: boolean;
+		/** Compact single-row trend strip (rate, ETA, stable-for, OG est.) under the chart. */
+		showTrend?: boolean;
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], showStats = true }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], showStats = true, showTrend = false }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -454,23 +457,21 @@
 				{
 					// Y axis left (SG/Plato/Brix)
 					scale: 'sg',
-					stroke: sgColor,
+					stroke: chartColors.textMuted,
 					grid: { stroke: chartColors.grid, width: 1 },
 					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
 					font: '11px "Chivo Mono", ui-monospace, monospace',
 					labelFont: '11px "Chivo Mono", ui-monospace, monospace',
 					values: (u, vals) => vals.map((v) => formatGravity(v)),
-					// Tick steps no finer than the display precision, so labels never repeat
-					// (SG shows 3 decimals; Plato/Brix show 1).
-					incrs: gravityUnit === 'SG'
-						? [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1]
-						: [0.1, 0.2, 0.5, 1, 2, 5, 10],
+					// Tick steps no finer than the display precision, so labels never repeat.
+					// Steps are in SG (the data space), see gravityTicks.ts.
+					incrs: gravityIncrs(configState.config.sg_units),
 					side: 3 // left
 				},
 				{
 					// Y axis right (Temp)
 					scale: 'temp',
-					stroke: tempColor,
+					stroke: chartColors.textMuted,
 					grid: { show: false },
 					ticks: { stroke: chartColors.grid, width: 1, size: 4 },
 					font: '11px "Chivo Mono", ui-monospace, monospace',
@@ -937,10 +938,12 @@ async function loadData(userTriggered = false) {
 }
 
 	function updateChart() {
-		if (!chartContainer || readings.length === 0) return;
+		if (destroyed || !chartContainer || readings.length === 0) return;
 
 		const data = processData(readings, ambientReadings, chamberReadings, useCelsius);
-		const opts = getChartOptions(chartContainer.clientWidth, useCelsius, systemTimezone);
+		// Collapsed (display: none) containers measure 0: reuse the last visible width
+		if (chartContainer.clientWidth > 0) lastWidth = chartContainer.clientWidth;
+		const opts = getChartOptions(lastWidth || 600, useCelsius, systemTimezone);
 
 		if (chart) {
 			chart.destroy();
@@ -949,8 +952,15 @@ async function loadData(userTriggered = false) {
 		chart = new uPlot(opts, data, chartContainer);
 	}
 
+// Set once the component is destroyed; async init and timers check it so nothing is
+// installed (or left running) after teardown.
+let destroyed = false;
+let lastWidth = 0;
+let resizeObserver: ResizeObserver | null = null;
+
 function handleResize() {
-	if (chart && chartContainer) {
+	// A hidden (collapsed) container measures 0; keep the last size until it is shown again
+	if (chart && chartContainer && chartContainer.clientWidth > 0) {
 		chart.setSize({ width: chartContainer.clientWidth, height: 220 });
 	}
 }
@@ -963,7 +973,7 @@ function resetRefreshInterval() {
 		refreshInterval = null;
 	}
 
-	if (refreshMinutes > 0) {
+	if (refreshMinutes > 0 && !destroyed) {
 		const intervalMs = refreshMinutes * 60 * 1000;
 		refreshInterval = setInterval(() => {
 			if (!loading) {
@@ -1035,17 +1045,29 @@ onMount(async () => {
 
 	// Initial load is user-triggered (mounting the component)
 	await loadData(true);
-	window.addEventListener('resize', handleResize);
+	// Destroyed while the async init was in flight: install nothing
+	if (destroyed) return;
+	// Observe the container (also tracks width changes while collapsed/expanded)
+	if (chartContainer) {
+		resizeObserver = new ResizeObserver(handleResize);
+		resizeObserver.observe(chartContainer);
+	}
 	resetRefreshInterval();
 });
 
 	onDestroy(() => {
+		destroyed = true;
 		chart?.destroy();
-		window.removeEventListener('resize', handleResize);
+		chart = null;
+		resizeObserver?.disconnect();
+		resizeObserver = null;
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
+			refreshInterval = null;
 		}
 	});
+
+	let trendStats = $derived(showTrend && readings.length > 0 ? analyseSg(readings, originalGravity) : null);
 
 	// Process control events into periods when they change
 	$effect(() => {
@@ -1156,7 +1178,7 @@ onMount(async () => {
 <div class="chart-wrapper" role="region" aria-label="Fermentation Chart">
 	<!-- Time range selector -->
 	<div class="chart-controls">
-		<div class="flex items-center gap-1.5">
+		<div class="range-group">
 			{#each TIME_RANGES as range}
 				<button
 					type="button"
@@ -1175,8 +1197,8 @@ onMount(async () => {
 		</div>
 		<div class="controls-right">
 			<div class="refresh-control">
-				<label for="refreshInterval">Refresh</label>
-				<select id="refreshInterval" class="refresh-select" value={refreshMinutes} onchange={handleRefreshChange}>
+				<label for="refresh-{batchId}">Refresh</label>
+				<select id="refresh-{batchId}" class="refresh-select" value={refreshMinutes} onchange={handleRefreshChange}>
 					{#each REFRESH_OPTIONS as option}
 						<option value={option.value}>{option.label}</option>
 					{/each}
@@ -1322,6 +1344,31 @@ onMount(async () => {
 		{/if}
 	</div>
 
+	{#if showTrend && trendStats}
+		<dl class="trend" aria-label="Fermentation trend">
+			<div class="trend-item">
+				<dt>Rate</dt>
+				<dd>{formatRate(trendStats.fermRate)}<span class="trend-unit">&thinsp;SG/day</span></dd>
+			</div>
+			{#if currentTrend?.daysToFg != null}
+				<div class="trend-item" title="Estimated time until target FG (R&sup2;={currentTrend.r2.toFixed(2)})">
+					<dt>ETA to FG</dt>
+					<dd>{formatDuration(currentTrend.daysToFg)}</dd>
+				</div>
+			{/if}
+			<div class="trend-item">
+				<dt>Stable for</dt>
+				<dd>{formatDuration(trendStats.daysAtCurrentSg)}</dd>
+			</div>
+			{#if trendStats.ogIsEstimated}
+				<div class="trend-item" title="Estimated from the highest readings; no measured OG">
+					<dt>OG est.</dt>
+					<dd>{formatGravity(trendStats.og)}</dd>
+				</div>
+			{/if}
+		</dl>
+	{/if}
+
 	<!-- Anomaly Details -->
 	{#if showAnomalies && anomalyData.length > 0}
 		<div class="anomaly-details">
@@ -1351,25 +1398,77 @@ onMount(async () => {
 </div>
 
 <style>
+	/* One bordered panel: header bar (ranges, refresh, legend) over the plot */
 	.chart-wrapper {
-		padding-top: 0.5rem;
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
+		background: var(--bg-surface);
+		overflow: hidden;
 	}
 
 	.chart-controls {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.75rem;
+		gap: 8px 16px;
 		flex-wrap: wrap;
-		margin-bottom: 0.75rem;
+		padding: 8px 12px;
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	.range-group {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
 	}
 
 	.controls-right {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 8px 16px;
 		flex-wrap: wrap;
 		justify-content: flex-end;
+	}
+
+	.chart-wrapper > :global(.stats-panel) {
+		margin: 12px;
+	}
+
+	.trend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 24px;
+		margin: 0;
+		padding: 10px 12px;
+		border-top: 1px solid var(--rule-hairline);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		font-variant-numeric: tabular-nums lining-nums;
+	}
+
+	.trend-item {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+
+	.trend dt {
+		color: var(--ink-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		white-space: nowrap;
+	}
+
+	.trend dd {
+		margin: 0;
+		color: var(--ink-primary);
+		font-weight: 500;
+	}
+
+	.trend-unit {
+		color: var(--ink-secondary);
+		font-weight: 400;
 	}
 
 	.refresh-control {
@@ -1432,7 +1531,8 @@ onMount(async () => {
 	.chart-legend {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		flex-wrap: wrap;
+		gap: 4px 16px;
 	}
 
 	.legend-item {
@@ -1559,8 +1659,7 @@ onMount(async () => {
 		position: relative;
 		width: 100%;
 		min-height: 220px;
-		border-radius: 0.5rem;
-		background: var(--bg-elevated);
+		background: transparent;
 		overflow: hidden;
 	}
 
@@ -1659,7 +1758,7 @@ onMount(async () => {
 		background: color-mix(in oklch, var(--status-danger) 8%, transparent);
 		border: 1px solid color-mix(in oklch, var(--status-danger) 25%, transparent);
 		border-radius: 0.375rem;
-		margin-top: 0.5rem;
+		margin: 8px 12px 12px;
 	}
 
 	.anomaly-item {

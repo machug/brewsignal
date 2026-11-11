@@ -17,12 +17,12 @@
 
 	interface Props {
 		chamberIdle: ChamberIdleStatus | null;
-		/** Short labels for active batches whose wort temp is out of the yeast range, e.g. "Batch #7 too hot". */
-		outOfRange: string[];
+		/** One entry per active batch with warnings, e.g. "Batch #7: Anomaly, Not logging". */
+		warnings: string[];
 		activeCount: number;
 	}
 
-	let { chamberIdle, outOfRange, activeCount }: Props = $props();
+	let { chamberIdle, warnings, activeCount }: Props = $props();
 
 	const DISMISS_KEY = 'brewsignal_alerts_dismissed';
 	const DISMISS_TIME_KEY = 'brewsignal_alerts_dismissed_time';
@@ -62,8 +62,8 @@
 				message: `${alerts[0].day}: ${alerts[0].message}`
 			};
 		}
-		if (outOfRange.length > 0) {
-			return { tone: 'warn', tag: 'Temperature', message: outOfRange.join(' · ') };
+		if (warnings.length > 0) {
+			return { tone: 'warn', tag: 'Batch warning', message: warnings.join(' · ') };
 		}
 		if (chamberIdle?.active && activeCount === 0) {
 			return { tone: 'quiet', tag: 'Chamber idle', message: 'No batch fermenting; chamber held at idle target.' };
@@ -120,8 +120,7 @@
 <style>
 	.strip {
 		border-bottom: 1px solid var(--rule-hairline);
-		background-color: var(--bg-surface);
-		padding: var(--space-sm) var(--space-xl);
+		padding: 10px 24px;
 	}
 	.row {
 		display: flex;
@@ -227,7 +226,7 @@
 	}
 	@media (max-width: 760px) {
 		.strip {
-			padding: var(--space-xs) var(--space-md);
+			padding: 10px 16px;
 		}
 	}
 </style>

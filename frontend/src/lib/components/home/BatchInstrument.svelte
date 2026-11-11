@@ -22,6 +22,7 @@
 	} from '$lib/api';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 	import FermentationChart from '../FermentationChart.svelte';
+	import { batchWarnings } from '$lib/home/batchWarnings';
 
 	interface Props {
 		batch: BatchResponse;
@@ -68,6 +69,7 @@
 	);
 	let abv = $derived(og && sg ? Math.max(0, (og - sg) * 131.25) : (progress?.measured?.abv ?? null));
 	let tempStatus = $derived(progress?.temperature?.status ?? 'unknown');
+	let warnings = $derived(batchWarnings({ reading, tempStatus }));
 
 	let gravityUnit = $derived(getGravityUnit());
 	let tempUnit = $derived(getTempUnit());
@@ -217,23 +219,25 @@
 	);
 </script>
 
-{#if !expanded}
-	<div class="collapsed">
+<article class="item" class:open={expanded} aria-label="Batch {batch.batch_number ?? batch.id}">
+	<div class="collapsed" hidden={expanded}>
 		<span class="swatch" style="background-color: {tiltColors[deviceColor] ?? 'var(--ink-muted)'}" aria-hidden="true"></span>
 		<span class="code">#{batch.batch_number ?? batch.id}</span>
 		<span class="c-name">{displayName}</span>
+		{#if warnings.length > 0}
+			<span class="pill" title={warnings.join(' · ')}>
+				{warnings[0]}{#if warnings.length > 1}<span class="pill-n">+{warnings.length - 1}</span>{/if}
+			</span>
+		{/if}
 		<span class="c-fig num">
 			{sg != null ? formatGravity(sg) : '--'}
 			<span class="c-sep" aria-hidden="true">&middot;</span>
 			{temp != null ? formatTemp(temp) : '--'}<span class="unit">&thinsp;{tempUnit}</span>
 		</span>
 		<span class="c-day num">{dayText}</span>
-		<button type="button" class="expand" onclick={onToggleExpand} aria-expanded="false" aria-label="Expand {displayName}">
-			<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-		</button>
 	</div>
-{:else}
-	<article class="instrument" aria-label="Batch {batch.batch_number ?? batch.id}">
+
+	<div class="instrument" id="batch-body-{batch.id}" hidden={!expanded}>
 		<header class="head">
 			<div class="id">
 				<div class="id-row">
@@ -293,7 +297,7 @@
 		<div class="matrix">
 			<div class="cell">
 				<div class="label">
-					<span>Current {gravityUnit === 'SG' ? 'SG' : gravityUnit === '°P' ? 'Plato' : 'Brix'}</span>
+					<span>Gravity</span>
 					{#if og && sg}<span class="delta num">{gravityDelta(og, sg)}</span>{/if}
 				</div>
 				<div class="primary num">{sg != null ? formatGravity(sg) : '--'}{#if gravityUnit !== 'SG'}<span class="unit">&thinsp;{gravityUnit}</span>{/if}</div>
@@ -304,17 +308,17 @@
 			</div>
 			<div class="cell">
 				<div class="label"><span>Attenuation</span></div>
-				<div class="primary num">{attenuation != null ? attenuation.toFixed(0) : '--'}<span class="unit">&thinsp;%</span></div>
+				<div class="primary num">{attenuation != null ? attenuation.toFixed(0) : '--'}<span class="unit">%</span></div>
 				<div class="sub">
 					<span>apparent</span>
-					{#if progress?.targets?.attenuation != null}<span>target <span class="num">{progress.targets.attenuation.toFixed(0)}&thinsp;%</span></span>{/if}
+					{#if progress?.targets?.attenuation != null}<span>target <span class="num">{progress.targets.attenuation.toFixed(0)}%</span></span>{/if}
 				</div>
 			</div>
 			<div class="cell">
 				<div class="label"><span>Est. ABV</span></div>
-				<div class="primary num">{abv != null ? abv.toFixed(1) : '--'}<span class="unit">&thinsp;%</span></div>
+				<div class="primary num">{abv != null ? abv.toFixed(1) : '--'}<span class="unit">%</span></div>
 				<div class="sub">
-					{#if progress?.targets?.abv != null}<span>target <span class="num">{progress.targets.abv.toFixed(1)}&thinsp;%</span></span>{/if}
+					{#if progress?.targets?.abv != null}<span>target <span class="num">{progress.targets.abv.toFixed(1)}%</span></span>{/if}
 				</div>
 			</div>
 			<div class="cell">
@@ -339,7 +343,7 @@
 		<div class="telemetry">
 			{#if chartMounted}
 				{#key batch.id}
-					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} {controlEvents} showStats={false} />
+					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} {controlEvents} showStats={false} showTrend />
 				{/key}
 			{/if}
 		</div>
@@ -363,10 +367,21 @@
 
 		<footer class="foot">
 			<a class="link" href="/batches/{batch.id}">View batch details &rarr;</a>
-			<button type="button" class="link" onclick={onToggleExpand} aria-expanded="true">Collapse</button>
 		</footer>
-	</article>
-{/if}
+	</div>
+
+	<!-- One stable toggle for both states, so keyboard focus never moves -->
+	<button
+		type="button"
+		class="toggle"
+		onclick={onToggleExpand}
+		aria-expanded={expanded}
+		aria-controls="batch-body-{batch.id}"
+		aria-label="{expanded ? 'Collapse' : 'Expand'} {displayName}"
+	>
+		<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+	</button>
+</article>
 
 <style>
 	.num {
@@ -397,14 +412,40 @@
 	}
 
 	/* Collapsed one-line row */
+	.item {
+		position: relative;
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+	.collapsed[hidden],
+	.instrument[hidden] {
+		display: none;
+	}
 	.collapsed {
 		display: grid;
 		grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
 		align-items: center;
 		gap: var(--space-sm);
-		padding: var(--space-sm) var(--space-xl);
-		border-bottom: 1px solid var(--rule-hairline);
+		min-height: 52px;
+		padding: var(--space-sm) calc(var(--space-xl) + 36px + var(--space-sm)) var(--space-sm) var(--space-xl);
 		font-size: var(--text-sm);
+	}
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 16rem;
+		padding: 1px 8px;
+		border: 1px solid color-mix(in oklch, var(--status-warn) 55%, transparent);
+		border-radius: 2px;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--status-warn);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.pill-n {
+		color: var(--ink-secondary);
 	}
 	.c-name {
 		font-family: var(--font-display);
@@ -426,7 +467,10 @@
 		font-size: var(--text-xs);
 		color: var(--ink-secondary);
 	}
-	.expand {
+	.toggle {
+		position: absolute;
+		top: var(--space-sm);
+		right: var(--space-xl);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -437,23 +481,32 @@
 		color: var(--ink-secondary);
 		cursor: pointer;
 	}
-	.expand:hover {
+	.toggle:hover {
 		color: var(--ink-primary);
 		border-color: var(--rule-strong);
+	}
+	.toggle svg {
+		transition: transform 150ms var(--ease-out-quart);
+	}
+	.item.open .toggle {
+		top: var(--space-xl);
+	}
+	.item.open .toggle svg {
+		transform: rotate(180deg);
 	}
 
 	/* Open instrument */
 	.instrument {
 		padding: var(--space-xl) var(--space-xl) var(--space-lg);
-		border-bottom: 1px solid var(--rule-hairline);
 		container-type: inline-size;
 	}
+	/* Title block left, device + status right; right padding clears the toggle */
 	.head {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		align-items: flex-start;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: start;
 		gap: var(--space-md);
+		padding-right: calc(36px + var(--space-sm));
 		margin-bottom: var(--space-lg);
 	}
 	.id {
@@ -506,7 +559,8 @@
 	.sensor {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
+		align-items: flex-end;
+		text-align: right;
 		gap: var(--space-2xs);
 	}
 	.chip {
@@ -563,13 +617,14 @@
 		border-bottom: 1px solid var(--rule-hairline);
 		background-color: var(--bg-surface);
 	}
+	/* Fixed rows so all four primary numbers share one baseline */
 	.cell {
 		padding: var(--space-md);
 		border-right: 1px solid var(--rule-hairline);
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
-		gap: var(--space-xs);
+		display: grid;
+		grid-template-rows: 1.25rem auto 1fr;
+		align-items: start;
+		row-gap: var(--space-2xs);
 		min-width: 0;
 	}
 	.cell:last-child {
@@ -580,6 +635,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-xs);
+		white-space: nowrap;
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
 		font-weight: 600;
@@ -607,21 +663,17 @@
 		font-size: var(--text-xs);
 		color: var(--ink-secondary);
 		min-height: 1.5em;
+		margin-top: var(--space-2xs);
+	}
+	/* middot between sub-label parts */
+	.sub > span + span::before {
+		content: '\00b7';
+		margin-right: var(--space-xs);
+		color: var(--ink-muted);
 	}
 	.chamber {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
 		font-family: var(--font-num);
-		font-size: 0.72rem;
 		color: var(--temp-trace);
-	}
-	.chamber::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background-color: var(--temp-trace);
 	}
 	.warn {
 		color: var(--status-warn);
@@ -629,7 +681,7 @@
 	.raw {
 		margin-top: var(--space-xs);
 		font-size: var(--text-xs);
-		color: var(--ink-muted);
+		color: var(--ink-secondary);
 	}
 	@container (max-width: 680px) {
 		.matrix {
@@ -712,8 +764,33 @@
 		.instrument {
 			padding: var(--space-lg) var(--space-md);
 		}
+		.toggle {
+			right: var(--space-md);
+		}
+		.item.open .toggle {
+			top: var(--space-lg);
+		}
+		.head {
+			grid-template-columns: minmax(0, 1fr);
+			gap: var(--space-xs);
+			margin-bottom: var(--space-md);
+		}
+		.title {
+			font-size: 1.375rem;
+			line-height: 1.2;
+		}
+		.sensor {
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: var(--space-xs) var(--space-sm);
+			text-align: left;
+		}
+		.cell {
+			padding: 12px;
+		}
 		.collapsed {
-			padding: var(--space-sm) var(--space-md);
+			padding: var(--space-sm) calc(var(--space-md) + 36px + var(--space-sm)) var(--space-sm) var(--space-md);
 			grid-template-columns: auto auto minmax(0, 1fr) auto;
 		}
 		.c-fig,

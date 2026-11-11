@@ -32,7 +32,7 @@
 	function figure(b: BatchResponse): string {
 		if (b.status === 'planning') return b.brew_date ? `Brew ${fmtDate(b.brew_date)}` : 'Not scheduled';
 		const date = fmtDate(b.completed_at ?? b.end_time ?? b.brew_date);
-		const abv = b.measured_abv != null ? `${b.measured_abv.toFixed(1)} % ABV` : null;
+		const abv = b.measured_abv != null ? `${b.measured_abv.toFixed(1)}% ABV` : null;
 		return [abv, date].filter(Boolean).join(' · ');
 	}
 </script>

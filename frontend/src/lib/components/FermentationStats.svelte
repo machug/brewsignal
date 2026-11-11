@@ -1,6 +1,5 @@
-<script lang="ts">
+<script module lang="ts">
 	import type { HistoricalReading } from '$lib/api';
-	import { configState, formatTemp, getTempUnit, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 
 	// Valid ranges for outlier filtering (matches backend)
 	const SG_MIN = 0.5;
@@ -9,7 +8,7 @@
 	const TEMP_MAX_C = 100;
 
 	// Percentile helper - filters out noise spikes from High/Low stats
-	function percentile(arr: number[], p: number): number {
+	export function percentile(arr: number[], p: number): number {
 		const sorted = [...arr].sort((a, b) => a - b);
 		const idx = (p / 100) * (sorted.length - 1);
 		const lower = Math.floor(idx);
@@ -17,6 +16,73 @@
 		if (lower === upper) return sorted[lower];
 		return sorted[lower] + (sorted[upper] - sorted[lower]) * (idx - lower);
 	}
+
+	export function formatRate(rate: number): string {
+		const sign = rate >= 0 ? '+' : '';
+		return `${sign}${rate.toFixed(4)}`;
+	}
+
+	export function formatDuration(days: number): string {
+		if (days < 1) {
+			const hours = days * 24;
+			return `${hours.toFixed(1)}h`;
+		}
+		return `${days.toFixed(1)}d`;
+	}
+
+	/** Gravity-derived stats shared by the full stats panel and Home's trend strip. */
+	export function analyseSg(readings: HistoricalReading[], originalGravity: number | null) {
+		// Filter out invalid readings (flagged by backend) first
+		const validReadings = readings.filter((r) => r.status !== 'invalid');
+		if (validReadings.length === 0) return null;
+
+		// Readings come newest first, so sort for chronological order
+		const sorted = [...validReadings].sort(
+			(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+		);
+		const firstReading = sorted[0];
+		const lastReading = sorted[sorted.length - 1];
+
+		// SG values (prefer calibrated, filter outliers for historical data)
+		const sgValues = sorted
+			.map((r) => r.sg_calibrated ?? r.sg_raw)
+			.filter((v): v is number => v !== null && v >= SG_MIN && v <= SG_MAX);
+		if (sgValues.length === 0) return null;
+
+		const currentSg = sgValues[sgValues.length - 1];
+		const firstSg = sgValues[0];
+		// Use percentiles to filter noise spikes (Tilt can report bad values when bumped)
+		const highSg = percentile(sgValues, 95);
+		const lowSg = percentile(sgValues, 5);
+
+		const firstTime = new Date(firstReading.timestamp).getTime();
+		const lastTime = new Date(lastReading.timestamp).getTime();
+		const durationDays = (lastTime - firstTime) / (1000 * 60 * 60 * 24);
+
+		// Fermentation rate (SG drop per day)
+		const fermRate = durationDays > 0 ? (currentSg - firstSg) / durationDays : 0;
+
+		// Days at current SG (find when SG last changed by >0.001)
+		let daysAtCurrentSg = 0;
+		const SG_CHANGE_THRESHOLD = 0.001;
+		for (let i = sgValues.length - 2; i >= 0; i--) {
+			if (Math.abs(sgValues[i] - currentSg) > SG_CHANGE_THRESHOLD) {
+				const changeTime = new Date(sorted[i + 1].timestamp).getTime();
+				daysAtCurrentSg = (lastTime - changeTime) / (1000 * 60 * 60 * 24);
+				break;
+			}
+		}
+
+		// Use explicit OG if set, otherwise estimate from highSg (95th percentile)
+		const og = originalGravity ?? highSg;
+		const ogIsEstimated = originalGravity === null;
+
+		return { sorted, currentSg, firstSg, highSg, lowSg, fermRate, durationDays, daysAtCurrentSg, og, ogIsEstimated };
+	}
+</script>
+
+<script lang="ts">
+	import { configState, formatTemp, getTempUnit, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 
 	// Trend prediction data from TiltChart
 	interface TrendPrediction {
@@ -50,49 +116,14 @@
 			return null;
 		}
 
-		// Filter out invalid readings (flagged by backend) first
-		const validReadings = readings.filter((r) => r.status !== 'invalid');
-
-		if (validReadings.length === 0) {
-			return null;
-		}
-
-		// Readings come newest first, so reverse for chronological order
-		const sorted = [...validReadings].sort(
-			(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-		);
-
-		const firstReading = sorted[0];
-		const lastReading = sorted[sorted.length - 1];
-
-		// SG values (prefer calibrated, filter outliers for historical data)
-		const sgValues = sorted
-			.map((r) => r.sg_calibrated ?? r.sg_raw)
-			.filter((v): v is number => v !== null && v >= SG_MIN && v <= SG_MAX);
+		const sg = analyseSg(readings, originalGravity);
+		if (!sg) return null;
+		const { sorted, currentSg, firstSg, highSg, lowSg, fermRate, durationDays, daysAtCurrentSg } = sg;
 
 		// Temp values (prefer calibrated, in Celsius from API since PR #66, filter outliers)
 		const tempValues = sorted
 			.map((r) => r.temp_calibrated ?? r.temp_raw)
 			.filter((v): v is number => v !== null && v >= TEMP_MIN_C && v <= TEMP_MAX_C);
-
-		if (sgValues.length === 0) {
-			return null;
-		}
-
-		const currentSg = sgValues[sgValues.length - 1];
-		const firstSg = sgValues[0];
-		// Use percentiles to filter noise spikes (Tilt can report bad values when bumped)
-		const highSg = percentile(sgValues, 95);
-		const lowSg = percentile(sgValues, 5);
-
-		// Duration in days
-		const firstTime = new Date(firstReading.timestamp).getTime();
-		const lastTime = new Date(lastReading.timestamp).getTime();
-		const durationMs = lastTime - firstTime;
-		const durationDays = durationMs / (1000 * 60 * 60 * 24);
-
-		// Fermentation rate (SG drop per day)
-		const fermRate = durationDays > 0 ? (currentSg - firstSg) / durationDays : 0;
 
 		// Temp stats (convert if needed)
 		let currentTemp: number | null = null;
@@ -115,23 +146,10 @@
 			lowTemp = useCelsius ? lowTempC : (lowTempC * 9 / 5) + 32;
 		}
 
-		// Days at current SG (find when SG last changed by >0.001)
-		let daysAtCurrentSg = 0;
-		const SG_CHANGE_THRESHOLD = 0.001;
-		for (let i = sgValues.length - 2; i >= 0; i--) {
-			if (Math.abs(sgValues[i] - currentSg) > SG_CHANGE_THRESHOLD) {
-				const changeTime = new Date(sorted[i + 1].timestamp).getTime();
-				daysAtCurrentSg = (lastTime - changeTime) / (1000 * 60 * 60 * 24);
-				break;
-			}
-		}
-
 		// Attenuation and ABV
-		// Use explicit OG if set, otherwise estimate from highSg (95th percentile)
 		let apparentAttenuation: number | null = null;
 		let abv: number | null = null;
-		const og = originalGravity ?? highSg;
-		const ogIsEstimated = originalGravity === null;
+		const { og, ogIsEstimated } = sg;
 
 		if (og > 1.0 && og > currentSg) {
 			// Apparent attenuation = (OG - FG) / (OG - 1) * 100
@@ -188,19 +206,6 @@
 
 	function formatSg(sg: number): string {
 		return formatGravity(sg);
-	}
-
-	function formatRate(rate: number): string {
-		const sign = rate >= 0 ? '+' : '';
-		return `${sign}${rate.toFixed(4)}`;
-	}
-
-	function formatDuration(days: number): string {
-		if (days < 1) {
-			const hours = days * 24;
-			return `${hours.toFixed(1)}h`;
-		}
-		return `${days.toFixed(1)}d`;
 	}
 
 	function formatTempStat(temp: number | null): string {

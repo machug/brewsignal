@@ -69,7 +69,7 @@
 			</ul>
 			{#if suggestedBatch != null && onScaleToFit}
 				<button type="button" class="scale-to-fit" onclick={() => onScaleToFit(suggestedBatch!)}>
-					Scale to fit ({suggestedBatch} L)
+					Scale to fit ({suggestedBatch}&thinsp;L)
 				</button>
 			{/if}
 		</div>
@@ -83,9 +83,9 @@
 		align-items: flex-start;
 		background: var(--warning-muted);
 		border: 1px solid var(--warning);
-		border-radius: 10px;
-		padding: var(--space-4) var(--space-5);
-		margin: var(--space-5) 0;
+		border-radius: 4px;
+		padding: var(--space-sm) var(--space-md);
+		margin: 0 0 var(--space-lg) 0;
 	}
 
 	.banner-icon {
@@ -100,14 +100,14 @@
 		margin: 0 0 var(--space-1);
 		font-weight: 600;
 		color: var(--text-primary);
-		font-size: 0.9rem;
+		font-size: var(--text-sm);
 	}
 
 	.banner-list {
 		margin: 0;
 		padding-left: var(--space-4);
 		color: var(--text-secondary);
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
@@ -119,9 +119,9 @@
 		padding: var(--space-1) var(--space-3);
 		background: none;
 		border: 1px solid var(--warning);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--warning);
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		cursor: pointer;
 	}

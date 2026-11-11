@@ -94,7 +94,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background: rgba(0, 0, 0, 0.7);
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -105,14 +105,13 @@
 	.modal-content {
 		background: var(--bg-surface);
 		border: 1px solid var(--border-default);
-		border-radius: 12px;
+		border-radius: 6px;
 		max-width: 700px;
 		width: 100%;
 		max-height: 80vh;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
 	}
 
 	.modal-header {
@@ -125,7 +124,8 @@
 
 	.modal-header h2 {
 		margin: 0;
-		font-size: 18px;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
 		color: var(--text-primary);
 	}
@@ -166,7 +166,7 @@
 		font-weight: 500;
 		background: transparent;
 		border: 1px solid var(--border-default);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--text-primary);
 		cursor: pointer;
 		transition: all 0.2s ease;
@@ -189,7 +189,7 @@
 		width: 40px;
 		height: 40px;
 		border: 3px solid var(--border-default);
-		border-top-color: var(--positive);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
@@ -207,9 +207,9 @@
 
 	.review-error {
 		padding: var(--space-4);
-		background: var(--negative-bg);
+		background: var(--negative-muted);
 		border: 1px solid var(--negative);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--negative);
 	}
 
@@ -224,19 +224,21 @@
 	.model-badge {
 		display: inline-block;
 		padding: var(--space-1) var(--space-3);
-		border-radius: 20px;
-		font-size: 12px;
-		font-weight: 500;
+		border-radius: 4px;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 
 	.style-badge.found {
-		background: var(--positive-bg);
+		background: var(--positive-muted);
 		color: var(--positive);
 		border: 1px solid var(--positive);
 	}
 
 	.style-badge.not-found {
-		background: var(--warning-bg);
+		background: var(--warning-muted);
 		color: var(--warning);
 		border: 1px solid var(--warning);
 	}

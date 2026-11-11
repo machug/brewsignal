@@ -21,152 +21,92 @@
 		};
 		return typeMap[type.toLowerCase()] || type.charAt(0).toUpperCase() + type.slice(1);
 	}
-
-	function getTypeColor(type: string): string {
-		const colorMap: Record<string, string> = {
-			primary: 'var(--positive)',
-			secondary: 'var(--info)',
-			conditioning: 'var(--warning)',
-			lagering: 'var(--info)',
-		};
-		return colorMap[type.toLowerCase()] || 'var(--text-muted)';
-	}
 </script>
 
 {#if steps.length > 0}
 	<div class="fermentation-schedule">
-		<h3 class="section-title">
-			<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-			</svg>
-			Fermentation Schedule
-		</h3>
-		<div class="steps-timeline">
-			{#each sortedSteps as step, i}
-				<div class="timeline-item">
-					<div class="timeline-marker" style="background: {getTypeColor(step.type)}"></div>
-					{#if i < sortedSteps.length - 1}
-						<div class="timeline-connector"></div>
-					{/if}
-					<div class="timeline-content">
-						<div class="step-header">
-							<span class="step-type" style="color: {getTypeColor(step.type)}">{formatType(step.type)}</span>
-						</div>
-						<div class="step-stats">
-							<div class="stat">
-								<span class="stat-value">{step.temp_c.toFixed(0)}°C</span>
-								<span class="stat-label">Temperature</span>
-							</div>
-							<div class="stat">
-								<span class="stat-value">{step.time_days}</span>
-								<span class="stat-label">{step.time_days === 1 ? 'Day' : 'Days'}</span>
-							</div>
-						</div>
-					</div>
-				</div>
-			{/each}
+		<h3>Fermentation Schedule</h3>
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr>
+						<th class="idx">#</th>
+						<th>Stage</th>
+						<th class="num">Temp</th>
+						<th class="num">Duration</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each sortedSteps as step, i}
+						<tr>
+							<td class="idx num">{i + 1}</td>
+							<td class="name">{formatType(step.type)}</td>
+							<td class="num">{step.temp_c.toFixed(0)}&thinsp;°C</td>
+							<td class="num">{step.time_days}&thinsp;{step.time_days === 1 ? 'day' : 'days'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	</div>
 {/if}
 
 <style>
-	.fermentation-schedule {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		padding: var(--space-4);
-	}
-
-	.section-title {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
+	h3 {
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--ink-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
-	.section-icon {
-		width: 18px;
-		height: 18px;
-		opacity: 0.8;
+	.table-scroll {
+		overflow-x: auto;
 	}
 
-	.steps-timeline {
-		display: flex;
-		flex-direction: column;
+	table {
+		width: 100%;
+		min-width: 360px;
+		border-collapse: collapse;
 	}
 
-	.timeline-item {
-		display: flex;
-		gap: var(--space-3);
-		position: relative;
-		padding-bottom: var(--space-4);
-	}
-
-	.timeline-item:last-child {
-		padding-bottom: 0;
-	}
-
-	.timeline-marker {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		margin-top: 4px;
-	}
-
-	.timeline-connector {
-		position: absolute;
-		left: 5px;
-		top: 20px;
-		bottom: 0;
-		width: 2px;
-		background: var(--border-subtle);
-	}
-
-	.timeline-content {
-		flex: 1;
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		padding: var(--space-3);
-		border: 1px solid var(--border-subtle);
-	}
-
-	.step-header {
-		margin-bottom: var(--space-2);
-	}
-
-	.step-type {
+	th {
+		text-align: left;
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
 		font-weight: 600;
-		font-size: 14px;
+		white-space: nowrap;
 	}
 
-	.step-stats {
-		display: flex;
-		gap: var(--space-6);
+	td {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	.stat {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+	.num {
+		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	.stat-value {
-		font-family: var(--font-mono);
-		font-size: 16px;
-		font-weight: 500;
-		color: var(--text-primary);
+	th.num {
+		font-family: var(--font-body);
 	}
 
-	.stat-label {
-		font-size: 11px;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
+	.idx {
+		width: 2.5rem;
+		color: var(--ink-muted);
+	}
+
+	.name {
+		font-weight: 600;
 	}
 </style>

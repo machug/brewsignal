@@ -26,146 +26,97 @@
 
 {#if steps.length > 0}
 	<div class="mash-schedule">
-		<h3 class="section-title">
-			<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-			</svg>
-			Mash Schedule
-		</h3>
-		<div class="steps-list">
-			{#each sortedSteps as step, i}
-				<div class="step-item">
-					<div class="step-number">{i + 1}</div>
-					<div class="step-content">
-						<div class="step-header">
-							<span class="step-name">{step.name}</span>
-							<span class="step-type">{formatType(step.type)}</span>
-						</div>
-						<div class="step-details">
-							<span class="detail">
-								<span class="detail-value">{step.temp_c.toFixed(0)}°C</span>
-							</span>
-							<span class="detail">
-								<span class="detail-value">{step.time_minutes} min</span>
-							</span>
-							{#if step.ramp_time_minutes}
-								<span class="detail ramp">
-									<span class="detail-label">Ramp:</span>
-									<span class="detail-value">{step.ramp_time_minutes} min</span>
-								</span>
-							{/if}
-						</div>
-					</div>
-				</div>
-			{/each}
+		<h3>Mash Schedule</h3>
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr>
+						<th class="idx">#</th>
+						<th>Step</th>
+						<th>Type</th>
+						<th class="num">Temp</th>
+						<th class="num">Time</th>
+						<th class="num">Ramp</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each sortedSteps as step, i}
+						<tr>
+							<td class="idx num">{i + 1}</td>
+							<td class="name">{step.name}</td>
+							<td class="type">{formatType(step.type)}</td>
+							<td class="num">{step.temp_c.toFixed(0)}&thinsp;°C</td>
+							<td class="num">{step.time_minutes}&thinsp;min</td>
+							<td class="num">{step.ramp_time_minutes ? `${step.ramp_time_minutes}\u2009min` : '--'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	</div>
 {/if}
 
 <style>
-	.mash-schedule {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		padding: var(--space-4);
-	}
-
-	.section-title {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
+	h3 {
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--ink-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
-	.section-icon {
-		width: 18px;
-		height: 18px;
-		opacity: 0.8;
+	.table-scroll {
+		overflow-x: auto;
 	}
 
-	.steps-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
+	table {
+		width: 100%;
+		min-width: 360px;
+		border-collapse: collapse;
 	}
 
-	.step-item {
-		display: flex;
-		gap: var(--space-3);
-		padding: var(--space-3);
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		border: 1px solid var(--border-subtle);
-	}
-
-	.step-number {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		background: var(--recipe-accent);
-		color: var(--accent-ink);
-		border-radius: 50%;
-		font-size: 13px;
+	th {
+		text-align: left;
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
 		font-weight: 600;
-		flex-shrink: 0;
+		white-space: nowrap;
 	}
 
-	.step-content {
-		flex: 1;
-		min-width: 0;
+	td {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	.step-header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		margin-bottom: var(--space-2);
+	.num {
+		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	.step-name {
-		font-weight: 500;
-		color: var(--text-primary);
+	th.num {
+		font-family: var(--font-body);
 	}
 
-	.step-type {
-		font-size: 12px;
-		color: var(--text-muted);
-		padding: 2px 6px;
-		background: var(--bg-surface);
-		border-radius: 4px;
+	.idx {
+		width: 2.5rem;
+		color: var(--ink-muted);
 	}
 
-	.step-details {
-		display: flex;
-		gap: var(--space-4);
-		flex-wrap: wrap;
+	.name {
+		font-weight: 600;
 	}
 
-	.detail {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-	}
-
-	.detail-label {
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-
-	.detail-value {
-		font-family: var(--font-mono);
-		font-size: 14px;
-		color: var(--text-primary);
-	}
-
-	.ramp {
-		color: var(--text-secondary);
+	.type {
+		color: var(--ink-secondary);
+		text-transform: capitalize;
 	}
 </style>

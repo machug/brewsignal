@@ -69,12 +69,12 @@
 
 	function formatAmount(grams?: number | null): string {
 		if (grams === undefined || grams === null) return '--';
-		return grams.toFixed(0) + 'g';
+		return grams.toFixed(0) + '\u2009g';
 	}
 
 	function formatAlpha(percent?: number | null): string {
 		if (percent === undefined || percent === null) return '--';
-		return percent.toFixed(1) + '%';
+		return percent.toFixed(1) + '\u2009%';
 	}
 
 	function formatTime(timing?: Hop['timing']): string {
@@ -88,14 +88,14 @@
 			if (value === 0) return 'At packaging';
 			// Editor saves store the dry hop day count as minutes (3 days =
 			// 4320 min); show it in days like imported rows (tilt_ui-5z86)
-			return unit === 'min' ? `${+(value / (24 * 60)).toFixed(2)} day` : `${value} ${unit}`;
+			return unit === 'min' ? `${+(value / (24 * 60)).toFixed(2)}\u2009day` : `${value}\u2009${unit}`;
 		}
 		// Whirlpool - show time and temperature if available
 		const isWhirlpool = use === 'whirlpool' || use === 'Whirlpool' || use === 'add_to_whirlpool';
 		if (isWhirlpool && timing?.temperature?.value) {
-			return `${value} ${unit} @ ${timing.temperature.value}°${timing.temperature.unit || 'C'}`;
+			return `${value}\u2009${unit} @ ${timing.temperature.value}\u2009°${timing.temperature.unit || 'C'}`;
 		}
-		return `${value} ${unit}`;
+		return `${value}\u2009${unit}`;
 	}
 
 	function formatUse(use?: string): string {
@@ -126,13 +126,14 @@
 		{#each groupedHops as [use, hopList]}
 			<div class="hop-group">
 				<h4>{formatUse(use)}</h4>
+				<div class="table-scroll">
 				<table>
 					<thead>
 						<tr>
 							<th>Hop</th>
-							<th>Amount</th>
-							<th>AA%</th>
-							<th>Time</th>
+							<th class="num">Amount</th>
+							<th class="num">AA</th>
+							<th class="num">Time</th>
 							<th>Form</th>
 						</tr>
 					</thead>
@@ -148,111 +149,112 @@
 										<div class="hop-type">Aroma-only · no IBU</div>
 									{/if}
 								</td>
-								<td>
+								<td class="num">
 									{#if hop.is_extract}
-										{hop.amount_ml != null ? `${hop.amount_ml.toFixed(1)} mL` : '--'}
+										{hop.amount_ml != null ? `${hop.amount_ml.toFixed(1)}\u2009mL` : '--'}
 									{:else}
 										{formatAmount(hop.amount_grams)}
 									{/if}
 								</td>
-								<td>{hop.is_extract ? '—' : formatAlpha(hop.alpha_acid_percent)}</td>
-								<td>{formatTime(hop.timing)}</td>
-								<td>{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</td>
+								<td class="num">{hop.is_extract ? '—' : formatAlpha(hop.alpha_acid_percent)}</td>
+								<td class="num">{formatTime(hop.timing)}</td>
+								<td class="form">{hop.is_extract ? 'Extract' : hop.form || 'Pellet'}</td>
 							</tr>
 						{/each}
 					</tbody>
 				</table>
+				</div>
 			</div>
 		{/each}
 	</div>
 {/if}
 
 <style>
-	.hop-schedule {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		padding: var(--space-4);
-	}
-
 	h3 {
-		font-size: 16px;
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--ink-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
 	.hop-group {
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-md);
 	}
 
 	.hop-group:last-child {
 		margin-bottom: 0;
 	}
 
+	/* Use-group label (Boil, Dry Hop...) */
 	h4 {
-		font-size: 13px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-secondary);
-		margin-bottom: var(--space-3);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		padding-bottom: var(--space-2);
-		border-bottom: 1px solid var(--border-subtle);
+		color: var(--ink-primary);
+		margin: 0 0 var(--space-2xs) 0;
+	}
+
+	.table-scroll {
+		overflow-x: auto;
 	}
 
 	table {
 		width: 100%;
+		min-width: 560px;
 		border-collapse: collapse;
+		table-layout: fixed;
 	}
+
+	th:nth-child(2) { width: 88px; }
+	th:nth-child(3) { width: 72px; }
+	th:nth-child(4) { width: 150px; }
+	th:nth-child(5) { width: 96px; }
 
 	th {
 		text-align: left;
-		padding: var(--space-2) var(--space-3);
-		font-size: 12px;
-		color: var(--text-muted);
-		font-weight: 500;
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-weight: 600;
+		white-space: nowrap;
 	}
 
 	td {
-		padding: var(--space-2) var(--space-3);
-		font-size: 14px;
-		color: var(--text-primary);
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	tbody tr {
-		border-bottom: 1px solid var(--border-subtle);
+	.num {
+		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	tbody tr:last-child {
-		border-bottom: none;
+	th.num {
+		font-family: var(--font-body);
 	}
 
 	.hop-name {
-		font-weight: 500;
+		font-weight: 600;
 	}
 
 	.hop-type {
-		color: var(--text-muted);
-		font-size: 12px;
-		margin-top: var(--space-1);
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
 	}
 
-	/* Responsive table */
-	@media (max-width: 640px) {
-		table {
-			font-size: 12px;
-		}
-
-		th,
-		td {
-			padding: var(--space-2);
-		}
-
-		.hop-type {
-			display: none;
-		}
+	.form {
+		color: var(--ink-secondary);
+		text-transform: capitalize;
 	}
 </style>

@@ -300,7 +300,7 @@
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.7);
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -311,14 +311,13 @@
 	.modal-content {
 		background: var(--bg-surface);
 		border: 1px solid var(--border-default);
-		border-radius: 12px;
+		border-radius: 6px;
 		max-width: 480px;
 		width: 100%;
 		max-height: 85vh;
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
 	}
 
 	.modal-header {
@@ -331,7 +330,8 @@
 
 	.modal-header h2 {
 		margin: 0;
-		font-size: 18px;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
 		color: var(--text-primary);
 	}
@@ -377,7 +377,7 @@
 		padding: var(--space-2) var(--space-3);
 		background: var(--bg-elevated, transparent);
 		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--text-secondary);
 		font-size: 0.85rem;
 		cursor: pointer;
@@ -390,11 +390,12 @@
 	}
 
 	.preset-chip.selected {
-		border-color: var(--recipe-accent, #f59e0b);
+		border-color: var(--accent);
 		color: var(--text-primary);
 	}
 
 	.preset-liters {
+		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
 		color: var(--text-muted);
 		flex-shrink: 0;
@@ -420,8 +421,9 @@
 		padding: var(--space-2) var(--space-3);
 		background: var(--bg-elevated, transparent);
 		border: 1px solid var(--border-default);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--text-primary);
+		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -451,6 +453,7 @@
 
 	.preview-table .num {
 		text-align: right;
+		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -490,19 +493,23 @@
 		padding: var(--space-2) var(--space-4);
 		background: none;
 		border: 1px solid var(--border-default);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--text-secondary);
 		cursor: pointer;
 	}
 
 	.btn-scale {
 		padding: var(--space-2) var(--space-4);
-		background: var(--recipe-accent, #f59e0b);
-		border: none;
-		border-radius: 8px;
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		border-radius: 4px;
 		color: var(--accent-ink);
 		font-weight: 600;
 		cursor: pointer;
+	}
+
+	.btn-scale:hover:not(:disabled) {
+		background: var(--accent-hover);
 	}
 
 	.btn-scale:disabled,

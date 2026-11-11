@@ -28,7 +28,7 @@
 		// amount_kg holds the value in amount_unit units (legacy column name)
 		if (misc.amount_kg === undefined || misc.amount_kg === null) return '--';
 		const unit = misc.amount_unit || 'g';
-		return `${misc.amount_kg.toFixed(misc.amount_kg < 1 ? 2 : 1)} ${unit}`;
+		return `${misc.amount_kg.toFixed(misc.amount_kg < 1 ? 2 : 1)}\u2009${unit}`;
 	}
 
 	function formatUse(misc: MiscIngredient): string {
@@ -48,21 +48,22 @@
 
 	function formatTime(misc: MiscIngredient): string {
 		if (misc.time_min === undefined || misc.time_min === null) return '--';
-		return `${misc.time_min.toFixed(0)} min`;
+		return `${misc.time_min.toFixed(0)}\u2009min`;
 	}
 </script>
 
 {#if others.length > 0}
 	<div class="other-ingredients">
 		<h3>Other Ingredients</h3>
+		<div class="table-scroll">
 		<table>
 			<thead>
 				<tr>
 					<th>Ingredient</th>
 					<th>Type</th>
 					<th>Use</th>
-					<th>Amount</th>
-					<th>Time</th>
+					<th class="num">Amount</th>
+					<th class="num">Time</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -76,85 +77,79 @@
 						</td>
 						<td class="type">{misc.type || '--'}</td>
 						<td>{formatUse(misc)}</td>
-						<td>{formatAmount(misc)}</td>
-						<td>{formatTime(misc)}</td>
+						<td class="num">{formatAmount(misc)}</td>
+						<td class="num">{formatTime(misc)}</td>
 					</tr>
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	</div>
 {/if}
 
 <style>
-	.other-ingredients {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		padding: var(--space-4);
+	h3 {
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
-	h3 {
-		font-size: 16px;
-		font-weight: 600;
-		color: var(--recipe-accent);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+	.table-scroll {
+		overflow-x: auto;
 	}
 
 	table {
 		width: 100%;
+		min-width: 480px;
 		border-collapse: collapse;
 	}
 
 	th {
 		text-align: left;
-		padding: var(--space-2) var(--space-3);
-		border-bottom: 2px solid var(--border-default);
-		font-size: 12px;
-		color: var(--text-secondary);
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		font-weight: 600;
+		white-space: nowrap;
 	}
 
 	td {
-		padding: var(--space-3);
-		border-bottom: 1px solid var(--border-subtle);
-		font-size: 14px;
-		color: var(--text-primary);
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	tbody tr:last-child td {
-		border-bottom: none;
+	.num {
+		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	th.num {
+		font-family: var(--font-body);
 	}
 
 	.name {
-		font-weight: 500;
+		font-weight: 600;
 	}
 
 	.use-for {
-		color: var(--text-muted);
-		font-size: 12px;
-		margin-top: var(--space-1);
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		margin-top: 2px;
 	}
 
 	.type {
+		color: var(--ink-secondary);
 		text-transform: capitalize;
-	}
-
-	@media (max-width: 640px) {
-		table {
-			font-size: 12px;
-		}
-
-		th,
-		td {
-			padding: var(--space-2);
-		}
-
-		.use-for {
-			display: none;
-		}
 	}
 </style>

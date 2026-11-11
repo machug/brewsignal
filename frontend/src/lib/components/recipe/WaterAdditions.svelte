@@ -55,6 +55,10 @@
 	// Get source and target profiles
 	let sourceProfile = $derived(waterProfiles.find((p) => p.profile_type === 'source'));
 	let targetProfile = $derived(waterProfiles.find((p) => p.profile_type === 'target'));
+	let profileRows = $derived([
+		{ label: 'Source', p: sourceProfile },
+		{ label: 'Target', p: targetProfile }
+	]);
 
 	// Get mash and sparge adjustments. An adjustment row with no salts and
 	// no acid (e.g. Brewfather sparge stage on a no-sparge profile) renders
@@ -107,7 +111,7 @@
 		const amount = agent.amount_kg;
 		const unit = agent.amount_unit || 'g';
 		// amount_kg is actually in the unit specified, not always kg
-		return `${amount.toFixed(amount < 1 ? 2 : 1)} ${unit}`;
+		return `${amount.toFixed(amount < 1 ? 2 : 1)}\u2009${unit}`;
 	}
 
 	function hasAgents(group: MiscIngredient[]): boolean {
@@ -117,50 +121,43 @@
 
 {#if waterAgents.length > 0 || waterProfiles.length > 0 || mashAdjustment || spargeAdjustment}
 	<div class="water-additions">
-		<h3 class="section-title">
-			<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-			</svg>
-			Water Chemistry
-		</h3>
+		<h3 class="section-title">Water Chemistry</h3>
 
 		<!-- Water Profiles (Source/Target) -->
 		{#if sourceProfile || targetProfile}
 			<div class="profiles-section">
-				<h4 class="subsection-title">Water Profiles</h4>
-				<div class="profiles-grid">
-					{#if sourceProfile}
-						<div class="profile-card">
-							<span class="profile-label">Source: {sourceProfile.name || 'Untitled'}</span>
-							<div class="ion-grid">
-								<div class="ion-item"><span class="ion-label">Ca</span><span class="ion-value">{sourceProfile.calcium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Mg</span><span class="ion-value">{sourceProfile.magnesium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Na</span><span class="ion-value">{sourceProfile.sodium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Cl</span><span class="ion-value">{sourceProfile.chloride_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">SO4</span><span class="ion-value">{sourceProfile.sulfate_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">HCO3</span><span class="ion-value">{sourceProfile.bicarbonate_ppm?.toFixed(1) ?? '--'}</span></div>
-							</div>
-							{#if sourceProfile.ph}
-								<div class="profile-ph">pH: {sourceProfile.ph.toFixed(1)}</div>
-							{/if}
-						</div>
-					{/if}
-					{#if targetProfile}
-						<div class="profile-card target">
-							<span class="profile-label">Target: {targetProfile.name || 'Untitled'}</span>
-							<div class="ion-grid">
-								<div class="ion-item"><span class="ion-label">Ca</span><span class="ion-value">{targetProfile.calcium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Mg</span><span class="ion-value">{targetProfile.magnesium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Na</span><span class="ion-value">{targetProfile.sodium_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">Cl</span><span class="ion-value">{targetProfile.chloride_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">SO4</span><span class="ion-value">{targetProfile.sulfate_ppm?.toFixed(1) ?? '--'}</span></div>
-								<div class="ion-item"><span class="ion-label">HCO3</span><span class="ion-value">{targetProfile.bicarbonate_ppm?.toFixed(1) ?? '--'}</span></div>
-							</div>
-							{#if targetProfile.ph}
-								<div class="profile-ph">pH: {targetProfile.ph.toFixed(1)}</div>
-							{/if}
-						</div>
-					{/if}
+				<h4 class="subsection-title">Water Profiles <span class="unit-note">ppm</span></h4>
+				<div class="table-scroll">
+					<table>
+						<thead>
+							<tr>
+								<th>Profile</th>
+								<th class="num">Ca</th>
+								<th class="num">Mg</th>
+								<th class="num">Na</th>
+								<th class="num">Cl</th>
+								<th class="num">SO4</th>
+								<th class="num">HCO3</th>
+								<th class="num">pH</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each profileRows as { label, p }}
+								{#if p}
+									<tr>
+										<td class="name">{label}: {p.name || 'Untitled'}</td>
+										<td class="num">{p.calcium_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.magnesium_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.sodium_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.chloride_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.sulfate_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.bicarbonate_ppm?.toFixed(1) ?? '--'}</td>
+										<td class="num">{p.ph ? p.ph.toFixed(1) : '--'}</td>
+									</tr>
+								{/if}
+							{/each}
+						</tbody>
+					</table>
 				</div>
 			</div>
 		{/if}
@@ -172,33 +169,33 @@
 				<div class="additions-grid">
 					{#if mashAdjustment}
 						<div class="additions-group">
-							<h4 class="group-title">Mash water treated ({mashAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
+							<h4 class="group-title">Mash water treated ({mashAdjustment.volume_liters?.toFixed(1) ?? '--'}&thinsp;L)</h4>
 							<ul class="additions-list">
-								{#if mashAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{mashAdjustment.calcium_sulfate_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{mashAdjustment.calcium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.magnesium_sulfate_g}<li class="addition-item"><span class="addition-name">Epsom Salt (MgSO4)</span><span class="addition-amount">{mashAdjustment.magnesium_sulfate_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{mashAdjustment.sodium_bicarbonate_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{mashAdjustment.sodium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{mashAdjustment.calcium_carbonate_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{mashAdjustment.calcium_hydroxide_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{mashAdjustment.magnesium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if mashAdjustment.acid_type && mashAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{mashAdjustment.acid_type} acid ({mashAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{mashAdjustment.acid_ml.toFixed(2)} ml</span></li>{/if}
+								{#if mashAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{mashAdjustment.calcium_sulfate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{mashAdjustment.calcium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.magnesium_sulfate_g}<li class="addition-item"><span class="addition-name">Epsom Salt (MgSO4)</span><span class="addition-amount">{mashAdjustment.magnesium_sulfate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{mashAdjustment.sodium_bicarbonate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{mashAdjustment.sodium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{mashAdjustment.calcium_carbonate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{mashAdjustment.calcium_hydroxide_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{mashAdjustment.magnesium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if mashAdjustment.acid_type && mashAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{mashAdjustment.acid_type} acid ({mashAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{mashAdjustment.acid_ml.toFixed(2)}&thinsp;ml</span></li>{/if}
 							</ul>
 						</div>
 					{/if}
 					{#if spargeAdjustment}
 						<div class="additions-group">
-							<h4 class="group-title">Sparge water treated ({spargeAdjustment.volume_liters?.toFixed(1) ?? '--'} L)</h4>
+							<h4 class="group-title">Sparge water treated ({spargeAdjustment.volume_liters?.toFixed(1) ?? '--'}&thinsp;L)</h4>
 							<ul class="additions-list">
-								{#if spargeAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{spargeAdjustment.calcium_sulfate_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{spargeAdjustment.calcium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.magnesium_sulfate_g}<li class="addition-item"><span class="addition-name">Epsom Salt (MgSO4)</span><span class="addition-amount">{spargeAdjustment.magnesium_sulfate_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{spargeAdjustment.sodium_bicarbonate_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{spargeAdjustment.sodium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{spargeAdjustment.calcium_carbonate_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{spargeAdjustment.calcium_hydroxide_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{spargeAdjustment.magnesium_chloride_g.toFixed(2)} g</span></li>{/if}
-								{#if spargeAdjustment.acid_type && spargeAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{spargeAdjustment.acid_type} acid ({spargeAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{spargeAdjustment.acid_ml.toFixed(2)} ml</span></li>{/if}
+								{#if spargeAdjustment.calcium_sulfate_g}<li class="addition-item"><span class="addition-name">Gypsum (CaSO4)</span><span class="addition-amount">{spargeAdjustment.calcium_sulfate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.calcium_chloride_g}<li class="addition-item"><span class="addition-name">Calcium Chloride</span><span class="addition-amount">{spargeAdjustment.calcium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.magnesium_sulfate_g}<li class="addition-item"><span class="addition-name">Epsom Salt (MgSO4)</span><span class="addition-amount">{spargeAdjustment.magnesium_sulfate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.sodium_bicarbonate_g}<li class="addition-item"><span class="addition-name">Baking Soda</span><span class="addition-amount">{spargeAdjustment.sodium_bicarbonate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.sodium_chloride_g}<li class="addition-item"><span class="addition-name">Table Salt (NaCl)</span><span class="addition-amount">{spargeAdjustment.sodium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.calcium_carbonate_g}<li class="addition-item"><span class="addition-name">Chalk (CaCO3)</span><span class="addition-amount">{spargeAdjustment.calcium_carbonate_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.calcium_hydroxide_g}<li class="addition-item"><span class="addition-name">Slaked Lime (Ca(OH)2)</span><span class="addition-amount">{spargeAdjustment.calcium_hydroxide_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.magnesium_chloride_g}<li class="addition-item"><span class="addition-name">Magnesium Chloride (MgCl2)</span><span class="addition-amount">{spargeAdjustment.magnesium_chloride_g.toFixed(2)}&thinsp;g</span></li>{/if}
+								{#if spargeAdjustment.acid_type && spargeAdjustment.acid_ml}<li class="addition-item"><span class="addition-name">{spargeAdjustment.acid_type} acid ({spargeAdjustment.acid_concentration_percent ?? '--'}%)</span><span class="addition-amount">{spargeAdjustment.acid_ml.toFixed(2)}&thinsp;ml</span></li>{/if}
 							</ul>
 						</div>
 					{/if}
@@ -259,88 +256,19 @@
 {/if}
 
 <style>
-	.water-additions {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		padding: var(--space-4);
-	}
-
 	.section-title {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--ink-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
-	.section-icon {
-		width: 18px;
-		height: 18px;
-		opacity: 0.8;
-	}
-
-	.additions-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: var(--space-4);
-	}
-
-	.additions-group {
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		padding: var(--space-3);
-		border: 1px solid var(--border-subtle);
-	}
-
-	.group-title {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-3) 0;
-		padding-bottom: var(--space-2);
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.additions-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-	}
-
-	.addition-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: var(--space-2);
-	}
-
-	.addition-name {
-		font-size: 13px;
-		color: var(--text-primary);
-	}
-
-	.addition-amount {
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--text-secondary);
-		white-space: nowrap;
-	}
-
-	/* Subsection styling */
 	.profiles-section,
 	.adjustments-section,
 	.agents-section {
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-md);
 	}
 
 	.profiles-section:last-child,
@@ -350,71 +278,109 @@
 	}
 
 	.subsection-title {
-		font-size: 12px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-secondary);
+		color: var(--ink-primary);
+		margin: 0 0 var(--space-xs) 0;
+	}
+
+	.unit-note {
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		font-weight: 400;
+		color: var(--ink-muted);
+		margin-left: var(--space-xs);
+	}
+
+	/* Profile table */
+	.table-scroll {
+		overflow-x: auto;
+	}
+
+	table {
+		width: 100%;
+		min-width: 520px;
+		border-collapse: collapse;
+	}
+
+	th {
+		text-align: left;
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-3) 0;
-	}
-
-	/* Water Profiles Grid */
-	.profiles-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-		gap: var(--space-3);
-	}
-
-	.profile-card {
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		padding: var(--space-3);
-		border: 1px solid var(--border-subtle);
-	}
-
-	.profile-card.target {
-		border-color: var(--recipe-accent-border);
-		background: linear-gradient(135deg, var(--bg-elevated) 0%, rgba(245, 158, 11, 0.03) 100%);
-	}
-
-	.profile-label {
-		display: block;
-		font-size: 12px;
+		letter-spacing: 0.08em;
 		font-weight: 600;
-		color: var(--text-secondary);
-		margin-bottom: var(--space-2);
+		white-space: nowrap;
 	}
 
-	.ion-grid {
+	td {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+	}
+
+	.num {
+		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	th.num {
+		font-family: var(--font-body);
+	}
+
+	.name {
+		font-weight: 600;
+	}
+
+	/* Additions: hairline ledger lists, side by side when there is room */
+	.additions-grid {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: var(--space-1);
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: var(--space-md) var(--space-lg);
 	}
 
-	.ion-item {
+	.group-title {
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		margin: 0;
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-strong);
+	}
+
+	.additions-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.addition-item {
 		display: flex;
 		justify-content: space-between;
-		padding: 2px 4px;
-		background: var(--bg-surface);
-		border-radius: 3px;
+		align-items: baseline;
+		gap: var(--space-sm);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
-	.ion-label {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--text-muted);
+	.addition-name {
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	.ion-value {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--text-primary);
-	}
-
-	.profile-ph {
-		margin-top: var(--space-2);
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--text-secondary);
+	.addition-amount {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		white-space: nowrap;
 	}
 </style>

@@ -409,86 +409,84 @@
 	</div>
 
 	{#if loading}
-		<div class="loading-state">
+		<div class="state-block">
 			<div class="spinner"></div>
 			<p>Loading recipe...</p>
 		</div>
 	{:else if error}
-		<div class="error-state">
+		<div class="state-block">
 			<p class="error-message">{error}</p>
 		</div>
 	{:else if recipe}
-		<!-- Hero Header -->
-		<div class="recipe-hero">
-			<div class="hero-content">
-				<div class="hero-title-area">
-					<h1 class="recipe-title">{recipe.name}</h1>
-					<div class="recipe-meta">
-						{#if recipe.type}
-							<span class="meta-badge type">{recipe.type}</span>
-						{/if}
-						{#if recipe.author}
-							<span class="meta-author">by {recipe.author}</span>
-						{/if}
-					</div>
-				</div>
-				<div class="header-actions">
-					<button
-						type="button"
-						class="btn-review"
-						onclick={handleReview}
-						disabled={reviewLoading}
-					>
-						{#if reviewLoading}
-							<span class="btn-spinner"></span>
-							Analyzing...
-						{:else}
-							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-							</svg>
-							AI Review
-						{/if}
-					</button>
-					<button
-						type="button"
-						class="btn-secondary"
-						onclick={() => openScaleDialog()}
-						disabled={!recipe.batch_size_liters}
-						title={recipe.batch_size_liters ? 'Scale recipe to a new batch size' : 'Recipe has no batch size to scale from'}
-					>
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-						</svg>
-						Scale
-					</button>
-					<a href="/recipes/{recipe.id}/edit" class="btn-secondary">
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-						</svg>
-						Edit
-					</a>
-					<a href="/api/recipes/{recipe.id}/export/brewfather?download=true" class="btn-secondary" download>
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-						</svg>
-						Export
-					</a>
-					<button type="button" class="btn-primary" onclick={handleBrewThis}>
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-						</svg>
-						Brew This
-					</button>
-					<button type="button" class="btn-ghost-danger" onclick={() => (showDeleteConfirm = true)} aria-label="Delete recipe">
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-						</svg>
-					</button>
+		<!-- Header -->
+		<header class="recipe-hero">
+			<div class="hero-title-area">
+				<h1 class="recipe-title">{recipe.name}</h1>
+				<div class="recipe-meta">
+					{#if recipe.type}
+						<span class="meta-pill">{recipe.type}</span>
+					{/if}
+					{#if recipe.author}
+						<span class="meta-author">by {recipe.author}</span>
+					{/if}
 				</div>
 			</div>
-		</div>
+			<div class="header-actions">
+				<button
+					type="button"
+					class="btn-secondary"
+					onclick={handleReview}
+					disabled={reviewLoading}
+				>
+					{#if reviewLoading}
+						<span class="btn-spinner"></span>
+						Analyzing...
+					{:else}
+						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+						</svg>
+						AI Review
+					{/if}
+				</button>
+				<button
+					type="button"
+					class="btn-secondary"
+					onclick={() => openScaleDialog()}
+					disabled={!recipe.batch_size_liters}
+					title={recipe.batch_size_liters ? 'Scale recipe to a new batch size' : 'Recipe has no batch size to scale from'}
+				>
+					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+					</svg>
+					Scale
+				</button>
+				<a href="/recipes/{recipe.id}/edit" class="btn-secondary">
+					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+					</svg>
+					Edit
+				</a>
+				<a href="/api/recipes/{recipe.id}/export/brewfather?download=true" class="btn-secondary" download>
+					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+					</svg>
+					Export
+				</a>
+				<button type="button" class="btn-primary" onclick={handleBrewThis}>
+					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+					</svg>
+					Brew This
+				</button>
+				<button type="button" class="btn-ghost-danger" onclick={() => (showDeleteConfirm = true)} aria-label="Delete recipe">
+					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+					</svg>
+				</button>
+			</div>
+		</header>
 
-		<!-- Stats Panel with Beer Glass -->
+		<!-- Stats strip with SRM glass -->
 		<RecipeStatsPanel
 			og={liveStats?.og ?? recipe.og ?? 1.050}
 			fg={liveStats?.fg ?? recipe.fg ?? 1.010}
@@ -526,78 +524,75 @@
 		/>
 
 		<div class="recipe-content">
-			<!-- Yeast Section -->
-			{#if recipe.yeast_name}
-				<section class="content-card">
-					<h2 class="section-title">
-						<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-						</svg>
-						Yeast
-					</h2>
-					<div class="yeast-card">
-						<div class="yeast-main">
-							<span class="yeast-name">{recipe.yeast_name}</span>
-							{#if recipe.yeast_lab}
-								<span class="yeast-lab">{recipe.yeast_lab}</span>
-							{/if}
-						</div>
-						<div class="yeast-stats">
-							{#if recipe.yeast_temp_min != null && recipe.yeast_temp_max != null}
-								<div class="yeast-stat">
-									<span class="yeast-stat-label">Temp Range</span>
-									<span class="yeast-stat-value">{recipe.yeast_temp_min.toFixed(0)}–{recipe.yeast_temp_max.toFixed(0)}°C</span>
-								</div>
-							{/if}
-							{#if recipe.yeast_attenuation}
-								<div class="yeast-stat">
-									<span class="yeast-stat-label">Attenuation</span>
-									<span class="yeast-stat-value">{recipe.yeast_attenuation.toFixed(0)}%</span>
-								</div>
-							{/if}
-						</div>
-					</div>
-				</section>
-			{/if}
-
 			<!-- Fermentables Section -->
 			{#if recipe.fermentables && recipe.fermentables.length > 0}
-				<section class="content-card">
+				<section class="block">
 					<FermentablesList fermentables={recipe.fermentables} />
 				</section>
 			{/if}
 
 			<!-- Hops Section -->
 			{#if displayHops.length > 0}
-				<section class="content-card">
+				<section class="block">
 					<HopSchedule hops={displayHops as never} />
+				</section>
+			{/if}
+
+			<!-- Yeast Section -->
+			{#if recipe.yeast_name}
+				<section class="block">
+					<h2 class="section-title">Yeast</h2>
+					<div class="table-scroll">
+						<table class="spec-table">
+							<thead>
+								<tr>
+									<th>Strain</th>
+									<th>Lab</th>
+									<th class="num">Temp Range</th>
+									<th class="num">Attenuation</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td class="name">{recipe.yeast_name}</td>
+									<td class="muted">{recipe.yeast_lab ?? '--'}</td>
+									<td class="num">
+										{#if recipe.yeast_temp_min != null && recipe.yeast_temp_max != null}
+											{recipe.yeast_temp_min.toFixed(0)}–{recipe.yeast_temp_max.toFixed(0)}&thinsp;°C
+										{:else}--{/if}
+									</td>
+									<td class="num">{recipe.yeast_attenuation ? `${recipe.yeast_attenuation.toFixed(0)} %` : '--'}</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</section>
 			{/if}
 
 			<!-- Other Ingredients (non-water miscs: finings, enzymes, spices) -->
 			{#if (recipe.miscs || []).some((m) => (m.type ?? '').toLowerCase().replace('_', ' ') !== 'water agent')}
-				<section class="content-card">
+				<section class="block">
 					<OtherIngredients miscs={recipe.miscs || []} />
 				</section>
 			{/if}
 
 			<!-- Mash Schedule Section -->
 			{#if recipe.mash_steps && recipe.mash_steps.length > 0}
-				<section class="content-card">
+				<section class="block">
 					<MashSchedule steps={recipe.mash_steps} />
 				</section>
 			{/if}
 
 			<!-- Fermentation Schedule Section -->
 			{#if recipe.fermentation_steps && recipe.fermentation_steps.length > 0}
-				<section class="content-card">
+				<section class="block">
 					<FermentationSchedule steps={recipe.fermentation_steps} />
 				</section>
 			{/if}
 
 			<!-- Water Additions Section -->
 			{#if (recipe.miscs && recipe.miscs.length > 0) || (recipe.water_profiles && recipe.water_profiles.length > 0) || (recipe.water_adjustments && recipe.water_adjustments.length > 0)}
-				<section class="content-card">
+				<section class="block">
 					<WaterAdditions
 						miscs={recipe.miscs || []}
 						waterProfiles={recipe.water_profiles || []}
@@ -608,75 +603,60 @@
 
 			<!-- Water Volumes (calculated from grain bill + batch size) -->
 			{#if waterVolumes}
-				<section class="content-card">
-					<h2 class="section-title">
-						<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
-						</svg>
-						Water
-					</h2>
-					<div class="water-volumes">
-						<div class="water-item">
-							<span class="water-value">{waterVolumes.mashWater.toFixed(2)} L</span>
-							<span class="water-label">mash water</span>
+				<section class="block">
+					<h2 class="section-title">Water</h2>
+					<dl class="readouts">
+						<div class="readout">
+							<dt>Mash water</dt>
+							<dd>{waterVolumes.mashWater.toFixed(2)}&thinsp;L</dd>
 						</div>
-						<div class="water-item">
-							<span class="water-value">{waterVolumes.spargeWater.toFixed(2)} L</span>
-							<span class="water-label">sparge water</span>
+						<div class="readout">
+							<dt>Sparge water</dt>
+							<dd>{waterVolumes.spargeWater.toFixed(2)}&thinsp;L</dd>
 						</div>
-						<div class="water-item total">
-							<span class="water-value">{waterVolumes.totalWater.toFixed(2)} L</span>
-							<span class="water-label">total water</span>
+						<div class="readout total">
+							<dt>Total water</dt>
+							<dd>{waterVolumes.totalWater.toFixed(2)}&thinsp;L</dd>
 						</div>
-						<div class="water-item">
-							<span class="water-value">{waterVolumes.mashVolume.toFixed(2)} L</span>
-							<span class="water-label">mash volume (water + grain)</span>
+						<div class="readout">
+							<dt>Mash volume (water + grain)</dt>
+							<dd>{waterVolumes.mashVolume.toFixed(2)}&thinsp;L</dd>
 						</div>
-					</div>
+					</dl>
 				</section>
 			{/if}
 
 			<!-- Batch Details -->
 			{#if recipe.batch_size_liters || recipe.efficiency_percent || recipe.boil_time_minutes}
-				<section class="content-card">
-					<h2 class="section-title">
-						<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-						</svg>
-						Batch Details
-					</h2>
-					<div class="details-grid">
+				<section class="block">
+					<h2 class="section-title">Batch Details</h2>
+					<dl class="readouts">
 						{#if recipe.batch_size_liters}
-							<div class="detail-item">
-								<span class="detail-label">Batch Size</span>
-								<span class="detail-value">{recipe.batch_size_liters.toFixed(1)} L</span>
+							<div class="readout">
+								<dt>Batch size</dt>
+								<dd>{recipe.batch_size_liters.toFixed(1)}&thinsp;L</dd>
 							</div>
 						{/if}
 						{#if recipe.efficiency_percent}
-							<div class="detail-item">
-								<span class="detail-label">Efficiency</span>
-								<span class="detail-value">{recipe.efficiency_percent.toFixed(0)}%</span>
+							<div class="readout">
+								<dt>Efficiency</dt>
+								<dd>{recipe.efficiency_percent.toFixed(0)}&thinsp;%</dd>
 							</div>
 						{/if}
 						{#if recipe.boil_time_minutes}
-							<div class="detail-item">
-								<span class="detail-label">Boil Time</span>
-								<span class="detail-value">{recipe.boil_time_minutes} min</span>
+							<div class="readout">
+								<dt>Boil time</dt>
+								<dd>{recipe.boil_time_minutes}&thinsp;min</dd>
 							</div>
 						{/if}
-					</div>
+					</dl>
 				</section>
 			{/if}
 
 			<!-- Notes Section -->
 			{#if recipe.notes}
-				<section class="content-card notes-card">
-					<h2 class="section-title">
-						<svg class="section-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-						</svg>
-						Notes
-					</h2>
+				<section class="block">
+					<h2 class="section-title">Notes</h2>
 					<div class="notes-content">
 						{#each recipe.notes.split('\n') as line}
 							{#if line.trim()}
@@ -757,29 +737,29 @@
 
 <style>
 	.page-container {
-		max-width: 900px;
+		max-width: 1100px;
 		margin: 0 auto;
-		padding: var(--space-6);
+		padding: var(--space-lg);
 	}
 
 	/* Back Link */
 	.back-link {
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-md);
 	}
 
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text-secondary);
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
 		text-decoration: none;
 		transition: color var(--transition);
 	}
 
 	.back-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.back-icon {
@@ -788,21 +768,27 @@
 	}
 
 	/* Loading & Error States */
-	.loading-state,
-	.error-state {
+	.state-block {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: var(--space-12) var(--space-6);
+		gap: var(--space-sm);
+		padding: var(--space-2xl) var(--space-lg);
 		text-align: center;
+		border: 1px solid var(--rule-hairline);
+		color: var(--ink-secondary);
+	}
+
+	.state-block p {
+		margin: 0;
 	}
 
 	.spinner {
-		width: 32px;
-		height: 32px;
-		border: 3px solid var(--gray-700);
-		border-top-color: var(--recipe-accent);
+		width: 28px;
+		height: 28px;
+		border: 2px solid var(--rule-strong);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -811,78 +797,76 @@
 		to { transform: rotate(360deg); }
 	}
 
+	@media (prefers-reduced-motion: reduce) {
+		.spinner,
+		.btn-spinner {
+			animation-duration: 2.4s;
+		}
+	}
+
 	.error-message {
-		color: var(--negative);
-		font-size: 14px;
+		color: var(--status-danger);
+		font-size: var(--text-sm);
 	}
 
-	/* Hero Section */
+	/* Header */
 	.recipe-hero {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 12px;
-		overflow: hidden;
-		margin-bottom: var(--space-6);
-	}
-
-	.hero-content {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: var(--space-4);
-		padding: var(--space-6);
+		gap: var(--space-md);
+		flex-wrap: wrap;
+		margin-bottom: var(--space-lg);
 	}
 
 	.hero-title-area {
-		flex: 1;
+		flex: 1 1 280px;
+		min-width: 0;
 	}
 
 	.recipe-title {
-		font-family: var(--font-recipe-name);
-		font-size: 32px;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
 		font-weight: 600;
-		letter-spacing: -0.02em;
-		color: var(--text-primary);
-		margin: 0 0 var(--space-3) 0;
+		letter-spacing: -0.01em;
+		color: var(--ink-primary);
+		margin: 0 0 var(--space-xs) 0;
 		line-height: 1.2;
+		overflow-wrap: anywhere;
 	}
 
 	.recipe-meta {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
+		gap: var(--space-sm);
 		flex-wrap: wrap;
 	}
 
-	.meta-badge {
+	/* Outlined uppercase status pill */
+	.meta-pill {
 		display: inline-flex;
 		align-items: center;
-		padding: var(--space-1) var(--space-3);
-		font-size: 12px;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		border-radius: 4px;
+		padding: 2px var(--space-xs);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
-	}
-
-	.meta-badge.type {
-		background: rgba(245, 158, 11, 0.15);
-		color: var(--recipe-accent);
-		border: 1px solid rgba(245, 158, 11, 0.3);
+		letter-spacing: 0.08em;
+		color: var(--accent);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
 	}
 
 	.meta-author {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
 	/* Header Actions */
 	.header-actions {
 		display: flex;
-		gap: var(--space-2);
+		gap: var(--space-xs);
 		align-items: center;
-		flex-shrink: 0;
+		flex-wrap: wrap;
 	}
 
 	.btn-icon {
@@ -890,78 +874,48 @@
 		height: 16px;
 	}
 
-	.btn-secondary {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: 9px 16px;
-		font-size: 13px;
-		font-weight: 500;
-		background: transparent;
-		border: 1px solid var(--border-default);
-		border-radius: 8px;
-		color: var(--text-secondary);
-		text-decoration: none;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.btn-secondary:hover {
-		border-color: var(--recipe-accent);
-		color: var(--recipe-accent);
-		background: rgba(245, 158, 11, 0.05);
-	}
-
-	.btn-review {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: 9px 16px;
-		font-size: 13px;
-		font-weight: 500;
-		background: rgba(34, 197, 94, 0.08);
-		border: 1px solid var(--positive, #22c55e);
-		border-radius: 8px;
-		color: var(--positive, #22c55e);
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.btn-review:hover:not(:disabled) {
-		background: rgba(34, 197, 94, 0.15);
-	}
-
-	.btn-review:disabled {
-		opacity: 0.6;
-		cursor: wait;
-	}
-
+	.btn-secondary,
 	.btn-primary {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: 10px 20px;
-		font-size: 14px;
+		justify-content: center;
+		gap: var(--space-xs);
+		padding: var(--space-xs) var(--space-md);
+		min-height: 36px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		background: linear-gradient(135deg, var(--recipe-accent) 0%, var(--recipe-accent-hover) 100%);
-		border: none;
-		border-radius: 8px;
-		color: var(--gray-950);
+		border-radius: 4px;
+		text-decoration: none;
 		cursor: pointer;
-		transition: all 0.2s ease;
-		box-shadow:
-			0 2px 8px var(--recipe-accent-border),
-			0 1px 2px rgba(0, 0, 0, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.15);
+		transition: background var(--transition), border-color var(--transition), color var(--transition);
+	}
+
+	.btn-secondary {
+		background: transparent;
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
+	}
+
+	.btn-secondary:hover:not(:disabled) {
+		border-color: var(--accent-rule);
+		color: var(--ink-primary);
+	}
+
+	.btn-secondary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.btn-primary {
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:hover {
-		background: linear-gradient(135deg, var(--tilt-yellow) 0%, var(--recipe-accent) 100%);
-		transform: translateY(-1px);
-		box-shadow:
-			0 4px 12px var(--recipe-accent-border),
-			0 2px 4px rgba(0, 0, 0, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.2);
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
 	}
 
 	.btn-ghost-danger {
@@ -973,167 +927,150 @@
 		padding: 0;
 		background: transparent;
 		border: 1px solid transparent;
-		border-radius: 8px;
-		color: var(--text-muted);
+		border-radius: 4px;
+		color: var(--ink-muted);
 		cursor: pointer;
-		transition: all 0.2s ease;
+		transition: border-color var(--transition), color var(--transition), background var(--transition);
 	}
 
 	.btn-ghost-danger:hover {
-		border-color: var(--negative);
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.08);
+		border-color: var(--status-danger);
+		color: var(--status-danger);
 	}
 
-	/* Content Area */
+	.btn-secondary:focus-visible,
+	.btn-primary:focus-visible,
+	.btn-ghost-danger:focus-visible,
+	.back-btn:focus-visible,
+	.modal-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	/* Content: hairline-separated sections, no cards */
 	.recipe-content {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-5);
 	}
 
-	.content-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 10px;
-		padding: var(--space-5);
+	.block {
+		padding: var(--space-lg) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.section-title {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--ink-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 var(--space-4) 0;
+		letter-spacing: 0.1em;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
-	.section-icon {
-		width: 18px;
-		height: 18px;
-		opacity: 0.8;
+	/* Yeast table */
+	.table-scroll {
+		overflow-x: auto;
 	}
 
-	/* Yeast Card */
-	.yeast-card {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: var(--space-4);
-		flex-wrap: wrap;
+	.spec-table {
+		width: 100%;
+		min-width: 420px;
+		border-collapse: collapse;
 	}
 
-	.yeast-main {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
+	.spec-table th {
+		text-align: left;
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-strong);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-weight: 600;
+		white-space: nowrap;
 	}
 
-	.yeast-name {
-		font-size: 16px;
-		font-weight: 500;
-		color: var(--text-primary);
+	.spec-table td {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	.yeast-lab {
-		font-size: 13px;
-		color: var(--text-secondary);
-	}
-
-	.yeast-stats {
-		display: flex;
-		gap: var(--space-6);
-	}
-
-	.yeast-stat {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+	.spec-table .num {
 		text-align: right;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	.yeast-stat-label {
-		font-size: 11px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-muted);
+	.spec-table th.num {
+		font-family: var(--font-body);
 	}
 
-	.yeast-stat-value {
-		font-family: var(--font-mono);
-		font-size: 14px;
-		color: var(--text-primary);
+	.spec-table .name {
+		font-weight: 600;
 	}
 
-	/* Details Grid */
-	.details-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-		gap: var(--space-4);
+	.spec-table .muted {
+		color: var(--ink-secondary);
 	}
 
-	.detail-item {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-	}
-
-	.detail-label {
-		font-size: 12px;
-		color: var(--text-secondary);
-	}
-
-	.detail-value {
-		font-family: var(--font-measurement);
-		font-size: 18px;
-		color: var(--text-primary);
-	}
-
-	/* Water Volumes */
-	.water-volumes {
+	/* Readouts (batch details, water volumes): hairline instrument row */
+	.readouts {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-4);
+		margin: 0;
+		border-top: 1px solid var(--rule-hairline);
+		border-left: 1px solid var(--rule-hairline);
+		overflow: hidden;
 	}
 
-	.water-item {
+	.readout {
+		flex: 1 1 140px;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		padding: var(--space-sm) var(--space-md);
+		border-right: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+		margin: 0 -1px -1px 0;
+		min-width: 0;
 	}
 
-	.water-value {
-		font-family: var(--font-measurement);
-		font-size: 18px;
+	.readout dt {
+		order: 1;
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
 
-	.water-item.total .water-value {
-		color: var(--recipe-accent);
+	.readout dd {
+		order: 2;
+		margin: 0;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-lg);
+		font-weight: 500;
+		color: var(--ink-primary);
 	}
 
-	.water-label {
-		font-size: 12px;
-		color: var(--text-secondary);
+	.readout.total dd {
+		color: var(--accent);
 	}
 
 	/* Notes */
-	.notes-card {
-		background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(245, 158, 11, 0.02) 100%);
-	}
-
 	.notes-content {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.7;
+		max-width: 70ch;
 	}
 
 	.notes-content p {
-		margin: 0 0 var(--space-3) 0;
+		margin: 0 0 var(--space-sm) 0;
 	}
 
 	.notes-content p:last-child {
@@ -1142,45 +1079,43 @@
 
 	/* Footer */
 	.recipe-footer {
-		display: flex;
-		justify-content: center;
-		padding-top: var(--space-4);
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.created-date {
-		font-size: 12px;
-		color: var(--text-muted);
-		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
 	}
 
-	/* Modal */
+	/* Delete modal */
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.7);
-		backdrop-filter: blur(4px);
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
-		padding: var(--space-4);
+		padding: var(--space-md);
 	}
 
 	.modal {
 		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 12px;
-		padding: var(--space-6);
+		border: 1px solid var(--rule-strong);
+		border-radius: 6px;
+		padding: var(--space-lg);
 		max-width: 400px;
 		width: 100%;
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
 	}
 
 	.modal-header {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
-		margin-bottom: var(--space-4);
+		gap: var(--space-sm);
+		margin-bottom: var(--space-md);
 	}
 
 	.modal-icon {
@@ -1190,30 +1125,31 @@
 	}
 
 	.modal-icon.danger {
-		color: var(--negative);
+		color: var(--status-danger);
 	}
 
 	.modal-title {
-		font-size: 18px;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		margin: 0;
 	}
 
 	.modal-text {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.6;
-		margin: 0 0 var(--space-6) 0;
+		margin: 0 0 var(--space-lg) 0;
 	}
 
 	.modal-text strong {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.modal-actions {
 		display: flex;
-		gap: var(--space-3);
+		gap: var(--space-sm);
 		justify-content: flex-end;
 	}
 
@@ -1221,34 +1157,37 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4);
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 500;
+		gap: var(--space-xs);
+		padding: var(--space-xs) var(--space-md);
+		min-height: 36px;
+		border-radius: 4px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.2s ease;
+		transition: background var(--transition), border-color var(--transition);
 		min-width: 100px;
 	}
 
 	.modal-btn.cancel {
 		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-primary);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-primary);
 	}
 
 	.modal-btn.cancel:hover {
-		background: var(--bg-hover);
+		background: var(--bg-subtle);
 	}
 
+	/* Destructive action: outlined, danger ink */
 	.modal-btn.delete {
-		background: var(--negative);
-		border: none;
-		color: white;
+		background: transparent;
+		border: 1px solid var(--status-danger);
+		color: var(--status-danger);
 	}
 
 	.modal-btn.delete:hover:not(:disabled) {
-		background: #dc2626;
+		background: var(--negative-muted);
 	}
 
 	.modal-btn:disabled {
@@ -1265,55 +1204,21 @@
 		animation: spin 0.8s linear infinite;
 	}
 
-	/* Responsive */
+	/* Phone */
 	@media (max-width: 640px) {
 		.page-container {
-			padding: var(--space-4);
-		}
-
-		.hero-content {
-			flex-direction: column;
-			gap: var(--space-4);
-			padding: var(--space-4);
+			padding: var(--space-md);
 		}
 
 		.header-actions {
 			width: 100%;
-			justify-content: flex-start;
-			flex-wrap: wrap;
-			gap: var(--space-2);
 		}
 
-		.header-actions .btn-review,
 		.header-actions .btn-secondary,
 		.header-actions .btn-primary {
-			flex: 1 1 calc(50% - var(--space-1));
+			flex: 1 1 calc(33% - var(--space-xs));
 			min-width: 0;
-			justify-content: center;
-			padding: 10px 12px;
-			font-size: 13px;
-		}
-
-		.header-actions .btn-ghost-danger {
-			flex: 0 0 auto;
-		}
-
-		.recipe-title {
-			font-size: 24px;
-		}
-
-		.yeast-card {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-
-		.yeast-stats {
-			width: 100%;
-			justify-content: flex-start;
-		}
-
-		.yeast-stat {
-			text-align: left;
+			padding-inline: var(--space-sm);
 		}
 	}
 </style>

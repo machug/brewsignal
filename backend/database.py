@@ -646,6 +646,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         # One set of equipment per controlled batch (needs batches table + all columns)
         await conn.run_sync(_migrate_active_equipment_unique_indexes)
+        await conn.run_sync(_migrate_add_control_progress_columns)
         # Import ag_ui threads into the server-held chat history (tilt_ui-qzk0.1)
         await conn.run_sync(_migrate_legacy_chat_threads)
 
@@ -1153,6 +1154,18 @@ def _migrate_active_equipment_unique_indexes(conn) -> list[str]:
             logger.error(f"Migration: could not create {index_name}: {e}")
             print(f"Migration: Skipping {index_name} - {e}")
     return conflicted
+
+
+def _migrate_add_control_progress_columns(conn) -> None:
+    """Add the cooler no-progress reference columns to control_entity_state (tilt_ui-xrq5.4)."""
+    from sqlalchemy import text
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(control_entity_state)"))}
+    if not columns:
+        return  # table missing: create_all makes it with the columns
+    for name, ddl in (("progress_ref_temp", "FLOAT"), ("progress_ref_at", "DATETIME")):
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE control_entity_state ADD COLUMN {name} {ddl}"))
+            print(f"Migration: Added {name} column to control_entity_state")
 
 
 async def _migrate_add_cooler_entity():

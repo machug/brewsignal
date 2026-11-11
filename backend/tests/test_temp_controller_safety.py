@@ -220,26 +220,6 @@ async def test_max_heater_on_forces_off_alerts_and_locks_out(test_db, clock):
 
 
 @pytest.mark.asyncio
-async def test_max_cooler_on_limit_is_longer(test_db, clock):
-    b = await make_batch(test_db)
-    router = FakeRouter({HEATER: "off", COOLER: "off"})
-    set_reading(clock, 23.0)
-    await cycle(router, test_db, b)
-    assert router.states[COOLER] == "on"
-
-    clock.advance(hours=11)
-    set_reading(clock, 23.0)
-    await cycle(router, test_db, b)
-    assert router.states[COOLER] == "on"  # 11 h of fridge is legitimate
-
-    clock.advance(hours=1, minutes=1)
-    set_reading(clock, 23.0)
-    await cycle(router, test_db, b)
-    assert router.states[COOLER] == "off"
-    assert "max_on_exceeded" in await active_alerts(test_db, b.id)
-
-
-@pytest.mark.asyncio
 async def test_max_on_counts_across_restart_and_manual_on(test_db, clock):
     b = await make_batch(test_db)
     # Heater found ON with no record (manual toggle): counting starts now

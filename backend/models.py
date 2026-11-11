@@ -232,6 +232,9 @@ class ControlEntityState(Base):
     last_switch_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     on_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # start of current continuous on-run
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # max-on lockout
+    # Cooler no-progress rule: wort temp and time of the last 0.5 C of progress
+    progress_ref_temp: Mapped[Optional[float]] = mapped_column()
+    progress_ref_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class FermentationAlert(Base):

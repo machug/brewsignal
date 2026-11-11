@@ -46,10 +46,16 @@ def _env_float(name: str, default: float) -> float:
 # readings. Slower devices (RAPT/iSpindel-class, 5-15 min cadence) get 3x.
 SENSOR_STALE_MINUTES = _env_float("BREWSIGNAL_SENSOR_STALE_MINUTES", 15)
 # Heater adds ~1.1 C/h to the wort, so 4 h continuous is ~4 C of heating: a
-# runaway, not a normal run. A fridge legitimately runs for many hours during a
-# cold crash (wort moves only ~0.35 C/h), so the cooler limit is 12 h.
+# runaway, not a normal run. A fridge legitimately runs for days during a
+# cold crash (wort moves only ~0.35 C/h), so the cooler has a progress rule plus
+# a long absolute backstop instead.
 MAX_HEATER_ON_MINUTES = _env_float("BREWSIGNAL_MAX_HEATER_ON_MINUTES", 240)
-MAX_COOLER_ON_MINUTES = _env_float("BREWSIGNAL_MAX_COOLER_ON_MINUTES", 720)
+MAX_COOLER_ON_MINUTES = _env_float("BREWSIGNAL_MAX_COOLER_ON_MINUTES", 4320)  # 72 h absolute backstop
+# Cooler "no progress" rule: a cold crash legitimately runs the cooler for days
+# (wort cools ~0.35 C/h), so the cooler trips only when it has been on for this
+# long without the wort cooling by at least the minimum progress.
+COOLER_NO_PROGRESS_MINUTES = _env_float("BREWSIGNAL_COOLER_NO_PROGRESS_MINUTES", 360)
+COOLER_MIN_PROGRESS_C = _env_float("BREWSIGNAL_COOLER_MIN_PROGRESS_C", 0.5)
 # After a max-on trip the device may not be turned on again for this long.
 MAX_ON_LOCKOUT_MINUTES = _env_float("BREWSIGNAL_MAX_ON_LOCKOUT_MINUTES", 30)
 # After a failed 'on' command, wait this long before trying 'on' again.
@@ -309,13 +315,16 @@ async def _entity(db, entity_id: str) -> dict:
     """Return the (lazily DB-loaded) switch record for an entity."""
     ent = _entity_state.get(entity_id)
     if ent is None:
-        ent = {"last_switch": None, "on_since": None, "locked_until": None, "fail_until": None}
+        ent = {"last_switch": None, "on_since": None, "locked_until": None, "fail_until": None,
+               "ref_temp": None, "ref_at": None}
         try:
             row = await db.get(ControlEntityState, entity_id)
             if row is not None:
                 ent["last_switch"] = _utc(row.last_switch_at)
                 ent["on_since"] = _utc(row.on_since)
                 ent["locked_until"] = _utc(row.locked_until)
+                ent["ref_temp"] = row.progress_ref_temp
+                ent["ref_at"] = _utc(row.progress_ref_at)
         except Exception as e:
             # Unknown history: fall back to "never switched". Logged, not fatal.
             logger.error(f"Could not load persisted switch state for {entity_id}: {e}")
@@ -332,6 +341,8 @@ async def _persist_entity(db, entity_id: str) -> None:
             last_switch_at=ent["last_switch"],
             on_since=ent["on_since"],
             locked_until=ent["locked_until"],
+            progress_ref_temp=ent["ref_temp"],
+            progress_ref_at=ent["ref_at"],
         ))
         await db.commit()
     except Exception as e:
@@ -401,6 +412,8 @@ async def _set_entity_state(
             ent["last_switch"] = now
         ent["on_since"] = (ent["on_since"] if already_on else now) if state == "on" else None
         ent["fail_until"] = None
+        if state == "off":
+            ent["ref_temp"] = ent["ref_at"] = None  # progress reference starts fresh next run
         await _persist_entity(db, entity_id)
     elif state == "on":
         ent["fail_until"] = now + timedelta(minutes=FAILURE_BACKOFF_MINUTES)
@@ -544,26 +557,59 @@ def _max_on_minutes(kind: str) -> float:
     return MAX_HEATER_ON_MINUTES if kind == "heater" else MAX_COOLER_ON_MINUTES
 
 
-async def _observe_entity(router, db, entity_id: str, kind: str) -> tuple[Optional[str], bool]:
+async def _observe_entity(
+    router, db, entity_id: str, kind: str, temp: Optional[float] = None,
+) -> tuple[Optional[str], Optional[str]]:
     """Read the real state and track the continuous on-run.
 
-    Returns (state, max_on_exceeded). state is None when unavailable.
+    Returns (state, trip). state is None when unavailable. trip is None, or the
+    reason the device must be forced off: "max_on" (heater 4 h; cooler 72 h
+    absolute backstop) or "no_progress" (cooler on >= 6 h without the wort
+    cooling by 0.5 C; `temp` is the temperature being controlled).
     A switch found 'on' with no recorded start (manual toggle in HA, or a
     record lost) starts counting now.
     """
     state = await _read_state(router, entity_id)
     ent = await _entity(db, entity_id)
-    exceeded = False
+    trip = None
+    now = _now()
     if state == "on":
+        dirty = False
         if ent["on_since"] is None:
-            ent["on_since"] = _now()
+            ent["on_since"] = now
+            dirty = True
+        elif now - ent["on_since"] > timedelta(minutes=_max_on_minutes(kind)):
+            trip = "max_on"
+        if kind == "cooler" and temp is not None and trip is None:
+            if ent["ref_at"] is None or ent["ref_temp"] is None:
+                ent["ref_temp"], ent["ref_at"] = temp, now
+                dirty = True
+            elif temp <= ent["ref_temp"] - COOLER_MIN_PROGRESS_C:
+                ent["ref_temp"], ent["ref_at"] = temp, now
+                dirty = True
+            elif now - ent["ref_at"] >= timedelta(minutes=COOLER_NO_PROGRESS_MINUTES):
+                trip = "no_progress"
+        if dirty:
             await _persist_entity(db, entity_id)
-        elif _now() - ent["on_since"] > timedelta(minutes=_max_on_minutes(kind)):
-            exceeded = True
-    elif state == "off" and ent["on_since"] is not None:
+    elif state == "off" and (ent["on_since"] is not None or ent["ref_at"] is not None):
         ent["on_since"] = None
+        ent["ref_temp"] = ent["ref_at"] = None
         await _persist_entity(db, entity_id)
-    return state, exceeded
+    return state, trip
+
+
+def _trip_message(prefix: str, kind: str, entity: str, trip: str) -> str:
+    if trip == "no_progress":
+        return (
+            f"{prefix}: cooler {entity} ran {COOLER_NO_PROGRESS_MINUTES / 60:g} h without the wort cooling "
+            f"by {COOLER_MIN_PROGRESS_C:g} C; forced OFF and locked out for {MAX_ON_LOCKOUT_MINUTES:g} min. "
+            f"Check the sensor is in the beer."
+        )
+    return (
+        f"{prefix}: {kind} {entity} has been on continuously for more than "
+        f"{_max_on_minutes(kind) / 60:g} h; forced OFF and locked out for {MAX_ON_LOCKOUT_MINUTES:g} min. "
+        f"Check the temperature sensor."
+    )
 
 
 async def _start_lockout(db, entity_id: str) -> None:
@@ -765,7 +811,7 @@ async def control_batch_temperature(
     ):
         if not entity:
             continue
-        actual, exceeded = await _observe_entity(router, db, entity, kind)
+        actual, exceeded = await _observe_entity(router, db, entity, kind, wort_temp)
         if actual is None:
             # Keep going: the other device's max-on must still be enforced
             logger.warning(f"Batch {batch_id}: {kind.capitalize()} entity {entity} is unavailable")
@@ -774,12 +820,7 @@ async def control_batch_temperature(
         states.setdefault(batch_id, {})["state"] = actual
         if exceeded:
             tripped = True
-            limit_h = _max_on_minutes(kind) / 60
-            msg = (
-                f"Batch {batch_id}: {kind} {entity} has been on continuously for more than "
-                f"{limit_h:g} h; forced OFF and locked out for {MAX_ON_LOCKOUT_MINUTES:g} min. "
-                f"Check the temperature sensor."
-            )
+            msg = _trip_message(f"Batch {batch_id}", kind, entity, exceeded)
             logger.error(msg)
             await _start_lockout(db, entity)
             await _ensure_batch_off(router, db, batch_id, kind, entity, wort_temp, ambient_temp, target_temp, device_id)
@@ -1034,7 +1075,7 @@ async def control_chamber_idle(
     ):
         if not entity:
             continue
-        actual, exceeded = await _observe_entity(router, db, entity, kind)
+        actual, exceeded = await _observe_entity(router, db, entity, kind, chamber_temp)
         if actual is None:
             logger.warning(f"Chamber idle: {kind.capitalize()} entity {entity} is unavailable")
             unavailable = True
@@ -1044,7 +1085,7 @@ async def control_chamber_idle(
         states["state"] = actual
         if exceeded:
             tripped = True
-            logger.error(f"Chamber idle: {kind} {entity} on continuously for more than {_max_on_minutes(kind) / 60:g} h; forced OFF")
+            logger.error(_trip_message("Chamber idle", kind, entity, exceeded))
             await _start_lockout(db, entity)
             await _idle_set(kind, entity, "off", force=True)
 

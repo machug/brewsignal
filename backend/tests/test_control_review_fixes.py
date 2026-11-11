@@ -78,6 +78,9 @@ async def test_unavailable_heater_does_not_hide_cooler_max_on(test_db, clock):
     set_reading(clock, 23.0)
     await cycle(router, test_db, b)
     assert router.states[COOLER] == "on"
+    clock.advance(minutes=1)
+    set_reading(clock, 23.0)
+    await cycle(router, test_db, b)  # progress reference taken
 
     del router.states[HEATER]  # heater plug drops off the network
     clock.advance(hours=12, minutes=5)

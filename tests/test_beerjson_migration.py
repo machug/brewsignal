@@ -253,8 +253,11 @@ async def test_hop_timing_data_migration():
                 (6, 1, 'Null Use', 6.0, 0.014, NULL, NULL, 'Pellet', 'US')
         """))
 
-    # Run migration
-    await init_db()
+    # Run only the migration under test. Full init_db() on this hand-built
+    # pre-BeerJSON schema fails in later migrations that assume newer columns.
+    from backend.migrations.enhance_ingredient_tables import migrate_enhance_ingredient_tables
+    async with engine.begin() as conn:
+        await migrate_enhance_ingredient_tables(conn)
 
     # Verify hop timing conversion
     async with engine.connect() as conn:

@@ -11,6 +11,9 @@
 	import { signOut } from '$lib/supabase';
 	import { config, configStores, fetchAppConfig } from '$lib/config';
 	import { get } from 'svelte/store';
+	import Brand from '$lib/components/shell/Brand.svelte';
+	import ThemeToggle from '$lib/components/shell/ThemeToggle.svelte';
+	import { SHOW_THEME_TOGGLE, initTheme } from '$lib/stores/theme.svelte';
 
 	// Create reactive state from config stores (Svelte 5 pattern)
 	let authRequired = $state(false);
@@ -43,7 +46,7 @@
 	}
 
 	let { children } = $props();
-	let mobileMenuOpen = $state(false);
+	let moreOpen = $state(false);
 	let weatherDropdownOpen = $state(false);
 	let userMenuOpen = $state(false);
 	let signingOut = $state(false);
@@ -96,6 +99,7 @@
 	});
 
 	onMount(async () => {
+		initTheme();
 		// Set up config store subscriptions
 		setupConfigSubscriptions();
 
@@ -146,7 +150,7 @@
 
 	// Base nav links (always shown)
 	const baseNavLinks = [
-		{ href: '/', label: 'Dashboard' },
+		{ href: '/', label: 'Home' },
 		{ href: '/batches', label: 'Batches' },
 		{ href: '/recipes', label: 'Recipes' },
 		{ href: '/inventory', label: 'Inventory' },
@@ -166,221 +170,147 @@
 		return pathname.startsWith(href);
 	}
 
-	function closeMobileMenu() {
-		mobileMenuOpen = false;
-	}
+	// Phone bottom tabs; everything else in navLinks goes under "More"
+	const tabHrefs = ['/', '/batches', '/recipes', '/inventory'];
+	let moreLinks = $derived(navLinks.filter((l) => !tabHrefs.includes(l.href)));
+	let moreActive = $derived(moreLinks.some((l) => isActive(l.href, $page.url.pathname)));
+
+	// Close the More sheet on navigation
+	$effect(() => {
+		$page.url.pathname;
+		moreOpen = false;
+	});
 </script>
 
 <svelte:head>
 	<title>BrewSignal</title>
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 </svelte:head>
 
 <div class="layout-container">
-	<!-- Navigation -->
-	<nav class="main-nav">
-		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-			<div class="flex items-center justify-between h-16">
-				<!-- Logo -->
-				<a href="/" class="flex items-center gap-3 group">
-					<div class="logo-icon">
-						<span class="text-lg">🍺</span>
-					</div>
-					<span class="logo-text">
-						Brew<span class="logo-accent">Signal</span>
-					</span>
+	<header class="topbar">
+		<Brand />
+
+		<nav class="primary-nav" aria-label="Primary">
+			{#each navLinks as link}
+				<a
+					href={link.href}
+					class="nav-link"
+					aria-current={isActive(link.href, $page.url.pathname) ? 'page' : undefined}
+				>
+					{link.label}
 				</a>
+			{/each}
+		</nav>
 
-				<!-- Desktop navigation -->
-				<div class="hidden md:flex items-center gap-1">
-					{#each navLinks as link}
-						{@const active = isActive(link.href, $page.url.pathname)}
-						<a
-							href={link.href}
-							class="nav-link {active ? 'active' : ''}"
-						>
-							{link.label}
-						</a>
-					{/each}
-				</div>
-
-				<!-- Right side: weather + ambient + heater indicator + connection status + mobile menu -->
-				<div class="flex items-center gap-3">
-					<!-- Weather indicator with dropdown -->
-					{#if todayForecast}
-						<div class="weather-indicator-wrapper">
-							<button
-								type="button"
-								class="weather-indicator"
-								onclick={toggleWeatherDropdown}
-								aria-label="Toggle weather forecast"
-								aria-expanded={weatherDropdownOpen}
-							>
-								<span class="text-sm">{getWeatherIcon(todayForecast.condition)}</span>
-								<span class="indicator-text">
-									{formatForecastTemp(todayForecast.temperature)}°
-								</span>
-							</button>
-
-							{#if weatherDropdownOpen}
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
-								<div class="weather-backdrop" onclick={closeWeatherDropdown}></div>
-								<div class="weather-dropdown" transition:slide={{ duration: 150 }}>
-									<div class="weather-dropdown-header">
-										<span>5-Day Forecast</span>
-									</div>
-									<div class="weather-dropdown-days">
-										{#each weatherState.forecast.slice(0, 5) as day}
-											<div class="weather-day">
-												<span class="weather-day-name">{formatDayName(day.datetime)}</span>
-												<span class="weather-day-icon">{getWeatherIcon(day.condition)}</span>
-												<div class="weather-day-temps">
-													<span class="weather-temp-high">{formatForecastTemp(day.temperature)}°</span>
-													<span class="weather-temp-low">{formatForecastTemp(day.templow)}°</span>
-												</div>
-											</div>
-										{/each}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{/if}
-
-					<!-- Ambient temperature/humidity -->
-					{#if tiltsState.ambient && (tiltsState.ambient.temperature !== null || tiltsState.ambient.humidity !== null)}
-						<div class="ambient-indicator">
-							{#if tiltsState.ambient.temperature !== null}
-								<div class="flex items-center gap-1.5">
-									<span class="text-sm opacity-60">🌡️</span>
-									<span class="indicator-text">
-										{formatAmbientTemp(tiltsState.ambient.temperature)}{getTempUnit()}
-									</span>
-								</div>
-							{/if}
-							{#if tiltsState.ambient.humidity !== null}
-								<div class="flex items-center gap-1.5">
-									<span class="text-sm opacity-60">💧</span>
-									<span class="indicator-text">
-										{tiltsState.ambient.humidity.toFixed(0)}%
-									</span>
-								</div>
-							{/if}
-						</div>
-					{/if}
-
-					<!-- Heater indicator -->
-					{#if showHeaterIndicator && tiltsState.heater.available}
-						<div class="heater-indicator" class:heater-on={tiltsState.heater.state === 'on'}>
-							<span class="heater-icon">🔥</span>
-							<span class="heater-text">
-								{tiltsState.heater.state === 'on' ? 'Heating' : 'Off'}
-							</span>
-						</div>
-					{/if}
-
-					<!-- Connection status -->
-					<div class="connection-indicator">
-						<span class="connection-dot" class:connected={tiltsState.connected}></span>
-						<span class="connection-text">
-							{tiltsState.connected ? 'Live' : 'Offline'}
-						</span>
-					</div>
-
-					<!-- User menu (shown when authenticated with Supabase) -->
-					{#if authEnabled && authState.user}
-						<div class="user-menu-wrapper">
-							<button
-								type="button"
-								class="user-menu-btn"
-								onclick={toggleUserMenu}
-								aria-label="User menu"
-							>
-								<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-								</svg>
-							</button>
-							{#if userMenuOpen}
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
-								<div class="user-menu-backdrop" onclick={closeUserMenu}></div>
-								<div class="user-menu-dropdown" transition:slide={{ duration: 150 }}>
-									<div class="user-menu-email">{authState.user?.email}</div>
-									<button
-										type="button"
-										class="user-menu-item"
-										onclick={handleSignOut}
-										disabled={signingOut}
-									>
-										{signingOut ? 'Signing out...' : 'Sign out'}
-									</button>
-								</div>
-							{/if}
-						</div>
-					{:else if authEnabled && !authRequired && authState.initialized}
-						<!-- Sign in link for local mode users (optional auth) -->
-						<a href="/login" class="sign-in-link">
-							Sign in
-						</a>
-					{/if}
-
-					<!-- Mobile menu button -->
+		<div class="topbar-controls">
+			{#if todayForecast}
+				<div class="chip-wrapper weather-wrapper">
 					<button
 						type="button"
-						class="mobile-menu-btn"
-						onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
-						aria-label="Toggle menu"
+						class="chip chip-button"
+						onclick={toggleWeatherDropdown}
+						aria-label="Toggle weather forecast"
+						aria-expanded={weatherDropdownOpen}
 					>
-						{#if mobileMenuOpen}
-							<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-							</svg>
-						{:else}
-							<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-							</svg>
-						{/if}
+						<span class="chip-icon">{getWeatherIcon(todayForecast.condition)}</span>
+						<span class="num">{formatForecastTemp(todayForecast.temperature)}°</span>
 					</button>
+
+					{#if weatherDropdownOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="backdrop" onclick={closeWeatherDropdown}></div>
+						<div class="dropdown weather-dropdown" transition:slide={{ duration: 150 }}>
+							<div class="dropdown-header">5-Day Forecast</div>
+							<div class="weather-days">
+								{#each weatherState.forecast.slice(0, 5) as day}
+									<div class="weather-day">
+										<span class="weather-day-name">{formatDayName(day.datetime)}</span>
+										<span class="weather-day-icon">{getWeatherIcon(day.condition)}</span>
+										<span class="num weather-temps">
+											<span class="temp-high">{formatForecastTemp(day.temperature)}°</span>
+											<span class="temp-low">{formatForecastTemp(day.templow)}°</span>
+										</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
 				</div>
+			{/if}
+
+			{#if tiltsState.ambient && (tiltsState.ambient.temperature !== null || tiltsState.ambient.humidity !== null)}
+				<div class="chip ambient-chip num" title="Ambient">
+					{#if tiltsState.ambient.temperature !== null}
+						<span>{formatAmbientTemp(tiltsState.ambient.temperature)}{getTempUnit()}</span>
+					{/if}
+					{#if tiltsState.ambient.humidity !== null}
+						<span>{tiltsState.ambient.humidity.toFixed(0)}%</span>
+					{/if}
+				</div>
+			{/if}
+
+			{#if showHeaterIndicator && tiltsState.heater.available}
+				<div class="chip heater-chip" class:heater-on={tiltsState.heater.state === 'on'} title="Heater">
+					<span class="dot" aria-hidden="true"></span>
+					<span class="chip-text num">{tiltsState.heater.state === 'on' ? 'Heating' : 'Heater off'}</span>
+				</div>
+			{/if}
+
+			<div class="status" title={tiltsState.connected ? 'Live' : 'Offline'}>
+				<span class="dot" class:connected={tiltsState.connected} aria-hidden="true"></span>
+				<span class="status-text num">{tiltsState.connected ? 'Live' : 'Offline'}</span>
 			</div>
+
+			{#if SHOW_THEME_TOGGLE}
+				<!-- Hidden until all screens use the new tokens: bead tilt_ui-nv1r -->
+				<ThemeToggle />
+			{/if}
+
+			{#if authEnabled && authState.user}
+				<div class="chip-wrapper">
+					<button
+						type="button"
+						class="icon-btn"
+						onclick={toggleUserMenu}
+						aria-label="User menu"
+						aria-expanded={userMenuOpen}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+						</svg>
+					</button>
+					{#if userMenuOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<div class="backdrop" onclick={closeUserMenu}></div>
+						<div class="dropdown user-dropdown" transition:slide={{ duration: 150 }}>
+							<div class="user-email">{authState.user?.email}</div>
+							<button type="button" class="menu-item" onclick={handleSignOut} disabled={signingOut}>
+								{signingOut ? 'Signing out...' : 'Sign out'}
+							</button>
+						</div>
+					{/if}
+				</div>
+			{:else if authEnabled && !authRequired && authState.initialized}
+				<a href="/login" class="sign-in-link">Sign in</a>
+			{/if}
 		</div>
+	</header>
 
-		<!-- Mobile menu -->
-		{#if mobileMenuOpen}
-			<div class="mobile-menu" transition:slide={{ duration: 150 }}>
-				<div class="px-3 py-3 space-y-1">
-					{#each navLinks as link}
-						{@const active = isActive(link.href, $page.url.pathname)}
-						<a
-							href={link.href}
-							onclick={closeMobileMenu}
-							class="mobile-nav-link"
-							class:active
-						>
-							{link.label}
-						</a>
-					{/each}
-				</div>
-			</div>
-		{/if}
-	</nav>
-
-	<!-- Main content -->
-	<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+	<main class="page">
 		{#if !configInitialized}
-			<!-- Loading config -->
 			<div class="auth-loading">
 				<div class="auth-loading-spinner"></div>
 				<p>Loading...</p>
 			</div>
 		{:else if authRequired && !authState.initialized}
-			<!-- Loading auth state -->
 			<div class="auth-loading">
 				<div class="auth-loading-spinner"></div>
 				<p>Loading...</p>
 			</div>
 		{:else if authRequired && !authState.user && !isLoginPage}
-			<!-- Redirecting to login -->
 			<div class="auth-loading">
 				<p>Redirecting to login...</p>
 			</div>
@@ -388,453 +318,473 @@
 			{@render children()}
 		{/if}
 	</main>
+
+	<!-- Phone bottom tab bar -->
+	<nav class="tabbar" aria-label="Mobile navigation">
+		{#if moreOpen}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="more-backdrop" onclick={() => (moreOpen = false)}></div>
+			<div class="more-sheet" id="more-sheet">
+				{#each moreLinks as link}
+					<a
+						href={link.href}
+						class="more-link"
+						aria-current={isActive(link.href, $page.url.pathname) ? 'page' : undefined}
+					>
+						{link.label}
+					</a>
+				{/each}
+			</div>
+		{/if}
+		<div class="tabs">
+			<a href="/" class="tab" aria-current={isActive('/', $page.url.pathname) ? 'page' : undefined}>
+				<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 9.5L10 3.5l7 6V17H3V9.5z" /></svg>
+				<span>Home</span>
+			</a>
+			<a href="/batches" class="tab" aria-current={isActive('/batches', $page.url.pathname) ? 'page' : undefined}>
+				<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="3" width="10" height="14" rx="1.5" /><line x1="5" y1="8" x2="15" y2="8" /></svg>
+				<span>Batches</span>
+			</a>
+			<a href="/recipes" class="tab" aria-current={isActive('/recipes', $page.url.pathname) ? 'page' : undefined}>
+				<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="4" y1="6" x2="16" y2="6" /><line x1="4" y1="10" x2="16" y2="10" /><line x1="4" y1="14" x2="12" y2="14" /></svg>
+				<span>Recipes</span>
+			</a>
+			<a href="/inventory" class="tab" aria-current={isActive('/inventory', $page.url.pathname) ? 'page' : undefined}>
+				<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3.5 6.5L10 3l6.5 3.5v7L10 17l-6.5-3.5v-7z" /></svg>
+				<span>Inventory</span>
+			</a>
+			<button
+				type="button"
+				class="tab"
+				class:current={moreActive || moreOpen}
+				aria-expanded={moreOpen}
+				aria-controls="more-sheet"
+				onclick={() => (moreOpen = !moreOpen)}
+			>
+				<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="10" r="1.2" /><circle cx="10" cy="10" r="1.2" /><circle cx="15" cy="10" r="1.2" /></svg>
+				<span>More</span>
+			</button>
+		</div>
+	</nav>
 </div>
 
 <style>
-	/* Layout container */
 	.layout-container {
 		min-height: 100vh;
-		background: var(--bg-deep);
+		background: var(--bg-canvas);
+		color: var(--ink-primary);
 	}
 
-	/* Main navigation */
-	.main-nav {
+	/* Top bar */
+	.topbar {
 		position: sticky;
 		top: 0;
-		z-index: 50;
-		backdrop-filter: blur(12px);
-		background: rgba(15, 17, 21, 0.85);
-		border-bottom: 1px solid var(--bg-hover);
+		z-index: 30;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--space-lg);
+		height: 56px;
+		padding: 0 var(--space-lg);
+		background: var(--bg-canvas);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
-	/* Logo */
-	.logo-icon {
-		width: 2.25rem;
-		height: 2.25rem;
-		border-radius: 0.5rem;
+	.primary-nav {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		background: var(--accent);
-		transition: transform var(--transition);
+		gap: var(--space-2xs);
+		height: 100%;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
 	}
-
-	.group:hover .logo-icon {
-		transform: scale(1.05);
-	}
-
-	.logo-text {
-		font-size: 1.125rem;
-		font-weight: 600;
-		letter-spacing: -0.025em;
-		color: var(--text-primary);
-	}
-
-	.logo-accent {
-		color: var(--accent);
-	}
-
-	/* Shared indicator text style */
-	.indicator-text {
-		font-size: 0.75rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
-	}
-
-	/* Ambient indicator */
-	.ambient-indicator {
-		display: none;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.375rem 0.75rem;
-		border-radius: 9999px;
-		background: var(--bg-elevated);
-	}
-
-	@media (min-width: 640px) {
-		.ambient-indicator {
-			display: flex;
-		}
-	}
-
-	/* Heater indicator */
-	.heater-indicator {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.75rem;
-		border-radius: 9999px;
-		background: var(--bg-elevated);
-	}
-
-	.heater-indicator.heater-on {
-		background: rgba(239, 68, 68, 0.1);
-	}
-
-	.heater-icon {
-		font-size: 0.875rem;
-		opacity: 0.4;
-	}
-
-	.heater-indicator.heater-on .heater-icon {
-		opacity: 1;
-	}
-
-	.heater-text {
-		font-size: 0.75rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+	.primary-nav::-webkit-scrollbar {
 		display: none;
 	}
 
-	@media (min-width: 640px) {
-		.heater-text {
-			display: inline;
-		}
-	}
-
-	.heater-indicator.heater-on .heater-text {
-		color: var(--negative);
-	}
-
-	/* Connection indicator */
-	.connection-indicator {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.75rem;
-		border-radius: 9999px;
-		background: var(--bg-elevated);
-	}
-
-	.connection-dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		background: var(--text-muted);
-	}
-
-	.connection-dot.connected {
-		background: var(--positive);
-	}
-
-	.connection-text {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		display: none;
-	}
-
-	@media (min-width: 640px) {
-		.connection-text {
-			display: inline;
-		}
-	}
-
-	/* Mobile menu button */
-	.mobile-menu-btn {
-		display: none;
-		padding: 0.5rem;
-		border-radius: 0.5rem;
-		color: var(--text-secondary);
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		transition: color var(--transition);
-	}
-
-	.mobile-menu-btn:hover {
-		color: var(--text-primary);
-	}
-
-	@media (max-width: 767px) {
-		.mobile-menu-btn {
-			display: flex;
-		}
-	}
-
-	/* Mobile menu */
-	.mobile-menu {
-		display: none;
-		background: var(--bg-primary);
-		border-top: 1px solid var(--bg-hover);
-	}
-
-	@media (max-width: 767px) {
-		.mobile-menu {
-			display: block;
-		}
-	}
-
-	/* Mobile nav link */
-	.mobile-nav-link {
-		display: block;
-		padding: 0.75rem 1rem;
-		border-radius: 0.5rem;
-		font-size: 1rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		background: transparent;
-		transition: color var(--transition), background var(--transition);
-	}
-
-	.mobile-nav-link:hover {
-		color: var(--text-primary);
-	}
-
-	.mobile-nav-link.active {
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-	}
-
-	/* Desktop nav link */
 	.nav-link {
 		position: relative;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
+		display: inline-flex;
+		align-items: center;
+		height: 100%;
+		padding: 0 var(--space-sm);
+		white-space: nowrap;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 500;
-		color: var(--text-secondary);
-		background: transparent;
-		border-radius: 0.375rem;
-		transition: color var(--transition), background var(--transition);
+		color: var(--ink-secondary);
+		transition: color 160ms var(--ease-out-quart);
 	}
-
 	.nav-link:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
-
-	.nav-link.active {
-		color: var(--text-primary);
-		background: var(--bg-elevated);
+	.nav-link[aria-current='page'] {
+		color: var(--ink-primary);
+		font-weight: 600;
 	}
-
-	.nav-link.active::after {
+	.nav-link[aria-current='page']::after {
 		content: '';
 		position: absolute;
-		bottom: 0;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 1.5rem;
+		left: var(--space-sm);
+		right: var(--space-sm);
+		bottom: -1px;
 		height: 2px;
 		background: var(--accent);
-		border-radius: 1px;
 	}
 
-	/* Weather indicator */
-	.weather-indicator-wrapper {
-		position: relative;
-	}
-
-	.weather-indicator {
+	.topbar-controls {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.75rem;
-		background: var(--bg-elevated);
-		border: none;
-		border-radius: 9999px;
+		gap: var(--space-sm);
+	}
+
+	.num {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Chips: hairline-outlined indicators */
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 28px;
+		padding: 0 var(--space-xs);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--ink-secondary);
+		font-size: var(--text-xs);
+	}
+	.chip-button {
 		cursor: pointer;
-		transition: background var(--transition);
+		transition: border-color 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
+	}
+	.chip-button:hover {
+		border-color: var(--rule-strong);
+		color: var(--ink-primary);
+	}
+	.ambient-chip {
+		gap: var(--space-xs);
+	}
+	.heater-chip.heater-on {
+		border-color: var(--accent-rule);
+		color: var(--accent);
+	}
+	.heater-chip.heater-on .dot {
+		background: var(--accent);
 	}
 
-	.weather-indicator:hover {
-		background: var(--bg-hover);
+	.dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--ink-muted);
+		flex-shrink: 0;
 	}
-
-	.weather-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-	}
-
-	.weather-dropdown {
-		position: absolute;
-		top: calc(100% + 0.5rem);
-		right: 0;
-		z-index: 50;
-		min-width: 16rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
-		overflow: hidden;
-	}
-
-	.weather-dropdown-header {
-		padding: 0.75rem 1rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.weather-dropdown-days {
-		padding: 0.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.weather-day {
-		display: flex;
+	.status {
+		display: inline-flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.375rem;
-		background: var(--bg-elevated);
+		gap: 6px;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+	.status .dot.connected {
+		background: var(--status-steady);
 	}
 
-	.weather-day-name {
-		flex: 0 0 4rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-	}
-
-	.weather-day-icon {
-		font-size: 1.25rem;
-	}
-
-	.weather-day-temps {
-		margin-left: auto;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.weather-temp-high {
-		font-size: 0.875rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-	}
-
-	.weather-temp-low {
-		font-size: 0.75rem;
-		font-family: var(--font-mono);
-		color: var(--text-muted);
-	}
-
-	/* User menu */
-	.user-menu-wrapper {
-		position: relative;
-	}
-
-	.user-menu-btn {
-		display: flex;
+	.icon-btn {
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		border-radius: 9999px;
-		background: var(--bg-elevated);
-		border: none;
-		color: var(--text-secondary);
+		width: 44px;
+		height: 44px;
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: background var(--transition), color var(--transition);
+		transition: border-color 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
+	}
+	.icon-btn:hover {
+		border-color: var(--rule-strong);
+		color: var(--ink-primary);
 	}
 
-	.user-menu-btn:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
+	.sign-in-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 36px;
+		padding: 0 var(--space-sm);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--accent);
+		transition: background 150ms var(--ease-out-quart);
+	}
+	.sign-in-link:hover {
+		background: var(--accent-tint);
 	}
 
-	.user-menu-backdrop {
+	/* Dropdowns */
+	.chip-wrapper {
+		position: relative;
+	}
+	.backdrop {
 		position: fixed;
 		inset: 0;
 		z-index: 40;
 	}
-
-	.user-menu-dropdown {
+	.dropdown {
 		position: absolute;
-		top: calc(100% + 0.5rem);
+		top: calc(100% + var(--space-2xs));
 		right: 0;
 		z-index: 50;
-		min-width: 12rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
-		overflow: hidden;
+		background: var(--bg-elevated);
+		border: 1px solid var(--rule-strong);
+		border-radius: 6px;
 	}
-
-	.user-menu-email {
-		padding: 0.75rem 1rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		border-bottom: 1px solid var(--border-subtle);
+	.dropdown-header {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ink-muted);
+	}
+	.weather-dropdown {
+		min-width: 17rem;
+	}
+	.weather-days {
+		display: flex;
+		flex-direction: column;
+	}
+	.weather-day {
+		display: grid;
+		grid-template-columns: 1fr auto auto;
+		align-items: center;
+		gap: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+	}
+	.weather-day:last-child {
+		border-bottom: none;
+	}
+	.weather-temps {
+		display: inline-flex;
+		gap: var(--space-xs);
+	}
+	.temp-high {
+		color: var(--ink-primary);
+	}
+	.temp-low {
+		color: var(--ink-muted);
+	}
+	.user-dropdown {
+		min-width: 13rem;
+	}
+	.user-email {
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
-
-	.user-menu-item {
+	.menu-item {
 		display: block;
 		width: 100%;
-		padding: 0.75rem 1rem;
-		font-size: 0.875rem;
-		color: var(--text-secondary);
+		min-height: 44px;
+		padding: 0 var(--space-sm);
 		background: transparent;
 		border: none;
 		text-align: left;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: background var(--transition), color var(--transition);
+		transition: background 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
 	}
-
-	.user-menu-item:hover {
-		background: var(--bg-elevated);
-		color: var(--text-primary);
+	.menu-item:hover {
+		background: var(--bg-subtle);
+		color: var(--ink-primary);
 	}
-
-	.user-menu-item:disabled {
+	.menu-item:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	/* Sign in link for local mode */
-	.sign-in-link {
-		padding: 0.375rem 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--accent);
-		background: var(--bg-elevated);
-		border-radius: 9999px;
-		transition: background var(--transition), color var(--transition);
+	/* Page frame */
+	.page {
+		max-width: 1280px;
+		margin: 0 auto;
+		padding: var(--space-lg);
 	}
 
-	.sign-in-link:hover {
-		background: var(--bg-hover);
-		color: var(--accent-hover);
+	.tabbar {
+		display: none;
 	}
 
-	/* Auth loading state */
+	/* Auth loading */
 	.auth-loading {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		min-height: 50vh;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.auth-loading-spinner {
 		width: 2rem;
 		height: 2rem;
-		border: 2px solid var(--border-subtle);
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-md);
 	}
-
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
+		}
+	}
+
+	/* Tablet: nav scrolls, secondary status text hidden */
+	@media (max-width: 1040px) {
+		.topbar {
+			gap: var(--space-md);
+		}
+		.nav-link {
+			padding: 0 var(--space-xs);
+		}
+		.nav-link[aria-current='page']::after {
+			left: var(--space-xs);
+			right: var(--space-xs);
+		}
+		.status-text,
+		.chip-text,
+		.ambient-chip {
+			display: none;
+		}
+	}
+
+	/* Phone: compact bar + bottom tabs */
+	@media (max-width: 760px) {
+		.topbar {
+			grid-template-columns: 1fr auto;
+			height: 52px;
+			padding: 0 var(--space-md);
+		}
+		.primary-nav,
+		.weather-wrapper,
+		.ambient-chip,
+		.heater-chip {
+			display: none;
+		}
+		.page {
+			padding: var(--space-md);
+			padding-bottom: calc(60px + env(safe-area-inset-bottom) + var(--space-md));
+		}
+
+		.tabbar {
+			display: block;
+			position: fixed;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 40;
+			background: var(--bg-surface);
+			border-top: 1px solid var(--rule-strong);
+			padding-bottom: env(safe-area-inset-bottom);
+		}
+		.tabs {
+			display: grid;
+			grid-template-columns: repeat(5, 1fr);
+			height: 60px;
+		}
+		.tab {
+			position: relative;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 3px;
+			min-height: 48px;
+			background: transparent;
+			border: none;
+			font-family: var(--font-display);
+			font-size: 0.6875rem;
+			font-weight: 600;
+			color: var(--ink-secondary);
+			cursor: pointer;
+			transition: color 150ms var(--ease-out-quart);
+		}
+		.tab svg {
+			width: 18px;
+			height: 18px;
+		}
+		.tab[aria-current='page'],
+		.tab.current {
+			color: var(--accent);
+		}
+		.tab[aria-current='page']::before,
+		.tab.current::before {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: 24%;
+			right: 24%;
+			height: 2px;
+			background: var(--accent);
+		}
+		.more-backdrop {
+			position: fixed;
+			inset: 0;
+			bottom: calc(60px + env(safe-area-inset-bottom));
+			z-index: -1;
+		}
+		.more-sheet {
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: 100%;
+			display: grid;
+			background: var(--bg-elevated);
+			border-top: 1px solid var(--rule-strong);
+		}
+		.more-link {
+			display: flex;
+			align-items: center;
+			min-height: 48px;
+			padding: 0 var(--space-md);
+			border-bottom: 1px solid var(--rule-hairline);
+			font-family: var(--font-display);
+			font-size: var(--text-base);
+			font-weight: 500;
+			color: var(--ink-secondary);
+		}
+		.more-link:last-child {
+			border-bottom: none;
+		}
+		.more-link[aria-current='page'] {
+			color: var(--accent);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		* {
+			transition-duration: 0.01ms !important;
+		}
+		.auth-loading-spinner {
+			animation-duration: 2s;
 		}
 	}
 </style>

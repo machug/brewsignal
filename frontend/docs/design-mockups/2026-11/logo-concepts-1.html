@@ -1,0 +1,1502 @@
+<!doctype html>
+<html lang="en" data-sheet-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BrewSignal — Identity &amp; Instrument Mark Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..700;1,62..125,400..700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Exact Clean Instrument OKLCH Tokens — Dark Default */
+      --dark-canvas: oklch(0.145 0.008 195);
+      --dark-surface: oklch(0.175 0.009 195);
+      --dark-elevated: oklch(0.205 0.011 195);
+      --dark-subtle: oklch(0.235 0.012 195);
+      --dark-rule-hairline: oklch(0.265 0.012 195);
+      --dark-rule-strong: oklch(0.355 0.015 195);
+      --dark-ink-primary: oklch(0.935 0.007 195);
+      --dark-ink-secondary: oklch(0.715 0.012 195);
+      --dark-ink-muted: oklch(0.545 0.012 195);
+      --dark-accent: oklch(0.79 0.148 76);
+      --dark-accent-rule: oklch(0.42 0.075 76);
+
+      /* Exact Clean Instrument OKLCH Tokens — Light Variant */
+      --light-canvas: oklch(0.968 0.006 195);
+      --light-surface: oklch(0.988 0.004 195);
+      --light-elevated: oklch(0.945 0.008 195);
+      --light-subtle: oklch(0.918 0.010 195);
+      --light-rule-hairline: oklch(0.855 0.011 195);
+      --light-rule-strong: oklch(0.735 0.015 195);
+      --light-ink-primary: oklch(0.195 0.012 195);
+      --light-ink-secondary: oklch(0.425 0.014 195);
+      --light-ink-muted: oklch(0.565 0.012 195);
+      --light-accent: oklch(0.54 0.142 70);
+      --light-accent-rule: oklch(0.74 0.085 72);
+
+      /* Active Sheet Surface Tokens */
+      --bg-canvas: var(--dark-canvas);
+      --bg-surface: var(--dark-surface);
+      --bg-elevated: var(--dark-elevated);
+      --bg-subtle: var(--dark-subtle);
+      --rule-hairline: var(--dark-rule-hairline);
+      --rule-strong: var(--dark-rule-strong);
+      --ink-primary: var(--dark-ink-primary);
+      --ink-secondary: var(--dark-ink-secondary);
+      --ink-muted: var(--dark-ink-muted);
+      --accent: var(--dark-accent);
+      --accent-rule: var(--dark-accent-rule);
+
+      /* Typography */
+      --font-display: "Archivo", system-ui, -apple-system, sans-serif;
+      --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "Chivo Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+      /* 4pt Spatial Scale */
+      --space-2xs: 4px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+    }
+
+    html[data-sheet-theme="light"] {
+      --bg-canvas: var(--light-canvas);
+      --bg-surface: var(--light-surface);
+      --bg-elevated: var(--light-elevated);
+      --bg-subtle: var(--light-subtle);
+      --rule-hairline: var(--light-rule-hairline);
+      --rule-strong: var(--light-rule-strong);
+      --ink-primary: var(--light-ink-primary);
+      --ink-secondary: var(--light-ink-secondary);
+      --ink-muted: var(--light-ink-secondary);
+      --accent: var(--light-accent);
+      --accent-rule: var(--light-accent-rule);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-canvas);
+      color: var(--ink-primary);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Workbench Header */
+    .sheet-topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--rule-hairline);
+    }
+
+    .sheet-topbar-inner {
+      max-width: 1440px;
+      margin-inline: auto;
+      padding: var(--space-sm) clamp(16px, 2.5vw, 36px);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+
+    .sheet-title-group {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .sheet-kicker {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding: 2px 6px;
+      border: 1px solid var(--accent-rule);
+      border-radius: 4px;
+    }
+
+    .sheet-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-variation-settings: "wdth" 98, "wght" 600;
+      font-size: 1.0625rem;
+      letter-spacing: -0.015em;
+      color: var(--ink-primary);
+    }
+
+    .sheet-subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink-muted);
+    }
+
+    .bench-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+    }
+
+    .control-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding-inline: 10px;
+      border: 1px solid var(--rule-hairline);
+      border-radius: 4px;
+      background-color: var(--bg-elevated);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.03em;
+      color: var(--ink-secondary);
+      transition: border-color 140ms cubic-bezier(0.25, 1, 0.5, 1), color 140ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .control-btn:hover {
+      border-color: var(--rule-strong);
+      color: var(--ink-primary);
+    }
+
+    .control-btn[aria-pressed="true"] {
+      border-color: var(--accent-rule);
+      color: var(--accent);
+    }
+
+    .control-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--ink-muted);
+    }
+
+    .control-btn[aria-pressed="true"] .control-dot {
+      background-color: var(--accent);
+    }
+
+    /* Main Sheet Container */
+    .sheet-main {
+      max-width: 1440px;
+      margin-inline: auto;
+      padding: var(--space-lg) clamp(16px, 2.5vw, 36px) var(--space-2xl);
+    }
+
+    /* Calibration Legend Bar */
+    .spec-strip {
+      display: grid;
+      grid-template-columns: minmax(210px, 1.05fr) 272px 124px minmax(340px, 1.5fr);
+      gap: var(--space-md);
+      padding-bottom: var(--space-xs);
+      border-bottom: 1px solid var(--rule-strong);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+
+    /* Concept Rows */
+    .concept-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .concept-row {
+      display: grid;
+      grid-template-columns: minmax(210px, 1.05fr) 272px 124px minmax(340px, 1.5fr);
+      gap: var(--space-md);
+      align-items: stretch;
+      padding-block: var(--space-lg);
+      border-bottom: 1px solid var(--rule-hairline);
+      animation: rowEnter 420ms cubic-bezier(0.25, 1, 0.5, 1) both;
+    }
+
+    .concept-row:nth-child(1) { animation-delay: 20ms; }
+    .concept-row:nth-child(2) { animation-delay: 55ms; }
+    .concept-row:nth-child(3) { animation-delay: 90ms; }
+    .concept-row:nth-child(4) { animation-delay: 125ms; }
+    .concept-row:nth-child(5) { animation-delay: 160ms; }
+    .concept-row:nth-child(6) { animation-delay: 195ms; }
+
+    @keyframes rowEnter {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .concept-row {
+        animation: none;
+      }
+    }
+
+    /* Column 1: Concept Metadata & One-Line Rationale */
+    .concept-meta {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding-right: var(--space-xs);
+    }
+
+    .concept-heading {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+    }
+
+    .concept-num {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+    }
+
+    .concept-name {
+      margin: 0;
+      font-family: var(--font-display);
+      font-variation-settings: "wdth" 100, "wght" 650;
+      font-size: 1.125rem;
+      line-height: 1.2;
+      letter-spacing: -0.015em;
+      color: var(--ink-primary);
+    }
+
+    .concept-rationale {
+      margin: var(--space-xs) 0 0;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: var(--ink-secondary);
+      max-width: 44ch;
+    }
+
+    .concept-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      padding-top: var(--space-xs);
+      border-top: 1px solid var(--rule-hairline);
+    }
+
+    .type-recipe {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink-muted);
+    }
+
+    .copy-svg-btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-secondary);
+      padding: 3px 8px;
+      border: 1px solid var(--rule-hairline);
+      border-radius: 4px;
+      background-color: var(--bg-surface);
+      transition: border-color 120ms ease-out, color 120ms ease-out;
+    }
+
+    .copy-svg-btn:hover {
+      border-color: var(--rule-strong);
+      color: var(--ink-primary);
+    }
+
+    .copy-svg-btn[data-copied="true"] {
+      border-color: var(--accent-rule);
+      color: var(--accent);
+    }
+
+    /* Specimen Surface Themes (Strict Prompt OKLCH Values) */
+    .surface-dark {
+      background-color: oklch(0.145 0.008 195);
+      color: oklch(0.935 0.007 195);
+      --mark-accent: oklch(0.79 0.148 76);
+      --bar-rule: oklch(0.265 0.012 195);
+      --bar-muted: oklch(0.545 0.012 195);
+      --bar-secondary: oklch(0.715 0.012 195);
+      --grid-stroke: oklch(0.265 0.012 195);
+      border: 1px solid oklch(0.265 0.012 195);
+    }
+
+    .surface-light {
+      background-color: oklch(0.968 0.006 195);
+      color: oklch(0.195 0.012 195);
+      --mark-accent: oklch(0.54 0.142 70);
+      --bar-rule: oklch(0.855 0.011 195);
+      --bar-muted: oklch(0.565 0.012 195);
+      --bar-secondary: oklch(0.425 0.014 195);
+      --grid-stroke: oklch(0.855 0.011 195);
+      border: 1px solid oklch(0.825 0.012 195);
+    }
+
+    /* Monochrome Verification Toggle */
+    html[data-mono-test="true"] .surface-dark,
+    html[data-mono-test="true"] .surface-light {
+      --mark-accent: currentColor;
+    }
+
+    /* Column 2: 96px Mark Pair (Dark + Light) */
+    .mark-pair-96 {
+      display: grid;
+      grid-template-columns: 132px 132px;
+      gap: var(--space-xs);
+      flex-shrink: 0;
+    }
+
+    .well-96 {
+      position: relative;
+      width: 132px;
+      height: 132px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .well-96 svg {
+      width: 96px;
+      height: 96px;
+      display: block;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* Optional 32u Construction Grid Overlay */
+    .well-96::before {
+      content: "";
+      position: absolute;
+      width: 96px;
+      height: 96px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      border: 1px solid var(--grid-stroke);
+      background-image:
+        linear-gradient(to right, var(--grid-stroke) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--grid-stroke) 1px, transparent 1px);
+      background-size: 24px 24px;
+      transition: opacity 140ms ease-out;
+    }
+
+    html[data-show-grid="true"] .well-96::before {
+      opacity: 0.7;
+    }
+
+    .well-tag {
+      position: absolute;
+      bottom: 5px;
+      left: 7px;
+      z-index: 3;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--bar-muted);
+      pointer-events: none;
+    }
+
+    /* Column 3: 32px & 16px Favicon Test on Dark */
+    .well-scales {
+      position: relative;
+      width: 124px;
+      height: 132px;
+      border-radius: 4px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .scale-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+
+    .scale-row-divider {
+      height: 1px;
+      background-color: oklch(0.235 0.012 195);
+    }
+
+    .scale-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--bar-muted);
+    }
+
+    .scale-label strong {
+      display: block;
+      font-weight: 500;
+      color: var(--bar-secondary);
+    }
+
+    .icon-32-slot {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .icon-32-slot svg {
+      width: 32px;
+      height: 32px;
+      display: block;
+    }
+
+    .favicon-tab-sim {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 26px;
+      padding-inline: 6px;
+      border-radius: 4px;
+      background-color: oklch(0.195 0.010 195);
+      border: 1px solid oklch(0.265 0.012 195);
+      flex-shrink: 0;
+    }
+
+    .favicon-tab-sim svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .favicon-tab-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background-color: oklch(0.42 0.012 195);
+    }
+
+    /* Column 4: 56px-High App Top Bar Lockups (Dark + Light) */
+    .topbar-pair {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+      min-width: 0;
+    }
+
+    .app-topbar {
+      height: 56px;
+      border-radius: 4px;
+      padding-inline: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      overflow: hidden;
+    }
+
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      flex-shrink: 0;
+    }
+
+    .brand-lockup svg.lockup-mark {
+      width: 24px;
+      height: 24px;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .wordmark {
+      font-family: var(--font-display);
+      line-height: 1;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    /* Deliberate Archivo Wordmark Treatments per Concept */
+    .wm-c1 {
+      font-size: 1.125rem;
+      letter-spacing: -0.02em;
+      font-variation-settings: "wdth" 96, "wght" 650;
+    }
+    .wm-c1 .wm-sub {
+      font-variation-settings: "wdth" 96, "wght" 450;
+      color: var(--bar-secondary);
+    }
+
+    .wm-c2 {
+      font-size: 1.125rem;
+      letter-spacing: -0.018em;
+      font-variation-settings: "wdth" 100, "wght" 600;
+    }
+
+    .wm-c3 {
+      font-size: 1.09375rem;
+      letter-spacing: -0.024em;
+      font-variation-settings: "wdth" 108, "wght" 620;
+    }
+
+    .wm-c4 {
+      font-size: 0.90625rem;
+      letter-spacing: 0.075em;
+      text-transform: uppercase;
+      font-variation-settings: "wdth" 90, "wght" 620;
+    }
+
+    .wm-c5 {
+      font-size: 1.125rem;
+      letter-spacing: -0.015em;
+      font-variation-settings: "wdth" 102, "wght" 540;
+    }
+
+    .wm-c6 {
+      font-size: 1.125rem;
+      letter-spacing: -0.022em;
+      font-variation-settings: "wdth" 98, "wght" 680;
+    }
+    .wm-c6 .wm-sub {
+      font-variation-settings: "wdth" 98, "wght" 480;
+    }
+
+    /* Quiet Simulated Top-Bar UI Context */
+    .topbar-context {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .topbar-nav-sim {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding-left: 14px;
+      border-left: 1px solid var(--bar-rule);
+      font-family: var(--font-display);
+      font-variation-settings: "wdth" 96, "wght" 500;
+      font-size: 0.8125rem;
+      color: var(--bar-muted);
+      white-space: nowrap;
+    }
+
+    .topbar-nav-active {
+      color: var(--bar-secondary);
+    }
+
+    .topbar-telemetry {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      color: var(--bar-secondary);
+      white-space: nowrap;
+    }
+
+    .topbar-mode-badge {
+      padding: 2px 6px;
+      border: 1px solid var(--bar-rule);
+      border-radius: 3px;
+      color: var(--bar-muted);
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Footer Technical Note */
+    .sheet-footer {
+      margin-top: var(--space-xl);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--rule-hairline);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: var(--space-md);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink-muted);
+    }
+
+    .swatch-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 12px;
+    }
+
+    .swatch-chip {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid var(--rule-strong);
+      display: inline-block;
+    }
+
+    /* Responsive Breakpoints — Never Amputate Specimen Pixel Sizes */
+    @media (max-width: 1180px) {
+      .spec-strip {
+        display: none;
+      }
+
+      .concept-row {
+        grid-template-columns: 272px 124px 1fr;
+        grid-template-areas:
+          "meta meta meta"
+          "pair96 scales topbars";
+        gap: var(--space-md);
+      }
+
+      .concept-meta {
+        grid-area: meta;
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        padding-right: 0;
+      }
+
+      .concept-rationale {
+        max-width: 68ch;
+      }
+
+      .concept-footer {
+        border-top: none;
+        padding-top: 0;
+      }
+
+      .mark-pair-96 { grid-area: pair96; }
+      .well-scales { grid-area: scales; }
+      .topbar-pair { grid-area: topbars; }
+    }
+
+    @media (max-width: 860px) {
+      .concept-row {
+        grid-template-columns: 272px 124px;
+        grid-template-areas:
+          "meta meta"
+          "pair96 scales"
+          "topbars topbars";
+      }
+    }
+
+    @media (max-width: 620px) {
+      .concept-row {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "meta"
+          "pair96"
+          "scales"
+          "topbars";
+      }
+
+      .well-scales {
+        width: 272px;
+        height: auto;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--space-md);
+      }
+
+      .scale-row-divider {
+        width: 1px;
+        height: 32px;
+      }
+
+      .topbar-nav-sim {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="sheet-topbar">
+    <div class="sheet-topbar-inner">
+      <div class="sheet-title-group">
+        <span class="sheet-kicker">BrewSignal</span>
+        <h1 class="sheet-title">Identity &amp; Instrument Mark Study</h1>
+        <span class="sheet-subtitle">6 Concepts &middot; 32&thinsp;u Grid &middot; Clean Instrument System</span>
+      </div>
+      <div class="bench-controls" role="toolbar" aria-label="Inspection tools">
+        <button type="button" class="control-btn" id="toggle-grid" aria-pressed="false">
+          <span class="control-dot" aria-hidden="true"></span>
+          <span>96&thinsp;px Grid</span>
+        </button>
+        <button type="button" class="control-btn" id="toggle-mono" aria-pressed="false">
+          <span class="control-dot" aria-hidden="true"></span>
+          <span>1-Color Check</span>
+        </button>
+        <button type="button" class="control-btn" id="toggle-sheet" aria-pressed="false">
+          <span class="control-dot" aria-hidden="true"></span>
+          <span id="sheet-mode-label">Sheet: Dark</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="sheet-main">
+    <div class="spec-strip" aria-hidden="true">
+      <div>Concept &amp; Rationale</div>
+      <div>Standalone Mark &middot; 96&thinsp;px (Dark / Light)</div>
+      <div>32&thinsp;px &amp; 16&thinsp;px Dark</div>
+      <div>56&thinsp;px App Top-Bar Lockup (Dark &amp; Light)</div>
+    </div>
+
+    <div class="concept-list">
+      <!-- =========================================================
+           CONCEPT 01 — TERMINAL CURVE
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c1-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">01</span>
+              <h2 class="concept-name" id="c1-title">Terminal Curve</h2>
+            </div>
+            <p class="concept-rationale">Captures an active specific-gravity trace flattening asymptotically onto terminal gravity, anchored by a single lupulin-amber steady-state reading.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;96 &middot; wght&thinsp;650/450 &middot; &minus;0.02em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="1">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="1" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Terminal Curve mark at 96px on dark">
+              <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+              <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+              <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Terminal Curve mark at 96px on light">
+              <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+              <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+              <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Terminal Curve mark at 32px">
+                <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+                <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Terminal Curve mark at 16px">
+                <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+                <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+                <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c1">Brew<span class="wm-sub">Signal</span></span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>1.012&thinsp;SG</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M7 5V26H27M4 9H7M4 21H7" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M9 9C14.5 9 14 21 20 21" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+                <circle cx="25.5" cy="21" r="2.5" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c1">Brew<span class="wm-sub">Signal</span></span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>1.012&thinsp;SG</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CONCEPT 02 — TILT MENISCUS
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c2-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">02</span>
+              <h2 class="concept-name" id="c2-title">Tilt Meniscus</h2>
+            </div>
+            <p class="concept-rationale">Depicts a free-floating wireless hydrometer inclined at 20&deg; across a razor-sharp wort meniscus, with its submerged ballast bulb in amber.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;100 &middot; wght&thinsp;600 &middot; &minus;0.018em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="2">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="2" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Tilt Meniscus mark at 96px on dark">
+              <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Tilt Meniscus mark at 96px on light">
+              <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Tilt Meniscus mark at 32px">
+                <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Tilt Meniscus mark at 16px">
+                <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c2">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>19.4&thinsp;&deg;C</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M4 16H28" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M13.2 16L16.2 7.2A2.8 2.8 0 0 1 21.5 9.1L19.1 16" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11.1 19.5H18.8L16.9 25A3.8 3.8 0 0 1 9.7 22.5Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c2">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>19.4&thinsp;&deg;C</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CONCEPT 03 — CONICAL DATUM
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c3-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">03</span>
+              <h2 class="concept-name" id="c3-title">Conical Datum</h2>
+            </div>
+            <p class="concept-rationale">Pairs an architectural 60&deg; cylindroconical fermenter silhouette with an internal specific-gravity datum line and external calibration tick.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;108 &middot; wght&thinsp;620 &middot; &minus;0.024em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="3">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="3" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Conical Datum mark at 96px on dark">
+              <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Conical Datum mark at 96px on light">
+              <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Conical Datum mark at 32px">
+                <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Conical Datum mark at 16px">
+                <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+              </svg>
+              <span class="wordmark wm-c3">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>78&thinsp;% ATT</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M8 6.5H24V17L16 27.5L8 17Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M13 3H19" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M11 13H21M26.5 13H29.5" stroke="var(--mark-accent)" stroke-width="2" stroke-linecap="butt"/>
+              </svg>
+              <span class="wordmark wm-c3">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>78&thinsp;% ATT</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CONCEPT 04 — VERNIER INDEX
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c4-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">04</span>
+              <h2 class="concept-name" id="c4-title">Vernier Index</h2>
+            </div>
+            <p class="concept-rationale">Distills an optical refractometer's Plato/SG reticle into four graduated hairline divisions facing a sharp amber reading wedge.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;90 &middot; CAPS wght&thinsp;620 &middot; +0.075em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="4">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="4" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Vernier Index mark at 96px on dark">
+              <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Vernier Index mark at 96px on light">
+              <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+              <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Vernier Index mark at 32px">
+                <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Vernier Index mark at 16px">
+                <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c4">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>12.8&thinsp;&deg;P</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M7 4V28M7 8H13M7 14H17M7 20H13M7 26H15" stroke="currentColor" stroke-width="2" stroke-linecap="butt"/>
+                <path d="M19.5 14L26.5 10V18Z" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c4">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>12.8&thinsp;&deg;P</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CONCEPT 05 — AIRLOCK EQUILIBRIUM
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c5-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">05</span>
+              <h2 class="concept-name" id="c5-title">Airlock Equilibrium</h2>
+            </div>
+            <p class="concept-rationale">Reduces a twin-chamber S-lock to an asymmetric U-manifold under fermentation pressure, releasing a single rising amber CO&#8322; bubble.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;102 &middot; wght&thinsp;540 &middot; &minus;0.015em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="5">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="5" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Airlock Equilibrium mark at 96px on dark">
+              <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+              <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Airlock Equilibrium mark at 96px on light">
+              <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+              <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Airlock Equilibrium mark at 32px">
+                <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+                <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Airlock Equilibrium mark at 16px">
+                <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+                <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+                <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c5">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>5.6&thinsp;% ABV</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M9 6V19A7 7 0 0 0 23 19V14M5 12H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt"/>
+                <circle cx="23" cy="8.5" r="2.75" fill="var(--mark-accent)"/>
+              </svg>
+              <span class="wordmark wm-c5">BrewSignal</span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>5.6&thinsp;% ABV</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CONCEPT 06 — CALIBRATED B
+           ========================================================= -->
+      <section class="concept-row" aria-labelledby="c6-title">
+        <div class="concept-meta">
+          <div>
+            <div class="concept-heading">
+              <span class="concept-num">06</span>
+              <h2 class="concept-name" id="c6-title">Calibrated B</h2>
+            </div>
+            <p class="concept-rationale">Constructs a stencil "B" monogram on a graduated hydrometer spine, pierced cleanly through the waist by an amber vernier needle.</p>
+          </div>
+          <div class="concept-footer">
+            <span class="type-recipe">Archivo wdth&thinsp;98 &middot; wght&thinsp;680/480 &middot; &minus;0.022em</span>
+            <button type="button" class="copy-svg-btn" data-copy-concept="6">Copy SVG</button>
+          </div>
+        </div>
+
+        <div class="mark-pair-96">
+          <div class="well-96 surface-dark">
+            <svg data-source-svg="6" viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Calibrated B mark at 96px on dark">
+              <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+              <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+            </svg>
+            <span class="well-tag">96 &middot; Dark</span>
+          </div>
+          <div class="well-96 surface-light">
+            <svg viewBox="0 0 32 32" width="96" height="96" fill="none" aria-label="Calibrated B mark at 96px on light">
+              <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+              <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+            </svg>
+            <span class="well-tag">96 &middot; Light</span>
+          </div>
+        </div>
+
+        <div class="well-scales surface-dark">
+          <div class="scale-row">
+            <span class="scale-label"><strong>32&thinsp;px</strong>App</span>
+            <div class="icon-32-slot">
+              <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-label="Calibrated B mark at 32px">
+                <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+              </svg>
+            </div>
+          </div>
+          <div class="scale-row-divider" aria-hidden="true"></div>
+          <div class="scale-row">
+            <span class="scale-label"><strong>16&thinsp;px</strong>Favicon</span>
+            <div class="favicon-tab-sim" title="16x16 Favicon test">
+              <svg viewBox="0 0 32 32" width="16" height="16" fill="none" aria-label="Calibrated B mark at 16px">
+                <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+              </svg>
+              <span class="favicon-tab-dot" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-pair">
+          <div class="app-topbar surface-dark">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+              </svg>
+              <span class="wordmark wm-c6">Brew<span class="wm-sub">Signal</span></span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>42&thinsp;IBU</span>
+                <span class="topbar-mode-badge">56&thinsp;px Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-topbar surface-light">
+            <div class="brand-lockup">
+              <svg class="lockup-mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+                <path d="M9 11V5H17.5A4.5 4.5 0 0 1 17.5 14H19.5A6 6 0 0 1 19.5 26H9V17M5.5 8H9M5.5 23H9" stroke="currentColor" stroke-width="2.25" stroke-linecap="butt" stroke-linejoin="miter"/>
+                <path d="M4.5 14H15" stroke="var(--mark-accent)" stroke-width="2.25" stroke-linecap="butt"/>
+              </svg>
+              <span class="wordmark wm-c6">Brew<span class="wm-sub">Signal</span></span>
+            </div>
+            <div class="topbar-context" aria-hidden="true">
+              <div class="topbar-nav-sim">
+                <span class="topbar-nav-active">Batches</span>
+                <span>Recipes</span>
+                <span>Inventory</span>
+              </div>
+              <div class="topbar-telemetry">
+                <span>42&thinsp;IBU</span>
+                <span class="topbar-mode-badge">56&thinsp;px Light</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="sheet-footer">
+      <div>
+        <span class="swatch-inline"><span class="swatch-chip" style="background:oklch(0.145 0.008 195)"></span>Dark Canvas oklch(0.145 0.008 195)</span>
+        <span class="swatch-inline"><span class="swatch-chip" style="background:oklch(0.968 0.006 195)"></span>Light Canvas oklch(0.968 0.006 195)</span>
+        <span class="swatch-inline"><span class="swatch-chip" style="background:oklch(0.79 0.148 76)"></span>Lupulin Amber oklch(0.79 0.148 76) / oklch(0.54 0.142 70)</span>
+      </div>
+      <div>All marks authored on integer/half-step 32&times;32 viewBox coordinates &middot; Zero transforms</div>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const gridBtn = document.getElementById("toggle-grid");
+      const monoBtn = document.getElementById("toggle-mono");
+      const sheetBtn = document.getElementById("toggle-sheet");
+      const sheetLabel = document.getElementById("sheet-mode-label");
+
+      gridBtn.addEventListener("click", function () {
+        const next = gridBtn.getAttribute("aria-pressed") !== "true";
+        gridBtn.setAttribute("aria-pressed", String(next));
+        root.setAttribute("data-show-grid", String(next));
+      });
+
+      monoBtn.addEventListener("click", function () {
+        const next = monoBtn.getAttribute("aria-pressed") !== "true";
+        monoBtn.setAttribute("aria-pressed", String(next));
+        root.setAttribute("data-mono-test", String(next));
+      });
+
+      sheetBtn.addEventListener("click", function () {
+        const isLight = root.getAttribute("data-sheet-theme") === "light";
+        const nextTheme = isLight ? "dark" : "light";
+        root.setAttribute("data-sheet-theme", nextTheme);
+        sheetBtn.setAttribute("aria-pressed", String(!isLight));
+        sheetLabel.textContent = nextTheme === "light" ? "Sheet: Light" : "Sheet: Dark";
+      });
+
+      document.querySelectorAll("[data-copy-concept]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const id = btn.getAttribute("data-copy-concept");
+          const src = document.querySelector('svg[data-source-svg="' + id + '"]');
+          if (!src) return;
+          const clean =
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">\n  ' +
+            src.innerHTML
+              .trim()
+              .replace(/\s*\n\s*/g, "\n  ")
+              .replace(/var\(--mark-accent\)/g, "oklch(0.79 0.148 76)") +
+            "\n</svg>";
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(clean);
+          }
+          btn.setAttribute("data-copied", "true");
+          btn.textContent = "Copied SVG";
+          setTimeout(function () {
+            btn.removeAttribute("data-copied");
+            btn.textContent = "Copy SVG";
+          }, 1400);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

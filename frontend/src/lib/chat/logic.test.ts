@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activitySummary, applyOutcome, buildChatRequest, segmentParts, toolLabel, type ToolPart } from './logic';
+import { activitySummary, applyOutcome, buildChatRequest, formatGrams, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
 
 describe('buildChatRequest', () => {
 	it('sends only id, newest message, trigger and context', () => {
@@ -64,5 +64,15 @@ describe('activitySummary', () => {
 			{ type: 'tool-get_recipe', state: 'output-available' }
 		]);
 		expect(done).toMatchObject({ text: 'Checked hop stock, Loaded recipe', running: false, steps: 2 });
+	});
+});
+
+describe('formatGrams / summarizeInput', () => {
+	it('uses a thin space before the unit', () => {
+		expect(formatGrams(90.04)).toBe('90\u2009g');
+	});
+	it('summarizes scalar inputs only', () => {
+		expect(summarizeInput({ recipe_id: 32, items: [1], q: 'citra' })).toBe('recipe id 32, q citra');
+		expect(summarizeInput(null)).toBe('');
 	});
 });

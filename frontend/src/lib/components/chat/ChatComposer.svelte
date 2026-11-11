@@ -17,8 +17,9 @@
 	$effect(() => {
 		value;
 		if (!inputEl) return;
+		// Empty: let CSS min-height (one row) win, so a long placeholder cannot inflate the box.
 		inputEl.style.height = 'auto';
-		inputEl.style.height = Math.min(inputEl.scrollHeight, 6 * 24 + 20) + 'px';
+		if (value) inputEl.style.height = Math.min(inputEl.scrollHeight, 6 * 24 + 20) + 'px';
 	});
 
 	function onKey(e: KeyboardEvent) {
@@ -67,9 +68,11 @@
 		background: var(--bg-surface); border: 1px solid var(--rule-strong);
 	}
 	.box:focus-within { border-color: var(--accent); }
+	.box:has(textarea:disabled) { background: var(--bg-canvas); border-color: var(--rule-hairline); cursor: not-allowed; }
+	textarea:disabled::placeholder { color: var(--ink-muted); }
 	textarea {
 		flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent;
-		padding: 10px 0; font: inherit; font-size: var(--text-base); line-height: 24px; color: var(--ink-primary);
+		min-height: 44px; box-sizing: border-box; padding: 10px 0; font: inherit; font-size: var(--text-base); line-height: 24px; color: var(--ink-primary);
 		max-height: 164px;
 	}
 	textarea::placeholder { color: var(--ink-secondary); }
@@ -79,7 +82,7 @@
 	}
 	.send { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 	.send:hover:not(:disabled) { background: var(--accent-hover); }
-	.send:disabled { background: var(--bg-elevated); border-color: var(--rule-hairline); color: var(--ink-muted); cursor: default; }
+	.send:disabled { background: transparent; border-color: transparent; color: var(--ink-muted); opacity: 0.5; cursor: not-allowed; }
 	.stop { animation: ring 1.4s ease-in-out infinite; }
 	.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	@keyframes ring { 50% { border-color: var(--accent); } }

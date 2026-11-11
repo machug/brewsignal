@@ -152,4 +152,15 @@ export function relativeTime(iso: string, now = Date.now()): string {
 	return new Date(d).toLocaleDateString();
 }
 
-export const formatGrams = (n: number) => `${Math.round(n * 10) / 10} g`;
+// Thin space between number and unit: a full mono space reads as a double space.
+export const formatGrams = (n: number) => `${Math.round(n * 10) / 10}\u2009g`;
+
+/** Short readable summary of a tool input, e.g. "recipe id 32". Objects and arrays are skipped. */
+export function summarizeInput(input: unknown): string {
+	if (!input || typeof input !== 'object') return '';
+	return Object.entries(input as Record<string, unknown>)
+		.filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v))
+		.slice(0, 3)
+		.map(([k, v]) => `${k.replaceAll('_', ' ')} ${String(v).slice(0, 40)}`)
+		.join(', ');
+}

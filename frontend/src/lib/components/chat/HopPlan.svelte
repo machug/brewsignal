@@ -115,8 +115,9 @@
 	}
 	.pill.old { border-color: var(--status-warn); color: var(--status-warn); }
 	.removals {
-		margin-top: var(--space-sm);
-		padding: 0 var(--space-sm);
+		/* Bleed so inner rows share the outer column tracks (box border + padding = 12px). */
+		margin: var(--space-sm) calc(-1 * var(--space-sm)) 0;
+		padding: 0 calc(var(--space-sm) - 1px);
 		background: var(--error-bg);
 		border: 1px solid color-mix(in oklch, var(--status-danger) 35%, transparent);
 	}

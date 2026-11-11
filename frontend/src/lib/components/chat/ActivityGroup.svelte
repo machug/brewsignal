@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { activitySummary, isToolPart, toolLabel, toolName, type ToolPart } from '$lib/chat/logic';
+	import { activitySummary, isToolPart, summarizeInput, toolLabel, toolName, type ToolPart } from '$lib/chat/logic';
 
 	let { parts }: { parts: any[] } = $props();
 
@@ -31,6 +31,7 @@
 							<span>{toolLabel(toolName(t), t.state)}</span>
 							<span class="st" class:err={t.state === 'output-error'}>{stateText(t.state)}</span>
 						</div>
+						{#if summarizeInput(t.input)}<div class="think">{summarizeInput(t.input)}</div>{/if}
 						{#if t.state === 'output-error' && t.errorText}<div class="think">{t.errorText}</div>{/if}
 						{#if debug}
 							<pre class="json">{toolName(t)}

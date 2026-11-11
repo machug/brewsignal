@@ -90,6 +90,12 @@
 		pendingSteer = '';
 		drawerOpen = false;
 		setUrlChat(chatId);
+		focusInput();
+	}
+
+	// No autofocus on touch screens: it pops the keyboard and lights the composer.
+	function focusInput() {
+		if (matchMedia('(pointer: coarse)').matches) return;
 		tick().then(() => inputEl?.focus());
 	}
 
@@ -164,8 +170,6 @@
 		const id = params.get('chat');
 		if (id) openThread(id);
 		else startNew();
-		// startNew() clears nothing about the prefill; focus once the textarea exists.
-		tick().then(() => inputEl?.focus());
 	});
 
 	const busy = $derived(chat?.status === 'submitted' || chat?.status === 'streaming');
@@ -191,7 +195,7 @@
 		!!lastAssistant?.parts.some((p) => isToolPart(p) && toolName(p) === APPLY_TOOL && (p as unknown as ToolPart).state === 'approval-requested')
 	);
 	const composerOff = $derived(!chat || loadState !== 'ready' || awaitingApproval);
-	const placeholder = $derived(awaitingApproval ? 'Confirm or cancel the hop update above first' : undefined);
+	const placeholder = $derived(awaitingApproval ? 'Confirm or cancel the update above' : loadState === 'error' ? 'Chat locked: could not load it' : undefined);
 
 	function send() {
 		const text = input.trim();
@@ -216,6 +220,10 @@
 		pendingSteer = '';
 		chat.sendMessage({ text });
 	});
+
+	const retryApply = () => {
+		if (!busy && chat) chat.sendMessage({ text: 'Prepare that hop inventory update again.' });
+	};
 
 	function usePrompt(p: string) {
 		input = p;
@@ -264,7 +272,7 @@
 		</div>
 	{:else}
 		{#each messages as m (m.id)}
-			<MessageTurn message={m} approvalError={m.id === lastAssistant?.id ? approvalError : ''} onApprove={approve} onCancel={cancel} onKeepUnlisted={keepUnlisted} />
+			<MessageTurn message={m} approvalError={m.id === lastAssistant?.id ? approvalError : ''} onApprove={approve} onCancel={cancel} onKeepUnlisted={keepUnlisted} onRetry={retryApply} />
 		{/each}
 		{#if chat?.status === 'submitted'}
 			<p class="quiet working"><span class="dot" aria-hidden="true"></span>Thinking…</p>
@@ -301,7 +309,7 @@
 	@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
 
 	.empty { margin: auto 0; display: flex; flex-direction: column; gap: var(--space-md); }
-	.empty h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; }
+	.empty h2 { margin: 0; word-spacing: 0.08em; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; }
 	.prompts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); }
 	.prompts button {
 		width: 100%; min-height: 56px; padding: var(--space-sm) var(--space-md); text-align: left; cursor: pointer;
@@ -318,8 +326,10 @@
 	.callout button { min-height: 44px; padding: 0 var(--space-md); font: inherit; font-size: var(--text-sm); color: var(--ink-primary); background: transparent; border: 1px solid var(--rule-strong); cursor: pointer; }
 	.callout button:hover { background: var(--bg-subtle); }
 
-	.ctx { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; padding: 0 var(--space-sm); border: 1px solid var(--accent-rule); background: var(--accent-tint); font-size: 0.8125rem; color: var(--ink-primary); }
-	.ctx.off { border-color: var(--rule-hairline); background: transparent; color: var(--ink-secondary); }
+	.ctx { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; padding: 0 var(--space-sm); border: 1px solid var(--rule-hairline); background: var(--bg-elevated); font-size: 0.8125rem; color: var(--ink-secondary); }
+	.ctx::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--status-steady); flex: none; }
+	.ctx.off { background: transparent; }
+	.ctx.off::before { background: var(--ink-muted); }
 	.ctx-label { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
 	.ctx-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.ctx button { min-height: 44px; padding: 0 var(--space-sm); font: inherit; font-size: 0.8125rem; background: none; border: 0; color: var(--ink-secondary); text-decoration: underline; cursor: pointer; }

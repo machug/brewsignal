@@ -11,8 +11,10 @@
 		onCancel: (approvalId: string) => void;
 		/** Deny this call and steer the agent to apply without removing unlisted hops. */
 		onKeepUnlisted: (approvalId: string) => void;
+		/** Ask the assistant to prepare the update again (after a failure). */
+		onRetry: () => void;
 	}
-	let { part, error = '', onApprove, onCancel, onKeepUnlisted }: Props = $props();
+	let { part, error = '', onApprove, onCancel, onKeepUnlisted, onRetry }: Props = $props();
 
 	const outcome = $derived(error ? ({ phase: 'failed', message: error } as const) : applyOutcome(part));
 	const replace = $derived(Boolean(part.input?.replace));
@@ -74,7 +76,8 @@
 		<p class="muted">Nothing was changed.</p>
 	{:else if outcome.phase === 'failed'}
 		<p class="alert" role="alert">{outcome.message}</p>
-		<p class="muted">Nothing was changed. Ask the assistant to prepare the update again.</p>
+		<p class="muted">Nothing was changed.</p>
+		<div class="actions"><button type="button" onclick={onRetry}>Prepare again</button></div>
 	{:else if showPlan}
 		{#if shown}
 			<HopPlan plan={shown} {replace} applied={outcome.phase === 'applied'} />
@@ -113,7 +116,7 @@
 	}
 	.card.applied { border-color: var(--rule-hairline); }
 	header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); margin-bottom: var(--space-xs); }
-	h3 { margin: 0; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; color: var(--ink-primary); }
+	h3 { margin: 0; word-spacing: 0.08em; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; color: var(--ink-primary); }
 	.badge {
 		font-family: var(--font-num);
 		font-size: 0.8125rem;
@@ -151,7 +154,7 @@
 	button:hover { background: var(--bg-subtle); }
 	button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
 	button.primary:hover { background: var(--accent-hover); }
-	button.ghost { border-color: transparent; color: var(--ink-secondary); }
-	button.ghost:hover { color: var(--ink-primary); }
+	button.ghost { background: var(--bg-elevated); border-color: var(--rule-hairline); color: var(--ink-primary); }
+	button.ghost:hover { background: var(--bg-subtle); }
 	button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

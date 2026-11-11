@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { relativeTime } from '$lib/chat/logic';
 
 	export interface ThreadItem {
@@ -31,18 +32,48 @@
 		if (editing && draft.trim()) onRename(editing, draft.trim());
 		editing = null;
 	}
+	let drawerEl = $state<HTMLElement | null>(null);
+	let closeBtn = $state<HTMLButtonElement | null>(null);
+	let opener: Element | null = null;
+
+	// Focus moves in on open and back to the opener on close.
+	$effect(() => {
+		if (open) {
+			opener = document.activeElement;
+			tick().then(() => closeBtn?.focus());
+		} else if (opener instanceof HTMLElement) {
+			opener.focus();
+			opener = null;
+		}
+	});
+
 	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && open) onClose();
+		if (!open) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			onClose();
+		} else if (e.key === 'Tab' && drawerEl) {
+			// Trap focus inside the drawer.
+			const f = [...drawerEl.querySelectorAll<HTMLElement>('button, input')].filter((x) => !x.hasAttribute('disabled'));
+			if (!f.length) return;
+			const first = f[0], last = f[f.length - 1];
+			if (!drawerEl.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+			else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+			else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+		}
 	}
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 {#if open}<button type="button" class="backdrop" aria-label="Close chat list" onclick={onClose} tabindex="-1"></button>{/if}
-<aside class="drawer" class:open inert={!open} aria-label="Saved chats">
+<aside class="drawer" class:open inert={!open} aria-label="Saved chats" bind:this={drawerEl}>
 	<div class="top">
 		<h2>Chats</h2>
 		<button type="button" class="new" onclick={onNew}>New chat</button>
+		<button type="button" class="ic close" bind:this={closeBtn} aria-label="Close chat list" onclick={onClose}>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+		</button>
 	</div>
 	<div class="list">
 		{#if loading && threads.length === 0}
@@ -79,7 +110,7 @@
 </aside>
 
 <style>
-	.backdrop { position: absolute; inset: 0; z-index: 9; background: color-mix(in oklch, var(--bg-canvas) 60%, transparent); border: 0; cursor: default; }
+	.backdrop { position: absolute; inset: 0; z-index: 9; background: oklch(0 0 0 / 0.55); border: 0; cursor: default; }
 	.drawer {
 		position: absolute; top: 0; bottom: 0; left: 0; z-index: 10; width: min(320px, 100%);
 		display: flex; flex-direction: column;
@@ -88,8 +119,8 @@
 		transition: transform 200ms var(--ease-out-quart, ease-out), visibility 0s linear 200ms;
 	}
 	.drawer.open { transform: none; visibility: visible; transition: transform 200ms var(--ease-out-quart, ease-out); }
-	.top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--rule-hairline); }
-	h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; }
+	.top { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md); border-bottom: 1px solid var(--rule-hairline); }
+	h2 { margin: 0; margin-right: auto; word-spacing: 0.08em; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; }
 	.new {
 		min-height: 44px; padding: 0 var(--space-md); font: inherit; font-size: var(--text-sm); cursor: pointer;
 		background: transparent; border: 1px solid var(--rule-strong); color: var(--ink-primary);

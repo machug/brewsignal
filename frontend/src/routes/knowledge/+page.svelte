@@ -4,13 +4,6 @@
 	import type { BrewingLearningResponse } from '$lib/api';
 
 	const categories = ['all', 'equipment', 'technique', 'recipe', 'ingredient', 'correction'] as const;
-	const categoryColors: Record<string, string> = {
-		equipment: 'var(--accent)',
-		technique: 'var(--temp-trace)',
-		recipe: 'var(--status-steady)',
-		ingredient: 'var(--ink-secondary)',
-		correction: 'var(--status-danger)',
-	};
 
 	let learnings = $state<BrewingLearningResponse[]>([]);
 	let activeCategory = $state<string>('all');
@@ -85,9 +78,6 @@
 				class:active={activeCategory === cat}
 				onclick={() => activeCategory = cat}
 			>
-				{#if cat !== 'all'}
-					<span class="tab-dot" style="background: {categoryColors[cat]}"></span>
-				{/if}
 				<span class="tab-label">{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
 			</button>
 		{/each}
@@ -124,7 +114,6 @@
 					<div class="card-header">
 						<span
 							class="category-badge"
-							style="color: {categoryColors[learning.category]}; border-color: {categoryColors[learning.category]}"
 						>
 							{learning.category}
 						</span>
@@ -210,17 +199,17 @@
 </div>
 
 <style>
-	.knowledge-page { max-width: 68ch; margin: 0 auto; padding-bottom: var(--space-xl); }
+	.knowledge-page { max-width: 1400px; margin: 0 auto; padding: var(--space-lg) var(--space-xl) var(--space-xl); }
 	.page-header { margin-bottom: var(--space-lg); }
 	.page-title { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink-primary); }
 	.page-subtitle { font-size: var(--text-sm); color: var(--ink-secondary); margin-top: var(--space-2xs); }
 
-	.category-tabs { display: flex; gap: var(--space-2xs); border-bottom: 1px solid var(--rule-hairline); margin-bottom: var(--space-md); overflow-x: auto; }
-	.category-tab { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-sm); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; transition: color 140ms var(--ease-out-quart); }
+	.category-tabs { display: flex; flex-wrap: nowrap; gap: var(--space-2xs); box-shadow: inset 0 -1px 0 var(--rule-hairline); margin-bottom: var(--space-md); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+	.category-tabs::-webkit-scrollbar { display: none; }
+	.category-tab { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-sm); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: color 140ms var(--ease-out-quart); }
 	.category-tab:hover { color: var(--ink-primary); }
 	.category-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 	.category-tab:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-	.tab-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex-shrink: 0; }
 	.tab-label { line-height: 1; }
 
 	.count-indicator { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); margin-bottom: var(--space-sm); }
@@ -231,15 +220,15 @@
 	@keyframes spin { to { transform: rotate(360deg); } }
 	@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 
-	.empty-state { padding: var(--space-xl) 0; border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); }
+	.empty-state { max-width: 68ch; padding: var(--space-xl) 0; border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); }
 	.empty-title { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; color: var(--ink-primary); margin-bottom: var(--space-xs); }
 	.empty-text { font-size: var(--text-sm); color: var(--ink-secondary); line-height: 1.6; max-width: 56ch; }
 
-	.learnings-list { display: flex; flex-direction: column; }
+	.learnings-list { display: flex; flex-direction: column; max-width: 68ch; }
 	.learning-card { padding: var(--space-md) 0; border-top: 1px solid var(--rule-hairline); }
 	.learning-card:last-child { border-bottom: 1px solid var(--rule-hairline); }
 	.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-xs); }
-	.category-badge { display: inline-block; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; border: 1px solid; border-radius: 3px; line-height: 1.4; }
+	.category-badge { display: inline-block; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; line-height: 1.4; }
 	.card-date { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--ink-muted); }
 	.learning-text { font-size: var(--text-base); color: var(--ink-primary); line-height: 1.65; white-space: pre-wrap; }
 	.card-source { margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; }
@@ -258,7 +247,11 @@
 	.btn-ghost-sm:hover { color: var(--ink-primary); text-decoration: underline; }
 	.btn-danger-sm { color: var(--status-danger); border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent); }
 	.btn-danger-sm:hover { background: var(--negative-muted); }
-	.btn-danger-text { color: var(--status-danger); }
-	.btn-danger-text:hover { color: var(--status-danger); }
+	.btn-danger-text { color: var(--ink-secondary); }
+	.btn-danger-text:hover, .btn-danger-text:focus-visible { color: var(--status-danger); }
 	.delete-confirm-text { font-size: var(--text-xs); color: var(--status-danger); margin-right: auto; }
+@media (max-width: 640px) {
+		.knowledge-page { padding: var(--space-md); }
+		.category-tabs { padding-right: 28px; -webkit-mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); }
+	}
 </style>

@@ -284,16 +284,16 @@
 
 	function formatTempRange(low?: number, high?: number): string {
 		if (low == null && high == null) return '--';
-		if (low != null && high != null) return `${low.toFixed(0)}-${high.toFixed(0)}°C`;
-		if (low != null) return `>${low.toFixed(0)}°C`;
-		return `<${high!.toFixed(0)}°C`;
+		if (low != null && high != null) return `${low.toFixed(0)}\u2013${high.toFixed(0)}\u2009°C`;
+		if (low != null) return `>${low.toFixed(0)}\u2009°C`;
+		return `<${high!.toFixed(0)}\u2009°C`;
 	}
 
 	function formatAttenuation(low?: number, high?: number): string {
 		if (low == null && high == null) return '--';
 		if (low != null && high != null) {
 			if (low === high) return `${low.toFixed(0)}%`;
-			return `${low.toFixed(0)}-${high.toFixed(0)}%`;
+			return `${low.toFixed(0)}\u2013${high.toFixed(0)}%`;
 		}
 		if (low != null) return `>${low.toFixed(0)}%`;
 		return `<${high!.toFixed(0)}%`;
@@ -301,7 +301,7 @@
 
 	function formatAlphaAcid(low?: number, high?: number): string {
 		if (low == null && high == null) return '--';
-		if (low != null && high != null) return `${low.toFixed(1)}-${high.toFixed(1)}%`;
+		if (low != null && high != null) return `${low.toFixed(1)}\u2013${high.toFixed(1)}%`;
 		if (low != null) return `${low.toFixed(1)}%`;
 		return `${high!.toFixed(1)}%`;
 	}
@@ -338,7 +338,7 @@
 
 	function formatColor(srm?: number): string {
 		if (srm == null) return '--';
-		return `${srm.toFixed(1)} SRM`;
+		return `${srm.toFixed(1)}\u2009SRM`;
 	}
 
 	function getSrmColor(srm?: number): string {
@@ -490,49 +490,24 @@
 				{#each Object.entries(groupedYeast()) as [producer, strains] (producer)}
 					<div class="group">
 						<h2 class="group-name">{producer} <span class="group-count">{strains.length}</span></h2>
+						<div class="row-head cols-yeast" aria-hidden="true"><span>Strain</span><span>Type</span><span class="r">Attenuation</span><span class="r">Temp range</span><span>Flocculation</span></div>
 						<div class="items-grid">
 							{#each strains as strain (strain.id)}
-								<button type="button" class="item-card" class:custom={strain.is_custom} onclick={() => (selectedYeast = strain)}>
-									<div class="item-header">
-										<h3 class="item-name">{strain.name}</h3>
-										{#if strain.is_custom}
-											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'yeast', id: strain.id, name: strain.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'yeast', id: strain.id, name: strain.name })} aria-label="Delete">
-												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-												</svg>
-											</span>
-										{/if}
-									</div>
-									<div class="item-meta">
-										{#if strain.type}
-											<span class="item-type" style="color: {getYeastTypeColor(strain.type)}">{strain.type}</span>
-										{/if}
-										{#if strain.form}
-											<span class="item-form">{strain.form}</span>
-										{/if}
-										{#if strain.is_custom}
-											<span class="custom-badge">custom</span>
-										{/if}
-									</div>
-									<div class="item-specs">
-										<div class="spec">
-											<span class="spec-label">Attenuation</span>
-											<span class="spec-value">{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</span>
-										</div>
-										<div class="spec">
-											<span class="spec-label">Temp Range</span>
-											<span class="spec-value">{formatTempRange(strain.temp_low, strain.temp_high)}</span>
-										</div>
-										{#if strain.flocculation}
-											<div class="spec">
-												<span class="spec-label">Flocculation</span>
-												<span class="spec-value">{strain.flocculation}</span>
-											</div>
-										{/if}
-									</div>
-									{#if strain.description}
-										<p class="item-description">{strain.description}</p>
-									{/if}
+								<button type="button" class="item-row cols-yeast" class:custom={strain.is_custom} onclick={() => (selectedYeast = strain)}>
+									<span class="c name">
+										<span class="item-name">{strain.name}</span>
+										{#if strain.is_custom}<span class="custom-badge">custom</span><span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'yeast', id: strain.id, name: strain.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'yeast', id: strain.id, name: strain.name })} aria-label="Delete {strain.name}">
+											<svg class="icon-sm" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+										</span>{/if}
+										{#if strain.description}<span class="item-description">{strain.description}</span>{/if}
+									</span>
+									<span class="c meta">
+										{#if strain.type}<span class="item-type" style="color: {getYeastTypeColor(strain.type)}">{strain.type}</span>{/if}
+										{#if strain.form}<span class="item-form">{strain.form}</span>{/if}
+									</span>
+									<span class="c r num v1"><span class="lbl">Attenuation</span>{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</span>
+									<span class="c r num v2"><span class="lbl">Temperature range</span>{formatTempRange(strain.temp_low, strain.temp_high)}</span>
+									<span class="c hide-phone"><span class="lbl">Flocculation</span><span class="cap">{strain.flocculation || '--'}</span></span>
 								</button>
 							{/each}
 						</div>
@@ -551,42 +526,22 @@
 				{#each Object.entries(groupedHops()) as [origin, hops] (origin)}
 					<div class="group">
 						<h2 class="group-name">{origin} <span class="group-count">{hops.length}</span></h2>
+						<div class="row-head cols-hops" aria-hidden="true"><span>Hop</span><span>Purpose</span><span class="r">Alpha acid</span><span class="r">Beta acid</span></div>
 						<div class="items-grid">
 							{#each hops as hop (hop.id)}
-								<button type="button" class="item-card" class:custom={hop.is_custom} onclick={() => (selectedHop = hop)}>
-									<div class="item-header">
-										<h3 class="item-name">{hop.name}</h3>
-										{#if hop.is_custom}
-											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'hops', id: hop.id, name: hop.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'hops', id: hop.id, name: hop.name })} aria-label="Delete">
-												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-												</svg>
-											</span>
-										{/if}
-									</div>
-									<div class="item-meta">
-										{#if hop.purpose}
-											<span class="item-type" style="color: {getHopPurposeColor(hop.purpose)}">{hop.purpose}</span>
-										{/if}
-										{#if hop.is_custom}
-											<span class="custom-badge">custom</span>
-										{/if}
-									</div>
-									<div class="item-specs">
-										<div class="spec">
-											<span class="spec-label">Alpha Acid</span>
-											<span class="spec-value">{formatAlphaAcid(hop.alpha_acid_low, hop.alpha_acid_high)}</span>
-										</div>
-										{#if hop.beta_acid_low || hop.beta_acid_high}
-											<div class="spec">
-												<span class="spec-label">Beta Acid</span>
-												<span class="spec-value">{formatAlphaAcid(hop.beta_acid_low, hop.beta_acid_high)}</span>
-											</div>
-										{/if}
-									</div>
-									{#if hop.aroma_profile}
-										<p class="item-description">{hop.aroma_profile}</p>
-									{/if}
+								<button type="button" class="item-row cols-hops" class:custom={hop.is_custom} onclick={() => (selectedHop = hop)}>
+									<span class="c name">
+										<span class="item-name">{hop.name}</span>
+										{#if hop.is_custom}<span class="custom-badge">custom</span><span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'hops', id: hop.id, name: hop.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'hops', id: hop.id, name: hop.name })} aria-label="Delete {hop.name}">
+											<svg class="icon-sm" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+										</span>{/if}
+										{#if hop.aroma_profile}<span class="item-description">{hop.aroma_profile}</span>{/if}
+									</span>
+									<span class="c meta">
+										{#if hop.purpose}<span class="item-type" style="color: {getHopPurposeColor(hop.purpose)}">{hop.purpose}</span>{/if}
+									</span>
+									<span class="c r num v1"><span class="lbl">Alpha acid</span>{formatAlphaAcid(hop.alpha_acid_low, hop.alpha_acid_high)}</span>
+									<span class="c r num v2"><span class="lbl">Beta acid</span>{hop.beta_acid_low || hop.beta_acid_high ? formatAlphaAcid(hop.beta_acid_low, hop.beta_acid_high) : '--'}</span>
 								</button>
 							{/each}
 						</div>
@@ -605,62 +560,21 @@
 				{#each Object.entries(groupedFermentables()) as [type, items] (type)}
 					<div class="group">
 						<h2 class="group-name">{type} <span class="group-count">{items.length}</span></h2>
+						<div class="row-head cols-ferm" aria-hidden="true"><span>Fermentable</span><span>Maltster / origin</span><span class="r">Colour</span><span class="r">Potential</span><span class="r">Max %</span><span class="r">Diastatic</span></div>
 						<div class="items-grid">
 							{#each items as item (item.id)}
-								<button type="button" class="item-card" class:custom={item.is_custom} onclick={() => (selectedFermentable = item)}>
-									<div class="item-header">
-										<h3 class="item-name">{item.name}</h3>
-										{#if item.is_custom}
-											<span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'fermentables', id: item.id, name: item.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'fermentables', id: item.id, name: item.name })} aria-label="Delete">
-												<svg class="icon-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-												</svg>
-											</span>
-										{/if}
-									</div>
-									<div class="item-meta">
-										{#if item.maltster}
-											<span class="item-form">{item.maltster}</span>
-										{/if}
-										{#if item.origin}
-											<span class="item-form">{item.origin}</span>
-										{/if}
-										{#if item.is_custom}
-											<span class="custom-badge">custom</span>
-										{/if}
-									</div>
-									<div class="item-specs">
-										{#if item.color_srm != null}
-											<div class="spec">
-												<span class="spec-label">Color</span>
-												<span class="spec-value" style="display: flex; align-items: center; gap: 4px;">
-													<span class="color-swatch" style="background: {getSrmColor(item.color_srm)};"></span>
-													{formatColor(item.color_srm)}
-												</span>
-											</div>
-										{/if}
-										{#if item.potential_sg != null}
-											<div class="spec">
-												<span class="spec-label">Potential</span>
-												<span class="spec-value">{item.potential_sg.toFixed(3)}</span>
-											</div>
-										{/if}
-										{#if item.max_in_batch_percent != null}
-											<div class="spec">
-												<span class="spec-label">Max %</span>
-												<span class="spec-value">{item.max_in_batch_percent}%</span>
-											</div>
-										{/if}
-										{#if item.diastatic_power != null}
-											<div class="spec">
-												<span class="spec-label">Diastatic</span>
-												<span class="spec-value">{item.diastatic_power}°L</span>
-											</div>
-										{/if}
-									</div>
-									{#if item.flavor_profile}
-										<p class="item-description">{item.flavor_profile}</p>
-									{/if}
+								<button type="button" class="item-row cols-ferm" class:custom={item.is_custom} onclick={() => (selectedFermentable = item)}>
+									<span class="c name">
+										<span class="item-name">{item.name}</span>
+										{#if item.is_custom}<span class="custom-badge">custom</span><span class="delete-btn" role="button" tabindex="-1" onclick={(e) => { e.stopPropagation(); deleteTarget = { type: 'fermentables', id: item.id, name: item.name }; }} onkeydown={(e) => e.key === 'Enter' && (deleteTarget = { type: 'fermentables', id: item.id, name: item.name })} aria-label="Delete {item.name}">
+											<svg class="icon-sm" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+										</span>{/if}
+									</span>
+									<span class="c meta"><span class="item-form">{[item.maltster, item.origin].filter(Boolean).join(' \u00b7 ') || '--'}</span></span>
+									<span class="c r num v1"><span class="lbl">Colour</span>{#if item.color_srm != null}<span class="color-swatch" style="background: {getSrmColor(item.color_srm)};"></span> {formatColor(item.color_srm)}{:else}--{/if}</span>
+									<span class="c r num v2"><span class="lbl">Potential</span>{item.potential_sg != null ? item.potential_sg.toFixed(3) : '--'}</span>
+									<span class="c r num hide-phone"><span class="lbl">Maximum percent of batch</span>{item.max_in_batch_percent != null ? item.max_in_batch_percent + '%' : '--'}</span>
+									<span class="c r num hide-phone"><span class="lbl">Diastatic power</span>{item.diastatic_power != null ? item.diastatic_power + '\u2009°L' : '--'}</span>
 								</button>
 							{/each}
 						</div>
@@ -1135,8 +1049,9 @@
 	@keyframes spin { to { transform: rotate(360deg); } }
 	@media (prefers-reduced-motion: reduce) { .icon.spinning, .spinner { animation-duration: 3s; } }
 
-	.tabs { display: flex; border-bottom: 1px solid var(--rule-hairline); margin-bottom: var(--space-md); }
-	.tab { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: color 140ms var(--ease-out-quart); }
+	.tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; box-shadow: inset 0 -1px 0 var(--rule-hairline); margin-bottom: var(--space-md); }
+	.tabs::-webkit-scrollbar { display: none; }
+	.tab { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; cursor: pointer; transition: color 140ms var(--ease-out-quart); white-space: nowrap; flex-shrink: 0; }
 	.tab:hover { color: var(--ink-primary); }
 	.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 	.tab-count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--ink-muted); }
@@ -1145,10 +1060,10 @@
 	.filters-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-lg); }
 	.search-input { flex: 1; min-width: 200px; max-width: 20rem; min-height: 44px; padding: 0 var(--space-sm); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; color: var(--ink-primary); font-size: var(--text-sm); }
 	.search-input::placeholder { color: var(--ink-muted); }
-	.filter-select { min-height: 44px; padding: 0 var(--space-sm); background: transparent; border: 1px solid var(--rule-hairline); border-radius: 4px; color: var(--ink-secondary); font-size: var(--text-sm); cursor: pointer; }
+	.filter-select { min-height: 44px; padding: 0 var(--space-sm); background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; color: var(--ink-secondary); font-size: var(--text-sm); cursor: pointer; }
 	.filter-select:hover { border-color: var(--rule-strong); color: var(--ink-primary); }
 	.search-input:focus-visible, .filter-select:focus-visible, .form-group input:focus-visible, .form-group select:focus-visible, .form-group textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
-	.custom-toggle { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-sm); font-size: var(--text-sm); color: var(--ink-secondary); border: 1px solid var(--rule-hairline); border-radius: 4px; cursor: pointer; }
+	.custom-toggle { display: flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-sm); font-size: var(--text-sm); color: var(--ink-secondary); border: 1px solid var(--rule-strong); background: var(--bg-surface); border-radius: 4px; cursor: pointer; }
 	.custom-toggle:has(input:checked) { color: var(--accent); border-color: var(--accent-rule); background: var(--accent-tint); }
 	.custom-toggle input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
 
@@ -1161,23 +1076,36 @@
 	.items-list { display: flex; flex-direction: column; gap: var(--space-lg); }
 	.group-name { display: flex; align-items: baseline; gap: var(--space-xs); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.07em; padding-bottom: var(--space-xs); border-bottom: 1px solid var(--rule-strong); }
 	.group-count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 400; }
+	.group { min-width: 0; }
 	.items-grid { display: flex; flex-direction: column; }
-	.item-card { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(0, 1.6fr); grid-template-areas: "head specs" "meta specs" "desc desc"; column-gap: var(--space-lg); row-gap: var(--space-2xs); width: 100%; padding: var(--space-sm) var(--space-xs); text-align: left; background: transparent; border-bottom: 1px solid var(--rule-hairline); border-radius: 0; cursor: pointer; transition: background-color 140ms var(--ease-out-quart); }
-	.item-card:hover { background: var(--bg-surface); }
-	.item-header { grid-area: head; display: flex; align-items: center; gap: var(--space-xs); }
-	.item-name { font-family: var(--font-body); font-size: var(--text-sm); font-weight: 700; color: var(--ink-primary); line-height: 1.3; }
-	.delete-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; color: var(--ink-muted); border-radius: 4px; cursor: pointer; }
-	.delete-btn:hover { color: var(--status-danger); background: var(--negative-muted); }
-	.item-meta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
+	.row-head, .item-row { display: grid; column-gap: var(--space-md); align-items: center; padding-left: var(--space-xs); padding-right: var(--space-xs); }
+	.cols-yeast { grid-template-columns: minmax(14rem, 2fr) 9rem 7rem 8rem 7rem; }
+	.cols-hops { grid-template-columns: minmax(14rem, 2fr) 9rem 8rem 8rem; }
+	.cols-ferm { grid-template-columns: minmax(14rem, 2fr) minmax(8rem, 1.2fr) 8rem 6rem 5rem 6rem; }
+	.row-head { padding-top: var(--space-xs); padding-bottom: var(--space-xs); border-bottom: 1px solid var(--rule-hairline); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
+	.r { text-align: right; }
+	@media (max-width: 1040px) {
+		.cols-yeast { grid-template-columns: minmax(9rem, 2fr) 7rem 6rem 7rem 5rem; column-gap: var(--space-sm); }
+		.cols-hops { grid-template-columns: minmax(9rem, 2fr) 7rem 6rem 6rem; column-gap: var(--space-sm); }
+		.cols-ferm { grid-template-columns: minmax(9rem, 2fr) minmax(5rem, 1fr) 7rem 5rem 4rem 5rem; column-gap: var(--space-sm); }
+	}
+	.item-row { width: 100%; padding-top: var(--space-sm); padding-bottom: var(--space-sm); text-align: left; background: transparent; border-bottom: 1px solid var(--rule-hairline); border-radius: 0; cursor: pointer; transition: background-color 140ms var(--ease-out-quart); font-size: var(--text-sm); color: var(--ink-primary); }
+	.item-row:hover { background: var(--bg-surface); }
+	.c { min-width: 0; }
+	.name { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); }
+	.item-name { font-size: var(--text-sm); font-weight: 700; color: var(--ink-primary); line-height: 1.3; }
+	.item-description { flex-basis: 100%; max-width: 70ch; font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; font-weight: 400; display: -webkit-box; -webkit-line-clamp: 1; line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+	.delete-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; color: var(--ink-secondary); border-radius: 4px; cursor: pointer; }
+	.delete-btn:hover, .delete-btn:focus-visible { color: var(--status-danger); background: var(--negative-muted); }
+	.meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
 	.item-type, .custom-badge, .detail-type-badge { display: inline-flex; align-items: center; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; border: 1px solid currentColor; border-radius: 3px; line-height: 1.4; }
 	.custom-badge { color: var(--accent); border-color: var(--accent-rule); }
-	.item-form { font-size: var(--text-xs); color: var(--ink-muted); text-transform: capitalize; }
-	.item-specs { grid-area: specs; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-lg); align-self: center; }
-	.spec { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-	.spec-label { font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.07em; }
-	.spec-value { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-sm); color: var(--ink-primary); }
-	.color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--rule-strong); }
-	.item-description { grid-area: desc; max-width: 80ch; font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.item-form { font-size: var(--text-xs); color: var(--ink-secondary); text-transform: capitalize; }
+	.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+	.cap { text-transform: capitalize; }
+	.lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+	.item-row .c { position: relative; }
+	.color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--rule-strong); vertical-align: -1px; }
 
 	/* Modals */
 	.modal-overlay { position: fixed; inset: 0; background: color-mix(in oklch, var(--bg-canvas) 75%, transparent); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-md); }
@@ -1214,12 +1142,12 @@
 	.detail-origin { font-size: var(--text-sm); color: var(--ink-secondary); }
 	.detail-form { font-size: var(--text-xs); color: var(--ink-muted); text-transform: capitalize; }
 	.detail-content { padding: var(--space-md) var(--space-lg) var(--space-lg); }
-	.detail-specs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--rule-hairline); border-radius: 4px; margin-bottom: var(--space-md); }
+	.detail-specs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--rule-strong); border-radius: 4px; margin-bottom: var(--space-md); }
 	.detail-spec { display: flex; flex-direction: column; gap: 2px; padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--rule-hairline); }
 	.detail-spec:nth-child(odd) { border-right: 1px solid var(--rule-hairline); }
 	.detail-spec:nth-last-child(-n + 2) { border-bottom: 0; }
 	.detail-spec-label { font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.07em; }
-	.detail-spec-value { display: flex; align-items: center; gap: var(--space-xs); font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-base); color: var(--ink-primary); }
+	.detail-spec-value { text-transform: capitalize; display: flex; align-items: center; gap: var(--space-xs); font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-base); color: var(--ink-primary); }
 	.detail-section { margin-bottom: var(--space-md); padding-top: var(--space-sm); border-top: 1px solid var(--rule-hairline); }
 	.detail-section-title { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); margin-bottom: var(--space-xs); }
 	.detail-description { max-width: 68ch; font-size: var(--text-sm); color: var(--ink-secondary); line-height: 1.6; }
@@ -1230,13 +1158,20 @@
 
 	@media (max-width: 760px) {
 		.page-container { padding: var(--space-md); }
-		.tabs { overflow-x: auto; }
-		.filters-bar { flex-direction: column; align-items: stretch; }
-		.search-input { max-width: none; }
+		.tabs { padding-right: 28px; -webkit-mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); }
+		.filters-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+		.search-input { grid-column: 1 / -1; max-width: none; min-width: 0; }
+		.filter-select { min-width: 0; width: 100%; }
+		.custom-toggle { grid-column: 1 / -1; min-height: 44px; padding: 0; border: 0; background: transparent; }
+		.custom-toggle:has(input:checked) { background: transparent; border: 0; }
 		.form-row { grid-template-columns: 1fr; }
-		.item-card { grid-template-columns: 1fr; grid-template-areas: "head" "meta" "specs" "desc"; }
-		.item-specs { justify-content: flex-start; margin-top: var(--space-xs); }
-		.spec { align-items: flex-start; }
+		.row-head { display: none; }
+		.item-row { grid-template-columns: 1fr auto; grid-template-areas: "name v1" "meta v2"; gap: 4px 12px; padding: 12px 0; align-items: start; }
+		.name { grid-area: name; }
+		.meta { grid-area: meta; }
+		.v1 { grid-area: v1; }
+		.v2 { grid-area: v2; font-size: var(--text-xs); }
+		.hide-phone, .item-description { display: none; }
 		.detail-modal { max-height: 94vh; }
 		.detail-header { padding: var(--space-md); }
 		.detail-content { padding: var(--space-md); }

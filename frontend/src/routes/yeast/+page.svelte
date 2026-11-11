@@ -135,16 +135,16 @@
 
 	function formatTempRange(low?: number, high?: number): string {
 		if (low == null && high == null) return '--';
-		if (low != null && high != null) return `${low.toFixed(0)}-${high.toFixed(0)}°C`;
-		if (low != null) return `>${low.toFixed(0)}°C`;
-		return `<${high!.toFixed(0)}°C`;
+		if (low != null && high != null) return `${low.toFixed(0)}\u2013${high.toFixed(0)}\u2009°C`;
+		if (low != null) return `>${low.toFixed(0)}\u2009°C`;
+		return `<${high!.toFixed(0)}\u2009°C`;
 	}
 
 	function formatAttenuation(low?: number, high?: number): string {
 		if (low == null && high == null) return '--';
 		if (low != null && high != null) {
 			if (low === high) return `${low.toFixed(0)}%`;
-			return `${low.toFixed(0)}-${high.toFixed(0)}%`;
+			return `${low.toFixed(0)}\u2013${high.toFixed(0)}%`;
 		}
 		if (low != null) return `>${low.toFixed(0)}%`;
 		return `<${high!.toFixed(0)}%`;
@@ -258,21 +258,22 @@
 							<tbody>
 								{#each groupStrains as strain (strain.id)}
 									<tr>
-										<td data-label="Strain">
+										<td data-label="Strain" class="name">
 											<div class="strain-name">{strain.name}{#if strain.is_custom} <span class="pill accent">Custom</span>{/if}</div>
+											<span class="rowmeta cap">{[strain.type, strain.form].filter(Boolean).join(' \u00b7 ')}</span>
 											{#if strain.description}
 												<p class="strain-description">{strain.description}</p>
 											{/if}
 										</td>
-										<td data-label="Type">
+										<td data-label="Type" class="hide-phone">
 											{#if strain.type}
 												<span class="pill" style="color: {getTypeColor(strain.type)}; border-color: {getTypeColor(strain.type)}">{strain.type}</span>
 											{:else}--{/if}
 										</td>
-										<td data-label="Form" class="muted cap">{strain.form || '--'}</td>
-										<td data-label="Attenuation" class="r num">{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</td>
-										<td data-label="Temp range" class="r num">{formatTempRange(strain.temp_low, strain.temp_high).replace('°C', '\u2009°C')}</td>
-										<td data-label="Flocculation" class="muted cap">{strain.flocculation || '--'}</td>
+										<td data-label="Form" class="muted cap hide-phone">{strain.form || '--'}</td>
+										<td data-label="Attenuation" class="r num v1"><span class="lbl">Attenuation</span>{formatAttenuation(strain.attenuation_low, strain.attenuation_high)}</td>
+										<td data-label="Temp range" class="r num v2"><span class="lbl">Temperature range</span>{formatTempRange(strain.temp_low, strain.temp_high)}</td>
+										<td data-label="Flocculation" class="muted cap hide-phone">{strain.flocculation || '--'}</td>
 										<td class="r actions">
 											{#if strain.is_custom}
 												<button
@@ -443,7 +444,8 @@
 	.strains-list { display: flex; flex-direction: column; gap: var(--space-lg); }
 	.producer-name { display: flex; align-items: baseline; gap: var(--space-xs); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.07em; padding-bottom: var(--space-xs); border-bottom: 1px solid var(--rule-strong); }
 	.producer-count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 400; }
-	.scroll { overflow-x: auto; }
+	.scroll { overflow-x: auto; position: relative; }
+	.producer-group { min-width: 0; }
 	.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 	.ledger th { padding: var(--space-xs) var(--space-sm); text-align: left; font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border-bottom: 1px solid var(--rule-hairline); white-space: nowrap; }
 	.ledger td { padding: var(--space-sm); border-bottom: 1px solid var(--rule-hairline); color: var(--ink-primary); vertical-align: top; }
@@ -456,8 +458,8 @@
 	.strain-description { margin-top: var(--space-2xs); max-width: 60ch; font-size: var(--text-xs); color: var(--ink-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 	.pill { display: inline-flex; align-items: center; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; line-height: 1.4; vertical-align: middle; }
 	.pill.accent { color: var(--accent); border-color: var(--accent-rule); }
-	.delete-btn { min-height: 32px; padding: 0 var(--space-xs); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--status-danger); border-radius: 4px; cursor: pointer; }
-	.delete-btn:hover { text-decoration: underline; }
+	.delete-btn { min-height: 32px; padding: 0 var(--space-xs); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-radius: 4px; cursor: pointer; }
+	.delete-btn:hover, .delete-btn:focus-visible { color: var(--status-danger); text-decoration: underline; }
 
 	.modal-overlay { position: fixed; inset: 0; background: color-mix(in oklch, var(--bg-canvas) 75%, transparent); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-md); }
 	.modal { background: var(--bg-surface); border: 1px solid var(--rule-strong); border-radius: 4px; padding: var(--space-lg); max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
@@ -479,19 +481,29 @@
 	.btn-delete:hover:not(:disabled) { background: var(--negative-muted); }
 	.btn-submit:disabled, .btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
 
+	.lbl, .pu, .rowmeta { display: none; }
+	.ledger td.name .strain-name { color: var(--ink-primary); }
+
 	@media (max-width: 640px) {
 		.page-container { padding: var(--space-md); }
-		.filters-bar { flex-direction: column; align-items: stretch; }
-		.search-input { max-width: none; }
+		.filters-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+		.search-input { grid-column: 1 / -1; max-width: none; min-width: 0; }
+		.filter-select { min-width: 0; width: 100%; }
+		.custom-toggle { grid-column: 1 / -1; min-height: 44px; }
 		.form-row { grid-template-columns: 1fr; }
 		.ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-		.ledger, .ledger tbody, .ledger tr, .ledger td { display: block; }
-		.ledger tr { padding: var(--space-xs) 0; border-bottom: 1px solid var(--rule-hairline); }
-		.ledger td { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); padding: var(--space-2xs) var(--space-xs); border: 0; text-align: right; }
-		.ledger td[data-label]::before { content: attr(data-label); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); text-align: left; flex-shrink: 0; }
-		.ledger td[data-label="Strain"] { display: block; text-align: left; }
-		.ledger td[data-label="Strain"]::before { display: none; }
-		.ledger .actions { justify-content: flex-end; }
-		.delete-btn { min-height: 44px; padding: 0 var(--space-sm); }
+		.ledger, .ledger tbody { display: block; }
+		.ledger tr { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name v1" "name v2" "act act"; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--rule-hairline); }
+		.ledger td { display: block; padding: 0; border: 0; text-align: left; }
+		.ledger td.name { grid-area: name; }
+		.ledger td.v1 { grid-area: v1; text-align: right; }
+		.ledger td.v2 { grid-area: v2; text-align: right; font-size: var(--text-xs); }
+		.ledger td.actions { grid-area: act; text-align: left; }
+		.ledger td.actions:empty { display: none; }
+		.ledger td.hide-phone { display: none; }
+		.rowmeta { display: block; font-size: var(--text-xs); color: var(--ink-secondary); }
+		.strain-description { display: none; }
+		.lbl { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+		.delete-btn { min-height: 44px; padding: 0 var(--space-sm) 0 0; }
 	}
 </style>

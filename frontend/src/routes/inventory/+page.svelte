@@ -654,7 +654,7 @@
 				{#if equipment.length === 0}
 					<div class="empty">
 						<p>No equipment added yet</p>
-						<button onclick={() => openEquipmentModal()} class="link-btn accent">Add your first equipment</button>
+						<button onclick={() => openEquipmentModal()} class="link-btn accent empty-link">Add your first equipment</button>
 					</div>
 				{:else}
 					<div class="scroll">
@@ -672,11 +672,14 @@
 							<tbody>
 								{#each equipment as item}
 									<tr>
-										<td data-label="Name" class="strong">{item.name}</td>
-										<td data-label="Type" class="muted">{equipmentTypes.find((t) => t.value === item.type)?.label || item.type}</td>
-										<td data-label="Make / model" class="muted">{[item.brand, item.model].filter(Boolean).join(' ') || '--'}</td>
-										<td data-label="Capacity" class="r num">{item.capacity_liters ? `${item.capacity_liters} L` : '--'}</td>
-										<td data-label="Status"><span class="pill" class:steady={item.is_active}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
+										<td data-label="Name" class="strong name">
+											{item.name}
+											<span class="rowmeta">{equipmentTypes.find((t) => t.value === item.type)?.label || item.type}{[item.brand, item.model].filter(Boolean).length ? ' \u00b7 ' + [item.brand, item.model].filter(Boolean).join(' ') : ''}</span>
+										</td>
+										<td data-label="Type" class="muted hide-phone">{equipmentTypes.find((t) => t.value === item.type)?.label || item.type}</td>
+										<td data-label="Make / model" class="muted hide-phone">{[item.brand, item.model].filter(Boolean).join(' ') || '--'}</td>
+										<td data-label="Capacity" class="r num v1"><span class="lbl">Capacity</span>{item.capacity_liters ? `${item.capacity_liters}\u2009L` : '--'}</td>
+										<td data-label="Status" class="v2"><span class="lbl">Status</span><span class="pill" class:steady={item.is_active}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
 										<td class="r actions">
 											<button onclick={() => openEquipmentModal(item)} class="link-btn">Edit</button>
 											<button onclick={() => (deleteTarget = { type: 'equipment', item })} class="link-btn danger">Delete</button>
@@ -733,17 +736,21 @@
 							<tbody>
 								{#each filteredHops as hop}
 									<tr>
-										<td data-label="Variety" class="strong">{hop.variety}</td>
-										<td data-label="Amount" class="r num">
+										<td data-label="Variety" class="strong name">
+											{hop.variety}
+											<span class="rowmeta cap">{hop.form}{hop.crop_year ? ' \u00b7 ' + hop.crop_year : ''}{hop.storage_location ? ' \u00b7 ' + hop.storage_location : ''}</span>
+										</td>
+										<td data-label="Amount" class="r num v1">
+											<span class="lbl">Amount</span>
 											{#if hop.amount_grams < 50}<span class="pill warn">Low</span>{/if}
 											{hop.amount_grams >= 1000
-												? `${(hop.amount_grams / 1000).toFixed(2)} kg`
-												: `${hop.amount_grams.toFixed(0)} g`}
+												? `${(hop.amount_grams / 1000).toFixed(2)}\u2009kg`
+												: `${hop.amount_grams.toFixed(0)}\u2009g`}
 										</td>
-										<td data-label="AA%" class="r num">{hop.alpha_acid_percent?.toFixed(1) || '--'}</td>
-										<td data-label="Form" class="pl small muted cap">{hop.form}</td>
-										<td data-label="Year" class="small muted num">{hop.crop_year || '--'}</td>
-										<td data-label="Location" class="small muted">{hop.storage_location || '--'}</td>
+										<td data-label="AA%" class="r num v2"><span class="lbl">Alpha acid</span>{hop.alpha_acid_percent?.toFixed(1) || '--'}{#if hop.alpha_acid_percent}<span class="pu">&thinsp;AA%</span>{/if}</td>
+										<td data-label="Form" class="pl small muted cap hide-phone">{hop.form}</td>
+										<td data-label="Year" class="small muted num hide-phone">{hop.crop_year || '--'}</td>
+										<td data-label="Location" class="small muted hide-phone">{hop.storage_location || '--'}</td>
 										<td class="r actions">
 											<button onclick={() => openAdjustModal(hop)} class="link-btn accent">Adjust</button>
 											<button onclick={() => openHopModal(hop)} class="link-btn">Edit</button>
@@ -761,7 +768,7 @@
 		{#if activeTab === 'yeast'}
 			<section class="panel">
 				{#if yeastSummary}
-					<div class="strip">
+					<div class="strip four">
 						<div class="cell">
 							<span class="label">Total packs</span>
 							<span class="value num">{yeastSummary.total_quantity}</span>
@@ -824,7 +831,7 @@
 							<tbody>
 								{#each filteredYeasts as yeast}
 									<tr>
-										<td data-label="Strain">
+										<td data-label="Strain" class="name">
 											<div class="strong">{yeast.yeast_strain?.name || yeast.custom_name}</div>
 											{#if yeast.yeast_strain?.product_id}
 												<div class="small muted">{yeast.yeast_strain.producer} - {yeast.yeast_strain.product_id}</div>
@@ -832,16 +839,18 @@
 											{#if yeast.generation}
 												<div class="small muted">Gen <span class="num">{yeast.generation}</span> (harvested)</div>
 											{/if}
+											<span class="rowmeta cap">{yeast.form}{yeast.storage_location ? ' \u00b7 ' + yeast.storage_location : ''}</span>
 										</td>
-										<td data-label="Qty" class="r num">{yeast.quantity}</td>
-										<td data-label="Form" class="pl small muted cap">{yeast.form}</td>
-										<td data-label="Expiry" class="num {getExpiryClass(yeast.expiry_date)}">
+										<td data-label="Qty" class="r num v1"><span class="lbl">Quantity</span>{yeast.quantity}<span class="pu">&thinsp;pk</span></td>
+										<td data-label="Form" class="pl small muted cap hide-phone">{yeast.form}</td>
+										<td data-label="Expiry" class="num v2 {getExpiryClass(yeast.expiry_date)}">
+											<span class="lbl">Expiry</span>
 											{formatDate(yeast.expiry_date)}
 											{#if getDaysUntilExpiry(yeast.expiry_date) !== null}
-												<span class="small">({getDaysUntilExpiry(yeast.expiry_date)}d)</span>
+												<span class="small">({getDaysUntilExpiry(yeast.expiry_date)}&thinsp;d)</span>
 											{/if}
 										</td>
-										<td data-label="Location" class="small muted">{yeast.storage_location || '--'}</td>
+										<td data-label="Location" class="small muted hide-phone">{yeast.storage_location || '--'}</td>
 										<td class="r actions">
 											{#if yeast.quantity > 0}
 												<button onclick={() => handleUseYeast(yeast)} class="link-btn accent">Use 1</button>
@@ -1145,13 +1154,14 @@
 	.page-title { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--ink-primary); }
 	.page-desc { font-size: var(--text-sm); color: var(--ink-secondary); margin-top: var(--space-2xs); }
 	.alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent); border-radius: 4px; color: var(--status-danger); font-size: var(--text-sm); }
-	.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--rule-hairline); }
-	.tab { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: color 140ms var(--ease-out-quart); }
+	.tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; box-shadow: inset 0 -1px 0 var(--rule-hairline); }
+	.tabs::-webkit-scrollbar { display: none; }
+	.tab { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 44px; padding: 0 var(--space-md); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-bottom: 2px solid transparent; cursor: pointer; transition: color 140ms var(--ease-out-quart); white-space: nowrap; flex-shrink: 0; }
 	.tab:hover { color: var(--ink-primary); }
 	.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 	.count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--ink-muted); }
 	.panel { display: flex; flex-direction: column; gap: var(--space-md); }
-	.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid var(--rule-hairline); background: var(--bg-surface); border-radius: 4px; }
+	.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid var(--rule-strong); background: var(--bg-surface); border-radius: 4px; }
 	.cell { display: flex; flex-direction: column; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border-right: 1px solid var(--rule-hairline); }
 	.cell:last-child { border-right: 0; }
 	.label { font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); }
@@ -1183,8 +1193,9 @@
 	.btn-primary:focus-visible, .btn-secondary:focus-visible, .btn-danger:focus-visible, .link-btn:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	.link-btn { min-height: 32px; padding: 0 var(--space-xs); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--ink-secondary); border-radius: 4px; cursor: pointer; }
 	.link-btn:hover { color: var(--ink-primary); text-decoration: underline; }
-	.link-btn.accent { color: var(--accent); }
-	.link-btn.danger { color: var(--status-danger); }
+	.link-btn.accent:hover, .link-btn.accent:focus-visible { color: var(--accent); }
+	.link-btn.danger:hover, .link-btn.danger:focus-visible { color: var(--status-danger); }
+	.link-btn.accent.empty-link { color: var(--accent); }
 	.pill { display: inline-flex; align-items: center; padding: 1px var(--space-xs); font-family: var(--font-display); font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border: 1px solid var(--rule-strong); border-radius: 3px; line-height: 1.4; }
 	.pill.warn { color: var(--status-warn); border-color: var(--status-warn); }
 	.pill.steady { color: var(--status-steady); border-color: var(--status-steady); }
@@ -1192,7 +1203,7 @@
 	.notice-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); font-weight: 700; }
 	.notice ul { margin-top: var(--space-xs); display: flex; flex-direction: column; gap: var(--space-2xs); }
 	.empty { padding: var(--space-xl) var(--space-md); text-align: center; color: var(--ink-secondary); font-size: var(--text-sm); border-top: 1px solid var(--rule-hairline); border-bottom: 1px solid var(--rule-hairline); }
-	.scroll { overflow-x: auto; }
+	.scroll { overflow-x: auto; position: relative; }
 	.ledger { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 	.ledger th { padding: var(--space-xs) var(--space-sm); text-align: left; font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
 	.ledger td { padding: var(--space-sm); border-bottom: 1px solid var(--rule-hairline); color: var(--ink-primary); vertical-align: middle; }
@@ -1225,19 +1236,28 @@
 	.option { display: block; width: 100%; min-height: 44px; padding: var(--space-xs) var(--space-sm); text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--rule-hairline); cursor: pointer; }
 	.option:hover, .option.hl { background: var(--accent-tint); }
 
+	.lbl, .pu, .rowmeta { display: none; }
 	@media (max-width: 640px) {
-		.strip { grid-template-columns: 1fr 1fr; }
-		.cell:nth-child(2n) { border-right: 0; }
-		.cell:nth-child(n + 3) { border-top: 1px solid var(--rule-hairline); }
+		.strip { grid-template-columns: repeat(3, 1fr); }
+		.strip.four { grid-template-columns: repeat(2, 1fr); }
+		.cell { padding: 10px 12px; }
+		.strip.four .cell:nth-child(2n) { border-right: 0; }
+		.strip.four .cell:nth-child(n + 3) { border-top: 1px solid var(--rule-hairline); }
+		.tabs { padding-right: 28px; -webkit-mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 28px), transparent); }
 		.search { max-width: none; }
 		.two { grid-template-columns: 1fr; }
 		.ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-		.ledger, .ledger tbody, .ledger tr, .ledger td { display: block; }
-		.ledger tr { padding: var(--space-xs) 0; border-bottom: 1px solid var(--rule-hairline); }
-		.ledger td { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); padding: var(--space-2xs) var(--space-xs); border: 0; text-align: right; }
-		.ledger td[data-label]::before { content: attr(data-label); font-family: var(--font-display); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-muted); text-align: left; }
-		.ledger .pl { padding-left: var(--space-xs); }
-		.ledger .actions { justify-content: flex-end; flex-wrap: wrap; }
-		.link-btn { min-height: 44px; padding: 0 var(--space-sm); }
+		.ledger, .ledger tbody { display: block; }
+		.ledger tr { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name v1" "name v2" "act act"; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--rule-hairline); }
+		.ledger td { display: block; padding: 0; border: 0; text-align: left; }
+		.ledger td.name { grid-area: name; }
+		.ledger td.v1 { grid-area: v1; text-align: right; }
+		.ledger td.v2 { grid-area: v2; text-align: right; font-size: var(--text-xs); }
+		.ledger td.actions { grid-area: act; text-align: left; }
+		.ledger td.hide-phone { display: none; }
+		.rowmeta { display: block; font-weight: 400; font-size: var(--text-xs); color: var(--ink-secondary); }
+		.pu { display: inline; color: var(--ink-muted); }
+		.lbl { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+		.link-btn { min-height: 44px; padding: 0 var(--space-sm) 0 0; }
 	}
 </style>

@@ -26,7 +26,7 @@ class TestEmbedderConfig:
         result = _get_embedder_config(cfg)
         assert result is not None
         assert result["provider"] == "openai"
-        assert "openai_base_url" not in result["config"]
+        assert result["config"]["openai_base_url"] == "https://api.openai.com/v1"
         assert result["config"]["api_key"] == "sk-openai-test"
 
     def test_openrouter_uses_prefixed_embedding_model(self, monkeypatch):

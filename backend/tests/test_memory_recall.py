@@ -43,8 +43,17 @@ class TestEmbedderConfig:
         cfg = mem.get_memory_config(_cfg())
         assert cfg["llm"]["config"]["model"] == "anthropic/claude-haiku-4.5"
 
-    def test_openai_env_key_not_sent_to_other_hosts(self, monkeypatch):
+    def test_openai_env_key_is_pinned_to_openai_host(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://elsewhere.example/v1")
+        for provider in (LLMProvider.GROQ, LLMProvider.OPENROUTER):
+            c = mem._get_embedder_config(_cfg(provider))["config"]
+            assert c["api_key"] == "sk-openai" and c["openai_base_url"] == "https://api.openai.com/v1"
+
+    def test_openrouter_key_only_goes_to_openrouter(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        c = mem._get_embedder_config(_cfg(LLMProvider.OPENROUTER))["config"]
+        assert c["api_key"] == "sk-test" and c["openai_base_url"] == "https://openrouter.ai/api/v1"
         assert mem._get_embedder_config(_cfg(LLMProvider.GROQ)) is None
 
     def test_memory_dir_override(self, monkeypatch, tmp_path):
@@ -146,3 +155,10 @@ class TestExtractionGating:
     def test_switch_defaults_on(self):
         assert LLMConfig().memory_auto_extract is True
         assert LLMConfig(memory_auto_extract=False).memory_auto_extract is False
+
+
+async def test_auto_extract_setting_persists_via_config_api(client):
+    assert (await client.get("/api/config")).json()["ai_memory_auto_extract"] is True
+    r = await client.patch("/api/config", json={"ai_memory_auto_extract": False})
+    assert r.status_code == 200 and r.json()["ai_memory_auto_extract"] is False
+    assert (await client.get("/api/config")).json()["ai_memory_auto_extract"] is False

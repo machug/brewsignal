@@ -134,6 +134,7 @@
 
 	// AI Assistant state
 	let aiEnabled = $state(false);
+	let aiMemoryAutoExtract = $state(true); // Remember facts from chats automatically
 	let aiLiteEnabled = $state(false); // Use Hailo for lightweight tasks (summaries)
 	let aiProvider = $state('local');
 	let aiModel = $state('');
@@ -415,6 +416,7 @@
 		// AI Assistant
 		aiEnabled = configState.config.ai_enabled ?? false;
 		aiLiteEnabled = configState.config.ai_lite_enabled ?? false;
+		aiMemoryAutoExtract = configState.config.ai_memory_auto_extract ?? true;
 		aiProvider = configState.config.ai_provider ?? 'local';
 		aiModel = configState.config.ai_model ?? '';
 		aiApiKey = configState.config.ai_api_key ?? '';
@@ -495,6 +497,7 @@
 			await updateConfig({
 				ai_enabled: aiEnabled,
 				ai_lite_enabled: aiLiteEnabled,
+				ai_memory_auto_extract: aiMemoryAutoExtract,
 				ai_provider: aiProvider,
 				ai_model: aiModel,
 				ai_api_key: aiApiKey,
@@ -1593,6 +1596,25 @@
 									<p>Hailo AI HAT+ will handle thread summaries and other lightweight tasks locally.</p>
 								</div>
 							{/if}
+						{/if}
+
+						{#if aiEnabled}
+							<div class="toggle-setting">
+								<div class="toggle-info">
+									<span class="toggle-label">Remember facts from chats automatically</span>
+									<span class="toggle-desc">About 1 US cent per message. Saved learnings and recall work either way.</span>
+								</div>
+								<button
+									type="button"
+									class="switch" aria-label="Remember facts from chats automatically"
+									class:on={aiMemoryAutoExtract}
+									onclick={() => (aiMemoryAutoExtract = !aiMemoryAutoExtract)}
+									aria-pressed={aiMemoryAutoExtract}
+								>
+									<span class="switch-state">{aiMemoryAutoExtract ? 'On' : 'Off'}</span>
+									<span class="switch-thumb"></span>
+								</button>
+							</div>
 						{/if}
 
 						{#if aiEnabled}

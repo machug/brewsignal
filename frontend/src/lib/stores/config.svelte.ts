@@ -43,6 +43,7 @@ export interface AppConfig {
 	ai_base_url: string;
 	ai_temperature: number;
 	ai_max_tokens: number;
+	ai_memory_auto_extract: boolean; // Remember facts from chats automatically
 	// MQTT for Home Assistant
 	mqtt_enabled: boolean;
 	mqtt_host: string;
@@ -97,6 +98,7 @@ const DEFAULT_CONFIG: AppConfig = {
 	ai_base_url: '',
 	ai_temperature: 0.7,
 	ai_max_tokens: 2000,
+	ai_memory_auto_extract: true,
 	// MQTT for Home Assistant
 	mqtt_enabled: false,
 	mqtt_host: '',

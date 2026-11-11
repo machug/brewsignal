@@ -1368,6 +1368,7 @@ class ConfigUpdate(BaseModel):
     ai_base_url: Optional[str] = None  # For Ollama: http://localhost:11434
     ai_temperature: Optional[float] = None
     ai_max_tokens: Optional[int] = None
+    ai_memory_auto_extract: Optional[bool] = None  # mem0 fact extraction after each chat turn
     # MQTT settings for Home Assistant
     mqtt_enabled: Optional[bool] = None
     mqtt_host: Optional[str] = None
@@ -1520,6 +1521,7 @@ class ConfigResponse(BaseModel):
     ai_base_url: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
+    ai_memory_auto_extract: bool = True
     # MQTT settings for Home Assistant
     mqtt_enabled: bool = False
     mqtt_host: str = ""

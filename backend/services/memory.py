@@ -79,15 +79,16 @@ def _get_llm_provider_config(llm_config: LLMConfig) -> Optional[dict]:
 
 def _get_embedder_config(llm_config: LLMConfig) -> Optional[dict]:
     """Get embedder config. Uses OpenAI embeddings if available, else tries alternatives."""
-    # Check for OpenAI API key (best embeddings). Skip it when chat runs on another
-    # OpenAI-compatible host: the key may not be valid there.
+    # OpenAI key (best embeddings), whatever the chat provider. The base URL is pinned to
+    # OpenAI so the key only goes to its own host (not OPENAI_BASE_URL, not the chat host).
     openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key and llm_config._provider_str() in ("openai", "openrouter"):
+    if openai_key:
         return {
             "provider": "openai",
             "config": {
                 "model": "text-embedding-3-small",
                 "api_key": openai_key,
+                "openai_base_url": "https://api.openai.com/v1",
             }
         }
 

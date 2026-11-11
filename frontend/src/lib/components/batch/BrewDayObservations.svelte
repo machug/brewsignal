@@ -106,17 +106,17 @@
 
 	<!-- Mash Section -->
 	<div class="section" class:expanded={expandedSection === 'mash'}>
-		<button type="button" class="section-header" onclick={() => toggleSection('mash')}>
+		<button type="button" class="section-header"  onclick={() => toggleSection('mash')}>
 			<span class="section-title">Mash</span>
 			<div class="section-summary">
 				{#if actualMashTemp}
-					<span class="summary-value">{formatTemp(actualMashTemp)}{tempUnit}</span>
+					<span class="summary-value">{formatTemp(actualMashTemp)}&thinsp;{tempUnit}</span>
 				{/if}
 				{#if actualMashPh}
 					<span class="summary-value">pH {actualMashPh.toFixed(2)}</span>
 				{/if}
 			</div>
-			<svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<svg class="chevron" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 			</svg>
 		</button>
@@ -138,7 +138,7 @@
 							<span class="unit">{tempUnit}</span>
 						</div>
 						{#if targetMashTemp}
-							<span class="target">Target: {formatTemp(targetMashTemp)}{tempUnit}</span>
+							<span class="target">Target: {formatTemp(targetMashTemp)}&thinsp;{tempUnit}</span>
 						{/if}
 					</div>
 
@@ -156,7 +156,7 @@
 								onblur={saveObservations}
 							/>
 						</div>
-						<span class="target">Target: 5.2-5.6</span>
+						<span class="target">Target: 5.2&ndash;5.6</span>
 					</div>
 				</div>
 
@@ -182,17 +182,17 @@
 
 	<!-- Pre-Boil Section -->
 	<div class="section" class:expanded={expandedSection === 'preboil'}>
-		<button type="button" class="section-header" onclick={() => toggleSection('preboil')}>
+		<button type="button" class="section-header"  onclick={() => toggleSection('preboil')}>
 			<span class="section-title">Pre-Boil</span>
 			<div class="section-summary">
 				{#if preBoilGravity}
 					<span class="summary-value">{formatGravity(preBoilGravity)}</span>
 				{/if}
 				{#if preBoilVolume}
-					<span class="summary-value">{preBoilVolume.toFixed(1)}L</span>
+					<span class="summary-value">{preBoilVolume.toFixed(1)}&thinsp;L</span>
 				{/if}
 			</div>
-			<svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<svg class="chevron" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 			</svg>
 		</button>
@@ -240,7 +240,7 @@
 
 	<!-- Post-Boil / OG Section -->
 	<div class="section" class:expanded={expandedSection === 'postboil'}>
-		<button type="button" class="section-header" onclick={() => toggleSection('postboil')}>
+		<button type="button" class="section-header"  onclick={() => toggleSection('postboil')}>
 			<span class="section-title">Post-Boil / OG</span>
 			<div class="section-summary">
 				{#if measuredOg}
@@ -250,7 +250,7 @@
 					<span class="summary-value">{actualEfficiency.toFixed(0)}% eff</span>
 				{/if}
 			</div>
-			<svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<svg class="chevron" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 			</svg>
 		</button>
@@ -291,7 +291,7 @@
 							<span class="unit">L</span>
 						</div>
 						{#if targetBatchSize}
-							<span class="target">Target: {targetBatchSize.toFixed(1)}L</span>
+							<span class="target">Target: {targetBatchSize.toFixed(1)}&thinsp;L</span>
 						{/if}
 					</div>
 				</div>
@@ -323,12 +323,12 @@
 
 	<!-- Notes Section -->
 	<div class="section" class:expanded={expandedSection === 'notes'}>
-		<button type="button" class="section-header" onclick={() => toggleSection('notes')}>
+		<button type="button" class="section-header"  onclick={() => toggleSection('notes')}>
 			<span class="section-title">Brew Day Notes</span>
 			{#if brewDayNotes}
 				<span class="has-notes">Has notes</span>
 			{/if}
-			<svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<svg class="chevron" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 			</svg>
 		</button>
@@ -348,7 +348,7 @@
 
 	{#if saving}
 		<div class="saving-indicator">
-			<span class="spinner"></span>
+			<span class="spinner" aria-hidden="true"></span>
 			Saving...
 		</div>
 	{/if}
@@ -356,239 +356,202 @@
 
 <style>
 	.observations-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		overflow: hidden;
+		border-top: 1px solid var(--rule-strong);
+		min-width: 0;
 	}
-
 	.card-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.25rem;
-		border-bottom: 1px solid var(--border-subtle);
+		padding: var(--space-sm) 0;
 	}
-
 	.card-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
-
 	.save-indicator {
-		font-size: 0.6875rem;
-		color: var(--positive);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--status-steady);
 	}
 
-	/* Sections */
 	.section {
-		border-bottom: 1px solid var(--border-subtle);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.section:last-of-type {
-		border-bottom: none;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.section-header {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 		width: 100%;
-		padding: 0.875rem 1.25rem;
-		background: transparent;
-		border: none;
+		min-height: 48px;
+		padding: var(--space-xs) var(--space-2xs);
 		cursor: pointer;
 		text-align: left;
-		transition: background 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
 	.section-header:hover {
-		background: var(--bg-elevated);
+		background: var(--bg-surface);
 	}
-
 	.section-title {
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
 	}
-
 	.section-summary {
 		display: flex;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 		margin-left: auto;
 	}
-
 	.summary-value {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
+		font-size: var(--text-xs);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-secondary);
 	}
-
 	.summary-value.og {
 		color: var(--accent);
 	}
-
 	.has-notes {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 		margin-left: auto;
 	}
-
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 150ms var(--ease-out-quart);
 	}
-
 	.section.expanded .chevron {
 		transform: rotate(180deg);
 	}
-
 	.section-content {
-		padding: 0 1.25rem 1.25rem;
+		padding: var(--space-xs) var(--space-2xs) var(--space-md);
 	}
 
-	/* Fields */
 	.field-row {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		margin-bottom: 0.75rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-md);
+		margin-bottom: var(--space-sm);
 	}
-
 	.field-row:last-child {
 		margin-bottom: 0;
 	}
-
 	@media (max-width: 500px) {
 		.field-row {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
-
 	.field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: var(--space-2xs);
 	}
-
 	.field-label {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.07em;
 	}
-
 	.input-with-target {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
 	.field-input {
 		flex: 1;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.9375rem;
-		font-family: var(--font-mono);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
-		transition: border-color 0.15s ease;
+		min-width: 0;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-base);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-primary);
 	}
-
-	.field-input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.field-input.og-input {
-		font-size: 1rem;
-		font-weight: 600;
-	}
-
-	.unit {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		min-width: 1.5rem;
-	}
-
-	.target {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-	}
-
-	/* Notes */
-	.notes-input {
-		width: 100%;
-		padding: 0.75rem;
-		font-size: 0.875rem;
-		font-family: inherit;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
-		resize: vertical;
-		min-height: 80px;
-	}
-
+	.field-input:focus,
 	.notes-input:focus {
 		outline: none;
 		border-color: var(--accent);
 	}
-
-	.notes-input::placeholder {
-		color: var(--text-muted);
+	.field-input.og-input {
+		font-weight: 600;
 	}
-
-	/* Saving indicator */
+	.unit {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		min-width: 1.5rem;
+	}
+	.target {
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+	.notes-input {
+		width: 100%;
+		padding: var(--space-sm);
+		font-size: var(--text-sm);
+		font-family: var(--font-body);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-primary);
+		resize: vertical;
+		min-height: 80px;
+	}
+	.notes-input::placeholder {
+		color: var(--ink-muted);
+	}
 	.saving-indicator {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.5rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		background: var(--bg-elevated);
+		gap: var(--space-xs);
+		padding: var(--space-xs) 0;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.spinner {
 		width: 0.875rem;
 		height: 0.875rem;
-		border: 2px solid var(--border-default);
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-
 	@keyframes spin {
 		to { transform: rotate(360deg); }
 	}
-
-	/* Diff styling */
 	:global(.diff) {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		margin-left: 0.25rem;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		margin-left: var(--space-2xs);
 	}
-
 	:global(.diff.positive) {
 		color: var(--positive);
 	}
-
 	:global(.diff.negative) {
 		color: var(--negative);
 	}
-
 	:global(.diff.neutral) {
-		color: var(--text-muted);
+		color: var(--ink-muted);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation: none;
+		}
 	}
 </style>

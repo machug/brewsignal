@@ -42,38 +42,34 @@
 
 <style>
 	.page-container {
-		max-width: 600px;
+		max-width: 640px;
 		margin: 0 auto;
+		padding: var(--space-lg) var(--space-md) var(--space-xl);
 	}
-
 	.back-link {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--space-md);
 	}
-
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		text-decoration: none;
-		transition: color var(--transition);
+		gap: var(--space-xs);
+		min-height: 44px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
+		transition: color 140ms var(--ease-out-quart);
 	}
-
 	.back-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
-
 	.back-icon {
 		width: 1rem;
 		height: 1rem;
 	}
-
 	.form-container {
-		animation: fade-in 0.2s ease-out;
+		animation: fade-in 200ms var(--ease-out-quart);
 	}
-
 	@keyframes fade-in {
 		from {
 			opacity: 0;
@@ -82,6 +78,11 @@
 		to {
 			opacity: 1;
 			transform: translateY(0);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.form-container {
+			animation: none;
 		}
 	}
 </style>

@@ -194,6 +194,7 @@
 
   /* Batch lifecycle */
   --status-planning: var(--ink-muted);
+  --status-brewing: var(--status-warn);
   --status-fermenting: var(--accent);
   --status-conditioning: var(--tilt-purple);
   --status-completed: var(--status-steady);

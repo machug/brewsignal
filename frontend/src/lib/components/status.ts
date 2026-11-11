@@ -5,9 +5,9 @@ import type { BatchStatus } from '$lib/api';
  */
 export const statusConfig: Record<BatchStatus, { label: string; color: string; bg: string }> = {
 	planning: { label: 'Planning', color: 'var(--status-planning)', bg: 'var(--bg-elevated)' },
-	brewing: { label: 'Brew Day', color: 'var(--status-brewing, #f97316)', bg: 'rgba(249, 115, 22, 0.15)' },
+	brewing: { label: 'Brew Day', color: 'var(--status-brewing)', bg: 'color-mix(in oklch, var(--status-brewing) 14%, transparent)' },
 	fermenting: { label: 'Fermenting', color: 'var(--status-fermenting)', bg: 'var(--recipe-accent-muted)' },
-	conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'rgba(167, 139, 250, 0.15)' },
+	conditioning: { label: 'Conditioning', color: 'var(--status-conditioning)', bg: 'color-mix(in oklch, var(--status-conditioning) 14%, transparent)' },
 	completed: { label: 'Completed', color: 'var(--status-completed)', bg: 'var(--positive-muted)' },
 	archived: { label: 'Archived', color: 'var(--status-archived)', bg: 'var(--bg-elevated)' }
 };

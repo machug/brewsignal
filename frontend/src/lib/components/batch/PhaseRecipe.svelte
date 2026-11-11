@@ -15,7 +15,6 @@
 	{#if batch.status === 'planning'}
 		<!-- Active: show Start Brew Day action -->
 		<div class="phase-action-card">
-			<div class="phase-icon">📋</div>
 			<h2 class="phase-title">Ready to Brew?</h2>
 			<p class="phase-description">
 				Review your recipe below, then start brew day when you're ready to begin.
@@ -27,10 +26,10 @@
 				disabled={statusUpdating}
 			>
 				{#if statusUpdating}
-					<span class="btn-spinner"></span>
+					<span class="btn-spinner" aria-hidden="true"></span>
 					Starting...
 				{:else}
-					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<svg class="btn-icon" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 						<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
@@ -47,7 +46,7 @@
 					<p class="recipe-style">{batch.recipe.style.name}</p>
 				{/if}
 				<a href="/recipes/{batch.recipe.id}" class="view-recipe-link">
-					View Full Recipe →
+					View Full Recipe &rarr;
 				</a>
 			</div>
 		{/if}
@@ -62,127 +61,95 @@
 	.planning-phase {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-lg);
 	}
-
-	.phase-action-card {
-		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%);
-		border: 1px solid var(--border-subtle);
-		border-radius: 1rem;
-		padding: 2rem;
-		text-align: center;
+	.phase-action-card,
+	.recipe-summary-card {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		gap: 1rem;
+		align-items: flex-start;
+		gap: var(--space-xs);
+		padding: var(--space-lg) 0;
+		border-top: 1px solid var(--rule-strong);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
-	.phase-icon {
-		font-size: 3rem;
-		line-height: 1;
+	.phase-title,
+	.recipe-name {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		color: var(--ink-primary);
 	}
-
-	.phase-title {
-		font-size: 1.5rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-	}
-
 	.phase-description {
-		font-size: 0.9375rem;
-		color: var(--text-secondary);
-		max-width: 400px;
+		font-size: var(--text-base);
+		color: var(--ink-secondary);
+		max-width: 52ch;
 		line-height: 1.5;
-		margin: 0;
 	}
-
+	.recipe-style {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
 	.start-brewday-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1.5rem;
-		font-size: 1rem;
+		gap: var(--space-xs);
+		min-height: 48px;
+		padding: 0 var(--space-lg);
+		margin-top: var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-base);
 		font-weight: 600;
-		border-radius: 0.5rem;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
-		margin-top: 0.5rem;
 		color: var(--accent-ink);
 		background: var(--accent);
-		border: none;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
 	.start-brewday-btn:hover:not(:disabled) {
 		background: var(--accent-hover);
-		color: var(--accent-ink);
-		transform: translateY(-1px);
 	}
-
 	.start-brewday-btn:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
-		transform: none;
 	}
-
 	.btn-spinner {
 		width: 1rem;
 		height: 1rem;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-		border-top-color: white;
+		border: 2px solid color-mix(in oklch, var(--accent-ink) 30%, transparent);
+		border-top-color: var(--accent-ink);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-
 	.btn-icon {
 		width: 1rem;
 		height: 1rem;
 	}
-
-	.recipe-summary-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 1rem;
-		padding: 2rem;
-		text-align: center;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.recipe-name {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
-	}
-
-	.recipe-style {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
-		margin: 0;
-	}
-
 	.view-recipe-link {
-		display: inline-block;
-		margin-top: 0.5rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		margin-top: var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		color: var(--accent);
-		text-decoration: none;
-		border: 1px solid var(--accent);
-		border-radius: 0.375rem;
-		transition: all 0.15s ease;
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
 	}
-
 	.view-recipe-link:hover {
-		background: rgba(99, 102, 241, 0.1);
+		border-color: var(--accent);
 	}
-
 	@keyframes spin {
 		to { transform: rotate(360deg); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.btn-spinner {
+			animation: none;
+		}
 	}
 </style>

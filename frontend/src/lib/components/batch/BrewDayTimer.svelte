@@ -294,9 +294,9 @@
 			<div class="timer-option">
 				<label class="option-label">Mash Duration</label>
 				<div class="duration-input">
-					<button type="button" class="duration-btn" onclick={() => mashDuration = Math.max(1, mashDuration - 5)}>−</button>
+					<button type="button" class="duration-btn" onclick={() => mashDuration = Math.max(1, mashDuration - 5)} aria-label="Decrease mash duration">&minus;</button>
 					<span class="duration-value">{mashDuration}</span>
-					<button type="button" class="duration-btn" onclick={() => mashDuration += 5}>+</button>
+					<button type="button" class="duration-btn" onclick={() => mashDuration += 5} aria-label="Increase mash duration">+</button>
 					<span class="duration-unit">min</span>
 				</div>
 			</div>
@@ -311,7 +311,7 @@
 
 			<div class="timer-actions">
 				<button type="button" class="start-btn mash" onclick={startMash}>
-					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<svg class="btn-icon" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 					</svg>
 					Start Mash
@@ -325,8 +325,7 @@
 	{:else if timerPhase === 'complete'}
 		<!-- Timer complete -->
 		<div class="timer-complete">
-			<div class="complete-icon">✓</div>
-			<p class="complete-text">Boil complete! Time to chill the wort.</p>
+						<p class="complete-text">Boil complete! Time to chill the wort.</p>
 			<button type="button" class="reset-btn" onclick={resetTimer}>Reset Timer</button>
 		</div>
 
@@ -338,22 +337,22 @@
 				<span class="time-label">remaining</span>
 			</div>
 
-			<div class="progress-bar">
+			<div class="progress-bar" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin="0" aria-valuemax="100" aria-label="Timer progress">
 				<div class="progress-fill" class:mash={timerPhase === 'mash'} class:boil={timerPhase === 'boil'} style="width: {progress}%"></div>
 			</div>
 
 			<div class="timer-controls">
 				<button type="button" class="control-btn" onclick={subtractMinute} title="Subtract 1 minute">
-					−1m
+					&minus;1m
 				</button>
 				<button type="button" class="control-btn pause" class:paused={isPaused} onclick={togglePause}>
 					{#if isPaused}
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<svg class="btn-icon" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 						</svg>
 						Resume
 					{:else}
-						<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<svg class="btn-icon" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6" />
 						</svg>
 						Pause
@@ -374,11 +373,11 @@
 							{@const isNext = hop.time <= minutesRemaining && !firedAlerts.has(hop.time)}
 							{@const isDone = firedAlerts.has(hop.time) || hop.time > minutesRemaining}
 							<div class="hop-item" class:next={isNext} class:done={isDone}>
-								<span class="hop-time">{hop.time}m</span>
+								<span class="hop-time">{hop.time}&thinsp;m</span>
 								<span class="hop-name">{hop.name}</span>
-								<span class="hop-amount">{hop.amount}g</span>
+								<span class="hop-amount">{hop.amount}&thinsp;g</span>
 								{#if isDone}
-									<span class="hop-check">✓</span>
+									<span class="hop-check" aria-label="done"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6" /></svg></span>
 								{/if}
 							</div>
 						{/each}
@@ -390,7 +389,7 @@
 			<div class="phase-actions">
 				{#if timerPhase === 'mash'}
 					<button type="button" class="next-phase-btn" onclick={startBoil}>
-						Mash Done → Start Boil
+						Mash Done &rarr; Start Boil
 					</button>
 				{/if}
 				<button type="button" class="reset-btn" onclick={resetTimer}>Reset</button>
@@ -401,373 +400,270 @@
 
 <style>
 	.timer-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
+		border-top: 1px solid var(--rule-strong);
+		padding-top: var(--space-sm);
+		min-width: 0;
 	}
-
 	.timer-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-sm);
 	}
-
 	.timer-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
-
 	.saving-indicator {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-style: italic;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.phase-badge {
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 0.25rem 0.5rem;
-		border-radius: 9999px;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.06em;
+		padding: 2px 7px;
+		border-radius: 2px;
+		border: 1px solid var(--accent-rule);
+		color: var(--accent);
 	}
-
-	.phase-badge.mash {
-		background: rgba(217, 119, 6, 0.15);
-		color: #d97706;
-	}
-
 	.phase-badge.boil {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--tilt-red);
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
+		color: var(--status-warn);
 	}
 
-	/* Idle state */
+	/* Idle */
 	.timer-idle {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-sm);
 	}
-
 	.timer-option {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-sm);
+		padding-bottom: var(--space-xs);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.option-label {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.duration-input,
 	.duration-display {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
 	.duration-btn {
-		width: 2rem;
-		height: 2rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 1rem;
-		font-weight: 600;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
+		width: 44px;
+		height: 44px;
+		font-size: var(--text-lg);
+		line-height: 1;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
 	}
-
 	.duration-btn:hover {
-		background: var(--bg-hover);
+		background: var(--bg-subtle);
 	}
-
 	.duration-value {
-		font-size: 1.25rem;
-		font-weight: 600;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
 		min-width: 2.5rem;
 		text-align: center;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-lg);
+		font-weight: 600;
+		color: var(--ink-primary);
 	}
-
 	.duration-unit {
-		font-size: 0.875rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 	}
-
 	.timer-actions {
 		display: flex;
-		gap: 0.75rem;
-		margin-top: 0.5rem;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
 	}
-
-	.start-btn {
-		flex: 1;
-		display: flex;
+	.start-btn,
+	.control-btn,
+	.next-phase-btn,
+	.reset-btn {
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1rem;
-		font-size: 0.875rem;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		border-radius: 0.5rem;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
+	.start-btn:hover,
+	.control-btn:hover,
+	.reset-btn:hover {
+		background: var(--bg-subtle);
+	}
 	.start-btn.mash {
-		background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
-		border: none;
-		color: white;
+		flex: 1;
+		color: var(--accent-ink);
+		background: var(--accent);
+		border-color: var(--accent);
 	}
-
 	.start-btn.mash:hover {
-		filter: brightness(1.1);
+		background: var(--accent-hover);
 	}
-
-	.start-btn.boil {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		color: var(--text-secondary);
-	}
-
-	.start-btn.boil:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
 	.btn-icon {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	/* Active state */
+	/* Running */
 	.timer-active {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-sm);
 	}
-
 	.timer-display {
 		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
+		align-items: baseline;
+		gap: var(--space-sm);
 	}
-
 	.time-value {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 3rem;
-		font-weight: 700;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
+		font-weight: 600;
 		line-height: 1;
+		letter-spacing: -0.03em;
+		color: var(--ink-primary);
 	}
-
 	.time-label {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
 	.progress-bar {
-		height: 6px;
-		background: var(--bg-elevated);
-		border-radius: 3px;
-		overflow: hidden;
+		height: 4px;
+		background: var(--rule-hairline);
 	}
-
 	.progress-fill {
 		height: 100%;
-		border-radius: 3px;
+		background: var(--accent);
 		transition: width 1s linear;
 	}
-
-	.progress-fill.mash {
-		background: linear-gradient(90deg, #d97706, #f59e0b);
-	}
-
 	.progress-fill.boil {
-		background: linear-gradient(90deg, var(--tilt-red), #f87171);
+		background: var(--status-warn);
 	}
-
 	.timer-controls {
-		display: flex;
-		justify-content: center;
-		gap: 0.5rem;
+		display: grid;
+		grid-template-columns: 1fr 1.4fr 1fr;
+		gap: var(--space-xs);
 	}
-
-	.control-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.375rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.control-btn:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.control-btn.pause {
-		min-width: 100px;
-	}
-
 	.control-btn.pause.paused {
-		background: var(--positive-muted);
-		border-color: var(--positive);
-		color: var(--positive);
+		color: var(--accent);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
 
 	/* Hop schedule */
 	.hop-schedule {
-		margin-top: 0.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--border-subtle);
+		border-top: 1px solid var(--rule-hairline);
+		padding-top: var(--space-xs);
 	}
-
 	.schedule-title {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 0.75rem 0;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+		margin-bottom: var(--space-xs);
 	}
-
 	.hop-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
 	}
-
 	.hop-item {
-		display: flex;
+		display: grid;
+		grid-template-columns: 3.5rem minmax(0, 1fr) auto 1.25rem;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
+		gap: var(--space-sm);
+		min-height: 36px;
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
-
 	.hop-item.next {
-		background: rgba(249, 115, 22, 0.15);
-		border: 1px solid rgba(249, 115, 22, 0.3);
+		color: var(--accent);
 	}
-
 	.hop-item.done {
-		opacity: 0.5;
+		color: var(--ink-muted);
 	}
-
-	.hop-time {
-		font-weight: 600;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-		min-width: 2.5rem;
-	}
-
-	.hop-name {
-		flex: 1;
-		color: var(--text-primary);
-	}
-
+	.hop-time,
 	.hop-amount {
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-xs);
 	}
-
+	.hop-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	.hop-check {
-		color: var(--positive);
-		font-weight: 600;
+		display: inline-flex;
+		color: var(--status-steady);
 	}
-
-	/* Phase actions */
 	.phase-actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
 	}
-
 	.next-phase-btn {
 		flex: 1;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		background: linear-gradient(135deg, var(--tilt-red) 0%, #f87171 100%);
-		border: none;
-		border-radius: 0.375rem;
-		color: white;
-		cursor: pointer;
-		transition: all var(--transition);
+		color: var(--accent);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
 	.next-phase-btn:hover {
-		filter: brightness(1.1);
+		border-color: var(--accent);
 	}
 
-	.reset-btn {
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.reset-btn:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	/* Complete state */
+	/* Complete */
 	.timer-complete {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		gap: 1rem;
-		padding: 1rem;
+		align-items: flex-start;
+		gap: var(--space-sm);
 	}
-
-	.complete-icon {
-		width: 3rem;
-		height: 3rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 1.5rem;
-		background: var(--positive-muted);
-		color: var(--positive);
-		border-radius: 50%;
-	}
-
 	.complete-text {
-		font-size: 0.9375rem;
-		color: var(--text-secondary);
-		margin: 0;
-		text-align: center;
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.progress-fill {
+			transition: none;
+		}
 	}
 </style>

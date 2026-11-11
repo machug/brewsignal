@@ -77,10 +77,9 @@
 		<!-- Tasting Journal - Primary activity during conditioning -->
 		<div class="tasting-card">
 			<h3 class="card-title">
-				<span class="card-icon">🍺</span>
 				Tasting Journal
 				{#if tastingNotes.length > 0}
-					<span class="note-count">{tastingNotes.length}</span>
+					<span class="note-count num">{tastingNotes.length}</span>
 				{/if}
 			</h3>
 			{#if tastingLoading}
@@ -147,11 +146,11 @@
 					<h3 class="info-title">Temperature Control</h3>
 					<div class="collapse-indicator">
 						{#if controlStatus?.heater_state === 'on'}
-							<span class="status-badge heater">🔥 Heating</span>
+							<span class="status-badge heater">Heating</span>
 						{:else if controlStatus?.cooler_state === 'on'}
-							<span class="status-badge cooler">❄️ Cooling</span>
+							<span class="status-badge cooler">Cooling</span>
 						{:else if tempControlCollapsed && controlStatus}
-							<span class="status-badge idle">🎯 {formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
+							<span class="status-badge idle"><span class="num">Target {formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span></span>
 						{/if}
 						<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -165,7 +164,7 @@
 					{#if batch.heater_entity_id}
 						<div class="device-status heater">
 							<div class="device-icon-wrap" class:active={controlStatus?.heater_state === 'on'}>
-								🔥
+								<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg>
 							</div>
 							<div class="device-info">
 								<span class="device-label">Heater</span>
@@ -180,7 +179,7 @@
 					{#if batch.cooler_entity_id}
 						<div class="device-status cooler">
 							<div class="device-icon-wrap" class:active={controlStatus?.cooler_state === 'on'}>
-								❄️
+								<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/></svg>
 							</div>
 							<div class="device-info">
 								<span class="device-label">Cooler</span>
@@ -197,17 +196,16 @@
 					<div class="control-details">
 						<div class="control-detail">
 							<span class="detail-label">Target</span>
-							<span class="detail-value">{formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
+							<span class="detail-value">{formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span>
 						</div>
 						<div class="control-detail">
 							<span class="detail-label">Hysteresis</span>
-							<span class="detail-value">±{controlStatus.hysteresis?.toFixed(1) || '--'}{tempUnit}</span>
+							<span class="detail-value">±{controlStatus.hysteresis?.toFixed(1) || '--'}&thinsp;{tempUnit}</span>
 						</div>
 					</div>
 
 					{#if controlStatus.override_active}
 						<div class="override-banner">
-							<span class="override-icon">⚡</span>
 							<span>Override active: {controlStatus.override_state?.toUpperCase()}</span>
 							<button
 								type="button"
@@ -317,11 +315,10 @@
 {/if}
 
 <style>
-	/* Content grid - two column layout */
 	.content-grid {
 		display: grid;
 		grid-template-columns: 2fr 1fr;
-		gap: 1rem;
+		gap: var(--space-md);
 		align-items: start;
 	}
 
@@ -331,99 +328,83 @@
 		}
 	}
 
-	/* Chart section */
 	.chart-section {
-		margin-top: 1.5rem;
+		margin-top: var(--space-lg);
 	}
 
-	/* Stats section (left column) */
-	.stats-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	/* Info section (right column) */
+	.stats-section,
 	.info-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
 
-	.info-card {
+	.num {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+	}
+
+	.info-card,
+	.tasting-card {
 		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
+		border: 1px solid var(--rule-hairline);
+		border-radius: 6px;
+		padding: var(--space-md);
 	}
 
-	.info-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+	.info-title,
+	.card-title {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 1rem 0;
+		letter-spacing: 0.08em;
+		margin: 0 0 var(--space-md) 0;
+	}
+
+	.card-title {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
 	}
 
 	.no-device {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		color: var(--text-muted);
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
 	.hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
-	/* Tasting Journal Card */
-	.tasting-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-	}
-
-	.card-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 1rem 0;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.card-icon { font-size: 1rem; }
 
 	.note-count {
 		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 0.125rem 0.5rem;
-		background: var(--accent-bg, rgba(99, 102, 241, 0.1));
-		color: var(--accent);
-		border-radius: 1rem;
+		padding: 1px 7px;
+		border: 1px solid var(--rule-strong);
+		border-radius: 2px;
+		color: var(--ink-secondary);
 	}
 
 	.loading-state {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.75rem;
-		padding: 2rem;
-		color: var(--text-muted);
-		font-size: 0.875rem;
+		gap: var(--space-sm);
+		padding: var(--space-xl);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
 	}
 
 	.spinner-small {
 		width: 1.25rem;
 		height: 1.25rem;
-		border: 2px solid var(--bg-hover);
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
@@ -434,32 +415,28 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 2rem 1rem;
+		padding: var(--space-xl) var(--space-md);
 		text-align: center;
 	}
 
 	.empty-text {
-		font-size: 0.9375rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		margin: 0 0 0.25rem 0;
+		font-size: var(--text-base);
+		font-weight: 700;
+		color: var(--ink-secondary);
+		margin: 0 0 var(--space-2xs) 0;
 	}
 
 	.empty-subtext {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 		margin: 0;
 		max-width: 320px;
 		line-height: 1.5;
 	}
 
-	/* Temperature Control Card */
-	.temp-control-card {
-		transition: all 0.3s ease;
-	}
-
+	/* Temperature control */
 	.temp-control-card.collapsed {
-		padding-bottom: 0.75rem;
+		padding-bottom: var(--space-sm);
 	}
 
 	.collapsible-header {
@@ -467,11 +444,12 @@
 		justify-content: space-between;
 		align-items: center;
 		width: 100%;
+		min-height: 44px;
 		background: none;
 		border: none;
 		cursor: pointer;
 		padding: 0;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-sm);
 	}
 
 	.temp-control-card.collapsed .collapsible-header {
@@ -485,36 +463,36 @@
 	.collapse-indicator {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
 
 	.status-badge {
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 0.125rem 0.375rem;
-		border-radius: 0.25rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 2px 7px;
+		border-radius: 2px;
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 	}
 
 	.status-badge.heater {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--tilt-red);
+		border-color: var(--status-warn);
+		color: var(--status-warn);
 	}
 
 	.status-badge.cooler {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--tilt-blue);
-	}
-
-	.status-badge.idle {
-		background: var(--bg-elevated);
-		color: var(--text-secondary);
+		border-color: var(--temp-trace);
+		color: var(--temp-trace);
 	}
 
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 0.2s var(--ease-out-quart);
 	}
 
 	.chevron.rotated {
@@ -522,26 +500,24 @@
 	}
 
 	.temp-control-card.heater-on {
-		background: rgba(239, 68, 68, 0.08);
-		border-color: rgba(239, 68, 68, 0.3);
+		border-color: var(--status-warn);
 	}
 
 	.temp-control-card.cooler-on {
-		background: rgba(59, 130, 246, 0.08);
-		border-color: rgba(59, 130, 246, 0.3);
+		border-color: var(--temp-trace);
 	}
 
 	.device-status-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-md);
 	}
 
 	.device-status {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
 
 	.device-icon-wrap {
@@ -550,134 +526,119 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 0.5rem;
+		border-radius: 4px;
+		border: 1px solid var(--rule-hairline);
 		background: var(--bg-elevated);
-		font-size: 1.25rem;
-		transition: all 0.3s ease;
-		filter: grayscale(100%) opacity(0.5);
+		color: var(--ink-muted);
 	}
 
 	.device-status.heater .device-icon-wrap.active {
-		background: rgba(239, 68, 68, 0.2);
-		animation: pulse-glow-red 2s ease-in-out infinite;
-		filter: none;
+		border-color: var(--status-warn);
+		color: var(--status-warn);
 	}
 
 	.device-status.cooler .device-icon-wrap.active {
-		background: rgba(59, 130, 246, 0.2);
-		animation: pulse-glow-blue 2s ease-in-out infinite;
-		filter: none;
-	}
-
-	@keyframes pulse-glow-red {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(239, 68, 68, 0.3); }
-	}
-
-	@keyframes pulse-glow-blue {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.3); }
+		border-color: var(--temp-trace);
+		color: var(--temp-trace);
 	}
 
 	.device-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: 2px;
 	}
 
-	.device-label {
-		font-size: 0.625rem;
-		font-weight: 500;
+	.device-label,
+	.detail-label,
+	.override-label {
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
 
 	.device-state {
-		font-size: 1rem;
-		font-weight: 700;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-secondary);
+		font-size: var(--text-base);
+		font-weight: 600;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-secondary);
 	}
 
 	.device-status.heater .device-state.on {
-		color: var(--tilt-red);
+		color: var(--status-warn);
 	}
 
 	.device-status.cooler .device-state.on {
-		color: var(--tilt-blue);
+		color: var(--temp-trace);
 	}
 
 	.device-entity {
 		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: 'JetBrains Mono', monospace;
+		color: var(--ink-muted);
+		font-family: var(--font-num);
 	}
 
 	.control-details {
-		display: flex;
-		gap: 1.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		margin-bottom: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.control-detail {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: 2px;
+		padding: var(--space-xs) var(--space-sm);
 	}
 
-	.detail-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+	.control-detail + .control-detail {
+		border-left: 1px solid var(--rule-hairline);
 	}
 
 	.detail-value {
-		font-size: 0.875rem;
-		font-weight: 500;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-primary);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-primary);
 	}
 
 	.override-banner {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: rgba(59, 130, 246, 0.1);
-		border-radius: 0.375rem;
-		font-size: 0.75rem;
-		color: var(--tilt-blue);
-	}
-
-	.override-icon {
-		font-size: 0.875rem;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid var(--temp-trace);
+		border-radius: 4px;
+		font-size: var(--text-xs);
+		color: var(--temp-trace);
 	}
 
 	.override-cancel-inline {
 		margin-left: auto;
-		padding: 0.25rem 0.5rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		border-radius: 4px;
 		background: transparent;
-		border: 1px solid var(--tilt-blue);
-		color: var(--tilt-blue);
+		border: 1px solid var(--temp-trace);
+		color: var(--temp-trace);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.override-cancel-inline:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.15);
+		background: var(--bg-subtle);
 	}
 
-	.override-cancel-inline:disabled {
+	.override-cancel-inline:disabled,
+	.override-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -685,80 +646,59 @@
 	.override-controls {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.override-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		gap: var(--space-xs);
 	}
 
 	.override-btns-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
 
 	.override-btn {
-		padding: 0.5rem 0.75rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		color: var(--text-secondary);
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		border-radius: 4px;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
 
 	.override-btn:hover:not(:disabled) {
-		background: var(--bg-hover);
-		color: var(--text-primary);
+		background: var(--bg-subtle);
+		color: var(--ink-primary);
 	}
 
-	.override-btn.heat-on:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.1);
-		border-color: var(--tilt-red);
-		color: var(--tilt-red);
-	}
-
+	.override-btn.heat-on:hover:not(:disabled),
 	.override-btn.heat-off:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.05);
-		border-color: rgba(239, 68, 68, 0.3);
-		color: var(--text-primary);
+		border-color: var(--status-warn);
 	}
 
-	.override-btn.cool-on:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.1);
-		border-color: var(--tilt-blue);
-		color: var(--tilt-blue);
-	}
-
+	.override-btn.cool-on:hover:not(:disabled),
 	.override-btn.cool-off:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.05);
-		border-color: rgba(59, 130, 246, 0.3);
-		color: var(--text-primary);
+		border-color: var(--temp-trace);
 	}
 
 	.override-btn.auto-mode {
 		grid-column: 1 / -1;
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-ink);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
+		color: var(--accent);
 	}
 
 	.override-btn.auto-mode:hover:not(:disabled) {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-		border-color: var(--accent-hover);
+		background: var(--accent-tint);
+		border-color: var(--accent);
+		color: var(--accent-hover);
 	}
 
-	.override-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	@keyframes spin {
@@ -768,46 +708,46 @@
 	.tasting-actions {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-md);
 	}
 
 	.guided-tasting-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1rem;
-		background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, purple) 100%);
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		background: var(--accent);
 		color: var(--accent-ink);
-		border: none;
-		border-radius: 0.5rem;
-		font-size: 0.875rem;
-		font-weight: 600;
+		border: 1px solid var(--accent);
+		border-radius: 4px;
+		font-size: var(--text-sm);
+		font-weight: 700;
 		cursor: pointer;
-		transition: opacity 0.15s ease;
 	}
 
-	.guided-tasting-btn:hover { opacity: 0.9; }
+	.guided-tasting-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 	.manual-tasting-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		background: transparent;
-		color: var(--text-secondary);
-		border: 1px dashed var(--border-subtle);
-		border-radius: 0.5rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		background: var(--bg-surface);
+		color: var(--ink-secondary);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		font-size: var(--text-sm);
+		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.manual-tasting-btn:hover {
-		border-color: var(--accent);
-		color: var(--accent);
+		background: var(--bg-subtle);
+		color: var(--ink-primary);
 	}
 </style>

@@ -81,7 +81,7 @@
 	}
 </script>
 
-<BatchCard title={phaseInfo?.name ?? reflection.phase} icon={phaseInfo?.icon}>
+<BatchCard title={phaseInfo?.name ?? reflection.phase}>
 	<div class="reflection-content">
 		<!-- Header with date and actions -->
 		<div class="reflection-header">
@@ -160,7 +160,7 @@
 				{#if reflection.what_went_well}
 					<div class="note-block positive">
 						<h4 class="note-title">
-							<span class="note-icon">✓</span>
+							<svg class="note-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
 							What Went Well
 						</h4>
 						<p class="note-content">{reflection.what_went_well}</p>
@@ -170,7 +170,7 @@
 				{#if reflection.what_went_wrong}
 					<div class="note-block negative">
 						<h4 class="note-title">
-							<span class="note-icon">✗</span>
+							<svg class="note-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
 							What Went Wrong
 						</h4>
 						<p class="note-content">{reflection.what_went_wrong}</p>
@@ -180,7 +180,7 @@
 				{#if reflection.lessons_learned}
 					<div class="note-block neutral">
 						<h4 class="note-title">
-							<span class="note-icon">💡</span>
+							<svg class="note-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/></svg>
 							Lessons Learned
 						</h4>
 						<p class="note-content">{reflection.lessons_learned}</p>
@@ -190,7 +190,7 @@
 				{#if reflection.next_time_changes}
 					<div class="note-block neutral">
 						<h4 class="note-title">
-							<span class="note-icon">→</span>
+							<svg class="note-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
 							Next Time
 						</h4>
 						<p class="note-content">{reflection.next_time_changes}</p>
@@ -217,10 +217,9 @@
 	.reflection-content {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-md);
 	}
 
-	/* Header */
 	.reflection-header {
 		display: flex;
 		justify-content: space-between;
@@ -228,31 +227,37 @@
 	}
 
 	.reflection-date {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
 
 	.header-actions {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--space-2xs);
+	}
+
+	button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.action-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0.375rem;
+		min-width: 44px;
+		min-height: 44px;
 		background: transparent;
 		border: none;
-		border-radius: 0.25rem;
-		color: var(--text-muted);
+		border-radius: 4px;
+		color: var(--ink-muted);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.action-btn:hover {
 		background: var(--bg-elevated);
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.action-btn svg {
@@ -260,192 +265,174 @@
 		height: 1rem;
 	}
 
-	/* Section titles */
 	.section-title {
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 0.5rem 0;
+		letter-spacing: 0.08em;
+		margin: 0 0 var(--space-xs) 0;
 	}
 
-	/* Metrics */
+	/* Metrics: readout grid */
 	.metrics-section {
-		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--border-subtle);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.metrics-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-		gap: 0.5rem;
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.metric-item {
 		display: flex;
 		flex-direction: column;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		gap: var(--space-2xs);
+		padding: var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
+		min-width: 0;
 	}
 
 	.metric-label {
+		font-family: var(--font-display);
 		font-size: 0.625rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.025em;
-		margin-bottom: 0.25rem;
+		letter-spacing: 0.08em;
 	}
 
 	.metric-value {
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
-	/* AI Section */
+	/* AI section: hairline-separated */
 	.ai-section {
-		padding: 0.875rem;
-		background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
-		border: 1px solid rgba(99, 102, 241, 0.2);
-		border-radius: 0.5rem;
+		padding-top: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.ai-section.empty {
-		padding: 1rem;
 		text-align: center;
+		border-top: none;
+		padding-top: 0;
 	}
 
 	.ai-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		margin-bottom: 0.75rem;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-xs);
 	}
 
 	.ai-title-row {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--space-2xs);
 	}
 
 	.ai-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: var(--accent);
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 	}
 
 	.ai-date {
+		font-family: var(--font-num);
 		font-size: 0.625rem;
-		color: var(--text-muted);
+		color: var(--ink-muted);
+	}
+
+	.regenerate-btn,
+	.generate-btn,
+	.add-reflection-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		border-radius: 4px;
+		cursor: pointer;
 	}
 
 	.regenerate-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.625rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-secondary);
+		color: var(--ink-secondary);
 		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
+		border: 1px solid var(--rule-strong);
 	}
 
 	.regenerate-btn:hover {
+		color: var(--ink-primary);
+		background: var(--bg-subtle);
+	}
+
+	.generate-btn,
+	.add-reflection-btn {
 		color: var(--accent);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+	}
+
+	.generate-btn:hover,
+	.add-reflection-btn:hover {
 		border-color: var(--accent);
 	}
 
-	.regenerate-btn svg {
+	.regenerate-btn svg,
+	.generate-btn svg {
 		width: 0.875rem;
 		height: 0.875rem;
 	}
 
-	.generate-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--accent);
-		background: transparent;
-		border: 1px dashed var(--accent);
-		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.generate-btn:hover {
-		background: rgba(99, 102, 241, 0.1);
-	}
-
-	.generate-btn svg {
-		width: 1rem;
-		height: 1rem;
-	}
-
 	.ai-summary {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.6;
 		margin: 0;
 		white-space: pre-wrap;
 	}
 
-	/* Notes Section */
+	/* Notes: hairline-separated blocks, tone via icon and title colour */
 	.notes-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
 	}
 
 	.note-block {
-		padding: 0.75rem;
-		border-radius: 0.5rem;
-		border-left: 3px solid var(--border-subtle);
-		background: var(--bg-elevated);
-	}
-
-	.note-block.positive {
-		border-left-color: var(--positive);
-		background: rgba(34, 197, 94, 0.05);
-	}
-
-	.note-block.negative {
-		border-left-color: var(--negative);
-		background: rgba(239, 68, 68, 0.05);
-	}
-
-	.note-block.neutral {
-		border-left-color: var(--recipe-accent);
-		background: rgba(245, 158, 11, 0.05);
+		padding: var(--space-sm) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.note-title {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.75rem;
+		gap: var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-secondary);
-		margin: 0 0 0.5rem 0;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-secondary);
+		margin: 0 0 var(--space-xs) 0;
 	}
 
 	.note-icon {
-		font-size: 0.75rem;
+		flex-shrink: 0;
+		color: var(--ink-muted);
 	}
 
 	.note-block.positive .note-icon {
@@ -457,51 +444,32 @@
 	}
 
 	.note-block.neutral .note-icon {
-		color: var(--recipe-accent);
+		color: var(--accent);
 	}
 
 	.note-content {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.5;
 		margin: 0;
 		white-space: pre-wrap;
 	}
 
-	/* Empty State */
 	.empty-state {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 1.5rem;
+		padding: var(--space-lg);
 		text-align: center;
 	}
 
 	.empty-text {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin: 0 0 1rem 0;
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		margin: 0 0 var(--space-md) 0;
 	}
 
-	.add-reflection-btn {
-		padding: 0.5rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--primary);
-		background: transparent;
-		border: 1px solid var(--primary);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.add-reflection-btn:hover {
-		background: var(--primary);
-		color: var(--accent-ink);
-	}
-
-	/* Responsive */
 	@media (max-width: 480px) {
 		.metrics-grid {
 			grid-template-columns: repeat(2, 1fr);
@@ -509,7 +477,6 @@
 
 		.ai-header {
 			flex-direction: column;
-			gap: 0.5rem;
 		}
 	}
 </style>

@@ -14,10 +14,10 @@
 
 <style>
 	.notes-content {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.6;
-		margin: 0;
 		white-space: pre-wrap;
+		max-width: 65ch;
 	}
 </style>

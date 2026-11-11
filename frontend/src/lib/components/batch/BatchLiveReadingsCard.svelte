@@ -43,7 +43,7 @@
 
 <BatchCard title="Live Readings" highlight={true}>
 	<div class="live-badge">
-		<span class="live-dot"></span>
+		<span class="live-dot" aria-hidden="true"></span>
 		<span class="live-text">LIVE</span>
 	</div>
 
@@ -62,8 +62,7 @@
 
 		<div class="reading">
 			<div class="reading-value temp">
-				{formatTempValue(displayTemp)}
-				<span class="unit">{tempUnit}</span>
+				{formatTempValue(displayTemp)}<span class="unit">&thinsp;{tempUnit}</span>
 			</div>
 			<div class="reading-label">Temperature</div>
 		</div>
@@ -74,7 +73,7 @@
 			<span class="raw-label">Raw:</span>
 			<span class="raw-value">{formatSG(rawSg)}</span>
 			<span class="raw-separator">·</span>
-			<span class="raw-value">{formatTempValue(rawTemp)}{tempUnit}</span>
+			<span class="raw-value">{formatTempValue(rawTemp)}&thinsp;{tempUnit}</span>
 		</div>
 	{/if}
 
@@ -86,112 +85,108 @@
 </BatchCard>
 
 <style>
+	.num,
+	.reading-value,
+	.raw-values {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+	}
 	.live-badge {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
-		margin-bottom: 0.75rem;
-		padding: 0.25rem 0.625rem;
-		background: color-mix(in srgb, var(--recipe-accent) 12%, transparent);
-		border-radius: 9999px;
+		gap: 6px;
+		margin-bottom: var(--space-sm);
+		padding: 2px 7px;
+		border: 1px solid var(--accent-rule);
+		border-radius: 2px;
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: var(--recipe-accent);
+		color: var(--accent);
 		text-transform: uppercase;
-		letter-spacing: 0.025em;
+		letter-spacing: 0.06em;
 	}
-
 	.live-dot {
 		width: 6px;
 		height: 6px;
-		background: var(--recipe-accent);
-		color: var(--accent-ink);
+		background: var(--accent);
 		border-radius: 50%;
 		animation: pulse 2s ease-in-out infinite;
 	}
-
 	@keyframes pulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.4; }
 	}
-
 	.live-text {
 		line-height: 1;
 	}
-
 	.readings-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		border-top: 1px solid var(--rule-strong);
+		border-bottom: 1px solid var(--rule-hairline);
+		background: var(--bg-surface);
 	}
-
 	.reading {
-		text-align: center;
-		padding: 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.5rem;
+		padding: var(--space-md);
 	}
-
+	.reading + .reading {
+		border-left: 1px solid var(--rule-hairline);
+	}
 	.reading-value {
-		font-family: var(--font-mono);
-		font-size: 2.5rem;
-		font-weight: 500;
-		color: var(--text-primary);
-		line-height: 1;
-		margin-bottom: 0.5rem;
+		font-size: var(--text-inst);
+		font-weight: 600;
+		color: var(--ink-primary);
+		line-height: 1.05;
+		letter-spacing: -0.02em;
+		margin-bottom: var(--space-2xs);
 	}
-
 	.reading-value.temp {
-		color: var(--positive);
+		color: var(--temp-trace);
 	}
-
 	.unit {
-		font-size: 1.25rem;
-		color: var(--text-secondary);
+		font-family: var(--font-body);
+		font-size: 0.78em;
+		font-weight: 400;
+		color: var(--ink-muted);
 		margin-left: 0.125rem;
 	}
-
 	.reading-label {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.07em;
 	}
-
 	.raw-values {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		margin-bottom: 0.5rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
+		margin-top: var(--space-xs);
 	}
-
-	.raw-label {
-		opacity: 0.6;
-	}
-
-	.raw-value {
-		margin-left: 0.25rem;
-	}
-
 	.raw-separator {
-		margin: 0 0.375rem;
-		opacity: 0.4;
+		margin: 0 var(--space-xs);
+		color: var(--ink-muted);
 	}
-
+	.raw-value {
+		margin-left: var(--space-2xs);
+	}
 	.last-seen {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		text-align: center;
+		margin-top: var(--space-xs);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	@media (max-width: 640px) {
 		.reading-value {
-			font-size: 2rem;
+			font-size: 1.75rem;
+		}
+		.reading {
+			padding: var(--space-sm);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.live-dot {
+			animation: none;
 		}
 	}
 </style>

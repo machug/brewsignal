@@ -95,15 +95,16 @@
 					type="button"
 					class="collapsible-header"
 					onclick={onTempControlToggle}
+					aria-expanded={!tempControlCollapsed}
 				>
 					<h3 class="info-title">Temperature Control</h3>
 					<div class="collapse-indicator">
 						{#if controlStatus?.heater_state === 'on'}
-							<span class="status-badge heater">🔥 Heating</span>
+							<span class="status-badge heater">Heating</span>
 						{:else if controlStatus?.cooler_state === 'on'}
-							<span class="status-badge cooler">❄️ Cooling</span>
+							<span class="status-badge cooler">Cooling</span>
 						{:else if tempControlCollapsed && controlStatus}
-							<span class="status-badge idle">🎯 {formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
+							<span class="status-badge idle num">Target {formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span>
 						{/if}
 						<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -116,14 +117,14 @@
 				<div class="device-status-row">
 					{#if batch.heater_entity_id}
 						<div class="device-chip heater" class:active={controlStatus?.heater_state === 'on'} title={batch.heater_entity_id}>
-							<span class="chip-icon">🔥</span>
+							<span class="chip-icon" aria-hidden="true"></span>
 							<span class="chip-label">Heater</span>
 							<span class="chip-state">{controlStatus?.heater_state === 'on' ? 'ON' : 'OFF'}</span>
 						</div>
 					{/if}
 					{#if batch.cooler_entity_id}
 						<div class="device-chip cooler" class:active={controlStatus?.cooler_state === 'on'} title={batch.cooler_entity_id}>
-							<span class="chip-icon">❄️</span>
+							<span class="chip-icon" aria-hidden="true"></span>
 							<span class="chip-label">Cooler</span>
 							<span class="chip-state">{controlStatus?.cooler_state === 'on' ? 'ON' : 'OFF'}</span>
 						</div>
@@ -134,17 +135,16 @@
 					<div class="control-details">
 						<div class="control-detail">
 							<span class="detail-label">Target</span>
-							<span class="detail-value">{formatTempValue(controlStatus.target_temp)}{tempUnit}</span>
+							<span class="detail-value">{formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span>
 						</div>
 						<div class="control-detail">
 							<span class="detail-label">Hysteresis</span>
-							<span class="detail-value">±{controlStatus.hysteresis?.toFixed(1) || '--'}{tempUnit}</span>
+							<span class="detail-value">&plusmn;{controlStatus.hysteresis?.toFixed(1) || '--'}&thinsp;{tempUnit}</span>
 						</div>
 					</div>
 
 					{#if controlStatus.override_active}
 						<div class="override-banner">
-							<span class="override-icon">⚡</span>
 							<span>Override active: {controlStatus.override_state?.toUpperCase()}</span>
 							<button
 								type="button"
@@ -242,282 +242,218 @@
 {/if}
 
 <style>
-	/* Content grid */
+	.num,
+	.detail-value,
+	.chip-state {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+	}
+
+	/* Content grid: primary instrument column + secondary column */
 	.content-grid {
 		display: grid;
-		grid-template-columns: 2fr 1fr;
-		gap: 1rem;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+		gap: var(--space-lg);
 		align-items: start;
 	}
-
 	@media (max-width: 900px) {
 		.content-grid {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
-
-	/* Stats section */
-	.stats-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	/* Info section */
+	.stats-section,
 	.info-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--space-md);
+		min-width: 0;
 	}
 
+	/* Section: hairline top rule, no floating card */
 	.info-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
+		border-top: 1px solid var(--rule-strong);
+		padding-top: var(--space-sm);
 	}
-
 	.info-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin: 0 0 1rem 0;
+		letter-spacing: 0.08em;
+		margin: 0 0 var(--space-sm) 0;
 	}
-
-	/* Chart section */
 	.chart-section {
-		margin-top: 1.5rem;
+		margin-top: var(--space-lg);
 	}
-
-	/* Keep .no-device for heater card compatibility */
 	.no-device {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		color: var(--text-muted);
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
 
-	/* Temperature Control Card */
-	.temp-control-card {
-		transition: all 0.3s ease;
-	}
-
-	.temp-control-card.collapsed {
-		padding-bottom: 0.75rem;
-	}
-
+	/* Temperature control */
 	.collapsible-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		width: 100%;
-		background: none;
-		border: none;
-		cursor: pointer;
+		min-height: 44px;
 		padding: 0;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-xs);
+		cursor: pointer;
+		text-align: left;
 	}
-
 	.temp-control-card.collapsed .collapsible-header {
 		margin-bottom: 0;
 	}
-
 	.collapsible-header .info-title {
 		margin: 0;
 	}
-
 	.collapse-indicator {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
 	.status-badge {
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 0.125rem 0.375rem;
-		border-radius: 0.25rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 2px 7px;
+		border-radius: 2px;
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 	}
-
 	.status-badge.heater {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--tilt-red);
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
+		color: var(--status-warn);
 	}
-
 	.status-badge.cooler {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--tilt-blue);
+		border-color: color-mix(in oklch, var(--temp-trace) 55%, transparent);
+		color: var(--temp-trace);
 	}
-
-	.status-badge.idle {
-		background: var(--bg-elevated);
-		color: var(--text-secondary);
-	}
-
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 150ms var(--ease-out-quart);
 	}
-
 	.chevron.rotated {
 		transform: rotate(180deg);
 	}
 
-	.temp-control-card.heater-on {
-		background: rgba(239, 68, 68, 0.08);
-		border-color: rgba(239, 68, 68, 0.3);
-	}
-
-	.temp-control-card.cooler-on {
-		background: rgba(59, 130, 246, 0.08);
-		border-color: rgba(59, 130, 246, 0.3);
-	}
-
 	.device-status-row {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-sm);
 	}
-
 	.device-chip {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 		flex: 1;
-		padding: 0.375rem 0.625rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		transition: all 0.3s ease;
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 2px;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
-	.device-chip .chip-icon {
-		font-size: 0.875rem;
-		filter: grayscale(100%) opacity(0.5);
-		transition: filter 0.3s ease;
+	.chip-icon {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		border: 1px solid var(--rule-strong);
+		flex-shrink: 0;
 	}
-
 	.device-chip.active .chip-icon {
-		filter: none;
+		background: currentColor;
+		border-color: currentColor;
 	}
-
-	.device-chip .chip-label {
-		font-weight: 500;
-		color: var(--text-secondary);
+	.chip-label {
+		font-weight: 700;
+		color: var(--ink-secondary);
 	}
-
-	.device-chip .chip-state {
+	.chip-state {
 		margin-left: auto;
-		font-family: var(--font-mono);
 		font-weight: 600;
 		font-size: 0.6875rem;
-		color: var(--text-muted);
 	}
-
 	.device-chip.heater.active {
-		border-color: rgba(239, 68, 68, 0.3);
-		background: rgba(239, 68, 68, 0.08);
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
+		color: var(--status-warn);
 	}
-
-	.device-chip.heater.active .chip-state {
-		color: var(--tilt-red);
-	}
-
 	.device-chip.cooler.active {
-		border-color: rgba(59, 130, 246, 0.3);
-		background: rgba(59, 130, 246, 0.08);
+		border-color: color-mix(in oklch, var(--temp-trace) 55%, transparent);
+		color: var(--temp-trace);
 	}
 
-	.device-chip.cooler.active .chip-state {
-		color: var(--tilt-blue);
-	}
-
-	@keyframes pulse-glow-red {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(239, 68, 68, 0.3); }
-	}
-
-	@keyframes pulse-glow-blue {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-		50% { box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.3); }
-	}
-
+	/* Target / hysteresis readout */
 	.control-details {
-		display: flex;
-		gap: 1.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		margin-bottom: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.control-detail {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: var(--space-2xs);
+		padding: var(--space-xs) var(--space-sm);
 	}
-
-	.detail-label {
-		font-size: 0.625rem;
-		font-weight: 500;
+	.control-detail + .control-detail {
+		border-left: 1px solid var(--rule-hairline);
+	}
+	.detail-label,
+	.override-label {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
 	.detail-value {
-		font-size: 0.875rem;
-		font-weight: 500;
-		font-family: 'JetBrains Mono', monospace;
-		color: var(--text-primary);
+		font-size: var(--text-base);
+		font-weight: 600;
+		color: var(--ink-primary);
 	}
 
 	.override-banner {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: rgba(59, 130, 246, 0.1);
-		border-radius: 0.375rem;
-		font-size: 0.75rem;
-		color: var(--tilt-blue);
+		gap: var(--space-xs);
+		margin-bottom: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid color-mix(in oklch, var(--temp-trace) 50%, transparent);
+		font-size: var(--text-xs);
+		color: var(--temp-trace);
 	}
-
-	.override-icon {
-		font-size: 0.875rem;
-	}
-
 	.override-cancel-inline {
 		margin-left: auto;
-		padding: 0.25rem 0.5rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
-		background: transparent;
-		border: 1px solid var(--tilt-blue);
-		color: var(--tilt-blue);
+		min-height: 32px;
+		padding: 0 var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		border-radius: 3px;
+		border: 1px solid currentColor;
+		color: var(--temp-trace);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.override-cancel-inline:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.15);
+		background: var(--bg-subtle);
 	}
-
-	.override-cancel-inline:disabled {
+	.override-cancel-inline:disabled,
+	.override-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
@@ -525,79 +461,45 @@
 	.override-controls {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
-	.override-label {
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
 	.override-btns-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
 	.override-btn {
-		padding: 0.5rem 0.75rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border-radius: 0.25rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		color: var(--text-secondary);
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		border-radius: 4px;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-primary);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
 	.override-btn:hover:not(:disabled) {
-		background: var(--bg-hover);
-		color: var(--text-primary);
+		background: var(--bg-subtle);
 	}
-
-	.override-btn.heat-on:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.1);
-		border-color: var(--tilt-red);
-		color: var(--tilt-red);
-	}
-
+	.override-btn.heat-on:hover:not(:disabled),
 	.override-btn.heat-off:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.05);
-		border-color: rgba(239, 68, 68, 0.3);
-		color: var(--text-primary);
+		border-color: var(--status-warn);
 	}
-
-	.override-btn.cool-on:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.1);
-		border-color: var(--tilt-blue);
-		color: var(--tilt-blue);
-	}
-
+	.override-btn.cool-on:hover:not(:disabled),
 	.override-btn.cool-off:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.05);
-		border-color: rgba(59, 130, 246, 0.3);
-		color: var(--text-primary);
+		border-color: var(--temp-trace);
 	}
-
 	.override-btn.auto-mode {
 		grid-column: 1 / -1;
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-ink);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
+		color: var(--accent);
 	}
-
 	.override-btn.auto-mode:hover:not(:disabled) {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-		border-color: var(--accent-hover);
-	}
-
-	.override-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+		background: var(--accent-tint);
+		border-color: var(--accent);
 	}
 </style>

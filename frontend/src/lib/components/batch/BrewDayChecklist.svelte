@@ -123,23 +123,16 @@
 </script>
 
 <div class="checklist-compact">
-	<button type="button" class="checklist-header" onclick={() => expanded = !expanded}>
+	<button type="button" class="checklist-header" onclick={() => expanded = !expanded} aria-expanded={expanded}>
 		<div class="header-left">
-			<span class="check-icon" class:done={progress === 100}>
-				{#if progress === 100}
-					✓
-				{:else}
-					☐
-				{/if}
-			</span>
 			<span class="title">Checklist</span>
 			<span class="progress-text">{checkedCount}/{totalCount}</span>
 		</div>
 		<div class="header-right">
-			<div class="mini-progress">
+			<div class="mini-progress" class:done={progress === 100}>
 				<div class="mini-fill" style="width: {progress}%"></div>
 			</div>
-			<svg class="chevron" class:expanded fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<svg class="chevron" class:expanded fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
 			</svg>
 		</div>
@@ -170,161 +163,107 @@
 
 <style>
 	.checklist-compact {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		overflow: hidden;
+		border-top: 1px solid var(--rule-strong);
+		min-width: 0;
 	}
-
 	.checklist-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		width: 100%;
-		padding: 0.875rem 1rem;
-		background: transparent;
-		border: none;
+		min-height: 44px;
+		padding: var(--space-xs) 0;
 		cursor: pointer;
 		text-align: left;
 	}
-
-	.checklist-header:hover {
-		background: var(--bg-hover);
-	}
-
 	.header-left {
 		display: flex;
-		align-items: center;
-		gap: 0.625rem;
+		align-items: baseline;
+		gap: var(--space-sm);
 	}
-
-	.check-icon {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-	}
-
-	.check-icon.done {
-		color: var(--positive);
-	}
-
 	.title {
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
-
 	.progress-text {
-		font-size: 0.75rem;
-		font-family: var(--font-mono);
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-secondary);
 	}
-
 	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
-
 	.mini-progress {
 		width: 3rem;
-		height: 4px;
-		background: var(--bg-elevated);
-		border-radius: 2px;
-		overflow: hidden;
+		height: 3px;
+		background: var(--rule-hairline);
 	}
-
 	.mini-fill {
 		height: 100%;
-		background: var(--positive);
-		border-radius: 2px;
-		transition: width 0.3s ease;
+		background: var(--ink-secondary);
+		transition: width 300ms var(--ease-out-quart);
 	}
-
+	.mini-progress.done .mini-fill {
+		background: var(--status-steady);
+	}
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 150ms var(--ease-out-quart);
 	}
-
 	.chevron.expanded {
 		transform: rotate(180deg);
 	}
-
-	.next-items {
-		padding: 0 1rem 0.875rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.next-item {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.625rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.8125rem;
-	}
-
-	.next-item:hover {
-		background: var(--bg-hover);
-	}
-
-	.next-item input[type="checkbox"] {
-		width: 0.875rem;
-		height: 0.875rem;
-		accent-color: var(--positive);
-		cursor: pointer;
-	}
-
-	.next-item .item-text {
-		color: var(--text-primary);
-	}
-
+	.next-items,
 	.all-items {
-		padding: 0 1rem 1rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		max-height: 300px;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.all-items {
+		max-height: 320px;
 		overflow-y: auto;
 	}
-
+	.next-item,
 	.item-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.625rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		gap: var(--space-sm);
+		min-height: 44px;
+		padding: var(--space-2xs) var(--space-2xs);
+		border-bottom: 1px solid var(--rule-hairline);
 		cursor: pointer;
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
-
+	.next-item:hover,
 	.item-row:hover {
-		background: var(--bg-hover);
+		background: var(--bg-surface);
 	}
-
 	.item-row.checked {
-		opacity: 0.5;
+		color: var(--ink-muted);
 	}
-
 	.item-row.checked .item-text {
 		text-decoration: line-through;
-		color: var(--text-muted);
 	}
-
-	.item-row input[type="checkbox"] {
-		width: 0.875rem;
-		height: 0.875rem;
-		accent-color: var(--positive);
+	input[type="checkbox"] {
+		width: 1.125rem;
+		height: 1.125rem;
+		accent-color: var(--accent);
 		cursor: pointer;
 	}
-
-	.item-row .item-text {
-		color: var(--text-primary);
+	@media (prefers-reduced-motion: reduce) {
+		.mini-fill,
+		.chevron {
+			transition: none;
+		}
 	}
 </style>

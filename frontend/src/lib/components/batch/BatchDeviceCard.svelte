@@ -23,7 +23,7 @@
 	let batteryPercent = $derived(liveReading?.battery_percent);
 	let batteryVoltage = $derived(liveReading?.battery_voltage);
 	let batteryColor = $derived.by(() => {
-		if (!batteryPercent) return 'var(--text-muted)';
+		if (!batteryPercent) return 'var(--ink-muted)';
 		if (batteryPercent > 50) return 'var(--positive)';
 		if (batteryPercent > 20) return 'var(--warning)';
 		return 'var(--negative)';
@@ -52,7 +52,7 @@
 			{#if liveReading}
 				<div class="device-row">
 					<div class="device-status online">
-						<span class="device-dot"></span>
+						<span class="device-dot" aria-hidden="true"></span>
 						{deviceDisplayName}
 					</div>
 					{#if lastSeenText}
@@ -72,12 +72,12 @@
 										></div>
 									{/each}
 								</div>
-								<span class="metric-text" style="color: {signal.color}">{liveReading.rssi}dBm</span>
+								<span class="metric-text" style="color: {signal.color}">{liveReading.rssi}&thinsp;dBm</span>
 							</div>
 						{/if}
 						{#if hasBattery}
 							<div class="metric-item battery">
-								<svg class="battery-icon" viewBox="0 0 24 24" fill="none" stroke={batteryColor} stroke-width="2">
+								<svg class="battery-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke={batteryColor} stroke-width="2">
 									<rect x="2" y="7" width="18" height="10" rx="2" />
 									<rect x="4" y="9" width="{(batteryPercent ?? 50) * 0.14}" height="6" fill={batteryColor} stroke="none" rx="1" />
 									<path d="M20 10v4h2v-4z" fill={batteryColor} stroke="none" />
@@ -86,7 +86,7 @@
 									{#if batteryPercent != null}
 										{batteryPercent.toFixed(0)}%
 									{:else if batteryVoltage != null}
-										{batteryVoltage.toFixed(2)}V
+										{batteryVoltage.toFixed(2)}&thinsp;V
 									{/if}
 								</span>
 							</div>
@@ -96,7 +96,7 @@
 			{:else}
 				<div class="device-row">
 					<div class="device-status offline">
-						<span class="device-dot"></span>
+						<span class="device-dot" aria-hidden="true"></span>
 						{batch.device_id}
 					</div>
 					<span class="device-last-seen">No data</span>
@@ -117,102 +117,92 @@
 	.device-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
 	.device-row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
 	.device-status {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
+		gap: var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
 	}
-
 	.device-status.online {
-		color: var(--positive);
+		color: var(--ink-primary);
 	}
-
+	.device-status.online .device-dot {
+		background: var(--status-steady);
+	}
 	.device-status.offline {
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.device-dot {
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		background: currentColor;
 	}
-
 	.device-last-seen {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.device-metrics {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.375rem 0.5rem;
-		background: var(--bg-elevated);
-		border-radius: 0.25rem;
+		gap: var(--space-md);
+		padding: var(--space-xs) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.metric-item {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
 	.signal-bars {
 		display: flex;
 		align-items: flex-end;
 		gap: 2px;
 	}
-
 	.signal-bar {
 		width: 2px;
 		border-radius: 1px;
-		transition: all 0.2s ease;
 	}
-
 	.metric-text {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
 	}
-
 	.battery-icon {
 		width: 1rem;
 		height: 1rem;
 	}
-
 	.no-device {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.5rem;
-		font-size: 0.8125rem;
-		color: var(--text-muted);
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.link-btn {
-		font-size: 0.75rem;
-		font-weight: 500;
+		min-height: 44px;
+		padding: 0 var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		color: var(--accent);
-		background: none;
-		border: none;
-		padding: 0;
 		cursor: pointer;
 	}
-
 	.link-btn:hover {
+		color: var(--accent-hover);
 		text-decoration: underline;
 	}
 </style>

@@ -25,15 +25,8 @@
 </script>
 
 <div class="batch-card" class:highlight class:compact>
-	{#if highlight}
-		<div class="accent-bar"></div>
-	{/if}
-
 	<div class="card-header">
 		<div class="header-left">
-			{#if icon}
-				<span class="card-icon">{icon}</span>
-			{/if}
 			<h3 class="card-title">{title}</h3>
 		</div>
 
@@ -46,6 +39,7 @@
 			>
 				<svg
 					class="expand-icon"
+					aria-hidden="true"
 					class:rotate-180={expanded}
 					fill="none"
 					viewBox="0 0 24 24"
@@ -64,105 +58,77 @@
 </div>
 
 <style>
+	/* Section, not a floating card: hairline rule on top */
 	.batch-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		overflow: hidden;
-		transition: border-color var(--transition);
+		border-top: 1px solid var(--rule-strong);
+		padding-top: var(--space-sm);
+		min-width: 0;
 	}
-
-	.batch-card:hover {
-		border-color: var(--border-default);
-	}
-
 	.batch-card.highlight {
-		border-color: var(--recipe-accent-border);
+		border-top-color: var(--accent-rule);
 	}
-
-	.accent-bar {
-		height: 2px;
-		background: linear-gradient(90deg, var(--recipe-accent), var(--recipe-accent-hover));
-	}
-
 	.card-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.25rem 1.25rem 0 1.25rem;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-sm);
 	}
-
 	.compact .card-header {
-		padding: 0.875rem 1rem 0 1rem;
-		margin-bottom: 0.625rem;
+		margin-bottom: var(--space-xs);
 	}
-
 	.header-left {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
-	.card-icon {
-		font-size: 1rem;
-	}
-
 	.card-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
-
 	.expand-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		border-radius: 0.25rem;
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
+		width: 2.75rem;
+		height: 2.75rem;
+		margin: -0.5rem 0;
+		border-radius: 3px;
+		color: var(--ink-muted);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.expand-btn:hover {
-		color: var(--text-primary);
-		background: var(--bg-hover);
+		color: var(--ink-primary);
+		background: var(--bg-subtle);
 	}
-
 	.expand-icon {
 		width: 1rem;
 		height: 1rem;
-		transition: transform 0.2s ease;
+		transition: transform 150ms var(--ease-out-quart);
 	}
-
 	.expand-icon.rotate-180 {
 		transform: rotate(180deg);
 	}
-
 	.card-content {
-		padding: 0 1.25rem 1.25rem 1.25rem;
+		padding-bottom: var(--space-xs);
 		max-height: 5000px;
 		overflow: hidden;
-		transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+		transition: max-height 300ms var(--ease-out-quart), opacity 200ms var(--ease-out-quart);
 		opacity: 1;
 	}
-
-	.compact .card-content {
-		padding: 0 1rem 0.875rem 1rem;
-	}
-
 	.card-content.collapsed {
 		max-height: 0;
-		padding-top: 0;
 		padding-bottom: 0;
 		opacity: 0;
-		transition: max-height 0.3s ease-in, opacity 0.2s ease-in;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.card-content,
+		.expand-icon {
+			transition: none;
+		}
 	}
 </style>

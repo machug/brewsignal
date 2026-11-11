@@ -137,7 +137,7 @@
 						disabled={saving}
 					>
 						{#each availablePhases as p}
-							<option value={p}>{PHASE_INFO[p].icon} {PHASE_INFO[p].name}</option>
+							<option value={p}>{PHASE_INFO[p].name}</option>
 						{/each}
 					</select>
 				</div>
@@ -224,101 +224,111 @@
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.7);
-		backdrop-filter: blur(4px);
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
-		padding: var(--space-4);
+		padding: var(--space-md);
 	}
 
 	.modal-content {
 		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 12px;
+		border: 1px solid var(--rule-strong);
+		border-radius: 6px;
 		max-width: 600px;
 		width: 100%;
 		max-height: 90vh;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+	}
+
+	button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.modal-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: var(--space-4) var(--space-5);
-		border-bottom: 1px solid var(--border-subtle);
+		padding: var(--space-xs) var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.modal-header h2 {
 		margin: 0;
-		font-size: 18px;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.modal-close {
 		background: none;
 		border: none;
-		font-size: 24px;
-		color: var(--text-secondary);
+		font-size: 1.5rem;
+		color: var(--ink-secondary);
 		cursor: pointer;
-		padding: 0;
+		min-width: 44px;
+		min-height: 44px;
 		line-height: 1;
 	}
 
 	.modal-close:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.modal-body {
-		padding: var(--space-5);
+		padding: var(--space-md);
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--space-md);
 	}
 
 	.modal-footer {
 		display: flex;
 		justify-content: flex-end;
-		gap: var(--space-2);
-		padding: var(--space-3) var(--space-5);
-		border-top: 1px solid var(--border-subtle);
+		gap: var(--space-xs);
+		padding: var(--space-sm) var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.form-row {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
+		gap: var(--space-xs);
 	}
 
 	.form-label {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
 
 	.form-select,
 	.form-textarea {
 		width: 100%;
-		padding: var(--space-2) var(--space-3);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 8px;
-		color: var(--text-primary);
-		font-size: 14px;
-		font-family: inherit;
+		min-height: 44px;
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--bg-canvas);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-primary);
+		font-size: var(--text-sm);
+		font-family: var(--font-body);
 		resize: vertical;
 	}
 
 	.form-select:focus,
 	.form-textarea:focus {
-		outline: none;
-		border-color: var(--accent-primary, #3b82f6);
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+		border-color: var(--accent);
 	}
 
 	.form-select:disabled,
@@ -333,45 +343,47 @@
 	}
 
 	.form-error {
-		padding: var(--space-3);
-		background: var(--negative-bg, rgba(239, 68, 68, 0.1));
+		padding: var(--space-sm);
 		border: 1px solid var(--negative);
-		border-radius: 8px;
+		border-radius: 4px;
 		color: var(--negative);
-		font-size: 13px;
+		font-size: var(--text-sm);
 	}
 
 	.btn-primary,
 	.btn-secondary {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: 9px 16px;
-		font-size: 13px;
-		font-weight: 500;
-		border-radius: 8px;
+		justify-content: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.2s ease;
 	}
 
 	.btn-primary {
-		background: var(--accent-primary, #3b82f6);
-		border: 1px solid var(--accent-primary, #3b82f6);
-		color: white;
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:hover:not(:disabled) {
-		filter: brightness(1.1);
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
 	}
 
 	.btn-secondary {
-		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 	}
 
 	.btn-secondary:hover:not(:disabled) {
-		background: var(--bg-hover);
+		background: var(--bg-subtle);
+		color: var(--ink-primary);
 	}
 
 	.btn-primary:disabled,

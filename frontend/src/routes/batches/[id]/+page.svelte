@@ -429,7 +429,6 @@
 		</div>
 	{:else if error}
 		<div class="error-state">
-			<span class="error-icon">!</span>
 			<p>{error}</p>
 			<button type="button" class="retry-btn" onclick={loadBatch}>Retry</button>
 		</div>
@@ -447,8 +446,8 @@
 		<!-- Batch Header -->
 		<div class="batch-header">
 			<div class="header-main">
-				<div class="batch-number">#{batch.batch_number || '?'}</div>
 				<div class="header-info">
+					<div class="batch-number">Batch #{batch.batch_number || '?'}{#if batch.recipe?.style?.name}<span class="sep" aria-hidden="true">&middot;</span><span class="style-name">{batch.recipe.style.name}</span>{/if}</div>
 					<h1 class="batch-name">{batch.name || batch.recipe?.name || 'Unnamed Batch'}</h1>
 					{#if batch.recipe}
 						<a href="/recipes/{batch.recipe.id}" class="recipe-link">
@@ -473,11 +472,11 @@
 				<!-- Status selector -->
 				<div class="status-selector">
 					<select
-						class="status-select"
+						class="status-select s-{batch.status}"
+						aria-label="Batch status"
 						value={batch.status}
 						onchange={(e) => handleStatusChange(e.currentTarget.value as BatchStatus)}
 						disabled={statusUpdating}
-						style="color: {statusInfo.color}; background: {statusInfo.bg};"
 					>
 						{#each statusOptions as status}
 							<option value={status}>{statusConfig[status].label}</option>
@@ -524,9 +523,9 @@
 
 		<!-- Readings Paused Banner -->
 		{#if batch.readings_paused && (batch.status === 'fermenting' || batch.status === 'conditioning')}
-			<div class="paused-banner">
+			<div class="paused-banner" role="status">
 				<div class="paused-header">
-					<svg class="paused-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<svg class="paused-icon" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
 					<h3 class="paused-title">Readings Paused</h3>
@@ -573,7 +572,6 @@
 		<div class="phase-content" role="tabpanel">
 			{#if isTabFuture(activeTab)}
 				<div class="future-phase-placeholder">
-					<div class="future-icon">🔮</div>
 					<p class="future-text">Not started yet</p>
 					<p class="future-subtext">This phase will become active as the batch progresses.</p>
 				</div>
@@ -674,507 +672,424 @@
 <style>
 	.page-container {
 		max-width: 1200px;
+		padding: var(--space-lg) var(--space-xl) var(--space-xl);
 	}
-
-	/* Readings Paused Banner */
-	.paused-banner {
-		margin-bottom: 1.5rem;
-		padding: 1.25rem;
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(251, 191, 36, 0.05) 100%);
-		border: 1px solid rgba(245, 158, 11, 0.4);
-		border-radius: 0.75rem;
-		text-align: center;
-	}
-
-	.paused-header {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.paused-icon {
-		width: 1.5rem;
-		height: 1.5rem;
-		color: var(--recipe-accent);
-	}
-
-	.paused-title {
-		font-size: 1.125rem;
-		font-weight: 600;
-		color: var(--recipe-accent);
-		margin: 0;
-	}
-
-	.paused-text {
-		font-size: 0.875rem;
-		color: var(--text-secondary);
-		margin: 0 0 1rem 0;
-	}
-
-	.resume-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--recipe-accent);
-		background: var(--recipe-accent-muted);
-		border: 1px solid var(--recipe-accent-border);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.resume-btn:hover:not(:disabled) {
-		background: rgba(245, 158, 11, 0.25);
-		border-color: rgba(245, 158, 11, 0.6);
-	}
-
-	.resume-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.back-link {
-		margin-bottom: 1.5rem;
-	}
-
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		text-decoration: none;
-		transition: color var(--transition);
+		gap: var(--space-xs);
+		min-height: 44px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
+		transition: color 140ms var(--ease-out-quart);
 	}
-
 	.back-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
-
 	.back-icon {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	/* Loading/Error states */
+	/* States */
 	.loading-state,
 	.error-state {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
+		gap: var(--space-sm);
+		padding: var(--space-2xl) var(--space-lg);
 		text-align: center;
-		color: var(--text-secondary);
+		color: var(--ink-secondary);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
+	.error-state {
+		color: var(--status-danger);
+	}
 	.spinner {
-		width: 2rem;
-		height: 2rem;
-		border: 2px solid var(--bg-hover);
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
-		margin-bottom: 1rem;
 	}
-
 	@keyframes spin {
-		to { transform: rotate(360deg); }
+		to {
+			transform: rotate(360deg);
+		}
 	}
-
-	.error-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 3rem;
-		height: 3rem;
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.1);
-		border-radius: 50%;
-		margin-bottom: 1rem;
-	}
-
 	.retry-btn {
-		margin-top: 1rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
 	}
 
 	/* Header */
 	.batch-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: 1.5rem;
-		margin-bottom: 2rem;
-		padding-bottom: 1.5rem;
-		border-bottom: 1px solid var(--border-subtle);
+		gap: var(--space-md);
+		padding-bottom: var(--space-md);
+		margin-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-strong);
 	}
-
 	.header-main {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-	}
-
-	.batch-number {
-		flex-shrink: 0;
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		background: var(--bg-elevated);
-		padding: 0.375rem 0.75rem;
-		border-radius: 0.375rem;
-		margin-top: 0.25rem;
-	}
-
-	.header-info {
 		min-width: 0;
+		flex: 1 1 20rem;
 	}
-
-	.batch-name {
-		font-size: 1.5rem;
+	.batch-number {
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 0.25rem 0;
-		line-height: 1.3;
-	}
-
-	.recipe-link {
-		font-size: 0.875rem;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--accent);
-		text-decoration: none;
+		margin-bottom: var(--space-2xs);
 	}
-
+	.batch-number .sep {
+		color: var(--rule-strong);
+		margin: 0 var(--space-xs);
+	}
+	.batch-number .style-name {
+		font-family: var(--font-body);
+		text-transform: none;
+		font-weight: 400;
+		letter-spacing: 0.02em;
+		color: var(--ink-secondary);
+	}
+	.batch-name {
+		font-family: var(--font-display);
+		font-size: clamp(1.5rem, 2.4vw, 2rem);
+		font-weight: 700;
+		line-height: 1.15;
+		letter-spacing: -0.02em;
+		color: var(--ink-primary);
+		overflow-wrap: anywhere;
+	}
+	.recipe-link {
+		display: inline-block;
+		margin-top: var(--space-2xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		border-bottom: 1px solid transparent;
+	}
 	.recipe-link:hover {
-		text-decoration: underline;
+		color: var(--ink-primary);
+		border-bottom-color: var(--accent);
 	}
-
 	.recipe-type {
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.batch-timing {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		margin-top: 0.25rem;
+		margin-top: var(--space-2xs);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
-
 	.header-actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem;
-		flex-shrink: 0;
+		gap: var(--space-xs);
 	}
-
-	.status-selector {
-		position: relative;
-	}
-
 	.status-select {
-		padding: 0.5rem 2rem 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border: none;
-		border-radius: 9999px;
-		cursor: pointer;
 		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 0.5rem center;
-		background-size: 1rem;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-secondary);
+		background: transparent;
+		border: 1px solid var(--rule-strong);
+		border-radius: 2px;
+		cursor: pointer;
 	}
-
+	.status-select option {
+		background: var(--bg-elevated);
+		color: var(--ink-primary);
+	}
+	.status-select.s-planning,
+	.status-select.s-brewing,
+	.status-select.s-fermenting {
+		color: var(--accent);
+		border-color: var(--accent-rule);
+	}
+	.status-select.s-planning {
+		background: var(--accent-tint);
+	}
+	.status-select.s-conditioning {
+		color: var(--status-conditioning);
+		border-color: color-mix(in oklch, var(--status-conditioning) 55%, transparent);
+	}
+	.status-select.s-completed {
+		color: var(--status-completed);
+		border-color: color-mix(in oklch, var(--status-completed) 55%, transparent);
+	}
+	.pause-btn,
 	.edit-btn,
 	.delete-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border-radius: 0.375rem;
+		justify-content: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		min-width: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
-	.edit-btn {
-		color: var(--text-secondary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-	}
-
+	.pause-btn:hover:not(:disabled),
 	.edit-btn:hover {
-		color: var(--text-primary);
-		border-color: var(--border-default);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
-	.delete-btn {
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		padding: 0.5rem;
-	}
-
-	.delete-btn:hover {
-		color: var(--negative);
-	}
-
-	.pause-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all var(--transition);
-		color: var(--text-secondary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-	}
-
-	.pause-btn:hover:not(:disabled) {
-		color: var(--recipe-accent);
-		border-color: var(--recipe-accent-border);
-		background: var(--recipe-accent-muted);
-	}
-
 	.pause-btn.paused {
-		color: var(--recipe-accent);
-		border-color: var(--recipe-accent-border);
-		background: var(--recipe-accent-muted);
+		color: var(--accent);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
-	.pause-btn.paused:hover:not(:disabled) {
-		color: var(--positive);
-		border-color: rgba(34, 197, 94, 0.4);
-		background: var(--positive-muted);
-	}
-
 	.pause-btn:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
-
+	.delete-btn {
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 50%, transparent);
+	}
+	.delete-btn:hover {
+		background: var(--negative-muted);
+	}
 	.btn-icon {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	@media (max-width: 640px) {
-		.batch-header {
-			flex-direction: column;
-			gap: 1rem;
-		}
-
-		.header-actions {
-			width: 100%;
-			justify-content: flex-start;
-		}
+	/* Readings paused banner */
+	.paused-banner {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-sm) var(--space-md);
+		margin-bottom: var(--space-md);
+		padding: var(--space-sm) var(--space-md);
+		border: 1px solid color-mix(in oklch, var(--status-warn) 50%, transparent);
+		background: var(--warning-muted);
 	}
-
-	/* Modal styles */
-	.modal-overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+	.paused-header {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		z-index: 1000;
+		gap: var(--space-xs);
+		color: var(--status-warn);
 	}
-
-	.modal {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 8px;
-		padding: var(--space-6);
-		max-width: 400px;
-		width: 90%;
+	.paused-icon {
+		width: 1.125rem;
+		height: 1.125rem;
 	}
-
-	.modal-title {
-		font-size: 20px;
+	.paused-title {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+	.paused-text {
+		flex: 1 1 18rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.resume-btn {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 var(--space-3) 0;
-	}
-
-	.modal-text {
-		font-size: 14px;
-		color: var(--text-secondary);
-		line-height: 1.5;
-		margin: 0 0 var(--space-6) 0;
-	}
-
-	.modal-actions {
-		display: flex;
-		gap: var(--space-3);
-		justify-content: flex-end;
-	}
-
-	.modal-btn {
-		padding: var(--space-2) var(--space-4);
-		border-radius: 6px;
-		font-size: 14px;
-		font-weight: 500;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
 	}
-
-	.modal-btn.cancel {
-		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-primary);
+	.resume-btn:hover:not(:disabled) {
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
-	.modal-btn.cancel:hover {
-		background: var(--bg-hover);
-	}
-
-	.modal-btn.delete {
-		background: var(--negative);
-		border: none;
-		color: white;
-	}
-
-	.modal-btn.delete:hover {
-		background: var(--negative);
-	}
-
-	.modal-btn:disabled {
-		opacity: 0.5;
+	.resume-btn:disabled {
+		opacity: 0.6;
 		cursor: not-allowed;
 	}
 
-	/* Phase Tab Bar */
+	/* Phase step track: done ink, current accent, future muted */
 	.phase-tabs {
 		display: flex;
-		gap: 0.25rem;
-		padding: 0.25rem;
-		background: var(--bg-elevated);
-		border-radius: 0.5rem;
-		margin-bottom: 1.5rem;
+		gap: 0;
 		overflow-x: auto;
+		border-bottom: 1px solid var(--rule-hairline);
+		margin-bottom: var(--space-lg);
+		scrollbar-width: none;
 	}
-
+	.phase-tabs::-webkit-scrollbar {
+		display: none;
+	}
 	.phase-tab {
-		flex: 1;
-		min-width: 0;
-		padding: 0.625rem 0.75rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
-		white-space: nowrap;
-		text-align: center;
-		display: flex;
+		position: relative;
+		display: inline-flex;
 		align-items: center;
+		gap: var(--space-xs);
+		flex: 1 0 auto;
 		justify-content: center;
-		gap: 0.375rem;
-	}
-
-	.phase-tab:hover:not(.active) {
-		color: var(--text-secondary);
-		background: var(--bg-hover);
-	}
-
-	.phase-tab.active {
-		color: var(--text-primary);
-		background: var(--bg-surface);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		margin-bottom: -1px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		white-space: nowrap;
+		color: var(--ink-primary);
+		border-bottom: 2px solid transparent;
+		cursor: pointer;
+		transition: color 140ms var(--ease-out-quart);
 	}
-
+	.phase-tab:hover:not(.active) {
+		background: var(--bg-surface);
+	}
 	.phase-tab.future {
-		opacity: 0.4;
+		color: var(--ink-muted);
 	}
-
-	.phase-tab.future:hover:not(.active) {
-		opacity: 0.6;
+	.phase-tab.active {
+		color: var(--accent);
+		border-bottom-color: var(--accent);
 	}
-
-	.phase-tab.phase-completed {
-		color: var(--positive);
-	}
-
-	.phase-tab.phase-completed.active {
-		color: var(--positive);
-	}
-
 	.tab-check {
-		width: 14px;
-		height: 14px;
-		flex-shrink: 0;
+		width: 0.875rem;
+		height: 0.875rem;
 	}
-
 	.tab-dot {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: var(--accent);
-		color: var(--accent-ink);
-		flex-shrink: 0;
-		animation: pulse-tab-dot 2.5s ease-in-out infinite;
 	}
-
-	@keyframes pulse-tab-dot {
-		0%, 100% { box-shadow: 0 0 0 2px var(--accent-muted); }
-		50% { box-shadow: 0 0 0 4px var(--accent-muted); }
-	}
-
 	.phase-content {
-		min-height: 200px;
+		min-width: 0;
+	}
+	.future-phase-placeholder {
+		padding: var(--space-2xl) var(--space-lg);
+		text-align: center;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.future-text {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: 600;
+		color: var(--ink-primary);
+	}
+	.future-subtext {
+		margin-top: var(--space-2xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
-	.future-phase-placeholder {
+	/* Delete modal */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 4rem 2rem;
-		text-align: center;
+		padding: var(--space-md);
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
+		z-index: 100;
 	}
-
-	.future-icon {
-		font-size: 2.5rem;
-		margin-bottom: 1rem;
-		opacity: 0.5;
+	.modal {
+		width: 100%;
+		max-width: 26rem;
+		padding: var(--space-lg);
+		background: var(--bg-elevated);
+		border: 1px solid var(--rule-strong);
+		border-radius: 6px;
 	}
-
-	.future-text {
-		font-size: 1.125rem;
+	.modal-title {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: 700;
+		color: var(--ink-primary);
+		margin-bottom: var(--space-xs);
+	}
+	.modal-text {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-bottom: var(--space-lg);
+	}
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--space-xs);
+	}
+	.modal-btn {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-secondary);
-		margin: 0 0 0.25rem 0;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.modal-btn.cancel {
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+	}
+	.modal-btn.cancel:hover {
+		background: var(--bg-subtle);
+	}
+	.modal-btn.delete {
+		color: var(--status-danger);
+		background: transparent;
+		border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent);
+	}
+	.modal-btn.delete:hover:not(:disabled) {
+		background: var(--negative-muted);
+	}
+	.modal-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
-	.future-subtext {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin: 0;
-		max-width: 320px;
-		line-height: 1.5;
+	@media (max-width: 760px) {
+		.page-container {
+			padding: var(--space-md);
+		}
+		.header-actions {
+			width: 100%;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation: none;
+		}
 	}
 </style>

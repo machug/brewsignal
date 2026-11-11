@@ -178,9 +178,9 @@
 <div class="page-container">
 	<!-- Notification -->
 	{#if notification}
-		<div class="notification" class:success={notification.type === 'success'} class:error={notification.type === 'error'}>
+		<div class="notification" class:success={notification.type === 'success'} class:error={notification.type === 'error'} role="status">
 			<span>{notification.message}</span>
-			<button type="button" class="notification-close" onclick={() => (notification = null)}>×</button>
+			<button type="button" class="notification-close" onclick={() => (notification = null)} aria-label="Dismiss">&times;</button>
 		</div>
 	{/if}
 
@@ -191,7 +191,7 @@
 			<p class="page-description">Track your fermentation batches</p>
 		</div>
 		<button type="button" class="create-btn" onclick={() => goto('/batches/new')}>
-			<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
 			</svg>
 			New Batch
@@ -200,61 +200,33 @@
 
 	<!-- Tabs -->
 	<div class="tabs-container">
-		<div class="tabs">
-			<button
-				type="button"
-				class="tab"
-				class:active={activeTab === 'active'}
-				onclick={() => (activeTab = 'active')}
-			>
-				Active
-			</button>
-			<button
-				type="button"
-				class="tab"
-				class:active={activeTab === 'completed'}
-				onclick={() => (activeTab = 'completed')}
-			>
-				Completed
-			</button>
-			<button
-				type="button"
-				class="tab"
-				class:active={activeTab === 'deleted'}
-				onclick={() => (activeTab = 'deleted')}
-			>
-				Deleted
-			</button>
+		<div class="tabs" role="tablist">
+			<button type="button" role="tab" aria-selected={activeTab === 'active'} class="tab" class:active={activeTab === 'active'} onclick={() => (activeTab = 'active')}>Active</button>
+			<button type="button" role="tab" aria-selected={activeTab === 'completed'} class="tab" class:active={activeTab === 'completed'} onclick={() => (activeTab = 'completed')}>Completed</button>
+			<button type="button" role="tab" aria-selected={activeTab === 'deleted'} class="tab" class:active={activeTab === 'deleted'} onclick={() => (activeTab = 'deleted')}>Deleted</button>
 		</div>
 		<div class="search-box">
-			<svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
-			<input
-				type="text"
-				placeholder="Search batches..."
-				bind:value={searchQuery}
-				class="search-input"
-			/>
+			<input type="text" placeholder="Search batches..." aria-label="Search batches" bind:value={searchQuery} class="search-input" />
 		</div>
 	</div>
 
 	<!-- Content -->
 	{#if loading}
-		<div class="loading-state">
+		<div class="state" role="status">
 			<div class="spinner"></div>
 			<span>Loading batches...</span>
 		</div>
 	{:else if error}
-		<div class="error-state">
-			<span class="error-icon">!</span>
+		<div class="state error-state">
 			<p>{error}</p>
-			<button type="button" class="retry-btn" onclick={loadBatches}>Retry</button>
+			<button type="button" class="secondary-btn" onclick={loadBatches}>Retry</button>
 		</div>
 	{:else if filteredBatches.length === 0}
-		<div class="empty-state">
+		<div class="state">
 			{#if batches.length === 0}
-				<div class="empty-icon">🍺</div>
 				<h3>No {activeTab} batches yet</h3>
 				<p>
 					{#if activeTab === 'active'}
@@ -266,64 +238,47 @@
 					{/if}
 				</p>
 				{#if activeTab === 'active'}
-					<button type="button" class="create-btn" onclick={() => goto('/batches/new')}>
-						Create Batch
-					</button>
+					<button type="button" class="create-btn" onclick={() => goto('/batches/new')}>Create Batch</button>
 				{/if}
 			{:else}
-				<div class="empty-icon">🔍</div>
 				<h3>No matches</h3>
 				<p>Try adjusting your search query</p>
 			{/if}
 		</div>
 	{:else}
-		<div class="batches-grid">
-			{#each filteredBatches as batch (batch.id)}
-				<div class="batch-wrapper">
-					<!-- Deleted badge -->
-					{#if batch.deleted_at}
-						<div class="deleted-badge">
-							<svg class="badge-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-							</svg>
-							Deleted {new Date(batch.deleted_at).toLocaleDateString()}
-						</div>
-					{/if}
-
-					<BatchCard
-						{batch}
-						progress={liveProgressMap.get(batch.id)}
-						liveReading={batch.device_id ? tiltsState.tilts.get(batch.device_id) : null}
-						onViewDetails={() => handleViewDetails(batch.id)}
-					/>
-
-					<!-- Action buttons for deleted batches -->
-					{#if batch.deleted_at}
-						<div class="batch-actions">
-							<button
-								type="button"
-								class="action-restore"
-								onclick={() => handleRestore(batch.id, batch.name || batch.recipe?.name || 'Unnamed Batch')}
-							>
-								<svg class="action-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-								</svg>
-								Restore
-							</button>
-							<button
-								type="button"
-								class="action-delete"
-								onclick={() => handleDelete(batch.id, batch.name || batch.recipe?.name || 'Unnamed Batch')}
-							>
-								<svg class="action-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-								</svg>
-								Permanent Delete
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/each}
+		<div class="ledger-scroll">
+			<div class="ledger-head" aria-hidden="true">
+				<span>#</span>
+				<span>Batch</span>
+				<span>Status</span>
+				<span class="r">OG</span>
+				<span class="r">FG / Now</span>
+				<span class="r">ABV</span>
+				<span class="r">Temp</span>
+				<span class="r">Brewed</span>
+				<span></span>
+			</div>
+			<div class="ledger">
+				{#each filteredBatches as batch (batch.id)}
+					<div class="entry">
+						<BatchCard
+							{batch}
+							progress={liveProgressMap.get(batch.id)}
+							liveReading={batch.device_id ? tiltsState.tilts.get(batch.device_id) : null}
+							onViewDetails={() => handleViewDetails(batch.id)}
+						/>
+						{#if batch.deleted_at}
+							<div class="deleted-row">
+								<span class="deleted-badge">Deleted {new Date(batch.deleted_at).toLocaleDateString()}</span>
+								<div class="batch-actions">
+									<button type="button" class="secondary-btn" onclick={() => handleRestore(batch.id, batch.name || batch.recipe?.name || 'Unnamed Batch')}>Restore</button>
+									<button type="button" class="danger-btn" onclick={() => handleDelete(batch.id, batch.name || batch.recipe?.name || 'Unnamed Batch')}>Permanent Delete</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -331,380 +286,313 @@
 <style>
 	.page-container {
 		max-width: 100%;
+		padding: var(--space-lg) var(--space-xl) var(--space-xl);
 	}
-
-	/* Header */
 	.page-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-start;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+		align-items: flex-end;
+		gap: var(--space-md);
+		margin-bottom: var(--space-lg);
 	}
-
 	.header-content {
 		flex: 1;
 	}
-
 	.page-title {
-		font-size: 1.75rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 0.25rem 0;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
+		font-weight: 700;
 		letter-spacing: -0.02em;
+		line-height: 1.15;
+		color: var(--ink-primary);
 	}
-
 	.page-description {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-top: var(--space-2xs);
 	}
-
 	.create-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		color: var(--accent-ink);
 		background: var(--accent);
-		border: none;
-		border-radius: 0.5rem;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: background var(--transition);
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
 	.create-btn:hover {
 		background: var(--accent-hover);
-		color: var(--accent-ink);
 	}
-
 	.btn-icon {
 		width: 1rem;
 		height: 1rem;
+	}
+	.secondary-btn,
+	.danger-btn {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		border-radius: 4px;
+		cursor: pointer;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-primary);
+	}
+	.secondary-btn:hover {
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
+	}
+	.danger-btn {
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 55%, transparent);
+	}
+	.danger-btn:hover {
+		background: var(--negative-muted);
 	}
 
 	/* Notification */
 	.notification {
 		position: fixed;
-		top: 1rem;
-		right: 1rem;
+		top: var(--space-md);
+		right: var(--space-md);
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.875rem 1rem;
-		border-radius: 0.5rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+		gap: var(--space-sm);
+		padding: var(--space-sm) var(--space-md);
+		border-radius: 4px;
+		border: 1px solid var(--rule-strong);
+		background: var(--bg-elevated);
+		color: var(--ink-primary);
+		font-size: var(--text-sm);
+		font-weight: 700;
 		z-index: 1000;
-		animation: slideIn 0.2s ease-out;
+		animation: slideIn 200ms var(--ease-out-quart);
 	}
-
 	@keyframes slideIn {
 		from {
-			transform: translateX(100%);
+			transform: translateY(-8px);
 			opacity: 0;
 		}
 		to {
-			transform: translateX(0);
+			transform: translateY(0);
 			opacity: 1;
 		}
 	}
-
 	.notification.success {
-		background: var(--positive);
-		color: white;
+		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
+		color: var(--status-steady);
 	}
-
 	.notification.error {
-		background: var(--negative);
-		color: white;
+		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
+		color: var(--status-danger);
 	}
-
 	.notification-close {
-		background: none;
-		border: none;
 		color: inherit;
 		font-size: 1.5rem;
-		cursor: pointer;
-		padding: 0;
 		line-height: 1;
-		opacity: 0.8;
-		transition: opacity var(--transition);
-	}
-
-	.notification-close:hover {
-		opacity: 1;
+		min-width: 32px;
+		min-height: 32px;
+		cursor: pointer;
 	}
 
 	/* Tabs */
 	.tabs-container {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+		gap: var(--space-md);
 		align-items: center;
-		border-bottom: 1px solid var(--border-subtle);
+		border-bottom: 1px solid var(--rule-hairline);
+		margin-bottom: var(--space-md);
 	}
-
 	.tabs {
 		display: flex;
-		gap: 0;
 	}
-
 	.tab {
-		position: relative;
-		padding: 0.75rem 1.5rem;
-		font-size: 0.9375rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		background: transparent;
-		border: none;
+		padding: 0 var(--space-md);
+		min-height: 44px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
 		border-bottom: 2px solid transparent;
+		margin-bottom: -1px;
 		cursor: pointer;
-		transition: all var(--transition);
+		transition: color 140ms var(--ease-out-quart);
 	}
-
 	.tab:hover {
-		color: var(--text-primary);
-		background: var(--bg-hover);
+		color: var(--ink-primary);
 	}
-
 	.tab.active {
 		color: var(--accent);
 		border-bottom-color: var(--accent);
 	}
-
 	.search-box {
 		position: relative;
 		flex: 1;
 		max-width: 20rem;
 		margin-left: auto;
 	}
-
 	.search-icon {
 		position: absolute;
-		left: 0.75rem;
+		left: var(--space-sm);
 		top: 50%;
 		transform: translateY(-50%);
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 		pointer-events: none;
 	}
-
 	.search-input {
 		width: 100%;
-		padding: 0.5rem 0.75rem 0.5rem 2.25rem;
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
+		min-height: 40px;
+		padding: 0 var(--space-sm) 0 2.25rem;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		outline: none;
-		transition: border-color var(--transition);
 	}
-
 	.search-input::placeholder {
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.search-input:focus {
 		border-color: var(--accent);
 	}
 
-	/* Grid */
-	.batches-grid {
+	/* Ledger */
+	.ledger-scroll {
+		overflow-x: auto;
+	}
+	.ledger-head {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-		gap: 1rem;
+		grid-template-columns: 52px minmax(0, 2fr) 112px repeat(4, minmax(64px, 0.7fr)) minmax(120px, 1fr) 76px;
+		gap: var(--space-sm);
+		padding: var(--space-xs);
+		border-bottom: 1px solid var(--rule-strong);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
-	.batch-wrapper {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
+	.ledger-head .r {
+		text-align: right;
 	}
-
-	/* Deleted badge */
-	.deleted-badge {
+	.deleted-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid rgba(239, 68, 68, 0.2);
-		border-radius: 0.375rem;
-		width: fit-content;
+		justify-content: space-between;
+		gap: var(--space-sm);
+		padding: var(--space-xs) var(--space-xs) var(--space-sm);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
-	.badge-icon {
-		width: 0.875rem;
-		height: 0.875rem;
+	.deleted-badge {
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 2px 7px;
+		border-radius: 2px;
+		border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent);
+		color: var(--status-danger);
 	}
-
-	/* Batch actions */
 	.batch-actions {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
+		gap: var(--space-xs);
+	}
+	.entry :global(.row) {
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+	.entry:has(.deleted-row) :global(.row) {
+		border-bottom: none;
 	}
 
-	.action-restore,
-	.action-delete {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.375rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		border: 1px solid;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.action-restore {
-		color: var(--positive);
-		background: transparent;
-		border-color: var(--positive);
-	}
-
-	.action-restore:hover {
-		background: rgba(34, 197, 94, 0.1);
-	}
-
-	.action-delete {
-		color: var(--negative);
-		background: transparent;
-		border-color: var(--negative);
-	}
-
-	.action-delete:hover {
-		background: rgba(239, 68, 68, 0.1);
-	}
-
-	.action-icon {
-		width: 1rem;
-		height: 1rem;
-	}
-
-	/* Loading/Error/Empty states */
-	.loading-state,
-	.error-state,
-	.empty-state {
+	/* States */
+	.state {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
+		gap: var(--space-sm);
+		padding: var(--space-2xl) var(--space-lg);
 		text-align: center;
-		color: var(--text-secondary);
+		color: var(--ink-secondary);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
+	.state h3 {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: 600;
+		color: var(--ink-primary);
+	}
 	.spinner {
-		width: 2rem;
-		height: 2rem;
-		border: 2px solid var(--bg-hover);
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
-		margin-bottom: 1rem;
 	}
-
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
 		}
 	}
-
 	.error-state {
-		color: var(--negative);
+		color: var(--status-danger);
 	}
 
-	.error-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 3rem;
-		height: 3rem;
-		font-size: 1.5rem;
-		font-weight: 700;
-		background: rgba(239, 68, 68, 0.1);
-		border-radius: 50%;
-		margin-bottom: 1rem;
-	}
-
-	.retry-btn {
-		margin-top: 1rem;
-		padding: 0.5rem 1rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
-		cursor: pointer;
-	}
-
-	.empty-state h3 {
-		margin: 0 0 0.5rem 0;
-		font-size: 1.125rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.empty-state p {
-		margin: 0 0 1.5rem 0;
-		color: var(--text-muted);
-	}
-
-	.empty-icon {
-		font-size: 3rem;
-		margin-bottom: 1rem;
-		opacity: 0.5;
-	}
-
-	@media (max-width: 640px) {
-		.page-header {
-			flex-direction: column;
+	@media (max-width: 900px) {
+		.ledger-head {
+			display: none;
 		}
-
-		.tabs-container {
+	}
+	@media (max-width: 760px) {
+		.page-container {
+			padding: var(--space-lg) var(--space-md);
+		}
+		.page-header {
 			flex-direction: column;
 			align-items: stretch;
 		}
-
+		.tabs-container {
+			flex-direction: column;
+			align-items: stretch;
+			gap: var(--space-sm);
+			border-bottom: none;
+		}
 		.tabs {
 			width: 100%;
-			justify-content: space-around;
+			border-bottom: 1px solid var(--rule-hairline);
 		}
-
 		.tab {
 			flex: 1;
 			text-align: center;
-			padding: 0.75rem 1rem;
 		}
-
 		.search-box {
 			max-width: 100%;
 			margin-left: 0;
 		}
-
-		.batches-grid {
-			grid-template-columns: 1fr;
-		}
-
 		.notification {
-			left: 1rem;
-			right: 1rem;
+			left: var(--space-md);
+			right: var(--space-md);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.notification,
+		.spinner {
+			animation: none;
 		}
 	}
 </style>

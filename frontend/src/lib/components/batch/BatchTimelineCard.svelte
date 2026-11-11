@@ -54,24 +54,24 @@
 	.timeline {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
 	}
-
 	.timeline-item {
 		display: flex;
 		justify-content: space-between;
-		gap: 1rem;
+		align-items: baseline;
+		gap: var(--space-md);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.timeline-label {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.timeline-value {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-secondary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-xs);
+		color: var(--ink-primary);
 		text-align: right;
 	}
 </style>

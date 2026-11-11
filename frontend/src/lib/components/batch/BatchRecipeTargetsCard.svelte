@@ -28,7 +28,7 @@
 			let text = yeastStrain.name;
 			if (yeastStrain.producer) text += ` (${yeastStrain.producer})`;
 			if (yeastStrain.temp_low && yeastStrain.temp_high) {
-				text += ` ${yeastStrain.temp_low.toFixed(0)}-${yeastStrain.temp_high.toFixed(0)}°C`;
+				text += ` ${yeastStrain.temp_low.toFixed(0)}\u2013${yeastStrain.temp_high.toFixed(0)}\u2009°C`;
 			}
 			return text;
 		}
@@ -55,45 +55,41 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.25rem 0.75rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		font-size: 0.75rem;
-		color: var(--text-secondary);
+		gap: var(--space-2xs) var(--space-md);
+		padding: var(--space-xs) 0;
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
-
 	.item {
 		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-		white-space: nowrap;
+		align-items: baseline;
+		gap: var(--space-xs);
 	}
-
 	.lbl {
-		font-size: 0.625rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 		text-transform: uppercase;
+		letter-spacing: 0.07em;
 	}
-
 	.val {
-		font-family: var(--font-mono);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
-
 	.sep {
 		width: 1px;
 		height: 0.75rem;
-		background: var(--border-subtle);
+		background: var(--rule-strong);
 	}
-
 	.yeast {
-		color: var(--text-secondary);
+		color: var(--ink-secondary);
 	}
-
 	.recipe-name {
-		color: var(--text-muted);
-		font-style: italic;
+		color: var(--ink-muted);
 	}
 </style>

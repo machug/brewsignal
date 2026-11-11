@@ -291,8 +291,7 @@
 	</div>
 
 	{#if error}
-		<div class="error-banner">
-			<span class="error-icon">!</span>
+		<div class="error-banner" role="alert">
 			{error}
 		</div>
 	{/if}
@@ -311,9 +310,9 @@
 						<p class="reference-text">
 							Yeast: {selectedRecipe.yeast_name}
 							{#if selectedRecipe.yeast_temp_min && selectedRecipe.yeast_temp_max}
-								({selectedRecipe.yeast_temp_min.toFixed(0)}-{selectedRecipe.yeast_temp_max.toFixed(
+								({selectedRecipe.yeast_temp_min.toFixed(0)}&ndash;{selectedRecipe.yeast_temp_max.toFixed(
 									0
-								)}°C)
+								)}&thinsp;°C)
 							{/if}
 						</p>
 					{/if}
@@ -536,7 +535,7 @@
 		</button>
 		<button type="submit" class="btn-submit" disabled={saving}>
 			{#if saving}
-				<span class="spinner"></span>
+				<span class="spinner" aria-hidden="true"></span>
 				Saving...
 			{:else}
 				{isEditMode ? 'Save Changes' : 'Create Batch'}
@@ -547,252 +546,212 @@
 
 <style>
 	.batch-form {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
-		overflow: hidden;
+		border-top: 1px solid var(--rule-strong);
 	}
-
 	.form-header {
-		padding: 1.5rem;
-		border-bottom: 1px solid var(--border-subtle);
+		padding: var(--space-md) 0 var(--space-sm);
 	}
-
 	.form-title {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0 0 0.25rem 0;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		line-height: 1.15;
+		color: var(--ink-primary);
 	}
-
 	.form-description {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin: 0;
+		margin-top: var(--space-2xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.form-body {
-		padding: 1.5rem;
+		padding: var(--space-sm) 0 var(--space-lg);
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
+		gap: var(--space-md);
 	}
-
 	.form-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--border-subtle);
-		margin-top: 0.5rem;
+		gap: var(--space-2xs);
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
+		margin-top: var(--space-xs);
 	}
-
 	.section-title {
-		font-size: 0.875rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
-
-	.section-hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+	.section-hint,
+	.form-hint {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.form-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
 	.form-row {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-md);
 	}
-
 	.form-label {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-secondary);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-secondary);
 	}
-
 	.form-input,
 	.form-select,
 	.form-textarea {
-		padding: 0.625rem 0.75rem;
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		outline: none;
-		transition: border-color var(--transition);
+		transition: border-color 140ms var(--ease-out-quart);
 	}
-
+	.form-input[type='number'],
+	.form-input[type='date'] {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+	}
 	.form-input:focus,
 	.form-select:focus,
 	.form-textarea:focus {
 		border-color: var(--accent);
 	}
-
 	.form-input::placeholder,
 	.form-textarea::placeholder {
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.form-select {
 		cursor: pointer;
 	}
-
 	.form-textarea {
+		padding: var(--space-sm);
 		resize: vertical;
 		min-height: 80px;
 	}
-
-	.form-hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
 	.form-footer {
 		display: flex;
 		justify-content: flex-end;
-		gap: 0.75rem;
-		padding: 1rem 1.5rem;
-		background: var(--bg-elevated);
-		border-top: 1px solid var(--border-subtle);
+		gap: var(--space-sm);
+		padding: var(--space-md) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.btn-cancel,
 	.btn-submit {
-		padding: 0.625rem 1.25rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		border-radius: 0.5rem;
+		min-height: 44px;
+		padding: 0 var(--space-lg);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
 	.btn-cancel {
-		color: var(--text-secondary);
-		background: transparent;
-		border: 1px solid var(--border-default);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
 	}
-
 	.btn-cancel:hover:not(:disabled) {
-		color: var(--text-primary);
-		border-color: var(--text-muted);
+		background: var(--bg-subtle);
 	}
-
 	.btn-submit {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 		color: var(--accent-ink);
 		background: var(--accent);
-		border: none;
 	}
-
 	.btn-submit:hover:not(:disabled) {
 		background: var(--accent-hover);
-		color: var(--accent-ink);
 	}
-
 	.btn-cancel:disabled,
 	.btn-submit:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-
 	.error-banner {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin: 1rem 1.5rem 0;
-		padding: 0.75rem 1rem;
-		font-size: 0.875rem;
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.1);
-		border-radius: 0.5rem;
+		margin-top: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		font-size: var(--text-sm);
+		color: var(--status-danger);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent);
+		background: var(--negative-muted);
 	}
-
-	.error-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		font-size: 0.875rem;
-		font-weight: 700;
-		background: rgba(239, 68, 68, 0.2);
-		border-radius: 50%;
-	}
-
 	.spinner {
 		width: 1rem;
 		height: 1rem;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-		border-top-color: white;
+		border: 2px solid color-mix(in oklch, var(--accent-ink) 30%, transparent);
+		border-top-color: var(--accent-ink);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
 		}
 	}
-
 	.recipe-reference {
-		padding: var(--space-3);
-		background: var(--recipe-accent-muted);
-		border: 1px solid var(--recipe-accent-border);
-		border-radius: 6px;
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
 	}
-
 	.reference-label {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--recipe-accent);
-		margin: 0 0 var(--space-1) 0;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--accent);
+		margin-bottom: var(--space-2xs);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.07em;
 	}
-
 	.reference-text {
-		font-size: 13px;
-		color: var(--text-secondary);
-		font-family: var(--font-mono);
-		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		font-family: var(--font-num);
 	}
-
 	.warning-message {
-		padding: 0.75rem 1rem;
-		background: rgba(245, 158, 11, 0.1);
-		border: 1px solid rgba(245, 158, 11, 0.3);
-		border-radius: 0.5rem;
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--warning-muted);
+		border: 1px solid color-mix(in oklch, var(--status-warn) 50%, transparent);
+		border-radius: 4px;
 	}
-
 	.warning-message p {
-		margin: 0;
-		font-size: 0.875rem;
-		color: var(--warning);
+		font-size: var(--text-sm);
+		color: var(--status-warn);
 	}
-
 	.warning-message a {
 		color: var(--accent);
-		font-weight: 500;
+		font-weight: 700;
 		text-decoration: underline;
 	}
-
 	.warning-message a:hover {
 		color: var(--accent-hover);
 	}
-
 	@media (max-width: 480px) {
 		.form-row {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation: none;
 		}
 	}
 </style>

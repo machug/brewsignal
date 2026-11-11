@@ -59,18 +59,8 @@
 		switch (severity) {
 			case 'critical': return 'var(--negative)';
 			case 'warning': return 'var(--warning)';
-			case 'info': return 'var(--accent)';
+			case 'info': return 'var(--temp-trace)';
 			default: return 'var(--text-muted)';
-		}
-	}
-
-	function getAlertIcon(type: string): string {
-		switch (type) {
-			case 'stall': return '⏸';
-			case 'temperature_high': return '🔥';
-			case 'temperature_low': return '❄';
-			case 'anomaly': return '⚠';
-			default: return '⚠';
 		}
 	}
 
@@ -90,17 +80,17 @@
 </script>
 
 {#if loading}
-	<BatchCard title="Alerts" icon="🔔">
+	<BatchCard title="Alerts">
 		<div class="loading">Loading alerts...</div>
 	</BatchCard>
 {:else if alerts.length === 0}
 	<!-- Don't show card if no alerts -->
 {:else}
-	<BatchCard title="Active Alerts" icon="🔔" highlight>
+	<BatchCard title="Active Alerts" highlight>
 		{#if error}
 			<div class="error-banner">
 				<span>{error}</span>
-				<button type="button" class="dismiss-error" onclick={() => error = null}>×</button>
+				<button type="button" class="dismiss-error" onclick={() => error = null} aria-label="Dismiss error">&times;</button>
 			</div>
 		{/if}
 
@@ -121,11 +111,10 @@
 		<div class="alerts-list">
 			{#each alerts as alert (alert.id)}
 				<div class="alert-item" style="--severity-color: {getSeverityColor(alert.severity)}">
-					<div class="alert-icon">{getAlertIcon(alert.alert_type)}</div>
 					<div class="alert-content">
 						<div class="alert-header">
 							<span class="alert-type">{alert.alert_type.replace('_', ' ')}</span>
-							<span class="severity-badge" style="background: {getSeverityColor(alert.severity)}">
+							<span class="severity-badge">
 								{alert.severity}
 							</span>
 						</div>
@@ -145,12 +134,12 @@
 						class="dismiss-btn"
 						onclick={() => handleDismiss(alert.id)}
 						disabled={dismissing === alert.id}
-						title="Dismiss alert"
+						title="Dismiss alert" aria-label="Dismiss alert"
 					>
 						{#if dismissing === alert.id}
-							<span class="spinner"></span>
+							<span class="spinner" aria-hidden="true"></span>
 						{:else}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 							</svg>
 						{/if}
@@ -163,185 +152,154 @@
 
 <style>
 	.loading {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		text-align: center;
-		padding: 0.5rem 0;
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		padding: var(--space-xs) 0;
 	}
-
 	.error-banner {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.5rem 0.75rem;
-		background: rgba(239, 68, 68, 0.1);
-		border-radius: 0.375rem;
-		margin-bottom: 0.75rem;
-		font-size: 0.8125rem;
-		color: var(--negative);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 50%, transparent);
+		margin-bottom: var(--space-sm);
+		font-size: var(--text-sm);
+		color: var(--status-danger);
 	}
-
 	.dismiss-error {
-		background: none;
-		border: none;
-		color: var(--negative);
+		color: inherit;
 		cursor: pointer;
 		font-size: 1.25rem;
 		line-height: 1;
-		padding: 0;
+		min-width: 44px;
+		min-height: 44px;
 	}
-
 	.alerts-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.75rem;
+		margin-bottom: var(--space-xs);
 	}
-
 	.alert-count {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		font-weight: 500;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
-
 	.dismiss-all-btn {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.25rem;
-		padding: 0.25rem 0.5rem;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.dismiss-all-btn:hover:not(:disabled) {
-		color: var(--text-primary);
-		border-color: var(--border-default);
+		background: var(--bg-subtle);
 	}
-
 	.dismiss-all-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-
 	.alerts-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.alert-item {
 		display: flex;
 		align-items: flex-start;
-		gap: 0.625rem;
-		padding: 0.625rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		border-left: 3px solid var(--severity-color);
+		gap: var(--space-sm);
+		padding: var(--space-sm) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
-	.alert-icon {
-		font-size: 1rem;
-		line-height: 1;
-		flex-shrink: 0;
-		margin-top: 0.125rem;
-	}
-
 	.alert-content {
 		flex: 1;
 		min-width: 0;
 	}
-
 	.alert-header {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.25rem;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-2xs);
 	}
-
 	.alert-type {
-		font-size: 0.75rem;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		text-transform: capitalize;
 	}
-
 	.severity-badge {
-		font-size: 0.5625rem;
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
 		font-weight: 600;
-		color: white;
-		padding: 0.125rem 0.375rem;
-		border-radius: 9999px;
 		text-transform: uppercase;
-		letter-spacing: 0.025em;
+		letter-spacing: 0.06em;
+		padding: 1px 6px;
+		border-radius: 2px;
+		border: 1px solid var(--severity-color);
+		color: var(--severity-color);
 	}
-
 	.alert-message {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-		margin: 0 0 0.375rem 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.4;
+		margin-bottom: var(--space-2xs);
 	}
-
 	.alert-meta {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.625rem;
-		color: var(--text-muted);
+		gap: var(--space-xs);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.alert-time {
 		cursor: help;
 	}
-
-	.alert-separator {
-		opacity: 0.5;
-	}
-
 	.dismiss-btn {
 		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		border-radius: 0.25rem;
-		background: transparent;
-		border: none;
-		color: var(--text-muted);
+		width: 2.75rem;
+		height: 2.75rem;
+		margin: -0.5rem 0;
+		border-radius: 4px;
+		color: var(--ink-muted);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.dismiss-btn:hover:not(:disabled) {
-		color: var(--negative);
-		background: rgba(239, 68, 68, 0.1);
+		color: var(--status-danger);
+		background: var(--negative-muted);
 	}
-
 	.dismiss-btn:disabled {
 		cursor: not-allowed;
 	}
-
 	.dismiss-btn svg {
 		width: 0.875rem;
 		height: 0.875rem;
 	}
-
 	.spinner {
 		width: 0.75rem;
 		height: 0.75rem;
-		border: 2px solid var(--border-subtle);
+		border: 2px solid var(--rule-hairline);
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
 	}
-
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation: none;
 		}
 	}
 </style>

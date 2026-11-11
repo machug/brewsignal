@@ -207,8 +207,8 @@
 <style>
 	.packaging-card {
 		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
+		border: 1px solid var(--rule-hairline);
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
@@ -217,46 +217,50 @@
 		justify-content: space-between;
 		align-items: center;
 		width: 100%;
-		padding: 1rem 1.25rem;
+		min-height: 48px;
+		padding: var(--space-sm) var(--space-md);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		text-align: left;
-		transition: background 0.15s ease;
 	}
 
 	.card-header:hover {
 		background: var(--bg-elevated);
 	}
 
-	.header-content {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+	.card-header:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
 	}
 
+	.header-content,
 	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
 
 	.card-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
 
 	.packaged-badge {
+		font-family: var(--font-display);
 		font-size: 0.6875rem;
-		font-weight: 500;
-		padding: 0.25rem 0.5rem;
-		background: var(--positive-bg);
-		color: var(--positive);
-		border-radius: 0.25rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 2px 7px;
+		border: 1px solid var(--status-steady);
+		color: var(--status-steady);
+		border-radius: 2px;
 	}
 
 	.save-indicator {
@@ -267,8 +271,8 @@
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 0.2s var(--ease-out-quart);
 	}
 
 	.chevron.expanded {
@@ -276,30 +280,28 @@
 	}
 
 	.card-content {
-		padding: 1rem 1.25rem;
-		border-top: 1px solid var(--border-subtle);
+		padding: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-md);
 	}
 
 	.field-row {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
+		gap: var(--space-md);
 	}
 
 	.priming-row {
-		padding: 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.5rem;
-		margin-top: -0.25rem;
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: var(--space-2xs);
 	}
 
 	.field.full-width {
@@ -307,31 +309,44 @@
 	}
 
 	.field-label {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-muted);
 	}
 
-	.field-input {
+	.field-input,
+	.notes-input {
 		width: 100%;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-base);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		transition: border-color 0.15s ease;
+		min-height: 44px;
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--bg-canvas);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
-	.field-input:focus {
-		outline: none;
-		border-color: var(--primary);
+	.notes-input {
+		font-family: var(--font-body);
+		resize: vertical;
+	}
+
+	.field-input:focus,
+	.notes-input:focus {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+		border-color: var(--accent);
 	}
 
 	.input-with-unit {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
 
 	.input-with-unit .field-input {
@@ -339,45 +354,27 @@
 	}
 
 	.unit {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		font-family: var(--font-mono);
-	}
-
-	.notes-input {
-		width: 100%;
-		padding: 0.75rem;
-		background: var(--bg-base);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		resize: vertical;
-		font-family: inherit;
-	}
-
-	.notes-input:focus {
-		outline: none;
-		border-color: var(--primary);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		font-family: var(--font-num);
 	}
 
 	.saving-indicator {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.5rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		background: var(--bg-elevated);
-		border-top: 1px solid var(--border-subtle);
+		gap: var(--space-xs);
+		padding: var(--space-xs);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.spinner {
 		width: 0.875rem;
 		height: 0.875rem;
-		border: 2px solid var(--border-subtle);
-		border-top-color: var(--primary);
+		border: 2px solid var(--rule-hairline);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
 	}

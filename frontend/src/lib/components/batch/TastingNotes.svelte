@@ -128,7 +128,7 @@
 	// Score display helper
 	function scoreStars(score: number | null | undefined): string {
 		if (score == null) return '-';
-		return '\u2605'.repeat(score) + '\u2606'.repeat(5 - score);
+		return `${score}/5`;
 	}
 </script>
 
@@ -137,12 +137,12 @@
 		<div class="header-content">
 			<h3 class="card-title">Tasting Notes</h3>
 			{#if notes.length > 0}
-				<span class="note-count">{notes.length}</span>
+				<span class="note-count num">{notes.length}</span>
 			{/if}
 		</div>
 		<div class="header-right">
 			{#if averageScore()}
-				<span class="avg-score">Avg: {averageScore()}/5</span>
+				<span class="avg-score">Avg {averageScore()}/5</span>
 			{/if}
 			<svg class="chevron" class:expanded fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -269,10 +269,15 @@
 </div>
 
 <style>
+	.num {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+	}
+
 	.tasting-card {
 		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.75rem;
+		border: 1px solid var(--rule-hairline);
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
@@ -281,60 +286,62 @@
 		justify-content: space-between;
 		align-items: center;
 		width: 100%;
-		padding: 1rem 1.25rem;
+		min-height: 48px;
+		padding: var(--space-sm) var(--space-md);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		text-align: left;
-		transition: background 0.15s ease;
 	}
 
 	.card-header:hover {
 		background: var(--bg-elevated);
 	}
 
-	.header-content {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+	button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
+	.header-content,
 	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
 
 	.card-title {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 		margin: 0;
 	}
 
 	.note-count {
 		font-size: 0.6875rem;
 		font-weight: 600;
-		padding: 0.125rem 0.5rem;
-		background: var(--primary-bg);
-		color: var(--primary);
-		border-radius: 1rem;
+		padding: 1px 7px;
+		border: 1px solid var(--rule-strong);
+		border-radius: 2px;
+		color: var(--ink-secondary);
 	}
 
 	.avg-score {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-secondary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.chevron {
 		width: 1rem;
 		height: 1rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		color: var(--ink-muted);
+		transition: transform 0.2s var(--ease-out-quart);
 	}
 
 	.chevron.expanded {
@@ -342,31 +349,30 @@
 	}
 
 	.card-content {
-		padding: 1rem 1.25rem;
-		border-top: 1px solid var(--border-subtle);
+		padding: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-md);
 	}
 
 	.add-note-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		background: var(--bg-elevated);
-		border: 1px dashed var(--border-subtle);
-		border-radius: 0.5rem;
-		color: var(--text-muted);
-		font-size: 0.875rem;
+		gap: var(--space-xs);
+		min-height: 44px;
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
+		color: var(--accent);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.add-note-btn:hover {
-		border-color: var(--primary);
-		color: var(--primary);
+		border-color: var(--accent);
 	}
 
 	.add-note-btn svg {
@@ -374,15 +380,13 @@
 		height: 1rem;
 	}
 
-	/* Note Form */
+	/* Note form: hairline-separated, not nested card */
 	.note-form {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1rem;
+		border-top: 1px solid var(--rule-hairline);
+		padding-top: var(--space-md);
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: var(--space-md);
 	}
 
 	.form-header {
@@ -392,22 +396,27 @@
 	}
 
 	.form-header h4 {
-		font-size: 0.875rem;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		margin: 0;
 	}
 
 	.close-btn {
 		background: none;
 		border: none;
-		padding: 0.25rem;
+		min-width: 44px;
+		min-height: 44px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		cursor: pointer;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
 
 	.close-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.close-btn svg {
@@ -418,106 +427,110 @@
 	.score-category {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
 
 	.category-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: var(--space-sm);
 	}
 
 	.category-label {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		font-weight: 700;
+		color: var(--ink-secondary);
 	}
 
 	.score-selector {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--space-2xs);
 	}
 
 	.score-btn {
-		width: 2rem;
-		height: 2rem;
+		width: 44px;
+		height: 44px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: var(--bg-base);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.25rem;
-		font-size: 0.875rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
 		font-weight: 500;
-		color: var(--text-muted);
+		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.score-btn:hover {
-		border-color: var(--primary);
-		color: var(--primary);
+		border-color: var(--accent);
+		color: var(--accent);
 	}
 
 	.score-btn.selected {
-		background: var(--primary);
-		border-color: var(--primary);
+		background: var(--accent);
+		border-color: var(--accent);
 		color: var(--accent-ink);
 	}
 
 	.category-notes {
 		width: 100%;
-		padding: 0.5rem;
-		background: var(--bg-base);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
-		color: var(--text-primary);
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--bg-canvas);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 		resize: none;
-		font-family: inherit;
+		font-family: var(--font-body);
 	}
 
 	.category-notes:focus {
-		outline: none;
-		border-color: var(--primary);
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+		border-color: var(--accent);
 	}
 
 	.form-actions {
 		display: flex;
 		justify-content: flex-end;
-		gap: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--border-subtle);
+		gap: var(--space-xs);
+		padding-top: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.cancel-btn,
 	.save-btn {
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		border-radius: 4px;
+		font-size: var(--text-sm);
+		font-weight: 600;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
 
 	.cancel-btn {
-		background: transparent;
-		border: 1px solid var(--border-subtle);
-		color: var(--text-secondary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 	}
 
 	.cancel-btn:hover {
-		border-color: var(--text-muted);
+		background: var(--bg-subtle);
+		color: var(--ink-primary);
 	}
 
 	.save-btn {
-		background: var(--primary);
-		border: none;
+		background: var(--accent);
+		border: 1px solid var(--accent);
 		color: var(--accent-ink);
 	}
 
 	.save-btn:hover {
-		opacity: 0.9;
+		background: var(--accent-hover);
 	}
 
 	.save-btn:disabled {
@@ -525,18 +538,15 @@
 		cursor: not-allowed;
 	}
 
-	/* Notes List */
+	/* Notes list: hairline ledger */
 	.notes-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
 	}
 
 	.note-item {
-		background: var(--bg-base);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 0.75rem;
+		padding: var(--space-sm) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.note-item.editing {
@@ -547,33 +557,36 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--space-xs);
 	}
 
 	.note-date {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
 
 	.note-actions {
 		display: flex;
-		gap: 0.25rem;
+		gap: var(--space-2xs);
 	}
 
 	.action-btn {
 		background: none;
 		border: none;
-		padding: 0.25rem;
+		min-width: 44px;
+		min-height: 44px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		cursor: pointer;
-		color: var(--text-muted);
-		border-radius: 0.25rem;
-		transition: all 0.15s ease;
+		color: var(--ink-muted);
+		border-radius: 4px;
 	}
 
 	.action-btn:hover {
 		background: var(--bg-elevated);
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.action-btn.delete:hover {
@@ -586,52 +599,58 @@
 	}
 
 	.note-scores {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
+		margin-bottom: var(--space-xs);
 	}
 
 	.score-item {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 0.25rem 0.5rem;
-		background: var(--bg-elevated);
-		border-radius: 0.25rem;
+		gap: 2px;
+		padding: var(--space-xs);
+		min-width: 0;
 	}
 
-	.score-item.overall {
-		background: var(--primary-bg);
+	.score-item + .score-item {
+		border-left: 1px solid var(--rule-hairline);
 	}
 
 	.score-label {
+		font-family: var(--font-display);
 		font-size: 0.625rem;
-		color: var(--text-muted);
+		font-weight: 600;
+		color: var(--ink-muted);
 		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 
 	.score-value {
-		font-size: 0.75rem;
-		color: var(--amber);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
 
 	.score-item.overall .score-value {
-		color: var(--primary);
+		color: var(--accent);
 	}
 
 	.note-text {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		line-height: 1.4;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		line-height: 1.45;
 		margin: 0;
 	}
 
 	.empty-message {
 		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.875rem;
-		padding: 1rem;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		padding: var(--space-md);
 		margin: 0;
 	}
 </style>

@@ -143,8 +143,8 @@
 		const conf = predictions.confidence;
 		if (conf === undefined || conf === null) return null;
 		if (conf >= 0.7) return { label: 'High', color: 'var(--positive)' };
-		if (conf >= 0.4) return { label: 'Medium', color: 'var(--recipe-accent)' };
-		return { label: 'Low', color: 'var(--text-muted)' };
+		if (conf >= 0.4) return { label: 'Medium', color: 'var(--status-warn)' };
+		return { label: 'Low', color: 'var(--ink-muted)' };
 	});
 
 	// Calculate apparent attenuation
@@ -167,10 +167,10 @@
 		// sg_rate is in points per hour (e.g., -0.001 means dropping 0.001 SG per hour)
 		const absRate = Math.abs(sgRate);
 
-		if (absRate > 0.002) return { label: 'Very Active', color: 'var(--activity-very-active)', emoji: '🔥' };
-		if (absRate > 0.0005) return { label: 'Active', color: 'var(--activity-active)', emoji: '✨' };
-		if (absRate > 0.0001) return { label: 'Slowing', color: 'var(--activity-slowing)', emoji: '🐢' };
-		return { label: 'Complete', color: 'var(--activity-complete)', emoji: '✓' };
+		if (absRate > 0.002) return { label: 'Very Active', color: 'var(--activity-very-active)' };
+		if (absRate > 0.0005) return { label: 'Active', color: 'var(--activity-active)' };
+		if (absRate > 0.0001) return { label: 'Slowing', color: 'var(--activity-slowing)' };
+		return { label: 'Complete', color: 'var(--activity-complete)' };
 	});
 
 	// Check for anomalies
@@ -184,7 +184,7 @@
 	</div>
 {:else if error}
 	<div class="ml-panel error">
-		<p class="error-text">⚠️ {error}</p>
+		<p class="error-text">{error}</p>
 	</div>
 {:else if predictions.available}
 	<div class="ml-panel" class:has-anomaly={hasAnomaly} class:completed={isCompleted}>
@@ -210,7 +210,7 @@
 						disabled={reloading || loading}
 						title="Recalculate predictions from database history"
 					>
-						{reloading ? 'Reloading...' : '↻'}
+						{reloading ? 'Reloading...' : 'Reload'}
 					</button>
 				</div>
 			{/if}
@@ -224,13 +224,10 @@
 					<div class="accuracy-banner" class:accurate={predictionAccuracy.isAccurate} class:close={predictionAccuracy.isClose && !predictionAccuracy.isAccurate}>
 						<div class="accuracy-header">
 							{#if predictionAccuracy.isAccurate}
-								<span class="accuracy-icon">✓</span>
 								<span class="accuracy-title">Excellent Prediction</span>
 							{:else if predictionAccuracy.isClose}
-								<span class="accuracy-icon">≈</span>
 								<span class="accuracy-title">Close Prediction</span>
 							{:else}
-								<span class="accuracy-icon">△</span>
 								<span class="accuracy-title">Prediction Variance</span>
 							{/if}
 						</div>
@@ -283,7 +280,6 @@
 			<!-- Anomaly Warning -->
 			{#if hasAnomaly}
 				<div class="anomaly-banner">
-					<span class="anomaly-icon">⚠️</span>
 					<div class="anomaly-content">
 						<span class="anomaly-label">Anomaly Detected</span>
 						{#if anomalyReasons.length > 0}
@@ -296,7 +292,6 @@
 			<!-- Stuck Fermentation Warning -->
 			{#if stuckFermentationWarning}
 				<div class="stuck-warning">
-					<span class="stuck-icon">⚠️</span>
 					<div class="stuck-content">
 						<span class="stuck-label">Potential Early Stall</span>
 						<span class="stuck-detail">
@@ -314,11 +309,11 @@
 						<span class="progress-label">Fermentation Progress</span>
 						{#if activityStatus}
 							<span class="activity-badge" style="color: {activityStatus.color}">
-								{activityStatus.emoji} {activityStatus.label}
+								{activityStatus.label}
 							</span>
 						{/if}
 					</div>
-					<div class="fermentation-progress-bar">
+					<div class="fermentation-progress-bar" role="progressbar" aria-valuenow={Math.round(fermentationProgress)} aria-valuemin="0" aria-valuemax="100" aria-label="Fermentation progress">
 						<div class="fermentation-fill" style="width: {fermentationProgress}%"></div>
 					</div>
 					<div class="progress-labels">
@@ -357,7 +352,7 @@
 							{:else}
 								{formatDate(predictions.estimated_completion)}
 								{#if days !== null}
-									<span class="days">({days} {days === 1 ? 'day' : 'days'})</span>
+									<span class="days">({days}&thinsp;{days === 1 ? 'day' : 'days'})</span>
 								{/if}
 							{/if}
 						</span>
@@ -399,7 +394,7 @@
 				disabled={reloading || loading}
 				title="Reload predictions from database"
 			>
-				{reloading ? 'Reloading...' : '↻ Reload'}
+				{reloading ? 'Reloading...' : 'Reload'}
 			</button>
 		</div>
 		<p class="unavailable-hint">
@@ -418,433 +413,298 @@
 
 <style>
 	.ml-panel {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 0.5rem;
-		padding: 1rem;
-		margin-bottom: 1rem;
+		border-top: 1px solid var(--rule-strong);
+		padding-top: var(--space-sm);
+		min-width: 0;
 	}
-
-	.ml-panel.completed {
-		border-color: var(--positive);
-		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--positive-muted) 100%);
-	}
-
 	.ml-panel.has-anomaly {
-		border-color: var(--recipe-accent);
-		background: linear-gradient(135deg, var(--bg-surface) 0%, var(--recipe-accent-muted) 100%);
+		border-top-color: color-mix(in oklch, var(--status-warn) 60%, transparent);
 	}
-
-	.ml-panel.loading,
-	.ml-panel.error {
-		text-align: center;
-		padding: 2rem;
+	.ml-panel.loading p,
+	.unavailable-text,
+	.unavailable-hint {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
-	.ml-panel.disabled {
-		padding: 1rem;
+	.unavailable-hint {
+		margin-top: var(--space-2xs);
+		color: var(--ink-muted);
 	}
-
+	.error-text {
+		font-size: var(--text-sm);
+		color: var(--status-danger);
+	}
 	.disabled-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 0.5rem;
+		justify-content: space-between;
+		gap: var(--space-sm);
 	}
-
-	.disabled-header .unavailable-text {
-		margin: 0;
-	}
-
 	.panel-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
+		justify-content: space-between;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-sm);
 	}
-
 	.panel-title {
-		font-size: 0.875rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
 		margin: 0;
-		color: var(--text-primary);
 	}
-
 	.header-controls {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
-	.model-select {
-		padding: 0.25rem 0.5rem;
-		font-size: 0.6875rem;
-		color: var(--text-secondary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.25rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		max-width: 120px;
-	}
-
-	.model-select:hover:not(:disabled) {
-		color: var(--text-primary);
-		border-color: var(--border-hover);
-	}
-
-	.model-select:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
+	.model-select,
 	.reload-btn {
-		padding: 0.25rem 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-default);
-		border-radius: 0.25rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.reload-btn:hover:not(:disabled) {
-		color: var(--text-primary);
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--ink-primary);
 		background: var(--bg-surface);
-		border-color: var(--border-hover);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		cursor: pointer;
 	}
-
+	.model-select {
+		max-width: 11rem;
+	}
+	.reload-btn:hover:not(:disabled) {
+		background: var(--bg-subtle);
+	}
+	.model-select:disabled,
 	.reload-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	/* Summary Section (Completed Batches) */
+	/* Completed summary */
 	.summary-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
-
 	.accuracy-banner {
-		padding: 0.75rem;
-		border-radius: 0.375rem;
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.3);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid var(--rule-strong);
 	}
-
 	.accuracy-banner.accurate {
-		background: rgba(34, 197, 94, 0.1);
-		border-color: rgba(34, 197, 94, 0.3);
+		border-color: color-mix(in oklch, var(--status-steady) 55%, transparent);
 	}
-
 	.accuracy-banner.close {
-		background: rgba(59, 130, 246, 0.1);
-		border-color: rgba(59, 130, 246, 0.3);
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
 	}
-
-	.accuracy-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.375rem;
-	}
-
-	.accuracy-icon {
-		font-size: 1rem;
-	}
-
-	.accuracy-banner.accurate .accuracy-icon {
-		color: var(--positive);
-	}
-
-	.accuracy-banner.close .accuracy-icon {
-		color: var(--tilt-blue);
-	}
-
 	.accuracy-title {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--text-primary);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--ink-secondary);
 	}
-
+	.accuracy-banner.accurate .accuracy-title {
+		color: var(--status-steady);
+	}
+	.accuracy-banner.close .accuracy-title {
+		color: var(--status-warn);
+	}
 	.accuracy-detail {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-		margin: 0;
+		margin-top: var(--space-2xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.accuracy-diff {
-		color: var(--text-muted);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.comparison-grid {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.comparison-item {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		padding: 0.5rem 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
+		align-items: baseline;
+		gap: var(--space-sm);
+		padding: var(--space-xs) var(--space-2xs);
 	}
-
 	.comparison-label {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
 	.comparison-values {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+		align-items: baseline;
+		gap: var(--space-sm);
 	}
-
 	.comparison-actual {
-		font-family: var(--font-mono);
-		font-size: 0.9375rem;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
-
 	.comparison-predicted {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		padding: 0.125rem 0.375rem;
-		background: var(--bg-surface);
-		border-radius: 0.25rem;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
 
-	.summary-model {
-		margin-top: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--border-default);
-	}
-
-	/* Anomaly Banner */
-	.anomaly-banner {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		margin-bottom: 1rem;
-		background: rgba(245, 158, 11, 0.1);
-		border: 1px solid rgba(245, 158, 11, 0.3);
-		border-radius: 0.375rem;
-	}
-
-	.anomaly-icon {
-		font-size: 1.25rem;
-	}
-
-	.anomaly-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.anomaly-label {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--recipe-accent-hover);
-	}
-
-	.anomaly-reasons {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-	}
-
-	/* Stuck Fermentation Warning */
+	/* Warnings */
+	.anomaly-banner,
 	.stuck-warning {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		margin-bottom: 1rem;
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.3);
-		border-radius: 0.375rem;
+		align-items: baseline;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid color-mix(in oklch, var(--status-warn) 50%, transparent);
+		background: var(--warning-muted);
 	}
-
-	.stuck-icon {
-		font-size: 1.25rem;
-	}
-
+	.anomaly-content,
 	.stuck-content {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: var(--space-2xs);
 	}
-
+	.anomaly-label,
 	.stuck-label {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--recipe-accent);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--status-warn);
 	}
-
+	.anomaly-reasons,
 	.stuck-detail {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
-	/* Fermentation Progress Section */
+	/* Progress */
 	.progress-section {
-		margin-bottom: 1rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--border-default);
+		margin-bottom: var(--space-sm);
 	}
-
 	.progress-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
+		align-items: baseline;
+		margin-bottom: var(--space-xs);
 	}
-
 	.progress-label {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-	}
-
-	.activity-badge {
-		font-size: 0.75rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
+	.activity-badge {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+	}
 	.fermentation-progress-bar {
-		height: 12px;
-		background: var(--bg-elevated);
-		border-radius: 6px;
-		overflow: hidden;
-		margin-bottom: 0.5rem;
+		height: 4px;
+		background: var(--rule-hairline);
 	}
-
 	.fermentation-fill {
 		height: 100%;
-		background: linear-gradient(90deg, var(--accent) 0%, var(--positive) 100%);
-		border-radius: 6px;
-		transition: width 0.5s ease;
+		background: var(--accent);
+		transition: width 600ms var(--ease-out-quart);
 	}
-
 	.progress-labels {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
+		margin-top: var(--space-xs);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
-
-	.og-label,
-	.fg-label {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: var(--font-mono);
-	}
-
 	.progress-percent {
-		font-size: 0.875rem;
-		font-weight: 700;
-		color: var(--text-primary);
-		font-family: var(--font-mono);
-	}
-
-	/* Metrics */
-	.metrics {
-		display: flex;
-		flex-direction: column;
-		gap: 0.625rem;
-	}
-
-	.metric {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.label {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.value {
-		font-size: 0.8125rem;
-		color: var(--text-primary);
-		font-family: var(--font-mono);
-		font-weight: 500;
-	}
-
-	.attenuation {
-		color: var(--tilt-purple);
-	}
-
-	.days {
-		color: var(--text-muted);
-		font-size: 0.75rem;
-	}
-
-	.complete-now {
-		color: var(--positive);
+		color: var(--accent);
 		font-weight: 600;
 	}
 
-	/* Model Info */
+	/* Metrics as ledger rows */
+	.metrics {
+		display: flex;
+		flex-direction: column;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.metric {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--space-sm);
+		padding: var(--space-xs) var(--space-2xs);
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+	.label,
+	.model-label {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.value {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		text-align: right;
+	}
+	.days {
+		font-size: var(--text-xs);
+		font-weight: 400;
+		color: var(--ink-muted);
+	}
+	.complete-now {
+		color: var(--status-steady);
+	}
 	.model-info {
 		display: flex;
-		gap: 1rem;
-		margin-top: 0.75rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--border-default);
+		flex-wrap: wrap;
+		gap: var(--space-xs) var(--space-md);
+		padding-top: var(--space-xs);
 	}
-
+	.model-info.summary-model {
+		padding-top: 0;
+	}
 	.model-metric {
 		display: flex;
-		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-xs);
+		align-items: baseline;
 	}
-
 	.model-label {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.model-value {
-		font-size: 0.6875rem;
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
-
 	.model-value.model-type {
 		text-transform: capitalize;
-		color: var(--accent);
 	}
-
-	/* Unavailable state */
-	.unavailable-text {
-		color: var(--text-muted);
-		font-size: 0.875rem;
-		margin-bottom: 0.25rem;
-	}
-
-	.unavailable-hint {
-		color: var(--text-muted);
-		font-size: 0.75rem;
-		opacity: 0.7;
-	}
-
-	.error-text {
-		color: var(--negative);
-		font-size: 0.8125rem;
+	@media (prefers-reduced-motion: reduce) {
+		.fermentation-fill {
+			transition: none;
+		}
 	}
 </style>

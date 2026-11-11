@@ -33,22 +33,18 @@ def linear_interpolate(x: float, points: list[tuple[float, float]]) -> float:
         The calibrated value
 
     Algorithm:
-        - 0 points: return x unchanged
-        - 1 point: apply offset (actual - raw) to x
+        - 0 or 1 points: return x unchanged. One point is stored while the
+          user builds the curve, but is not applied until a second point exists
+          (adding points mid-batch must not shift readings early). Use
+          calibration_type "offset" for a deliberate single-value correction.
         - 2+ points: find the two closest points bracketing x (or the two
           closest on one side for extrapolation) and interpolate linearly
     """
-    if not points:
+    if len(points) < 2:
         return x
 
     # Sort points by raw value
     points = sorted(points, key=lambda p: p[0])
-
-    if len(points) == 1:
-        # Single point: apply offset
-        raw, actual = points[0]
-        offset = actual - raw
-        return x + offset
 
     # Find bracketing points for interpolation
     # or edge points for extrapolation

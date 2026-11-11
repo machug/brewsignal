@@ -243,7 +243,7 @@ class CalibrationRequest(BaseModel):
             # Validate SG points if present and not null
             if has_points:
                 points = cal_data["points"]
-                # Any count is valid: 0 = identity, 1 = offset, 2+ = interpolation
+                # Any count is valid: 0/1 = stored, not applied; 2+ = interpolation
                 # (see services.calibration.linear_interpolate). The UI saves one
                 # point at a time, so 0/1-point lists must be accepted.
                 if not isinstance(points, list):

@@ -388,6 +388,9 @@
 								</div>
 							{/each}
 						</div>
+						{#if sgPoints.length === 1}
+							<p class="no-points">Saved. Add a second point to start applying this calibration.</p>
+						{/if}
 					{:else}
 						<div class="no-points">
 							<span>No calibration points yet</span>
@@ -484,6 +487,9 @@
 								</div>
 							{/each}
 						</div>
+						{#if tempPoints.length === 1}
+							<p class="no-points">Saved. Add a second point to start applying this calibration.</p>
+						{/if}
 					{:else}
 						<div class="no-points">
 							<span>No calibration points yet</span>
@@ -536,8 +542,8 @@
 		<section class="info-section">
 			<h3 class="info-title">How Tilt Calibration Works</h3>
 			<p class="info-text">
-				Tilt calibration is applied in software to raw BLE readings. Add at least two calibration
-				points for accurate linear interpolation. Calibration happens app-side, not on the device.
+				Tilt calibration is applied in software to raw BLE readings. Calibration applies once a
+				section has two or more points; one point is saved but not applied. Calibration happens app-side, not on the device.
 			</p>
 			<dl class="info-tips">
 				<div class="tip">

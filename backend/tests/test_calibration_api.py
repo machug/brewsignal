@@ -240,7 +240,7 @@ class TestCalibrationAPI:
         assert response.status_code == 422  # Validation error
 
     async def test_validate_linear_accepts_one_point(self, client: AsyncClient, test_db: AsyncSession):
-        """A single point is valid (applied as an offset); the UI saves points one at a time."""
+        """A single point can be saved (not applied until a second exists); the UI saves points one at a time."""
         # Create device
         device_data = {
             "id": "test-validate-5",
@@ -582,3 +582,11 @@ class TestCalibrationAPI:
         response = await client.put("/api/devices/test-temp-min/calibration", json=calibration_data)
         assert response.status_code == 200
         assert response.json()["calibration_data"]["temp_points"] == []
+
+
+def test_linear_interpolate_needs_two_points_to_apply():
+    from backend.services.calibration import linear_interpolate
+
+    assert linear_interpolate(1.050, []) == 1.050
+    assert linear_interpolate(1.050, [(1.000, 1.004)]) == 1.050
+    assert abs(linear_interpolate(1.050, [(1.000, 1.004), (1.100, 1.104)]) - 1.054) < 1e-9

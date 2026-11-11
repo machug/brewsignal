@@ -7,9 +7,14 @@ from datetime import datetime, timezone
 # Force LOCAL deployment mode for tests BEFORE importing backend modules
 # This ensures tests use SQLite, not cloud PostgreSQL
 os.environ["DEPLOYMENT_MODE"] = "local"
-# Override DATABASE_URL to empty so get_database_url() falls back to SQLite
 # Env vars take priority over .env file in Pydantic BaseSettings
-os.environ["DATABASE_URL"] = ""
+# Point the app at a throwaway SQLite file, never data/fermentation.db: some
+# tests delete the engine's database file (that once meant the real one).
+import tempfile as _tempfile
+os.environ["DATABASE_URL"] = os.environ.get("BREWSIGNAL_TEST_DATABASE_URL") or (
+    "sqlite+aiosqlite:///" + os.path.join(_tempfile.mkdtemp(prefix="brewsignal-test-"), "fermentation.db")
+)
+os.environ["BREWSIGNAL_TEST_DATABASE_URL"] = os.environ["DATABASE_URL"]
 
 
 @pytest.fixture

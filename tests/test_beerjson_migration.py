@@ -14,7 +14,8 @@ async def cleanup_db():
     await engine.dispose()
 
     # Remove database file
-    test_db_path = 'data/fermentation.db'
+    test_db_path = engine.url.database  # the temp DB from conftest, never data/
+    assert "brewsignal-test-" in test_db_path, f"refusing to delete non-test DB {test_db_path}"
     if os.path.exists(test_db_path):
         os.remove(test_db_path)
 

@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import AuthUser, require_auth
 from ..config import get_settings
-from ..database import get_db
+from ..database import CONTROLLED_STATUSES, get_db
 
 logger = logging.getLogger(__name__)
 from ..models import (
@@ -77,6 +77,57 @@ async def get_user_batch(batch_id: int, user: AuthUser, db: AsyncSession) -> Bat
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     return batch
+
+
+async def ensure_equipment_free(
+    db: AsyncSession,
+    user: AuthUser,
+    *,
+    status: Optional[str],
+    heater: Optional[str],
+    cooler: Optional[str],
+    device_id: Optional[str],
+    exclude_batch_id: Optional[int] = None,
+) -> None:
+    """Raise 409 if another controlled batch already uses this heater/cooler/sensor.
+
+    One set of equipment per controlled (fermenting/conditioning) batch (tilt_ui-8d49).
+    A switch counts as shared whether it is the other batch's heater or cooler.
+    """
+    if status not in CONTROLLED_STATUSES:
+        return
+
+    base = [
+        user_owns_batch(user),
+        Batch.status.in_(CONTROLLED_STATUSES),
+        Batch.deleted_at.is_(None),
+    ]
+    if exclude_batch_id is not None:
+        base.append(Batch.id != exclude_batch_id)
+
+    checks = []
+    for entity, label in ((heater, "Heater"), (cooler, "Cooler")):
+        if entity:
+            checks.append((
+                or_(Batch.heater_entity_id == entity, Batch.cooler_entity_id == entity),
+                f"{label} entity '{entity}'",
+            ))
+    if device_id:
+        checks.append((Batch.device_id == device_id, f"Device (Tilt) '{device_id}'"))
+
+    for condition, what in checks:
+        result = await db.execute(select(Batch).where(*base, condition).limit(1))
+        other = result.scalars().first()
+        if other:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{what} is already in use by {other.status} batch "
+                    f"'{other.name or 'Batch #' + str(other.batch_number)}' (ID: {other.id}). "
+                    f"Each heater, cooler and Tilt can only be used by one fermenting or "
+                    f"conditioning batch at a time."
+                ),
+            )
 
 
 @router.get("", response_model=list[BatchResponse])
@@ -187,41 +238,14 @@ async def create_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new batch."""
-    # Check for heater entity conflicts if a heater is specified
-    # Exclude soft-deleted batches from conflict check, scope to current user
-    if batch.heater_entity_id:
-        conflict_result = await db.execute(
-            select(Batch).where(
-                user_owns_batch(user),  # Only check user's batches
-                Batch.status == "fermenting",
-                Batch.heater_entity_id == batch.heater_entity_id,
-                Batch.deleted_at.is_(None),
-            )
-        )
-        conflicting_batch = conflict_result.scalar_one_or_none()
-        if conflicting_batch:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Heater entity '{batch.heater_entity_id}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
-            )
-
-    # Check for device_id conflicts if a device is specified and status is fermenting
-    # Exclude soft-deleted batches from conflict check, scope to current user
-    if batch.device_id and batch.status == "fermenting":
-        conflict_result = await db.execute(
-            select(Batch).where(
-                user_owns_batch(user),  # Only check user's batches
-                Batch.status == "fermenting",
-                Batch.device_id == batch.device_id,
-                Batch.deleted_at.is_(None),
-            )
-        )
-        conflicting_batch = conflict_result.scalar_one_or_none()
-        if conflicting_batch:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Device (Tilt) '{batch.device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
-            )
+    # One set of equipment per controlled batch (409 if heater/cooler/Tilt is taken)
+    await ensure_equipment_free(
+        db, user,
+        status=batch.status,
+        heater=batch.heater_entity_id,
+        cooler=batch.cooler_entity_id,
+        device_id=batch.device_id,
+    )
 
     # Get next batch number
     result = await db.execute(select(func.max(Batch.batch_number)))
@@ -311,51 +335,28 @@ async def update_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # Check for heater entity conflicts if changing heater and batch is/will be fermenting
+    # One set of equipment per controlled batch (409 if heater/cooler/Tilt is taken).
+    # Only checked when the batch enters a controlled status or its equipment changes,
+    # so unrelated edits to a legacy (already conflicting) batch are not blocked.
     new_status = update.status if update.status is not None else batch.status
     new_heater = update.heater_entity_id if update.heater_entity_id is not None else batch.heater_entity_id
+    new_cooler = update.cooler_entity_id if update.cooler_entity_id is not None else batch.cooler_entity_id
     new_device_id = update.device_id if update.device_id is not None else batch.device_id
-
-    if new_heater and new_status == "fermenting":
-        # Only check for conflicts if the heater entity is actually changing
-        # Exclude soft-deleted batches from conflict check, scope to user
-        if update.heater_entity_id is not None and update.heater_entity_id != batch.heater_entity_id:
-            conflict_result = await db.execute(
-                select(Batch).where(
-                    user_owns_batch(user),  # User isolation
-                    Batch.status == "fermenting",
-                    Batch.heater_entity_id == new_heater,
-                    Batch.id != batch_id,
-                    Batch.deleted_at.is_(None),
-                )
-            )
-            conflicting_batch = conflict_result.scalar_one_or_none()
-            if conflicting_batch:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Heater entity '{new_heater}' is already in use by fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each heater can only control one fermenting batch at a time."
-                )
-
-    # Check for device_id conflicts if changing device and batch is/will be fermenting
-    # Exclude soft-deleted batches from conflict check, scope to user
-    if new_device_id and new_status == "fermenting":
-        # Only check for conflicts if the device_id is actually changing
-        if update.device_id is not None and update.device_id != batch.device_id:
-            conflict_result = await db.execute(
-                select(Batch).where(
-                    user_owns_batch(user),  # User isolation
-                    Batch.status == "fermenting",
-                    Batch.device_id == new_device_id,
-                    Batch.id != batch_id,
-                    Batch.deleted_at.is_(None),
-                )
-            )
-            conflicting_batch = conflict_result.scalar_one_or_none()
-            if conflicting_batch:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Device (Tilt) '{new_device_id}' is already assigned to fermenting batch '{conflicting_batch.name}' (ID: {conflicting_batch.id}). Each device can only track one fermenting batch at a time."
-                )
+    entering_controlled = new_status in CONTROLLED_STATUSES and batch.status not in CONTROLLED_STATUSES
+    equipment_changed = (
+        new_heater != batch.heater_entity_id
+        or new_cooler != batch.cooler_entity_id
+        or new_device_id != batch.device_id
+    )
+    if entering_controlled or equipment_changed:
+        await ensure_equipment_free(
+            db, user,
+            status=new_status,
+            heater=new_heater,
+            cooler=new_cooler,
+            device_id=new_device_id,
+            exclude_batch_id=batch_id,
+        )
 
     # Update fields if provided
     if update.recipe_id is not None:

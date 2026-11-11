@@ -940,6 +940,16 @@ export async function fetchBatch(batchId: number): Promise<BatchResponse> {
 }
 
 /**
+ * Error text for a failed batch request: prefer the backend's `detail`
+ * (e.g. the 409 naming the batch that already uses a heater/cooler/Tilt).
+ */
+async function batchErrorMessage(response: Response, fallback: string): Promise<string> {
+	const body = await response.json().catch(() => null);
+	const detail = Array.isArray(body?.detail) ? body.detail.join('; ') : body?.detail;
+	return typeof detail === 'string' && detail ? detail : `${fallback}: ${response.statusText}`;
+}
+
+/**
  * Create a new batch
  */
 export async function createBatch(batch: BatchCreate): Promise<BatchResponse> {
@@ -949,7 +959,7 @@ export async function createBatch(batch: BatchCreate): Promise<BatchResponse> {
 		body: JSON.stringify(batch)
 	});
 	if (!response.ok) {
-		throw new Error(`Failed to create batch: ${response.statusText}`);
+		throw new Error(await batchErrorMessage(response, 'Failed to create batch'));
 	}
 	return response.json();
 }
@@ -964,7 +974,7 @@ export async function updateBatch(batchId: number, update: BatchUpdate): Promise
 		body: JSON.stringify(update)
 	});
 	if (!response.ok) {
-		throw new Error(`Failed to update batch: ${response.statusText}`);
+		throw new Error(await batchErrorMessage(response, 'Failed to update batch'));
 	}
 	return response.json();
 }

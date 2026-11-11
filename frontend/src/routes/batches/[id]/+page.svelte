@@ -31,6 +31,7 @@
 	let tastingNotes = $state<TastingNote[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let statusError = $state<string | null>(null);
 	let isEditing = $state(false);
 	let statusUpdating = $state(false);
 	let heaterLoading = $state(false);
@@ -207,6 +208,7 @@
 		}
 
 		statusUpdating = true;
+		statusError = null;
 		try {
 			batch = await updateBatch(batch.id, { status: newStatus });
 			// Reload progress if needed
@@ -215,6 +217,7 @@
 			}
 		} catch (e) {
 			console.error('Failed to update status:', e);
+			statusError = e instanceof Error ? e.message : 'Failed to update batch status';
 		} finally {
 			statusUpdating = false;
 		}
@@ -223,10 +226,12 @@
 	async function handleStartBrewDay() {
 		if (!batch || statusUpdating) return;
 		statusUpdating = true;
+		statusError = null;
 		try {
 			batch = await updateBatch(batch.id, { status: 'brewing' });
 		} catch (e) {
 			console.error('Failed to start brew day:', e);
+			statusError = e instanceof Error ? e.message : 'Failed to update batch status';
 		} finally {
 			statusUpdating = false;
 		}
@@ -235,11 +240,13 @@
 	async function handleStartFermentation() {
 		if (!batch || statusUpdating) return;
 		statusUpdating = true;
+		statusError = null;
 		try {
 			batch = await updateBatch(batch.id, { status: 'fermenting' });
 			progress = await fetchBatchProgress(batch.id);
 		} catch (e) {
 			console.error('Failed to start fermentation:', e);
+			statusError = e instanceof Error ? e.message : 'Failed to update batch status';
 		} finally {
 			statusUpdating = false;
 		}
@@ -443,6 +450,10 @@
 			onCancel={() => (isEditing = false)}
 		/>
 	{:else}
+		{#if statusError}
+			<div class="status-error" role="alert">{statusError}</div>
+		{/if}
+
 		<!-- Batch Header -->
 		<div class="batch-header">
 			<div class="header-main">
@@ -695,6 +706,15 @@
 
 	/* States */
 	.loading-state,
+	.status-error {
+		margin-bottom: 0.75rem;
+		padding: 0.625rem 0.875rem;
+		border: 1px solid var(--color-red-500, #ef4444);
+		border-radius: 0.5rem;
+		color: var(--color-red-500, #ef4444);
+		font-size: 0.875rem;
+	}
+
 	.error-state {
 		display: flex;
 		flex-direction: column;

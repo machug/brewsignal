@@ -644,6 +644,8 @@ async def init_db():
         await conn.run_sync(_migrate_create_inventory_deductions_table)
         # Recreate the table with correct schema
         await conn.run_sync(Base.metadata.create_all)
+        # One set of equipment per controlled batch (needs batches table + all columns)
+        await conn.run_sync(_migrate_active_equipment_unique_indexes)
         # Import ag_ui threads into the server-held chat history (tilt_ui-qzk0.1)
         await conn.run_sync(_migrate_legacy_chat_threads)
 
@@ -1081,6 +1083,76 @@ def _migrate_add_batch_heater_columns(conn):
             print("Migration: Added unique constraint for fermenting batch devices")
         except Exception as e:
             print(f"Migration: Skipping unique device index creation - {e}")
+
+
+# Statuses in which the temperature controller drives equipment. The controller also
+# drives 'planning' batches (cooler only, pre-pitch chilling); those are NOT in the
+# unique indexes (a planning batch may be set up before the previous batch ends) and are
+# guarded at run time by temp_controller.find_equipment_conflicts instead.
+CONTROLLED_STATUSES = ("fermenting", "conditioning")
+
+_ACTIVE_EQUIPMENT_INDEXES = (
+    ("idx_active_heater_unique", "heater_entity_id"),
+    ("idx_active_cooler_unique", "cooler_entity_id"),
+    ("idx_active_device_unique", "device_id"),
+)
+
+
+def _migrate_active_equipment_unique_indexes(conn) -> list[str]:
+    """Make heater/cooler/sensor uniqueness cover every controlled status (tilt_ui-8d49).
+
+    The legacy idx_fermenting_*_unique indexes only cover status='fermenting', but the
+    controller also drives 'conditioning' batches, so a conditioning and a fermenting batch
+    could share equipment (2026-06-10 incident). For each column, if two live active batches
+    already collide the stricter index is NOT created (it would fail and, on the Pi, block
+    startup): the conflict is logged and the legacy index is left in place. The controller
+    independently refuses to drive shared equipment. Never raises.
+
+    Returns the names of conflicted columns (empty when all indexes exist/were created).
+    """
+    import logging
+    from sqlalchemy import text
+    logger = logging.getLogger(__name__)
+
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
+    if not {"status", "deleted_at", "heater_entity_id", "cooler_entity_id", "device_id"} <= columns:
+        return []
+    existing = {row[0] for row in conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='batches'"
+    ))}
+    status_list = ", ".join(f"'{s}'" for s in CONTROLLED_STATUSES)
+    predicate = f"status IN ({status_list}) AND deleted_at IS NULL"
+
+    conflicted = []
+    for index_name, column in _ACTIVE_EQUIPMENT_INDEXES:
+        if index_name in existing:
+            continue
+        try:
+            rows = conn.execute(text(
+                f"SELECT {column}, group_concat(id) FROM batches "
+                f"WHERE {predicate} AND {column} IS NOT NULL "
+                f"GROUP BY {column} HAVING count(*) > 1"
+            )).fetchall()
+            if rows:
+                conflicted.append(column)
+                for value, ids in rows:
+                    msg = (
+                        f"Migration: NOT creating {index_name}: active batches [{ids}] share "
+                        f"{column}='{value}'. Fix the assignments; the controller will not drive "
+                        f"this equipment until then."
+                    )
+                    logger.error(msg)
+                    print(msg)
+                continue
+            conn.execute(text(
+                f"CREATE UNIQUE INDEX {index_name} ON batches ({column}) "
+                f"WHERE {predicate} AND {column} IS NOT NULL"
+            ))
+            print(f"Migration: Added {index_name} (fermenting + conditioning)")
+        except Exception as e:
+            logger.error(f"Migration: could not create {index_name}: {e}")
+            print(f"Migration: Skipping {index_name} - {e}")
+    return conflicted
 
 
 async def _migrate_add_cooler_entity():

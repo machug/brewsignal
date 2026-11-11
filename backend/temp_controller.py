@@ -580,6 +580,65 @@ async def _ensure_batch_off(
     )
 
 
+ACTIVE_STATUSES = ("fermenting", "conditioning")
+
+
+def find_equipment_conflicts(batches) -> dict[int, dict]:
+    """Detect batches that share a heater/cooler switch or a sensor.
+
+    Returns {batch_id: {"messages": [...], "force_off": bool}} for every batch
+    that must NOT be driven. A pre-pitch 'planning' batch that collides with
+    exactly one fermenting/conditioning batch loses (it is skipped, the active
+    batch keeps its equipment, no off command). Any other collision blocks all
+    members and force_off=True (their equipment is switched off).
+    """
+    groups: dict[tuple[str, str], list] = {}
+    for b in batches:
+        keys = set()
+        heater = None if b.status in ("planning", "brewing") else b.heater_entity_id
+        for e in (heater, b.cooler_entity_id):
+            if e:
+                keys.add(("equipment", e))
+        if b.device_id:
+            keys.add(("sensor", b.device_id))
+        for k in keys:
+            groups.setdefault(k, []).append(b)
+
+    result: dict[int, dict] = {}
+    for (ns, ident), members in groups.items():
+        if len(members) < 2:
+            continue
+        active = [m for m in members if m.status in ACTIVE_STATUSES]
+        if len(active) == 1:
+            losers, force_off = [m for m in members if m.status not in ACTIVE_STATUSES], False
+        else:
+            losers, force_off = members, True
+        what = "switch" if ns == "equipment" else "sensor"
+        for m in losers:
+            info = result.setdefault(m.id, {"messages": [], "force_off": False})
+            others = ", ".join(
+                f"batch {o.id} ({o.name or 'unnamed'})" for o in members if o.id != m.id
+            )
+            info["messages"].append(f"{what} '{ident}' is also used by {others}")
+            info["force_off"] = info["force_off"] or force_off
+    return result
+
+
+async def _handle_conflicted_batch(
+    router, db, batch: Batch, info: dict, driven_entities: set[str],
+) -> None:
+    """Do not drive a batch whose equipment/sensor is shared. Alert; switch its
+    equipment off unless another (non-conflicted) batch is legitimately using it."""
+    msg = f"Batch {batch.id} ({batch.name or 'unnamed'}) not controlled: " + "; ".join(info["messages"])
+    logger.error(msg)
+    await _raise_alert(db, batch, AlertType.EQUIPMENT_CONFLICT, msg)
+    if not info["force_off"]:
+        return
+    for kind, entity in (("heater", batch.heater_entity_id), ("cooler", batch.cooler_entity_id)):
+        if entity and entity not in driven_entities:
+            await _ensure_batch_off(router, db, batch.id, kind, entity, None, None, batch.temp_target, batch.device_id)
+
+
 async def run_control_cycle(
     router: DeviceControlRouter,
     db,
@@ -593,11 +652,21 @@ async def run_control_cycle(
     Batches are processed sequentially: they share one DB session and, with
     shared equipment, one per-entity switch record.
     """
+    conflicts = find_equipment_conflicts(batches)
+    driven = set()
+    for b in batches:
+        if b.id not in conflicts:
+            driven.update(e for e in (b.heater_entity_id, b.cooler_entity_id) if e)
+
     for batch in batches:
         try:
-            await control_batch_temperature(
-                router, batch, db, global_target, global_hysteresis, ambient_temp
-            )
+            if batch.id in conflicts:
+                await _handle_conflicted_batch(router, db, batch, conflicts[batch.id], driven)
+            else:
+                await _clear_batch_alert(db, batch.id, AlertType.EQUIPMENT_CONFLICT)
+                await control_batch_temperature(
+                    router, batch, db, global_target, global_hysteresis, ambient_temp
+                )
         except Exception as e:
             logger.error(f"Batch {batch.id}: control error: {e}", exc_info=True)
 

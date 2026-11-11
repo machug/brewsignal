@@ -252,7 +252,7 @@ async def test_heater_entity_conflict_on_create(client):
     }
     response = await client.post("/api/batches", json=batch2_data)
 
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "already in use" in response.json()["detail"]
     assert "switch.heater_1" in response.json()["detail"]
 
@@ -306,6 +306,6 @@ async def test_heater_entity_conflict_on_update(client):
     update_data = {"heater_entity_id": "switch.heater_1"}
     response = await client.put(f"/api/batches/{batch2_id}", json=update_data)
 
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "already in use" in response.json()["detail"]
     assert "switch.heater_1" in response.json()["detail"]

@@ -3,7 +3,7 @@ export const STORAGE_KEY = 'brewsignal-theme';
 
 // Light theme stays hidden until every screen is migrated to the new tokens.
 // Tracked in bead tilt_ui-nv1r. Flip to true to expose the toggle in the shell.
-export const SHOW_THEME_TOGGLE = false;
+export const SHOW_THEME_TOGGLE = true;
 
 export type Theme = 'dark' | 'light';
 

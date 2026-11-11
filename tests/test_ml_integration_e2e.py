@@ -198,6 +198,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
             rssi=-60,
             timestamp=base_time + timedelta(minutes=i)
         )
+        backend.main._last_tilt_storage.clear()  # throttle uses wall clock; CI is fast enough to trip 6 ms
         await handle_tilt_reading(reading)
 
     # Send another reading (would be anomalous but ML error causes fallback)
@@ -209,6 +210,7 @@ async def test_anomaly_detection_in_production(mock_link, mock_config, mock_ws):
         rssi=-60,
         timestamp=base_time + timedelta(minutes=10)
     )
+    backend.main._last_tilt_storage.clear()
     await handle_tilt_reading(reading)
 
     # Verify system continued working despite ML error

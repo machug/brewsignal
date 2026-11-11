@@ -393,8 +393,13 @@ async def _set_entity_state(
         success = False
 
     if success:
-        ent["last_switch"] = now
-        ent["on_since"] = now if state == "on" else None
+        # A redundant "on" for a device that is already on is not a transition:
+        # keep the original continuous-on start (else repeated "on" requests
+        # would postpone the max-on cutoff forever) and the min-cycle clock.
+        already_on = state == "on" and ent["on_since"] is not None
+        if not already_on:
+            ent["last_switch"] = now
+        ent["on_since"] = (ent["on_since"] if already_on else now) if state == "on" else None
         ent["fail_until"] = None
         await _persist_entity(db, entity_id)
     elif state == "on":

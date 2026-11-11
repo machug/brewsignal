@@ -60,3 +60,15 @@ async def test_toggle_endpoint_uses_safe_path(client, test_db, clock, monkeypatc
     r = await client.post("/api/control/heater", json={"state": "on", "batch_id": b.id})
     assert r.json()["success"] is True
     assert router.states == {HEATER: "on", COOLER: "off"}
+
+
+@pytest.mark.asyncio
+async def test_redundant_manual_on_keeps_max_on_clock(test_db, clock):
+    """Codex P1: repeating 'on' while already on must not restart the max-on timer."""
+    await make_batch(test_db)
+    router = FakeRouter({HEATER: "off", COOLER: "off"})
+    assert (await tc.manual_switch(router, test_db, HEATER, "heater", "on"))[0]
+    started = tc._entity_state[HEATER]["on_since"]
+    clock.advance(minutes=180)
+    await tc.manual_switch(router, test_db, HEATER, "heater", "on")
+    assert tc._entity_state[HEATER]["on_since"] == started

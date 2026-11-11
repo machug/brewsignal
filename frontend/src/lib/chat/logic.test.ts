@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activitySummary, applyOutcome, buildChatRequest, formatGrams, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
+import { activitySummary, applyOutcome, buildChatRequest, formatGrams, newChatId, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
 
 describe('buildChatRequest', () => {
 	it('sends only id, newest message, trigger and context', () => {
@@ -74,5 +74,20 @@ describe('formatGrams / summarizeInput', () => {
 	it('summarizes scalar inputs only', () => {
 		expect(summarizeInput({ recipe_id: 32, items: [1], q: 'citra' })).toBe('recipe id 32, q citra');
 		expect(summarizeInput(null)).toBe('');
+	});
+});
+
+describe('newChatId', () => {
+	it('returns a v4 UUID without crypto.randomUUID', () => {
+		const orig = crypto.randomUUID;
+		// @ts-expect-error simulate an insecure context
+		crypto.randomUUID = undefined;
+		try {
+			const id = newChatId();
+			expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+			expect(newChatId()).not.toBe(id);
+		} finally {
+			crypto.randomUUID = orig;
+		}
 	});
 });

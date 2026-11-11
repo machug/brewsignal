@@ -8,7 +8,7 @@
 	import { getAccessToken } from '$lib/supabase';
 	import { config } from '$lib/config';
 	import { configState } from '$lib/stores/config.svelte';
-	import { APPLY_TOOL, buildChatRequest, isToolPart, toolName, type ToolPart } from '$lib/chat/logic';
+	import { APPLY_TOOL, buildChatRequest, isToolPart, newChatId, toolName, type ToolPart } from '$lib/chat/logic';
 	import ChatShell from '$lib/components/chat/ChatShell.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import MessageTurn from '$lib/components/chat/MessageTurn.svelte';
@@ -84,7 +84,7 @@
 	function startNew() {
 		chat?.stop();
 		loadToken++;
-		chatId = crypto.randomUUID();
+		chatId = newChatId();
 		chat = makeChat(chatId, []);
 		loadState = 'ready';
 		pendingSteer = '';

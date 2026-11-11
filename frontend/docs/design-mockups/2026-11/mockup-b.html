@@ -1103,6 +1103,26 @@
         display: none;
       }
 
+      /* Tablet: nav + controls must fit one row */
+      .topbar {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: var(--space-md);
+      }
+
+      .primary-nav {
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .nav-link {
+        padding: 0 var(--space-xs);
+      }
+
+      #themeLabel {
+        display: none;
+      }
+
       .workbench {
         grid-template-columns: 1fr;
       }

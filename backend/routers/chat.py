@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Optional
 
+import anyio
 import prompty
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
@@ -309,6 +310,7 @@ async def _save_executed(
 ) -> None:
     """Store the results of approval-gated calls that ran in a run that did not finish."""
     await db.rollback()  # the run may have died mid-transaction; the tool's own commit is already durable
+    await db.refresh(thread)  # rollback expired it; reload asynchronously before _save reads its columns
     open_ids = {c.tool_call_id for c in pending_tool_calls(history)}
     parts = [
         ToolReturnPart(tool_name=name, tool_call_id=cid, content=result)
@@ -491,15 +493,19 @@ async def run_chat(
                 async for chunk in stream:
                     yield chunk
             finally:
-                try:
-                    if not completed and deps.executed:
-                        # Run failed or was cancelled after a tool committed: store its
-                        # result so the call is no longer pending and the UI shows the outcome.
-                        await _save_executed(db, thread, history, deps.executed)
-                except Exception:
-                    logger.exception("Could not persist executed tool results")
-                finally:
-                    _active.discard(thread_id)
+                # Shielded: on client disconnect Starlette cancels this scope, which would
+                # also cancel the recovery awaits. Bounded so a hung DB cannot hold the thread.
+                with anyio.CancelScope(shield=True):
+                    try:
+                        if not completed and deps.executed:
+                            # Run failed or was cancelled after a tool committed: store its
+                            # result so the call is no longer pending and the UI shows the outcome.
+                            with anyio.move_on_after(10):
+                                await _save_executed(db, thread, history, deps.executed)
+                    except Exception:
+                        logger.exception("Could not persist executed tool results")
+                    finally:
+                        _active.discard(thread_id)  # only after persistence finished
 
         return adapter.streaming_response(guarded())
     except BaseException:

@@ -319,3 +319,53 @@ async def test_past_chat_tools_read_the_new_store(client, test_db, chat_env):
     recent = await execute_tool(test_db, "list_recent_threads", {}, user_id="local")
     assert recent["threads"][0]["message_count"] == 2
     assert recent["threads"][0]["preview"] == "Plan a pilsner please"
+
+
+@pytest.mark.asyncio
+async def test_save_executed_survives_expired_thread(test_db):
+    """Recovery runs after rollback() expired the thread; it must reload, not lazy-load."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+    thread = AgUiThread(id="exp", user_id="local", title="t")
+    test_db.add(thread)
+    await test_db.commit()
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="hi")]),
+        ModelResponse(parts=[ToolCallPart("apply_hop_inventory", {}, tool_call_id="c1")]),
+    ]
+    await chat._save_executed(test_db, thread, history, {"c1": ("apply_hop_inventory", {"applied": True})})
+    row = await test_db.get(ChatHistory, "exp")
+    assert row is not None and row.user_id == "local"
+    assert "applied" in row.messages
+
+
+@pytest.mark.asyncio
+async def test_cancelled_stream_after_apply_still_persists(client, test_db, chat_env):
+    import asyncio
+
+    await _pending_flow(client, test_db)
+    started = asyncio.Event()
+
+    async def hang(messages, info):
+        last = messages[-1]
+        if isinstance(last, ModelRequest) and any(isinstance(p, ToolReturnPart) for p in last.parts):
+            started.set()  # the apply has committed; now stall like a slow provider
+            await asyncio.sleep(3600)
+        async for x in _stream(messages, info):
+            yield x
+
+    chat_env["model"] = FunctionModel(_model_fn, stream_function=hang)
+    task = asyncio.create_task(_send(client, "t1", _approval("call_apply", ITEMS)))
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()  # client disconnect
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(50):  # recovery finishes before the claim is released
+        if "t1" not in chat._active:
+            break
+        await asyncio.sleep(0.05)
+    assert "t1" not in chat._active
+    assert await _stock(test_db) == [("Citra", 100.0)]
+    states = [p["state"] for m in (await client.get("/api/chat/threads/t1")).json()["messages"]
+              for p in m["parts"] if p["type"] == "tool-apply_hop_inventory"]
+    assert states == ["output-available"]

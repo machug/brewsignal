@@ -249,6 +249,31 @@
 		});
 	}
 
+	async function removeSGPoint(point: [number, number]) {
+		if (!selectedDeviceId) return;
+		if (!confirm('Remove this gravity calibration point?')) return;
+		await saveCalibration({
+			...calibrationData,
+			points: (calibrationData?.points || []).filter((p) => !(p[0] === point[0] && p[1] === point[1]))
+		});
+	}
+
+	async function removeTempPoint(point: [number, number]) {
+		if (!selectedDeviceId) return;
+		if (!confirm('Remove this temperature calibration point?')) return;
+		await saveCalibration({
+			...calibrationData,
+			temp_points: (calibrationData?.temp_points || []).filter((p) => !(p[0] === point[0] && p[1] === point[1]))
+		});
+	}
+
+	function delta(raw: number, actual: number, digits: number): string {
+		const d = actual - raw;
+		const t = Math.abs(d).toFixed(digits);
+		if (Number(t) === 0) return t;
+		return (d < 0 ? '\u2212' : '+') + t;
+	}
+
 	function formatSG(sg: number): string {
 		return sg.toFixed(3);
 	}
@@ -263,6 +288,11 @@
 </svelte:head>
 
 <div class="page-container">
+	<nav class="crumbs" aria-label="Breadcrumb">
+		<a href="/system">System</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">Calibration</span>
+	</nav>
 	<div class="page-header">
 		<h1 class="page-title">Tilt Calibration</h1>
 		<p class="page-description">Calibrate your Tilt hydrometer's gravity and temperature readings</p>
@@ -338,22 +368,26 @@
 					</div>
 				{:else}
 					{#if sgPoints.length > 0}
-						<table class="calibration-table">
-							<thead>
-								<tr>
-									<th scope="col" class="num">Raw</th>
-									<th scope="col" class="num">Actual</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each sgPoints as point}
-									<tr>
-										<td class="num">{formatSG(point[0])}</td>
-										<td class="num actual">{formatSG(point[1])}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+						<div class="calibration-table" role="table" aria-label="Gravity calibration points">
+							<div class="grid-row head" role="row">
+								<span role="columnheader">Raw</span>
+								<span role="columnheader">Actual</span>
+								<span role="columnheader">Delta</span>
+								<span role="columnheader"><span class="sr-only">Remove</span></span>
+							</div>
+							{#each sgPoints as point}
+								<div class="grid-row" role="row">
+									<span role="cell" class="num">{formatSG(point[0])}</span>
+									<span role="cell" class="num">{formatSG(point[1])}</span>
+									<span role="cell" class="num muted">{delta(point[0], point[1], 3)}</span>
+									<span role="cell">
+										<button type="button" class="remove-btn" onclick={() => removeSGPoint(point)} disabled={saving} aria-label="Remove point {formatSG(point[0])} to {formatSG(point[1])}">
+											<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+										</button>
+									</span>
+								</div>
+							{/each}
+						</div>
 					{:else}
 						<div class="no-points">
 							<span>No calibration points yet</span>
@@ -384,6 +418,7 @@
 									class="input-field"
 								/>
 							</div>
+							<span class="delta-spacer" aria-hidden="true"></span>
 							<button
 								type="button"
 								class="btn-add"
@@ -428,23 +463,27 @@
 					</div>
 				{:else}
 					{#if tempPoints.length > 0}
-						<table class="calibration-table">
-							<thead>
-								<tr>
-									<th scope="col" class="num">Raw ({tempUnit})</th>
-									<th scope="col" class="num">Actual ({tempUnit})</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each tempPoints as point}
-									{@const [rawDisplay, actualDisplay] = convertTempPointFromCelsius(point[0], point[1], useCelsius)}
-									<tr>
-										<td class="num">{rawDisplay.toFixed(1)}&deg;</td>
-										<td class="num actual">{actualDisplay.toFixed(1)}&deg;</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+						<div class="calibration-table" role="table" aria-label="Temperature calibration points">
+							<div class="grid-row head" role="row">
+								<span role="columnheader">Raw ({tempUnit})</span>
+								<span role="columnheader">Actual ({tempUnit})</span>
+								<span role="columnheader">Delta</span>
+								<span role="columnheader"><span class="sr-only">Remove</span></span>
+							</div>
+							{#each tempPoints as point}
+								{@const [rawDisplay, actualDisplay] = convertTempPointFromCelsius(point[0], point[1], useCelsius)}
+								<div class="grid-row" role="row">
+									<span role="cell" class="num">{rawDisplay.toFixed(1)}&deg;</span>
+									<span role="cell" class="num">{actualDisplay.toFixed(1)}&deg;</span>
+									<span role="cell" class="num muted">{delta(rawDisplay, actualDisplay, 1)}&deg;</span>
+									<span role="cell">
+										<button type="button" class="remove-btn" onclick={() => removeTempPoint(point)} disabled={saving} aria-label="Remove point {rawDisplay.toFixed(1)} to {actualDisplay.toFixed(1)}">
+											<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+										</button>
+									</span>
+								</div>
+							{/each}
+						</div>
 					{:else}
 						<div class="no-points">
 							<span>No calibration points yet</span>
@@ -475,6 +514,7 @@
 									class="input-field"
 								/>
 							</div>
+							<span class="delta-spacer" aria-hidden="true"></span>
 							<button
 								type="button"
 								class="btn-add"
@@ -518,6 +558,30 @@
 </div>
 
 <style>
+	.crumbs {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		padding-bottom: var(--space-xs);
+		margin-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+	}
+	.crumbs a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		color: var(--ink-secondary);
+	}
+	.crumbs a:hover {
+		color: var(--ink-primary);
+		text-decoration: underline;
+	}
 	.page-header {
 		margin-bottom: var(--space-lg);
 	}
@@ -592,12 +656,17 @@
 	}
 	.select-input {
 		min-width: min(18rem, 100%);
+		padding-right: 2rem;
+		text-overflow: ellipsis;
 	}
 	.input-field {
 		width: 100%;
 		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
-		text-align: right;
+		text-align: left;
+	}
+	.input-field::placeholder {
+		color: var(--ink-muted);
 	}
 	.select-input:focus-visible,
 	.input-field:focus-visible {
@@ -622,35 +691,56 @@
 		overflow-wrap: anywhere;
 	}
 
-	/* Points table */
+	/* Points table and add form share one grid */
 	.calibration-table {
-		width: 100%;
-		border-collapse: collapse;
 		margin-bottom: var(--space-md);
-		font-family: var(--font-num);
 		font-variant-numeric: tabular-nums;
 	}
-	.calibration-table th {
-		padding: var(--space-xs) var(--space-sm);
+	.grid-row,
+	.form-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 4.5rem 44px;
+		align-items: center;
+		gap: var(--space-sm);
+	}
+	.grid-row {
+		min-height: 48px;
+		padding: 0;
+		border-bottom: 1px solid var(--rule-hairline);
+		font-family: var(--font-num);
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+	}
+	.grid-row.head {
+		min-height: 36px;
+		border-bottom: 1px solid var(--rule-strong);
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.07em;
 		color: var(--ink-muted);
-		border-bottom: 1px solid var(--rule-strong);
 	}
-	.calibration-table td {
-		padding: var(--space-xs) var(--space-sm);
-		font-size: var(--text-base);
-		color: var(--ink-primary);
-		border-bottom: 1px solid var(--rule-hairline);
+	.grid-row .muted {
+		color: var(--ink-secondary);
+		font-size: var(--text-sm);
 	}
-	.calibration-table .num {
-		text-align: right;
+	.remove-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		color: var(--ink-muted);
+		border-radius: 4px;
+		cursor: pointer;
 	}
-	.calibration-table td.actual {
-		color: var(--accent);
+	.remove-btn:hover:not(:disabled) {
+		color: var(--status-danger);
+		background: var(--negative-muted);
+	}
+	.remove-btn:disabled {
+		opacity: 0.5;
 	}
 	.no-points {
 		padding: var(--space-sm) var(--space-xs);
@@ -663,10 +753,7 @@
 
 	/* Add form */
 	.form-row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
 		align-items: end;
-		gap: var(--space-sm);
 	}
 	.form-group label {
 		display: block;
@@ -684,13 +771,15 @@
 		justify-content: center;
 		width: 44px;
 		height: 44px;
-		color: var(--accent-ink);
-		background: var(--accent);
+		color: var(--ink-primary);
+		background: var(--bg-subtle);
+		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 		cursor: pointer;
 	}
 	.btn-add:hover:not(:disabled) {
-		background: var(--accent-hover);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
 	.btn-add:disabled {
 		opacity: 0.4;

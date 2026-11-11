@@ -212,54 +212,60 @@
 			{/if}
 			<div class="device-id-block">
 				<h3 class="device-name">{getDeviceDisplayName(device)}</h3>
-				<p class="device-id">{device.id}</p>
+				<p class="device-id">
+					{device.id}{#if device.device_type === 'tilt' && device.mac}&nbsp;/&nbsp;{device.mac}{/if}
+				</p>
+				{#if device.beer_name}<p class="device-beer">{device.beer_name}</p>{/if}
 			</div>
 		</div>
 
-		<div class="device-status-cell">
+		<div class="cell">
 			<span class="pill" class:pill-on={paired}>{paired ? 'Paired' : 'Unpaired'}</span>
 		</div>
 
-		<dl class="readouts">
-			{#if device.beer_name}
-				<div class="readout">
-					<dt>Beer</dt>
-					<dd class="text-val">{device.beer_name}</dd>
-				</div>
-			{/if}
-			<div class="readout">
-				<dt>Last seen</dt>
-				<dd>{timeSince(device.last_seen)}</dd>
-			</div>
-			{#if device.device_type === 'tilt' && device.mac}
-				<div class="readout">
-					<dt>MAC</dt>
-					<dd>{device.mac}</dd>
-				</div>
-			{/if}
+		<div class="cell num">
+			<span class="cell-label">Last seen</span>
+			{timeSince(device.last_seen)}
+		</div>
+		<div class="cell num">
+			<span class="cell-label">Battery</span>
 			{#if (device.device_type === 'ispindel' || device.device_type === 'gravitymon') && device.battery_voltage !== null && Number.isFinite(device.battery_voltage)}
-				<div class="readout">
-					<dt>Battery</dt>
-					<dd>{device.battery_voltage.toFixed(2)}&thinsp;V</dd>
-				</div>
+				{device.battery_voltage.toFixed(2)}&thinsp;V
+			{:else}
+				&ndash;
 			{/if}
-			{#if device.firmware_version}
-				<div class="readout">
-					<dt>Firmware</dt>
-					<dd>{device.firmware_version}</dd>
-				</div>
-			{/if}
-		</dl>
+		</div>
+		<div class="cell num">
+			<span class="cell-label">Firmware</span>
+			{device.firmware_version ?? '–'}
+		</div>
 
 		<div class="device-action">
 			{#if paired}
 				<button onclick={() => handleUnpair(device.id)} class="btn-secondary btn-sm">Unpair Device</button>
 			{:else}
-				<button onclick={() => handlePair(device.id)} class="btn-primary btn-sm">Pair Device</button>
+				<button onclick={() => handlePair(device.id)} class="btn-secondary btn-sm">Pair Device</button>
 			{/if}
 		</div>
 	</li>
 {/snippet}
+
+{#snippet ledgerHead()}
+	<div class="ledger-head" aria-hidden="true">
+		<span>Device</span>
+		<span>Status</span>
+		<span>Last seen</span>
+		<span>Battery</span>
+		<span>Firmware</span>
+		<span></span>
+	</div>
+{/snippet}
+
+<nav class="crumbs" aria-label="Breadcrumb">
+	<a href="/system">System</a>
+	<span aria-hidden="true">/</span>
+	<span aria-current="page">Devices</span>
+</nav>
 
 <div class="page-header">
 	<h1 class="page-title">Devices</h1>
@@ -330,6 +336,7 @@
 				<p>No paired devices. Pair a device below to start logging readings.</p>
 			</div>
 		{:else}
+			{@render ledgerHead()}
 			<ul class="ledger">
 				{#each pairedDevices as device}
 					{@render deviceRow(device, true)}
@@ -347,6 +354,7 @@
 				<p>No unpaired devices detected. Make sure your devices are broadcasting and within range.</p>
 			</div>
 		{:else}
+			{@render ledgerHead()}
 			<ul class="ledger">
 				{#each unpairedDevices as device}
 					{@render deviceRow(device, false)}
@@ -357,6 +365,30 @@
 {/if}
 
 <style>
+	.crumbs {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		padding-bottom: var(--space-xs);
+		margin-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+	}
+	.crumbs a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		color: var(--ink-secondary);
+	}
+	.crumbs a:hover {
+		color: var(--ink-primary);
+		text-decoration: underline;
+	}
 	.page-header {
 		margin-bottom: var(--space-lg);
 	}
@@ -399,7 +431,6 @@
 	}
 
 	/* Buttons */
-	.btn-primary,
 	.btn-secondary {
 		min-height: 44px;
 		padding: 0 var(--space-md);
@@ -409,13 +440,6 @@
 		border-radius: 4px;
 		cursor: pointer;
 		white-space: nowrap;
-	}
-	.btn-primary {
-		color: var(--accent-ink);
-		background: var(--accent);
-	}
-	.btn-primary:hover {
-		background: var(--accent-hover);
 	}
 	.btn-secondary {
 		color: var(--ink-primary);
@@ -433,17 +457,6 @@
 	.btn-sm {
 		font-size: var(--text-xs);
 	}
-	/* pairing is a row action, not the screen's primary action */
-	.device-action .btn-primary {
-		color: var(--accent);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-rule);
-	}
-	.device-action .btn-primary:hover {
-		background: var(--accent-tint);
-		border-color: var(--accent);
-	}
-
 	/* Pills */
 	.pill {
 		display: inline-flex;
@@ -474,13 +487,51 @@
 		padding: 0;
 		border-top: 1px solid var(--rule-hairline);
 	}
-	.device-row {
+	.device-row,
+	.ledger-head {
 		display: grid;
-		grid-template-columns: minmax(11rem, 1.2fr) 6.5rem minmax(0, 3fr) auto;
+		grid-template-columns: minmax(10rem, 1.6fr) 6rem repeat(3, minmax(7rem, 1fr)) 8.5rem;
 		align-items: center;
 		gap: var(--space-md);
+	}
+	.device-row {
 		padding: var(--space-sm) var(--space-xs);
 		border-bottom: 1px solid var(--rule-hairline);
+	}
+	.ledger-head {
+		padding: var(--space-xs);
+		border-bottom: 1px solid var(--rule-strong);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+	}
+	.ledger-head + .ledger {
+		border-top: 0;
+	}
+	.cell {
+		min-width: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+	}
+	.cell.num {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		overflow-wrap: anywhere;
+	}
+	.cell-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+	}
+	.device-beer {
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
 	.device-info {
 		display: flex;
@@ -524,30 +575,6 @@
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
 		overflow-wrap: anywhere;
-	}
-	.readouts {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-xs) var(--space-lg);
-		margin: 0;
-	}
-	.readout dt {
-		font-family: var(--font-display);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
-		color: var(--ink-muted);
-	}
-	.readout dd {
-		margin: 0;
-		font-family: var(--font-num);
-		font-variant-numeric: tabular-nums;
-		font-size: var(--text-sm);
-		color: var(--ink-primary);
-	}
-	.readout dd.text-val {
-		font-family: var(--font-body);
 	}
 	.device-action {
 		display: flex;
@@ -659,24 +686,40 @@
 	}
 
 	@media (max-width: 1040px) {
-		.device-row {
-			grid-template-columns: minmax(0, 1fr) auto;
+		.ledger-head {
+			display: none;
 		}
-		.readouts {
-			grid-column: 1 / -1;
-			order: 3;
+		.device-row {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		.device-info {
+			grid-column: 1 / 3;
+		}
+		.device-row > .cell:nth-child(2) {
+			justify-self: end;
 		}
 		.device-action {
 			grid-column: 1 / -1;
-			order: 4;
 			justify-content: flex-start;
+		}
+		.cell-label {
+			position: static;
+			display: block;
+			width: auto;
+			height: auto;
+			clip: auto;
+			font-family: var(--font-display);
+			font-size: var(--text-xs);
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.07em;
+			color: var(--ink-muted);
 		}
 	}
 	@media (max-width: 760px) {
 		.setup-row {
 			grid-template-columns: minmax(0, 1fr);
 		}
-		.device-action .btn-primary,
 		.device-action .btn-secondary {
 			width: 100%;
 		}

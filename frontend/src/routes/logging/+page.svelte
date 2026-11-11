@@ -81,7 +81,13 @@
 </svelte:head>
 
 <div class="page-container">
-	<div class="page-header">
+	<nav class="crumbs" aria-label="Breadcrumb">
+		<a href="/system">System</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">Logging</span>
+	</nav>
+	
+<div class="page-header">
 		<h1 class="page-title">Logging</h1>
 		<p class="page-description">Configure local data logging and export readings</p>
 	</div>
@@ -201,6 +207,30 @@
 </div>
 
 <style>
+	.crumbs {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		padding-bottom: var(--space-xs);
+		margin-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+	}
+	.crumbs a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		color: var(--ink-secondary);
+	}
+	.crumbs a:hover {
+		color: var(--ink-primary);
+		text-decoration: underline;
+	}
 	.page-header {
 		margin-bottom: var(--space-lg);
 	}
@@ -246,7 +276,7 @@
 		justify-content: space-between;
 		gap: var(--space-md);
 		min-height: 56px;
-		padding: var(--space-xs) 0;
+		padding: var(--space-sm) 0;
 		border-top: 1px solid var(--rule-hairline);
 	}
 	.setting-info {
@@ -281,7 +311,7 @@
 		color: var(--ink-muted);
 	}
 	.toggle.active .toggle-text {
-		color: var(--accent);
+		color: var(--status-steady);
 	}
 	.toggle-slider {
 		position: relative;
@@ -303,12 +333,11 @@
 		transition: transform 140ms var(--ease-out-quart);
 	}
 	.toggle.active .toggle-slider {
-		background: var(--accent-tint);
-		border-color: var(--accent);
+		border-color: var(--status-steady);
 	}
 	.toggle.active .toggle-slider::after {
 		transform: translateX(1rem);
-		background: var(--accent);
+		background: var(--status-steady);
 	}
 	.toggle:focus-visible,
 	.select-input:focus-visible {
@@ -318,7 +347,8 @@
 	.select-input {
 		min-height: 44px;
 		min-width: 7rem;
-		padding: 0 var(--space-sm);
+		padding: 0 2rem 0 var(--space-sm);
+		text-overflow: ellipsis;
 		font-family: var(--font-num);
 		font-size: var(--text-base);
 		color: var(--ink-primary);
@@ -480,8 +510,7 @@
 		}
 	}
 	@media (max-width: 760px) {
-		.export-section .btn-secondary,
-		.actions .btn-primary {
+		.export-section .btn-secondary {
 			width: 100%;
 			justify-content: center;
 		}

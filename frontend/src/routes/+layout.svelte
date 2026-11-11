@@ -167,6 +167,8 @@
 
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/';
+		// Devices, Calibration and Logging are System sub-pages
+		if (href === '/system') return ['/system', '/devices', '/calibration', '/logging'].some((h) => pathname.startsWith(h));
 		return pathname.startsWith(href);
 	}
 

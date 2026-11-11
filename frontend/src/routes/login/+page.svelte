@@ -3,6 +3,7 @@
 	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithMagicLink } from '$lib/supabase';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { config } from '$lib/config';
+	import Mark from '$lib/components/shell/Mark.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -90,10 +91,10 @@
 		<!-- Logo -->
 		<div class="brand">
 			<div class="brand-row">
-				<img src="/icon.svg" alt="" class="brand-mark" />
+				<span class="brand-mark"><Mark size={32} /></span>
 				<h1 class="brand-name">BrewSignal</h1>
 			</div>
-			<p class="brand-tag">Fermentation monitoring made simple</p>
+			<p class="brand-tag">Sign in to your brewery</p>
 		</div>
 
 		<!-- Auth Card -->
@@ -227,8 +228,8 @@
 		gap: var(--space-sm);
 	}
 	.brand-mark {
-		width: 2rem;
-		height: 2rem;
+		display: inline-flex;
+		color: var(--ink-primary);
 	}
 	.brand-name {
 		font-family: var(--font-display);
@@ -242,8 +243,10 @@
 		color: var(--ink-secondary);
 	}
 	.auth-panel {
-		padding: var(--space-lg) 0 0;
-		border-top: 1px solid var(--rule-strong);
+		padding: var(--space-lg);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
 	}
 	.auth-title {
 		font-family: var(--font-display);
@@ -294,7 +297,7 @@
 	}
 	.btn-secondary {
 		color: var(--ink-primary);
-		background: var(--bg-surface);
+		background: var(--bg-subtle);
 		border: 1px solid var(--rule-strong);
 	}
 	.btn-secondary:hover:not(:disabled) {
@@ -346,7 +349,7 @@
 		padding: 0 var(--space-sm);
 		font-size: var(--text-base);
 		color: var(--ink-primary);
-		background: var(--bg-surface);
+		background: var(--bg-canvas);
 		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 	}

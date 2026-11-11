@@ -971,7 +971,7 @@
 		{ label: 'AI', id: 'ai', open: 'ai' },
 		{ label: 'Home Assistant', id: 'homeassistant', open: 'homeassistant' },
 		{ label: 'MQTT', id: 'mqtt', open: 'mqtt' },
-		{ label: 'Temperature control', id: 'temp-control', open: 'homeassistant' },
+		...(haEnabled ? [{ label: 'Temperature control', id: 'temp-control', open: 'homeassistant' }] : []),
 		{ label: 'Units', id: 'display', open: 'display' },
 		{ label: 'Devices', id: 'devicecontrol', open: 'devicecontrol' },
 		{ label: 'Data', id: 'storage', open: 'storage' },
@@ -1012,6 +1012,11 @@
 						>
 							{item.label}
 						</button>
+					</li>
+				{/each}
+				{#each [{ href: '/devices', label: 'Paired devices' }, { href: '/calibration', label: 'Calibration' }, { href: '/logging', label: 'Logging' }, { href: '/system/maintenance', label: 'Maintenance' }] as l}
+					<li class="index-page">
+						<a href={l.href} class="index-link">{l.label}</a>
 					</li>
 				{/each}
 			</ul>
@@ -1076,35 +1081,6 @@
 			</div>
 		</header>
 
-		<!-- Quick Links -->
-		<nav class="quick-links">
-			<a href="/devices" class="quick-link">
-				<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-				</svg>
-				<span>Devices</span>
-			</a>
-			<a href="/calibration" class="quick-link">
-				<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-				</svg>
-				<span>Calibration</span>
-			</a>
-			<a href="/logging" class="quick-link">
-				<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-				</svg>
-				<span>Logging</span>
-			</a>
-			<a href="/system/maintenance" class="quick-link">
-				<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-				</svg>
-				<span>Maintenance</span>
-			</a>
-		</nav>
-
 		<!-- Settings Sections -->
 		<div class="settings-container">
 			<!-- Display & Units Section -->
@@ -1116,9 +1092,6 @@
 					aria-expanded={expandedSection === 'display'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
-						</svg>
 						<h2>Display & Units</h2>
 					</div>
 					<svg class="chevron" class:rotated={expandedSection === 'display'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1234,9 +1207,6 @@
 					aria-expanded={expandedSection === 'homeassistant'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-						</svg>
 						<h2>Home Assistant</h2>
 						{#if haStatus?.connected}
 							<span class="status-pill connected">Connected</span>
@@ -1303,6 +1273,7 @@
 								<button type="button" class="test-btn" onclick={testHAConnection} disabled={haTesting || !haUrl || !haToken}>
 									{haTesting ? 'Testing...' : 'Test Connection'}
 								</button>
+								{#if haTesting}<span class="checking" role="status">Checking&hellip;</span>{/if}
 								{#if haTestResult}
 									<span role="status" class="test-result" class:success={haTestResult.success}>{haTestResult.message}</span>
 								{/if}
@@ -1448,9 +1419,6 @@
 					aria-expanded={expandedSection === 'devicecontrol'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
-						</svg>
 						<h2>Device Control</h2>
 						{#if deviceControlBackend === 'shelly' && shellyDevices.length > 0}
 							<span class="status-pill connected">{shellyDevices.length} device{shellyDevices.length !== 1 ? 's' : ''}</span>
@@ -1570,9 +1538,6 @@
 					aria-expanded={expandedSection === 'ai'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-						</svg>
 						<h2>AI Brewing Assistant</h2>
 						{#if aiEnabled}
 							<span class="status-pill enabled">Enabled</span>
@@ -1722,6 +1687,7 @@
 								<button type="button" class="test-btn" onclick={testAiConnection} disabled={aiTesting}>
 									{aiTesting ? 'Testing...' : 'Test Connection'}
 								</button>
+								{#if aiTesting}<span class="checking" role="status">Checking&hellip;</span>{/if}
 								{#if aiTestResult}
 									{#if aiTestResult.success}
 										<span class="test-result success">Connected! "{aiTestResult.response}"</span>
@@ -1752,9 +1718,6 @@
 					aria-expanded={expandedSection === 'mqtt'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
-						</svg>
 						<h2>MQTT Publishing</h2>
 						{#if mqttEnabled}
 							<span class="status-pill enabled">Enabled</span>
@@ -1824,6 +1787,7 @@
 								<button type="button" class="test-btn" onclick={testMqttConnection} disabled={mqttTesting || !mqttHost}>
 									{mqttTesting ? 'Testing...' : 'Test Connection'}
 								</button>
+								{#if mqttTesting}<span class="checking" role="status">Checking&hellip;</span>{/if}
 								{#if mqttTestResult}
 									<span role="status" class="test-result" class:success={mqttTestResult.success}>{mqttTestResult.message}</span>
 								{/if}
@@ -1850,9 +1814,6 @@
 					aria-expanded={expandedSection === 'storage'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-						</svg>
 						<h2>Storage & Cleanup</h2>
 						{#if storageStats}
 							<span class="storage-badge">{formatBytes(storageStats.estimated_size_bytes)}</span>
@@ -1910,9 +1871,6 @@
 						aria-expanded={expandedSection === 'cloud'}
 					>
 						<div class="section-title-group">
-							<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
-							</svg>
 							<h2>Cloud Sync</h2>
 							{#if authState.user}
 								<span class="status-pill enabled">Connected</span>
@@ -1925,7 +1883,7 @@
 					{#if expandedSection === 'cloud'}
 						<div class="section-content">
 							{#if cloudLoading}
-								<div class="loading-inline">Loading...</div>
+								<div class="loading-inline" role="status">Checking&hellip;</div>
 							{:else if authState.user}
 								<!-- Connected State -->
 								<div class="cloud-connected">
@@ -2126,9 +2084,6 @@
 					aria-expanded={expandedSection === 'power'}
 				>
 					<div class="section-title-group">
-						<svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
-						</svg>
 						<h2>Power Controls</h2>
 					</div>
 					<svg class="chevron" class:rotated={expandedSection === 'power'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2174,9 +2129,6 @@
 		flex-direction: column;
 		min-width: 0;
 	}
-	.system-main > .quick-links {
-		order: 0;
-	}
 	.system-main > .settings-container {
 		order: 1;
 	}
@@ -2197,7 +2149,8 @@
 		border-top: 1px solid var(--rule-hairline);
 	}
 	.index-link {
-		display: block;
+		display: flex;
+		align-items: center;
 		width: 100%;
 		min-height: 44px;
 		padding: 0 var(--space-xs);
@@ -2217,9 +2170,15 @@
 	.index-link.current {
 		color: var(--accent);
 	}
+	.index-page .index-link {
+		color: var(--ink-muted);
+		text-decoration: none;
+	}
+	.index-page .index-link:hover {
+		color: var(--ink-primary);
+	}
 	.index-link:focus-visible,
 	.section-header:focus-visible,
-	.quick-link:focus-visible,
 	.switch:focus-visible,
 	.toggle-btn:focus-visible {
 		outline: 2px solid var(--accent);
@@ -2234,8 +2193,9 @@
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-md);
-		padding: 6rem 2rem;
+		padding: var(--space-xl) 0;
 		color: var(--ink-muted);
+		font-size: var(--text-sm);
 	}
 	.loading-spinner {
 		width: 2rem;
@@ -2330,37 +2290,6 @@
 		font-size: var(--text-sm);
 	}
 
-	/* Quick links */
-	.quick-links {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-xs);
-		margin-bottom: var(--space-lg);
-	}
-	.quick-link {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-xs);
-		min-height: 44px;
-		padding: 0 var(--space-md);
-		font-family: var(--font-display);
-		font-size: var(--text-sm);
-		font-weight: 600;
-		color: var(--ink-primary);
-		background: var(--bg-surface);
-		border: 1px solid var(--rule-strong);
-		border-radius: 4px;
-		text-decoration: none;
-	}
-	.quick-link:hover {
-		background: var(--accent-tint);
-		border-color: var(--accent-rule);
-	}
-	.quick-link .icon {
-		width: 1rem;
-		height: 1rem;
-	}
-
 	/* Settings sections: hairline, flat */
 	.settings-container {
 		display: flex;
@@ -2393,11 +2322,6 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: var(--space-sm);
-	}
-	.section-icon {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: var(--ink-muted);
 	}
 	.section-header h2 {
 		font-family: var(--font-display);
@@ -2449,33 +2373,48 @@
 	}
 	.status-pill.connected {
 		color: var(--status-steady);
-		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
+		border-color: currentColor;
 	}
 	.status-pill.disconnected {
 		color: var(--status-danger);
 		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
 	}
 	.status-pill.enabled {
-		color: var(--accent);
-		border-color: var(--accent-rule);
+		color: var(--status-steady);
+		border-color: currentColor;
 	}
 	.pill-tag {
 		color: var(--status-warn);
 		border-color: color-mix(in oklch, var(--status-warn) 60%, transparent);
 	}
 
-	/* Unit grid */
+	/* Unit rows: one setting per row */
 	.settings-grid {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: var(--space-md);
-		padding: var(--space-sm) 0 var(--space-md);
-	}
-	.setting-group {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-xs);
+		padding: 0;
+	}
+	.setting-group {
+		display: grid;
+		grid-template-columns: 200px minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-xs) var(--space-md);
+		padding: 12px 0;
+		border-bottom: 1px solid var(--rule-hairline);
 		min-width: 0;
+	}
+	.setting-group > .toggle-group,
+	.setting-group > .input-group {
+		justify-self: start;
+	}
+	.setting-group > .toggle-group {
+		min-width: 12rem;
+	}
+	.toggle-group.triple {
+		min-width: 15rem;
+	}
+	.setting-group > .select-input {
+		max-width: 24rem;
 	}
 	.setting-label,
 	.form-field label,
@@ -2503,7 +2442,7 @@
 		font-family: var(--font-num);
 		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--ink-secondary);
+		color: var(--ink-muted);
 		cursor: pointer;
 		transition: background-color 140ms var(--ease-out-quart);
 	}
@@ -2514,8 +2453,9 @@
 		color: var(--ink-primary);
 	}
 	.toggle-btn.active {
-		background: var(--accent);
-		color: var(--accent-ink);
+		background: var(--bg-elevated);
+		color: var(--ink-primary);
+		box-shadow: inset 0 0 0 1px var(--rule-strong);
 	}
 
 	/* Fields */
@@ -2540,15 +2480,17 @@
 	}
 	.num-input {
 		width: 5.5rem;
-		font-family: var(--font-num);
+		font-family: var(--font-body);
 		font-variant-numeric: tabular-nums;
+		letter-spacing: 0;
 		text-align: right;
 	}
 	.select-input,
 	.mini-select,
 	.form-field select {
 		appearance: none;
-		padding-right: 2rem;
+		padding-right: 32px;
+		text-overflow: ellipsis;
 		cursor: pointer;
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
 		background-repeat: no-repeat;
@@ -2593,7 +2535,7 @@
 		justify-content: space-between;
 		gap: var(--space-md);
 		min-height: 56px;
-		padding: var(--space-xs) 0;
+		padding: 12px 0;
 		border-bottom: 1px solid var(--rule-hairline);
 	}
 	.toggle-setting.prominent {
@@ -2639,7 +2581,7 @@
 		color: var(--ink-muted);
 	}
 	.switch.on .switch-state {
-		color: var(--accent);
+		color: var(--status-steady);
 	}
 	.switch-thumb {
 		position: relative;
@@ -2662,12 +2604,11 @@
 		transition: transform 140ms var(--ease-out-quart);
 	}
 	.switch.on .switch-thumb {
-		background: var(--accent-tint);
-		border-color: var(--accent);
+		border-color: var(--status-steady);
 	}
 	.switch.on .switch-thumb::after {
 		transform: translateX(1rem);
-		background: var(--accent);
+		background: var(--status-steady);
 	}
 
 	/* Form rows */
@@ -2678,10 +2619,10 @@
 	}
 	.form-field {
 		display: grid;
-		grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr);
+		grid-template-columns: 200px minmax(0, 1fr);
 		align-items: center;
 		gap: var(--space-2xs) var(--space-md);
-		padding: var(--space-xs) 0;
+		padding: 12px 0;
 		border-bottom: 1px solid var(--rule-hairline);
 	}
 	.form-field > :not(label) {
@@ -2876,7 +2817,7 @@
 		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--ink-primary);
-		background: var(--bg-surface);
+		background: var(--bg-subtle);
 		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 		cursor: pointer;
@@ -2974,6 +2915,25 @@
 	.claim-result.success {
 		color: var(--status-steady);
 		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
+	}
+
+	.test-result::before,
+	.claim-result::before {
+		content: 'Failed';
+		margin-right: var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+	}
+	.test-result.success::before,
+	.claim-result.success::before {
+		content: 'OK';
+	}
+	.checking {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 	}
 
 	/* Storage */
@@ -3384,6 +3344,8 @@
 			display: flex;
 			overflow-x: auto;
 			scrollbar-width: none;
+			-webkit-mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent);
+			mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent);
 			border-top: 0;
 			border-bottom: 1px solid var(--rule-hairline);
 		}
@@ -3402,7 +3364,7 @@
 		.status-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
-		.settings-grid {
+		.setting-group {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.form-field {
@@ -3422,7 +3384,6 @@
 			flex-direction: column;
 		}
 		.power-actions > button,
-		.section-actions > .save-btn,
 		.add-device-form .add-btn {
 			width: 100%;
 			justify-content: center;

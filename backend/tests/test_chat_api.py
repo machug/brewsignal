@@ -292,3 +292,30 @@ async def test_status_without_api_key_is_disabled_not_500(client, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     r = await client.get("/api/chat/status")
     assert r.status_code == 200 and r.json()["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_past_chat_tools_read_the_new_store(client, test_db, chat_env):
+    from backend.services.llm.tools import execute_tool
+
+    chat_env["model"] = FunctionModel(
+        lambda m, i: __import__("pydantic_ai").messages.ModelResponse(
+            parts=[__import__("pydantic_ai").messages.TextPart("Use Saaz hops for a Pilsner.")]),
+        stream_function=lambda m, i: _text_stream("Use Saaz hops for a Pilsner."),
+    )
+    assert (await _send(client, "past", _user_msg("Plan a pilsner please"))).status_code == 200
+
+    found = await execute_tool(test_db, "search_threads", {"query": "saaz"}, user_id="local")
+    assert [r["thread_id"] for r in found["results"]] == ["past"]
+    assert "Saaz" in found["results"][0]["snippets"][0]["snippet"]
+    assert (await execute_tool(test_db, "search_threads", {"query": "saaz"}, user_id="someone-else"))["results"] == []
+
+    ctx = await execute_tool(test_db, "get_thread_context", {"thread_id": "past"}, user_id="local")
+    assert [(m["role"], m["content"]) for m in ctx["messages"]] == [
+        ("user", "Plan a pilsner please"), ("assistant", "Use Saaz hops for a Pilsner."),
+    ]
+    assert "error" in await execute_tool(test_db, "get_thread_context", {"thread_id": "past"}, user_id="someone-else")
+
+    recent = await execute_tool(test_db, "list_recent_threads", {}, user_id="local")
+    assert recent["threads"][0]["message_count"] == 2
+    assert recent["threads"][0]["preview"] == "Plan a pilsner please"

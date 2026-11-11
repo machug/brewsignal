@@ -111,3 +111,17 @@ def migrate_legacy_threads(conn) -> None:
         except Exception as e:  # one bad thread must not block startup
             logger.warning("Skipped legacy chat thread %s: %s", tid, e)
     logger.info("Imported %d legacy chat threads", n)
+
+
+def conversation_text(messages: Sequence[ModelMessage]) -> list[dict]:
+    """User/assistant text only, in order: [{"role", "content"}]."""
+    out = []
+    for m in messages:
+        if isinstance(m, ModelRequest):
+            out += [{"role": "user", "content": p.content} for p in m.parts
+                    if isinstance(p, UserPromptPart) and isinstance(p.content, str) and p.content]
+        elif isinstance(m, ModelResponse):
+            text = "".join(p.content for p in m.parts if isinstance(p, TextPart))
+            if text:
+                out.append({"role": "assistant", "content": text})
+    return out

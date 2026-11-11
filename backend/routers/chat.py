@@ -54,7 +54,7 @@ from backend.routers.ag_ui import (
     _get_recipe_system_prompt,
 )
 from backend.routers.assistant import get_llm_config
-from backend.services.chat_store import SDK_VERSION, dump_history, load_history, to_ui_messages
+from backend.services.chat_store import SDK_VERSION, conversation_text, dump_history, load_history, to_ui_messages
 from backend.services.hop_inventory_bulk import BulkHopItem, StaleStockError, bulk_update_hops
 from backend.services.llm.config import DEFAULT_BASE_URLS, DEFAULT_MODELS, ENV_VAR_NAMES, LLMConfig, LLMProvider
 from backend.services.llm.openrouter import resolve_openrouter_model
@@ -334,18 +334,7 @@ async def _instructions(db: AsyncSession, config: LLMConfig, user: AuthUser, que
     return text
 
 
-def _conversation(messages: list[ModelMessage]) -> list[dict]:
-    """User/assistant text only, for memory extraction."""
-    out = []
-    for m in messages:
-        if isinstance(m, ModelRequest):
-            out += [{"role": "user", "content": p.content} for p in m.parts
-                    if isinstance(p, UserPromptPart) and isinstance(p.content, str)]
-        elif isinstance(m, ModelResponse):
-            text = "".join(p.content for p in m.parts if isinstance(p, TextPart))
-            if text:
-                out.append({"role": "assistant", "content": text})
-    return out
+_conversation = conversation_text
 
 
 def _spawn(coro) -> None:

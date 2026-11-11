@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models import AgUiThread, AgUiMessage
+from backend.models import AgUiThread, AgUiMessage, ChatHistory
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,22 @@ async def rename_chat(
         return {"error": f"Failed to rename chat: {str(e)}"}
 
 
+async def _thread_texts(db: AsyncSession, thread_id: str) -> list[dict[str, str]]:
+    """User/assistant text of a thread, from the chat history store.
+
+    Falls back to legacy ag_ui_messages only for a thread with no chat_histories row.
+    """
+    from backend.services.chat_store import conversation_text, load_history
+
+    row = await db.get(ChatHistory, thread_id)
+    if row:
+        return conversation_text(load_history(row.messages))
+    rows = (await db.execute(
+        select(AgUiMessage).where(AgUiMessage.thread_id == thread_id).order_by(AgUiMessage.created_at)
+    )).scalars().all()
+    return [{"role": m.role, "content": m.content} for m in rows if m.role in ("user", "assistant") and m.content]
+
+
 async def list_recent_threads(
     db: AsyncSession,
     current_thread_id: Optional[str] = None,
@@ -199,30 +215,10 @@ async def list_recent_threads(
         # Build thread summaries
         thread_summaries = []
         for thread in threads:
-            # Get first user message as preview
-            msg_result = await db.execute(
-                select(AgUiMessage)
-                .where(
-                    AgUiMessage.thread_id == thread.id,
-                    AgUiMessage.role == "user",
-                )
-                .order_by(AgUiMessage.created_at)
-                .limit(1)
-            )
-            first_msg = msg_result.scalar_one_or_none()
-
-            # Get message count
-            count_result = await db.execute(
-                select(func.count(AgUiMessage.id))
-                .where(AgUiMessage.thread_id == thread.id)
-            )
-            msg_count = count_result.scalar() or 0
-
-            preview = ""
-            if first_msg and first_msg.content:
-                preview = first_msg.content[:150]
-                if len(first_msg.content) > 150:
-                    preview += "..."
+            texts = await _thread_texts(db, thread.id)
+            msg_count = len(texts)
+            first = next((t["content"] for t in texts if t["role"] == "user"), "")
+            preview = first[:150] + ("..." if len(first) > 150 else "")
 
             thread_summaries.append({
                 "thread_id": thread.id,
@@ -272,29 +268,12 @@ async def get_thread_context(
         if not thread:
             return {"error": f"Thread not found: {thread_id}"}
 
-        # Get messages from the thread
-        msg_result = await db.execute(
-            select(AgUiMessage)
-            .where(AgUiMessage.thread_id == thread_id)
-            .order_by(AgUiMessage.created_at)
-            .limit(max_messages)
-        )
-        messages = msg_result.scalars().all()
-
-        # Format messages for context
         formatted_messages = []
-        for msg in messages:
-            # Skip tool calls/results for cleaner context
-            if msg.role in ("user", "assistant"):
-                content = msg.content
-                # Truncate very long messages
-                if content and len(content) > 1000:
-                    content = content[:1000] + "... [truncated]"
-                formatted_messages.append({
-                    "role": msg.role,
-                    "content": content,
-                    "timestamp": msg.created_at.isoformat(),
-                })
+        for msg in (await _thread_texts(db, thread_id))[:max_messages]:
+            content = msg["content"]
+            if len(content) > 1000:  # truncate very long messages
+                content = content[:1000] + "... [truncated]"
+            formatted_messages.append({"role": msg["role"], "content": content})
 
         return {
             "thread_id": thread_id,
@@ -327,88 +306,35 @@ async def search_threads(
     limit = min(max(1, limit), 10)  # Clamp between 1 and 10
 
     try:
-        # Search in thread titles and message content
-        # Use LIKE for SQLite compatibility
-        search_pattern = f"%{query}%"
-
-        # Build base query with user isolation
-        base_query = (
-            select(AgUiThread)
-            .outerjoin(AgUiMessage, AgUiThread.id == AgUiMessage.thread_id)
-        )
-
-        # User isolation filter
-        filters = [
-            or_(
-                func.lower(AgUiThread.title).like(search_pattern),
-                func.lower(AgUiMessage.content).like(search_pattern),
-            )
-        ]
+        # Match thread titles and message text in Python: history is stored as JSON.
+        # ponytail: scans every owned thread; fine for one brewer, add an index table if it grows
+        stmt = select(AgUiThread).order_by(AgUiThread.updated_at.desc())
         if user_id:
-            filters.append(AgUiThread.user_id == user_id)
-
-        # Find threads with matching titles or message content
-        result = await db.execute(
-            base_query
-            .where(*filters)
-            .distinct()
-            .order_by(AgUiThread.updated_at.desc())
-            .limit(limit)
-        )
-        threads = result.scalars().all()
-
-        if not threads:
-            return {
-                "results": [],
-                "message": f"No conversations found matching '{query}'",
-            }
-
-        # For each matching thread, get relevant message snippets
+            stmt = stmt.where(AgUiThread.user_id == user_id)
+        if current_thread_id:
+            stmt = stmt.where(AgUiThread.id != current_thread_id)
         results = []
-        for thread in threads:
-            # Skip current thread
-            if current_thread_id and thread.id == current_thread_id:
-                continue
-
-            # Get messages that match the query
-            msg_result = await db.execute(
-                select(AgUiMessage)
-                .where(
-                    AgUiMessage.thread_id == thread.id,
-                    func.lower(AgUiMessage.content).like(search_pattern),
-                )
-                .order_by(AgUiMessage.created_at)
-                .limit(3)  # Get up to 3 matching messages
-            )
-            matching_messages = msg_result.scalars().all()
-
-            # Extract relevant snippets
+        for thread in (await db.execute(stmt)).scalars():
             snippets = []
-            for msg in matching_messages:
-                content = msg.content
-                # Find the query in the content and extract surrounding context
-                lower_content = content.lower()
-                idx = lower_content.find(query)
-                if idx != -1:
-                    # Extract ~150 chars around the match
-                    start = max(0, idx - 75)
-                    end = min(len(content), idx + len(query) + 75)
-                    snippet = content[start:end]
-                    if start > 0:
-                        snippet = "..." + snippet
-                    if end < len(content):
-                        snippet = snippet + "..."
-                    snippets.append({
-                        "role": msg.role,
-                        "snippet": snippet,
-                    })
-
-            results.append({
-                "thread_id": thread.id,
-                "title": thread.title or "Untitled",
-                "updated_at": thread.updated_at.isoformat(),
-                "snippets": snippets[:2],  # Limit to 2 snippets per thread
-            })
+            for msg in await _thread_texts(db, thread.id):
+                content = msg["content"]
+                idx = content.lower().find(query)
+                if idx == -1:
+                    continue
+                start, end = max(0, idx - 75), min(len(content), idx + len(query) + 75)  # ~150 chars around the match
+                snippets.append({
+                    "role": msg["role"],
+                    "snippet": ("..." if start > 0 else "") + content[start:end] + ("..." if end < len(content) else ""),
+                })
+            if snippets or query in (thread.title or "").lower():
+                results.append({
+                    "thread_id": thread.id,
+                    "title": thread.title or "Untitled",
+                    "updated_at": thread.updated_at.isoformat(),
+                    "snippets": snippets[:2],
+                })
+                if len(results) >= limit:
+                    break
 
         if not results:
             return {

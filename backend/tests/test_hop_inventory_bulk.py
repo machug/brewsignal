@@ -34,6 +34,12 @@ async def _seed(db: AsyncSession):
     await db.commit()
 
 
+async def _apply(db, items, replace):
+    """Apply with the stock_version of a fresh preview (a version is now required)."""
+    version = (await bulk_update_hops(db, "local", items, replace=replace, dry_run=True))["stock_version"]
+    return await bulk_update_hops(db, "local", items, replace=replace, dry_run=False, expected_stock_version=version)
+
+
 ITEMS = [
     BulkHopItem(name="citra", amount_grams=100),
     BulkHopItem(name="Cascade", amount_grams=30),
@@ -69,7 +75,7 @@ async def test_dry_run_plans_replace_without_writing(test_db: AsyncSession):
 @pytest.mark.asyncio
 async def test_apply_replace(test_db: AsyncSession):
     await _seed(test_db)
-    await bulk_update_hops(test_db, "local", ITEMS, replace=True, dry_run=False)
+    await _apply(test_db, ITEMS, replace=True)
     by_key, rows = await _stock(test_db)
 
     assert sorted(r.variety for r in rows if r.user_id != "other-user") == ["Cascade", "Citra", "Zorbatron"]
@@ -83,7 +89,10 @@ async def test_apply_replace(test_db: AsyncSession):
 async def test_apply_merge_keeps_unlisted_stock(test_db: AsyncSession):
     await _seed(test_db)
     plan = await bulk_update_hops(
-        test_db, "local", [BulkHopItem(name="Citra", amount_grams=5)], replace=False, dry_run=False
+        test_db, "local", [BulkHopItem(name="Citra", amount_grams=5)], replace=False, dry_run=False,
+        expected_stock_version=(await bulk_update_hops(
+            test_db, "local", [BulkHopItem(name="Citra", amount_grams=5)], replace=False, dry_run=True
+        ))["stock_version"],
     )
     # Listed Citra is the new total: its two rows merge; unlisted hops stay.
     assert [(r["variety"], r["reason"]) for r in plan["remove"]] == [("Citra", "merged")]
@@ -151,7 +160,7 @@ async def test_zero_grams_removes_in_merge_mode_too(test_db: AsyncSession):
     zero = [r for r in preview["remove"] if r["variety"] == "Amarillo"]
     assert zero and zero[0]["replace_only"] is False
 
-    plan = await bulk_update_hops(test_db, "local", items, replace=False, dry_run=False)
+    plan = await _apply(test_db, items, replace=False)
     assert [r["variety"] for r in plan["remove"]] == ["Amarillo"]
     _, rows = await _stock(test_db)
     assert "Amarillo" not in [r.variety for r in rows]

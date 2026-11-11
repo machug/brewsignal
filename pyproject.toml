@@ -35,6 +35,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "prompty>=0.1",
     "scalar-fastapi>=1.8.2",
+    "pydantic-ai-slim[openrouter]==2.66.0",
 ]
 
 [project.optional-dependencies]

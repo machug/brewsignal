@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -79,6 +80,22 @@ async def get_user_batch(batch_id: int, user: AuthUser, db: AsyncSession) -> Bat
     return batch
 
 
+async def commit_or_409(db: AsyncSession) -> None:
+    """Commit; a unique-index violation (a race, or equipment shared across
+    users that the per-user check cannot see) becomes a 409, not a 500."""
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        await db.rollback()
+        if "unique" not in str(e.orig).lower():
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail="A heater, cooler or Tilt on this batch is already in use by another "
+                   "fermenting or conditioning batch.",
+        )
+
+
 async def ensure_equipment_free(
     db: AsyncSession,
     user: AuthUser,
@@ -94,6 +111,11 @@ async def ensure_equipment_free(
     One set of equipment per controlled (fermenting/conditioning) batch (tilt_ui-8d49).
     A switch counts as shared whether it is the other batch's heater or cooler.
     """
+    if heater and cooler and heater == cooler:
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{heater}' cannot be both the heater and the cooler of one batch.",
+        )
     if status not in CONTROLLED_STATUSES:
         return
 
@@ -294,7 +316,7 @@ async def create_batch(
         db_batch.start_time = datetime.now(timezone.utc)
 
     db.add(db_batch)
-    await db.commit()
+    await commit_or_409(db)
     await db.refresh(db_batch)
 
     # Publish MQTT discovery if batch starts in fermenting status
@@ -514,7 +536,7 @@ async def update_batch(
     if update.packaging_notes is not None:
         batch.packaging_notes = update.packaging_notes
 
-    await db.commit()
+    await commit_or_409(db)
     await db.refresh(batch)
 
     # Always reload batch with eager loading to avoid MissingGreenlet errors

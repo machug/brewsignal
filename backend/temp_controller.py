@@ -9,6 +9,7 @@ Supports multiple control backends via the device control abstraction layer:
 import asyncio
 import logging
 import os
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -590,8 +591,9 @@ def find_equipment_conflicts(batches) -> dict[int, dict]:
     Returns {batch_id: {"messages": [...], "force_off": bool}} for every batch
     that must NOT be driven. A pre-pitch 'planning' batch that collides with
     exactly one fermenting/conditioning batch loses (it is skipped, the active
-    batch keeps its equipment, no off command). Any other collision blocks all
-    members and force_off=True (their equipment is switched off).
+    batch keeps its equipment). Any other collision blocks all members
+    (force_off=True). Either way the caller switches off whatever a loser drives
+    that no non-conflicted batch uses.
     """
     groups: dict[tuple[str, str], list] = {}
     for b in batches:
@@ -625,19 +627,36 @@ def find_equipment_conflicts(batches) -> dict[int, dict]:
     return result
 
 
+def _driven_roles(b) -> list[tuple[str, str]]:
+    """(kind, entity) pairs the controller actually drives for this batch.
+    Pre-pitch chilling (planning/brewing) only ever drives the cooler."""
+    roles = []
+    if b.heater_entity_id and b.status not in ("planning", "brewing"):
+        roles.append(("heater", b.heater_entity_id))
+    if b.cooler_entity_id:
+        roles.append(("cooler", b.cooler_entity_id))
+    return roles
+
+
 async def _handle_conflicted_batch(
-    router, db, batch: Batch, info: dict, driven_entities: set[str],
+    router, db, batch, info: dict, driven_entities: set[str],
 ) -> None:
-    """Do not drive a batch whose equipment/sensor is shared. Alert; switch its
-    equipment off unless another (non-conflicted) batch is legitimately using it."""
+    """Do not drive a batch whose equipment/sensor is shared. Alert, and switch
+    off whatever it drives unless a non-conflicted batch legitimately uses that
+    switch. A conflict loser (e.g. a planning batch already chilling) therefore
+    cannot leave its equipment running unsupervised."""
     msg = f"Batch {batch.id} ({batch.name or 'unnamed'}) not controlled: " + "; ".join(info["messages"])
     logger.error(msg)
     await _raise_alert(db, batch, AlertType.EQUIPMENT_CONFLICT, msg)
-    if not info["force_off"]:
-        return
-    for kind, entity in (("heater", batch.heater_entity_id), ("cooler", batch.cooler_entity_id)):
-        if entity and entity not in driven_entities:
+    for kind, entity in _driven_roles(batch):
+        if entity not in driven_entities:
             await _ensure_batch_off(router, db, batch.id, kind, entity, None, None, batch.temp_target, batch.device_id)
+
+
+_BATCH_FIELDS = (
+    "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
+    "temp_target", "temp_hysteresis",
+)
 
 
 async def run_control_cycle(
@@ -651,13 +670,16 @@ async def run_control_cycle(
     """One pass over all controllable batches.
 
     Batches are processed sequentially: they share one DB session and, with
-    shared equipment, one per-entity switch record.
+    shared equipment, one per-entity switch record. Needed columns are copied
+    up front: a rollback in a persistence helper expires ORM instances, and
+    reloading them in async code raises MissingGreenlet.
     """
+    batches = [SimpleNamespace(**{f: getattr(b, f) for f in _BATCH_FIELDS}) for b in batches]
     conflicts = find_equipment_conflicts(batches)
     driven = set()
     for b in batches:
         if b.id not in conflicts:
-            driven.update(e for e in (b.heater_entity_id, b.cooler_entity_id) if e)
+            driven.update(e for _, e in _driven_roles(b))
 
     for batch in batches:
         try:
@@ -731,6 +753,7 @@ async def control_batch_temperature(
     # (manual HA) toggles do not bypass the min-cycle protection.
     current_heater_state = current_cooler_state = None
     tripped = False
+    unavailable = False
     for kind, entity, states in (
         ("heater", heater_entity, _batch_heater_states),
         ("cooler", cooler_entity, _batch_cooler_states),
@@ -739,13 +762,11 @@ async def control_batch_temperature(
             continue
         actual, exceeded = await _observe_entity(router, db, entity, kind)
         if actual is None:
+            # Keep going: the other device's max-on must still be enforced
             logger.warning(f"Batch {batch_id}: {kind.capitalize()} entity {entity} is unavailable")
-            return  # Cannot control (or safely reason about) an unavailable entity
+            unavailable = True
+            continue
         states.setdefault(batch_id, {})["state"] = actual
-        if kind == "heater":
-            current_heater_state = actual
-        else:
-            current_cooler_state = actual
         if exceeded:
             tripped = True
             limit_h = _max_on_minutes(kind) / 60
@@ -758,8 +779,8 @@ async def control_batch_temperature(
             await _start_lockout(db, entity)
             await _ensure_batch_off(router, db, batch_id, kind, entity, wort_temp, ambient_temp, target_temp, device_id)
             await _raise_alert(db, batch, AlertType.MAX_ON_EXCEEDED, msg)
-    if tripped:
-        return
+    if tripped or unavailable:
+        return  # cannot safely control with an unavailable or just-tripped entity
     await _clear_batch_alert(db, batch_id, AlertType.MAX_ON_EXCEEDED)
 
     # Re-read from the cache (an off above may have changed it)
@@ -782,51 +803,48 @@ async def control_batch_temperature(
         ):
             current_heater_state = "off"
 
-    # Check for manual overrides for this batch
+    # Manual overrides. 'off' bypasses min-cycle (safe direction); 'on' does not,
+    # and only goes ahead once the opposite device is confirmed off.
     if batch_id in _batch_overrides:
         override = _batch_overrides[batch_id]
 
-        # Handle heater override
         heater_override = override.get("heater")
         if heater_override:
             override_until = heater_override.get("until")
             if override_until and _now() > override_until:
-                # Override expired
                 logger.info(f"Batch {batch_id}: Heater override expired, returning to auto mode")
                 del _batch_overrides[batch_id]["heater"]
             else:
-                # Override active
                 desired_state = heater_override.get("state")
                 if heater_entity and current_heater_state != desired_state:
                     if desired_state == "on" and cooler_entity and current_cooler_state != "off":
                         await _turn_off_cooler(force=True)
-                    if desired_state != "on" or not cooler_entity or current_cooler_state == "off":
-                        await set_heater_state_for_batch(
+                    if desired_state == "off" or not cooler_entity or current_cooler_state == "off":
+                        if await set_heater_state_for_batch(
                             router, heater_entity, desired_state, db, batch_id,
-                            wort_temp, ambient_temp, target_temp, device_id, force=True
-                        )
+                            wort_temp, ambient_temp, target_temp, device_id, force=(desired_state == "off")
+                        ):
+                            current_heater_state = desired_state
                     else:
                         logger.error(f"Batch {batch_id}: heater override 'on' skipped - cooler not confirmed off")
 
-        # Handle cooler override
         cooler_override = override.get("cooler")
         if cooler_override:
             override_until = cooler_override.get("until")
             if override_until and _now() > override_until:
-                # Override expired
                 logger.info(f"Batch {batch_id}: Cooler override expired, returning to auto mode")
                 del _batch_overrides[batch_id]["cooler"]
             else:
-                # Override active
                 desired_state = cooler_override.get("state")
                 if cooler_entity and current_cooler_state != desired_state:
                     if desired_state == "on" and heater_entity and current_heater_state != "off":
                         await _turn_off_heater(force=True)
-                    if desired_state != "on" or not heater_entity or current_heater_state == "off":
-                        await set_cooler_state_for_batch(
+                    if desired_state == "off" or not heater_entity or current_heater_state == "off":
+                        if await set_cooler_state_for_batch(
                             router, cooler_entity, desired_state, db, batch_id,
-                            wort_temp, ambient_temp, target_temp, device_id, force=True
-                        )
+                            wort_temp, ambient_temp, target_temp, device_id, force=(desired_state == "off")
+                        ):
+                            current_cooler_state = desired_state
                     else:
                         logger.error(f"Batch {batch_id}: cooler override 'on' skipped - heater not confirmed off")
 
@@ -1001,7 +1019,10 @@ async def control_chamber_idle(
                 await _idle_set(kind, entity, "off", force=True)
         return
 
-    # Sync cached idle state with actual device state; enforce max-on
+    # Sync cached idle state with actual device state; enforce max-on for every
+    # configured entity before any early return.
+    tripped = False
+    unavailable = False
     for kind, entity, states in (
         ("heater", heater_entity, _idle_heater_state),
         ("cooler", cooler_entity, _idle_cooler_state),
@@ -1010,25 +1031,21 @@ async def control_chamber_idle(
             continue
         actual, exceeded = await _observe_entity(router, db, entity, kind)
         if actual is None:
-            logger.warning(f"Chamber idle: {kind.capitalize()} entity {entity} is unavailable, skipping {kind}")
-            if kind == "heater":
-                heater_entity = None  # Skip heater but continue with cooler
-            else:
-                cooler_entity = None
+            logger.warning(f"Chamber idle: {kind.capitalize()} entity {entity} is unavailable")
+            unavailable = True
             continue
-        if states:
-            if states.get("state") != actual:
-                logger.debug(f"Chamber idle: Syncing {kind} cache: {states.get('state')} -> {actual}")
-            states["state"] = actual
-        else:
-            states["state"] = actual
+        if states.get("state") != actual:
+            logger.debug(f"Chamber idle: Syncing {kind} cache: {states.get('state')} -> {actual}")
+        states["state"] = actual
         if exceeded:
+            tripped = True
             logger.error(f"Chamber idle: {kind} {entity} on continuously for more than {_max_on_minutes(kind) / 60:g} h; forced OFF")
             await _start_lockout(db, entity)
             await _idle_set(kind, entity, "off", force=True)
 
-    # If both unavailable, nothing to do
-    if not heater_entity and not cooler_entity:
+    # An unavailable device may still be physically on, so with the opposite
+    # state unconfirmed nothing is turned on (same as batch control).
+    if tripped or unavailable:
         return
 
     current_heater = _idle_heater_state.get("state") if heater_entity else None
@@ -1333,6 +1350,13 @@ def set_manual_override(
     # Initialize nested structure if needed
     if batch_id not in _batch_overrides:
         _batch_overrides[batch_id] = {}
+
+    # Overrides are mutually exclusive: an 'on' replaces an 'on' on the opposite device
+    if state == "on":
+        other = "cooler" if device_type == "heater" else "heater"
+        if _batch_overrides[batch_id].get(other, {}).get("state") == "on":
+            logger.warning(f"Batch {batch_id}: {other} 'on' override cleared because {device_type} 'on' was requested")
+            del _batch_overrides[batch_id][other]
 
     _batch_overrides[batch_id][device_type] = {
         "state": state,

@@ -246,3 +246,28 @@ async def test_api_create_conflict_is_409(client):
     await _active(client, "A", "conditioning", heater_entity_id="switch.h")
     r = await client.post("/api/batches", json={"name": "B", "status": "fermenting", "heater_entity_id": "switch.h"})
     assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_api_rejects_same_switch_as_heater_and_cooler(client):
+    b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
+    r = await client.put(f"/api/batches/{b}", json={"heater_entity_id": "switch.x", "cooler_entity_id": "switch.x"})
+    assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_unique_index_violation_is_409_not_500(client, monkeypatch):
+    """Race / cross-user case: the pre-check passes but the DB index still fires."""
+    from backend.routers import batches as batches_router
+
+    await _active(client, "A", "fermenting", heater_entity_id="switch.h")
+
+    async def no_check(*a, **k):
+        return None
+    monkeypatch.setattr(batches_router, "ensure_equipment_free", no_check)
+
+    b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
+    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "heater_entity_id": "switch.h"})
+    assert r.status_code == 409
+    r = await client.post("/api/batches", json={"name": "C", "status": "fermenting", "heater_entity_id": "switch.h"})
+    assert r.status_code == 409

@@ -239,8 +239,8 @@ class TestCalibrationAPI:
         response = await client.put("/api/devices/test-validate-4/calibration", json=calibration_data)
         assert response.status_code == 422  # Validation error
 
-    async def test_validate_linear_requires_two_points(self, client: AsyncClient, test_db: AsyncSession):
-        """Test that linear calibration requires at least 2 points."""
+    async def test_validate_linear_accepts_one_point(self, client: AsyncClient, test_db: AsyncSession):
+        """A single point is valid (applied as an offset); the UI saves points one at a time."""
         # Create device
         device_data = {
             "id": "test-validate-5",
@@ -257,7 +257,8 @@ class TestCalibrationAPI:
             },
         }
         response = await client.put("/api/devices/test-validate-5/calibration", json=calibration_data)
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 200
+        assert response.json()["calibration_data"]["points"] == [[1.000, 1.002]]
 
     async def test_validate_none_no_data(self, client: AsyncClient, test_db: AsyncSession):
         """Test that 'none' calibration type should not have calibration_data."""
@@ -559,8 +560,8 @@ class TestCalibrationAPI:
         assert "points" not in response.json()["calibration_data"]
         assert len(response.json()["calibration_data"]["temp_points"]) == 2
 
-    async def test_temp_points_require_two_minimum(self, client: AsyncClient, test_db: AsyncSession):
-        """Test that temp_points requires at least 2 points."""
+    async def test_temp_points_accept_one_and_empty(self, client: AsyncClient, test_db: AsyncSession):
+        """One temp point is valid; an empty list clears temp points while SG points remain."""
         device_data = {"id": "test-temp-min", "device_type": "tilt", "name": "Test"}
         await client.post("/api/devices", json=device_data)
 
@@ -572,6 +573,12 @@ class TestCalibrationAPI:
             },
         }
         response = await client.put("/api/devices/test-temp-min/calibration", json=calibration_data)
-        assert response.status_code == 422
-        error_detail = str(response.json()["detail"])
-        assert "at least 2 temp_points" in error_detail
+        assert response.status_code == 200
+
+        calibration_data = {
+            "calibration_type": "linear",
+            "calibration_data": {"points": [[1.000, 1.002]], "temp_points": []},
+        }
+        response = await client.put("/api/devices/test-temp-min/calibration", json=calibration_data)
+        assert response.status_code == 200
+        assert response.json()["calibration_data"]["temp_points"] == []

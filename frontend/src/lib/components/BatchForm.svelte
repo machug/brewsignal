@@ -340,6 +340,7 @@
 			<span class="form-hint">Optional - defaults to recipe name</span>
 		</div>
 
+		<div class="field-grid">
 		<!-- Status -->
 		<div class="form-group">
 			<label class="form-label" for="status">Status</label>
@@ -392,11 +393,9 @@
 				class="form-input date-input"
 				bind:value={brewDate}
 			/>
-			<span class="form-hint">DD/MM/YYYY</span>
 		</div>
 
 		<!-- Gravity Measurements -->
-		<div class="form-row">
 			<div class="form-group">
 				<label class="form-label" for="og">Measured OG</label>
 				<input
@@ -601,6 +600,17 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: var(--space-md);
 	}
+	.field-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-md);
+	}
+	@media (min-width: 1041px) {
+		.field-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: var(--space-md) var(--space-lg);
+		}
+	}
 	.form-label {
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
@@ -707,10 +717,7 @@
 		}
 	}
 	.recipe-reference {
-		padding: var(--space-xs) var(--space-sm);
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-rule);
-		border-radius: 4px;
+		padding: var(--space-xs) 0;
 	}
 	.reference-label {
 		font-family: var(--font-display);

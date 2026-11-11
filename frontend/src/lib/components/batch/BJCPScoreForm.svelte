@@ -200,9 +200,10 @@
 									max={subcat.maxScore}
 									step="1"
 									class="range-slider"
+									class:active={scores[subcat.key] > 0}
 									bind:value={scores[subcat.key]}
 								/>
-								<span class="slider-value">{scores[subcat.key]}<span class="slider-max">/{subcat.maxScore}</span></span>
+								<span class="slider-value" class:active={scores[subcat.key] > 0}>{scores[subcat.key]}<span class="slider-max">/{subcat.maxScore}</span></span>
 							</div>
 						</div>
 					{/each}
@@ -219,9 +220,10 @@
 							max={category.maxScore}
 							step="1"
 							class="range-slider"
+							class:active={scores.overall_score > 0}
 							bind:value={scores.overall_score}
 						/>
-						<span class="slider-value">{scores.overall_score}<span class="slider-max">/{category.maxScore}</span></span>
+						<span class="slider-value" class:active={scores.overall_score > 0}>{scores.overall_score}<span class="slider-max">/{category.maxScore}</span></span>
 					</div>
 				</div>
 			{/if}
@@ -471,7 +473,7 @@
 		width: 1.25rem;
 		height: 1.25rem;
 		margin-top: calc((4px - 1.25rem) / 2);
-		background: var(--accent);
+		background: var(--ink-secondary);
 		border: 2px solid var(--bg-canvas);
 		border-radius: 50%;
 		cursor: pointer;
@@ -480,10 +482,20 @@
 	.range-slider::-moz-range-thumb {
 		width: 1.25rem;
 		height: 1.25rem;
-		background: var(--accent);
+		background: var(--ink-secondary);
 		border: 2px solid var(--bg-canvas);
 		border-radius: 50%;
 		cursor: pointer;
+	}
+
+	.range-slider.active::-webkit-slider-thumb,
+	.range-slider:focus-visible::-webkit-slider-thumb {
+		background: var(--accent);
+	}
+
+	.range-slider.active::-moz-range-thumb,
+	.range-slider:focus-visible::-moz-range-thumb {
+		background: var(--accent);
 	}
 
 	.range-slider:focus-visible::-webkit-slider-thumb {
@@ -510,6 +522,10 @@
 		font-variant-numeric: tabular-nums;
 		font-size: var(--text-sm);
 		font-weight: 600;
+		color: var(--ink-muted);
+	}
+
+	.slider-value.active {
 		color: var(--ink-primary);
 	}
 

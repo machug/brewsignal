@@ -206,9 +206,8 @@
 
 <style>
 	.packaging-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--rule-hairline);
-		border-radius: 6px;
+		border-top: 1px solid var(--rule-strong);
+		border-bottom: 1px solid var(--rule-hairline);
 		overflow: hidden;
 	}
 

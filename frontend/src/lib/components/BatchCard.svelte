@@ -18,10 +18,10 @@
 
 	// Temperature status indicators
 	const tempStatusConfig: Record<string, { icon: string; color: string }> = {
-		in_range: { icon: '', color: 'var(--ink-primary)' },
+		in_range: { icon: '', color: 'var(--temp-trace)' },
 		too_cold: { icon: '\u2193', color: 'var(--status-warn)' },
-		too_hot: { icon: '\u2191', color: 'var(--status-danger)' },
-		unknown: { icon: '', color: 'var(--ink-muted)' }
+		too_hot: { icon: '\u2191', color: 'var(--status-warn)' },
+		unknown: { icon: '', color: 'var(--temp-trace)' }
 	};
 
 	let statusInfo = $derived(statusConfig[batch.status] || statusConfig.planning);
@@ -100,13 +100,13 @@
 	</div>
 	<button type="button" class="pill s-{batch.status}" onclick={() => onStatusChange?.(batch.status)}>{statusInfo.label}</button>
 	<div class="figs">
-	<span class="fig num" data-label="OG">{formatSG(batch.measured_og)}</span>
-	<span class="fig num" data-label={progress?.measured?.current_sg ? 'Now' : 'FG'}>{formatSG(fg ?? undefined)}</span>
-	<span class="fig num" data-label="ABV">{abvVal != null ? abvVal.toFixed(1) : '--'}<span class="u">%</span></span>
-	<span class="fig num temp" data-label="Temp" style="color: {tempStatus.color};">
-		{#if progress?.temperature?.current != null}{formatTempValue(progress.temperature.current)}<span class="u">&thinsp;{tempUnit}</span>{#if tempStatus.icon}<span class="u">{tempStatus.icon}</span>{/if}{:else}--{/if}
+	<span class="fig num"><span class="lbl">OG</span>{formatSG(batch.measured_og)}</span>
+	<span class="fig num"><span class="lbl">{progress?.measured?.current_sg ? 'Now' : 'FG'}</span>{formatSG(fg ?? undefined)}</span>
+	<span class="fig num"><span class="lbl">ABV</span>{abvVal != null ? abvVal.toFixed(1) : '--'}<span class="u">%</span></span>
+	<span class="fig num temp" style="color: {tempStatus.color};">
+		<span class="lbl">Temp</span>{#if progress?.temperature?.current != null}{formatTempValue(progress.temperature.current)}<span class="u">&thinsp;{tempUnit}</span>{#if tempStatus.icon}<span class="u">{tempStatus.icon}</span>{/if}{:else}--{/if}
 	</span>
-	<span class="fig num date" data-label="Brewed">{formatDate(batch.brew_date ?? batch.start_time)}{#if batch.brew_date && (batch.status === 'fermenting' || batch.status === 'conditioning')}<span class="u"> &middot; {brewDays}</span>{/if}</span>
+	<span class="fig num date"><span class="lbl">Brewed</span>{formatDate(batch.brew_date ?? batch.start_time)}{#if batch.brew_date && (batch.status === 'fermenting' || batch.status === 'conditioning')}<span class="u"> &middot; {brewDays}</span>{/if}</span>
 	</div>
 	<div class="actions">
 		{#if onViewDetails}
@@ -231,6 +231,17 @@
 		font-size: var(--text-xs);
 		color: var(--ink-secondary);
 	}
+	/* Metric labels: announced at every width, shown only on the stacked (phone) layout */
+	.lbl {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
 	.u {
 		font-family: var(--font-body);
 		font-size: 0.78em;
@@ -300,13 +311,17 @@
 			text-align: left;
 			font-size: var(--text-xs);
 		}
-		.fig::before {
-			content: attr(data-label) ' ';
+		.lbl {
+			position: static;
+			width: auto;
+			height: auto;
+			margin: 0 4px 0 0;
+			overflow: visible;
+			clip-path: none;
 			font-family: var(--font-display);
 			text-transform: uppercase;
 			letter-spacing: 0.06em;
 			color: var(--ink-muted);
-			margin-right: 4px;
 		}
 		.actions {
 			display: none;

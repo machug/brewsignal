@@ -957,6 +957,7 @@ async function loadData(userTriggered = false) {
 let destroyed = false;
 let lastWidth = 0;
 let resizeObserver: ResizeObserver | null = null;
+let themeObserver: MutationObserver | null = null;
 
 function handleResize() {
 	// A hidden (collapsed) container measures 0; keep the last size until it is shown again
@@ -987,6 +988,14 @@ function resetRefreshInterval() {
 onMount(async () => {
 	// Initialize chart colors from CSS tokens
 	initChartColors();
+
+	// uPlot paints on canvas with colours resolved once: re-resolve and rebuild on theme switch
+	themeObserver = new MutationObserver(() => {
+		if (destroyed) return;
+		initChartColors();
+		updateChart();
+	});
+	themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 	// Load preferred refresh interval from localStorage
 	const storedRefresh = localStorage.getItem(REFRESH_STORAGE_KEY);
@@ -1061,6 +1070,8 @@ onMount(async () => {
 		chart = null;
 		resizeObserver?.disconnect();
 		resizeObserver = null;
+		themeObserver?.disconnect();
+		themeObserver = null;
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
 			refreshInterval = null;
@@ -1419,7 +1430,7 @@ onMount(async () => {
 	.range-group {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 4px;
 		flex-wrap: wrap;
 	}
 
@@ -1432,7 +1443,7 @@ onMount(async () => {
 	}
 
 	.chart-wrapper > :global(.stats-panel) {
-		margin: 12px;
+		margin: 0;
 	}
 
 	.trend {
@@ -1490,9 +1501,9 @@ onMount(async () => {
 		padding: 0.25rem 0.5rem;
 		font-size: 0.6875rem;
 		font-family: var(--font-num);
-		border-radius: 0.375rem;
-		border: 1px solid var(--border-default);
-		background: var(--bg-elevated);
+		border-radius: 3px;
+		border: 1px solid var(--rule-strong);
+		background: var(--bg-surface);
 		color: var(--text-primary);
 		cursor: pointer;
 		transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1505,27 +1516,27 @@ onMount(async () => {
 	}
 
 	.range-btn {
-		padding: 0.25rem 0.625rem;
+		min-height: 28px;
+		padding: 0 0.625rem;
 		font-size: 0.6875rem;
 		font-family: var(--font-num);
 		font-weight: 500;
-		border-radius: 0.375rem;
-		color: var(--text-muted);
-		background: transparent;
-		border: 1px solid transparent;
-		transition: all 0.15s ease;
+		border-radius: 3px;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		transition: background-color 140ms var(--ease-out-quart), border-color 140ms var(--ease-out-quart);
 		cursor: pointer;
 	}
 
 	.range-btn:hover {
-		color: var(--text-secondary);
-		background: var(--bg-hover);
+		background: var(--bg-elevated);
 	}
 
 	.range-btn.active {
-		background: var(--bg-elevated);
-		color: var(--text-primary);
-		border-color: var(--border-default);
+		background: var(--accent-tint);
+		color: var(--accent);
+		border-color: var(--accent-rule);
 	}
 
 	.chart-legend {
@@ -1733,9 +1744,9 @@ onMount(async () => {
 		font-size: 0.6875rem;
 		font-weight: 500;
 		color: var(--accent);
-		background: var(--accent-muted);
-		border: 1px solid transparent;
-		border-radius: 0.375rem;
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+		border-radius: 3px;
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
@@ -1757,7 +1768,7 @@ onMount(async () => {
 		padding: 0.5rem 0.75rem;
 		background: color-mix(in oklch, var(--status-danger) 8%, transparent);
 		border: 1px solid color-mix(in oklch, var(--status-danger) 25%, transparent);
-		border-radius: 0.375rem;
+		border-radius: 3px;
 		margin: 8px 12px 12px;
 	}
 

@@ -113,10 +113,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
-		padding: var(--space-4);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
+		padding: var(--space-3) 0;
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.selector-header {
@@ -126,23 +125,23 @@
 	}
 
 	.selector-label {
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
 	}
 
 	.clear-btn {
-		font-size: 12px;
-		color: var(--text-secondary);
+		min-height: 32px;
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 		background: transparent;
 		border: none;
 		cursor: pointer;
 		padding: var(--space-1) var(--space-2);
-		transition: color var(--transition);
 	}
 
 	.clear-btn:hover {
-		color: var(--recipe-accent);
+		color: var(--accent);
 	}
 
 	.loading {
@@ -156,8 +155,8 @@
 	.spinner {
 		width: 24px;
 		height: 24px;
-		border: 2px solid var(--gray-700);
-		border-top-color: var(--recipe-accent);
+		border: 2px solid var(--rule-hairline);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -177,28 +176,26 @@
 	}
 
 	.empty-text {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		margin: 0;
 	}
 
 	.error-box {
-		padding: var(--space-4);
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid var(--negative);
-		border-radius: 6px;
+		padding: var(--space-3) 0;
+		border-top: 1px solid var(--status-danger);
 	}
 
 	.error-text {
-		font-size: 14px;
-		color: var(--negative);
+		font-size: var(--text-sm);
+		color: var(--status-danger);
 		margin: 0;
 		text-align: center;
 	}
 
 	.import-link {
-		font-size: 13px;
-		color: var(--recipe-accent);
+		font-size: var(--text-sm);
+		color: var(--accent);
 		text-decoration: none;
 	}
 
@@ -207,10 +204,7 @@
 	}
 
 	.selected-recipe {
-		padding: var(--space-4);
-		background: var(--bg-surface);
-		border: 1px solid var(--recipe-accent-border);
-		border-radius: 6px;
+		padding: 0;
 	}
 
 	.recipe-info {
@@ -220,40 +214,40 @@
 	}
 
 	.recipe-name {
-		font-family: var(--font-recipe-name);
-		font-size: 16px;
+		font-family: var(--font-display);
+		font-size: var(--text-base);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		margin: 0;
 	}
 
 	.recipe-gravity,
 	.recipe-yeast {
-		font-size: 13px;
-		color: var(--text-secondary);
-		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		font-family: var(--font-num);
 		margin: 0;
 	}
 
 	.search-input {
 		width: 100%;
+		min-height: 44px;
 		padding: var(--space-2) var(--space-3);
 		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 6px;
-		color: var(--text-primary);
-		font-size: 14px;
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-primary);
+		font-size: var(--text-sm);
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: var(--recipe-accent);
+		border-color: var(--accent);
 	}
 
 	.recipe-list {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
 		max-height: 300px;
 		overflow-y: auto;
 	}
@@ -262,29 +256,28 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: var(--space-3);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 4px;
+		min-height: 44px;
+		padding: var(--space-2) var(--space-1);
+		background: transparent;
+		border: none;
+		border-bottom: 1px solid var(--rule-hairline);
 		text-align: left;
 		cursor: pointer;
-		transition: all var(--transition);
 	}
 
 	.recipe-item:hover {
-		border-color: var(--recipe-accent-border);
-		background: var(--bg-hover);
+		background: var(--bg-surface);
 	}
 
 	.recipe-item-name {
-		font-size: 14px;
-		color: var(--text-primary);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 		flex: 1;
 	}
 
 	.recipe-item-og {
-		font-size: 12px;
-		color: var(--text-secondary);
-		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
+		font-family: var(--font-num);
 	}
 </style>

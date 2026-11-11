@@ -235,7 +235,7 @@
 	.modal-content {
 		background: var(--bg-surface);
 		border: 1px solid var(--rule-strong);
-		border-radius: 6px;
+		border-radius: 4px;
 		max-width: 600px;
 		width: 100%;
 		max-height: 90vh;

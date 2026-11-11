@@ -42,7 +42,7 @@
 
 <style>
 	.page-container {
-		max-width: 640px;
+		max-width: 760px;
 		margin: 0 auto;
 		padding: var(--space-lg) var(--space-md) var(--space-xl);
 	}

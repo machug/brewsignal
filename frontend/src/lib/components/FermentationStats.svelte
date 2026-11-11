@@ -248,19 +248,19 @@
 				<h4 class="stats-header">Temperature</h4>
 				<div class="stat-row">
 					<span class="stat-label">Current</span>
-					<span class="stat-value">{formatTempStat(stats.currentTemp)}<span class="stat-unit">{tempUnit}</span></span>
+					<span class="stat-value temp">{formatTempStat(stats.currentTemp)}<span class="stat-unit">&thinsp;{tempUnit}</span></span>
 				</div>
 				<div class="stat-row">
 					<span class="stat-label">Average</span>
-					<span class="stat-value">{formatTempStat(stats.avgTemp)}<span class="stat-unit">{tempUnit}</span></span>
+					<span class="stat-value temp">{formatTempStat(stats.avgTemp)}<span class="stat-unit">&thinsp;{tempUnit}</span></span>
 				</div>
 				<div class="stat-row">
 					<span class="stat-label">High</span>
-					<span class="stat-value">{formatTempStat(stats.highTemp)}<span class="stat-unit">{tempUnit}</span></span>
+					<span class="stat-value temp">{formatTempStat(stats.highTemp)}<span class="stat-unit">&thinsp;{tempUnit}</span></span>
 				</div>
 				<div class="stat-row">
 					<span class="stat-label">Low</span>
-					<span class="stat-value">{formatTempStat(stats.lowTemp)}<span class="stat-unit">{tempUnit}</span></span>
+					<span class="stat-value temp">{formatTempStat(stats.lowTemp)}<span class="stat-unit">&thinsp;{tempUnit}</span></span>
 				</div>
 			</div>
 		</div>
@@ -334,18 +334,15 @@
 
 <style>
 	.stats-panel {
-		margin-top: 1rem;
-		padding: 0.75rem;
-		background: var(--bg-surface);
-		border-radius: 0.5rem;
-		border: 1px solid var(--border-subtle);
+		padding: var(--space-sm) var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.stats-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		margin-bottom: 0.75rem;
+		gap: var(--space-md);
+		margin-bottom: var(--space-sm);
 	}
 
 	.stats-column {
@@ -355,13 +352,13 @@
 	}
 
 	.stats-header {
-		font-size: 0.6875rem;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 		margin-bottom: 0.25rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-family: var(--font-display);
 	}
 
 	.stat-row {
@@ -372,54 +369,52 @@
 	}
 
 	.stat-label {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
-		font-family: 'JetBrains Mono', monospace;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		font-family: var(--font-display);
 	}
 
 	.stat-value {
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
 		font-weight: 500;
-		color: var(--text-primary);
-		font-family: 'JetBrains Mono', monospace;
+		color: var(--ink-primary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
 	}
 
 	.stat-unit {
-		font-size: 0.6875rem;
-		color: var(--text-secondary);
+		font-family: var(--font-body);
+		font-size: 0.78em;
+		color: var(--ink-muted);
 		margin-left: 0.125rem;
 	}
 
+	/* Flat ledger cells: hairline separation, no nested pills */
 	.stats-bottom {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--border-subtle);
+		gap: var(--space-xs) var(--space-lg);
+		padding-top: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
 	}
 
 	.stat-pill {
 		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.25rem 0.5rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		border: 1px solid var(--border-subtle);
+		align-items: baseline;
+		gap: 0.5rem;
 	}
 
 	.stat-pill .stat-label {
-		font-size: 0.625rem;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.06em;
 	}
 
-	.stat-pill .stat-value {
-		font-size: 0.75rem;
+	.stat-value.temp {
+		color: var(--temp-trace);
 	}
 
 	.stat-value.rate.fermenting {
-		color: var(--positive);
+		color: var(--ink-primary);
 	}
 
 	.og-pill {
@@ -436,68 +431,54 @@
 		cursor: pointer;
 	}
 
-	.og-btn:hover .edit-icon {
+	.og-btn:hover .edit-icon,
+	.og-btn:focus-visible .edit-icon {
 		opacity: 1;
 	}
 
 	.edit-icon {
 		width: 0.75rem;
 		height: 0.75rem;
-		color: var(--text-muted);
-		opacity: 0;
+		color: var(--ink-muted);
+		opacity: 0.6;
 		transition: opacity 0.15s ease;
 	}
 
 	.og-input {
 		width: 3.5rem;
-		font-size: 0.75rem;
-		font-family: 'JetBrains Mono', monospace;
+		font-size: var(--text-xs);
+		font-family: var(--font-num);
 		font-weight: 500;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		background: var(--bg-surface);
 		border: 1px solid var(--accent);
-		border-radius: 0.25rem;
+		border-radius: 3px;
 		padding: 0.125rem 0.25rem;
 		outline: none;
 	}
 
 	.stat-value.estimated {
-		color: var(--text-secondary);
+		color: var(--ink-secondary);
 		font-style: italic;
 	}
 
-	.estimated-badge {
-		font-size: 0.5rem;
+	.estimated-badge,
+	.prediction-badge {
+		font-size: 0.625rem;
 		text-transform: uppercase;
-		color: var(--text-muted);
-		background: var(--bg-surface);
-		padding: 0.0625rem 0.1875rem;
-		border-radius: 0.1875rem;
+		letter-spacing: 0.06em;
+		color: var(--ink-muted);
 		margin-left: 0.125rem;
-	}
-
-	.prediction-pill {
-		border-color: rgba(250, 204, 21, 0.3);
 	}
 
 	.stat-value.prediction {
-		color: var(--tilt-yellow);
-	}
-
-	.prediction-badge {
-		font-size: 0.5rem;
-		text-transform: uppercase;
-		color: var(--tilt-yellow);
-		background: rgba(250, 204, 21, 0.15);
-		padding: 0.0625rem 0.1875rem;
-		border-radius: 0.1875rem;
-		margin-left: 0.125rem;
+		color: var(--ink-primary);
 	}
 
 	.stats-empty {
 		padding: 1rem;
 		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.75rem;
+		color: var(--ink-muted);
+		font-size: var(--text-xs);
 	}
 </style>

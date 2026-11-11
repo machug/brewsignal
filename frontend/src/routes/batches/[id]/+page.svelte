@@ -447,7 +447,20 @@
 		<div class="batch-header">
 			<div class="header-main">
 				<div class="header-info">
-					<div class="batch-number">Batch #{batch.batch_number || '?'}{#if batch.recipe?.style?.name}<span class="sep" aria-hidden="true">&middot;</span><span class="style-name">{batch.recipe.style.name}</span>{/if}</div>
+					<div class="batch-number"><span>Batch #{batch.batch_number || '?'}</span><span class="status-selector">
+						<select
+							class="status-select s-{batch.status}"
+							aria-label="Batch status"
+							value={batch.status}
+							onchange={(e) => handleStatusChange(e.currentTarget.value as BatchStatus)}
+							disabled={statusUpdating}
+						>
+							{#each statusOptions as status}
+								<option value={status}>{statusConfig[status].label}</option>
+							{/each}
+						</select>
+						<svg class="status-chevron" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+					</span>{#if batch.recipe?.style?.name}<span class="style-part"><span class="sep" aria-hidden="true">&middot;</span> <span class="style-name">{batch.recipe.style.name}</span></span>{/if}</div>
 					<h1 class="batch-name">{batch.name || batch.recipe?.name || 'Unnamed Batch'}</h1>
 					{#if batch.recipe}
 						<a href="/recipes/{batch.recipe.id}" class="recipe-link">
@@ -469,20 +482,6 @@
 				</div>
 			</div>
 			<div class="header-actions">
-				<!-- Status selector -->
-				<div class="status-selector">
-					<select
-						class="status-select s-{batch.status}"
-						aria-label="Batch status"
-						value={batch.status}
-						onchange={(e) => handleStatusChange(e.currentTarget.value as BatchStatus)}
-						disabled={statusUpdating}
-					>
-						{#each statusOptions as status}
-							<option value={status}>{statusConfig[status].label}</option>
-						{/each}
-					</select>
-				</div>
 				<!-- Pause readings button (only for fermenting/conditioning) -->
 				{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
 					<button
@@ -492,26 +491,27 @@
 						onclick={handleTogglePause}
 						disabled={pauseUpdating}
 						title={batch.readings_paused ? 'Resume storing readings' : 'Pause storing readings'}
+						aria-label={batch.readings_paused ? 'Resume readings' : 'Pause readings'}
 					>
 						{#if batch.readings_paused}
 							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 								<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							Resume
+							<span class="lbl">Resume</span>
 						{:else}
 							<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							Pause
+							<span class="lbl">Pause</span>
 						{/if}
 					</button>
 				{/if}
-				<button type="button" class="edit-btn" onclick={() => (isEditing = true)}>
+				<button type="button" class="edit-btn" onclick={() => (isEditing = true)} aria-label="Edit batch">
 					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
 					</svg>
-					Edit
+					<span class="lbl">Edit</span>
 				</button>
 				<button type="button" class="delete-btn" onclick={() => (showDeleteConfirm = true)} aria-label="Delete batch">
 					<svg class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -750,17 +750,23 @@
 		flex: 1 1 20rem;
 	}
 	.batch-number {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
 		font-family: var(--font-num);
 		font-size: var(--text-xs);
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--accent);
-		margin-bottom: var(--space-2xs);
+		margin-bottom: var(--space-xs);
+	}
+	.style-part {
+		white-space: nowrap;
 	}
 	.batch-number .sep {
 		color: var(--rule-strong);
-		margin: 0 var(--space-xs);
 	}
 	.batch-number .style-name {
 		font-family: var(--font-body);
@@ -805,13 +811,19 @@
 		align-items: center;
 		gap: var(--space-xs);
 	}
+	.status-selector {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+	}
 	.status-select {
 		appearance: none;
-		min-height: 44px;
-		padding: 0 var(--space-sm);
+		height: 22px;
+		padding: 0 22px 0 8px;
 		font-family: var(--font-display);
-		font-size: 0.6875rem;
+		font-size: var(--text-xs);
 		font-weight: 600;
+		line-height: 1;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--ink-secondary);
@@ -819,6 +831,25 @@
 		border: 1px solid var(--rule-strong);
 		border-radius: 2px;
 		cursor: pointer;
+	}
+	/* Compact badge on desk; full touch target on phone/tablet */
+	@media (pointer: coarse), (max-width: 760px) {
+		.status-select {
+			height: 44px;
+			padding: 0 28px 0 12px;
+		}
+	}
+	.status-chevron {
+		position: absolute;
+		right: 6px;
+		top: 50%;
+		transform: translateY(-50%);
+		color: var(--ink-secondary);
+		pointer-events: none;
+	}
+	.status-select:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 	.status-select option {
 		background: var(--bg-elevated);
@@ -1030,7 +1061,7 @@
 		padding: var(--space-lg);
 		background: var(--bg-elevated);
 		border: 1px solid var(--rule-strong);
-		border-radius: 6px;
+		border-radius: 4px;
 	}
 	.modal-title {
 		font-family: var(--font-display);
@@ -1085,6 +1116,21 @@
 		}
 		.header-actions {
 			width: 100%;
+			flex-wrap: nowrap;
+		}
+		.header-actions .lbl {
+			display: none;
+		}
+		.header-actions button {
+			padding: 0;
+			width: 44px;
+		}
+		.phase-tabs {
+			mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 40px), transparent);
+			-webkit-mask-image: linear-gradient(to right, var(--ink-primary) calc(100% - 40px), transparent);
+		}
+		.phase-tab {
+			flex: 0 0 auto;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

@@ -102,24 +102,6 @@
 		return Math.ceil(diff / (1000 * 60 * 60 * 24));
 	}
 
-	// Calculate fermentation progress percentage (OG → target FG)
-	// Use recipe target FG for progress, not predicted plateau FG
-	let fermentationProgress = $derived.by(() => {
-		const og = measuredOg ?? predictions.predicted_og;
-		// Prefer recipe target FG over ML predicted FG for progress calculation
-		const fg = recipeFg ?? predictions.predicted_fg;
-		const current = currentSg ?? liveReading?.sg;
-
-		if (!og || !fg || !current) return null;
-		if (og <= fg) return null; // Invalid: OG should be > FG
-
-		const totalDrop = og - fg;
-		const currentDrop = og - current;
-		const progress = (currentDrop / totalDrop) * 100;
-
-		return Math.min(100, Math.max(0, progress));
-	});
-
 	// Detect potential stuck fermentation (predicted FG differs from recipe target)
 	let stuckFermentationWarning = $derived.by(() => {
 		if (!recipeFg || !predictions.predicted_fg) return null;
@@ -145,18 +127,6 @@
 		if (conf >= 0.7) return { label: 'High', color: 'var(--positive)' };
 		if (conf >= 0.4) return { label: 'Medium', color: 'var(--status-warn)' };
 		return { label: 'Low', color: 'var(--ink-muted)' };
-	});
-
-	// Calculate apparent attenuation
-	let apparentAttenuation = $derived.by(() => {
-		const og = measuredOg ?? predictions.predicted_og;
-		const current = currentSg ?? liveReading?.sg;
-
-		if (!og || !current || og <= 1.0) return null;
-
-		// Apparent attenuation = (OG - Current) / (OG - 1.0) * 100
-		const attenuation = ((og - current) / (og - 1.0)) * 100;
-		return Math.min(100, Math.max(0, attenuation));
 	});
 
 	// Determine fermentation activity status based on sg_rate
@@ -302,25 +272,10 @@
 				</div>
 			{/if}
 
-			<!-- Fermentation Progress Section -->
-			{#if fermentationProgress !== null}
-				<div class="progress-section">
-					<div class="progress-header">
-						<span class="progress-label">Fermentation Progress</span>
-						{#if activityStatus}
-							<span class="activity-badge" style="color: {activityStatus.color}">
-								{activityStatus.label}
-							</span>
-						{/if}
-					</div>
-					<div class="fermentation-progress-bar" role="progressbar" aria-valuenow={Math.round(fermentationProgress)} aria-valuemin="0" aria-valuemax="100" aria-label="Fermentation progress">
-						<div class="fermentation-fill" style="width: {fermentationProgress}%"></div>
-					</div>
-					<div class="progress-labels">
-						<span class="og-label">OG: {formatGravity(measuredOg ?? predictions.predicted_og ?? 0)}</span>
-						<span class="progress-percent">{fermentationProgress.toFixed(0)}%</span>
-						<span class="fg-label">FG: {formatGravity(recipeFg ?? predictions.predicted_fg ?? 0)}</span>
-					</div>
+			{#if activityStatus}
+				<div class="activity-row">
+					<span class="progress-label">Activity</span>
+					<span class="activity-badge" style="color: {activityStatus.color}">{activityStatus.label}</span>
 				</div>
 			{/if}
 
@@ -330,14 +285,6 @@
 					<div class="metric">
 						<span class="label">Predicted FG:</span>
 						<span class="value">{formatGravity(predictions.predicted_fg)}</span>
-					</div>
-				{/if}
-
-				<!-- Attenuation -->
-				{#if apparentAttenuation !== null}
-					<div class="metric">
-						<span class="label">Attenuation:</span>
-						<span class="value attenuation">{apparentAttenuation.toFixed(1)}%</span>
 					</div>
 				{/if}
 
@@ -595,11 +542,8 @@
 		color: var(--ink-secondary);
 	}
 
-	/* Progress */
-	.progress-section {
-		margin-bottom: var(--space-sm);
-	}
-	.progress-header {
+	/* Activity */
+	.activity-row {
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
@@ -616,28 +560,6 @@
 	.activity-badge {
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
-		font-weight: 600;
-	}
-	.fermentation-progress-bar {
-		height: 4px;
-		background: var(--rule-hairline);
-	}
-	.fermentation-fill {
-		height: 100%;
-		background: var(--accent);
-		transition: width 600ms var(--ease-out-quart);
-	}
-	.progress-labels {
-		display: flex;
-		justify-content: space-between;
-		margin-top: var(--space-xs);
-		font-family: var(--font-num);
-		font-variant-numeric: tabular-nums;
-		font-size: var(--text-xs);
-		color: var(--ink-secondary);
-	}
-	.progress-percent {
-		color: var(--accent);
 		font-weight: 600;
 	}
 
@@ -701,10 +623,5 @@
 	}
 	.model-value.model-type {
 		text-transform: capitalize;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.fermentation-fill {
-			transition: none;
-		}
 	}
 </style>

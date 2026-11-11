@@ -346,10 +346,8 @@
 
 	.info-card,
 	.tasting-card {
-		background: var(--bg-surface);
-		border: 1px solid var(--rule-hairline);
-		border-radius: 6px;
-		padding: var(--space-md);
+		border-top: 1px solid var(--rule-strong);
+		padding: var(--space-md) 0;
 	}
 
 	.info-title,
@@ -707,38 +705,42 @@
 
 	.tasting-actions {
 		display: flex;
-		flex-direction: column;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-start;
 		gap: var(--space-xs);
 		margin-bottom: var(--space-md);
 	}
 
 	.guided-tasting-btn {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-xs);
+		width: auto;
 		min-height: 44px;
 		padding: 0 var(--space-md);
-		background: var(--accent);
-		color: var(--accent-ink);
-		border: 1px solid var(--accent);
+		background: var(--accent-tint);
+		color: var(--accent);
+		border: 1px solid var(--accent-rule);
 		border-radius: 4px;
 		font-size: var(--text-sm);
 		font-weight: 700;
 		cursor: pointer;
 	}
 
-	.guided-tasting-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+	.guided-tasting-btn:hover { border-color: var(--accent); }
 
 	.manual-tasting-btn {
-		display: flex;
+		display: inline-flex;
+		width: auto;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-xs);
 		min-height: 44px;
 		padding: 0 var(--space-md);
 		background: var(--bg-surface);
-		color: var(--ink-secondary);
+		color: var(--ink-primary);
 		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
 		font-size: var(--text-sm);

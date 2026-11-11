@@ -238,7 +238,7 @@
 					{/if}
 				</p>
 				{#if activeTab === 'active'}
-					<button type="button" class="create-btn" onclick={() => goto('/batches/new')}>Create Batch</button>
+					<button type="button" class="tint-btn" onclick={() => goto('/batches/new')}>Create Batch</button>
 				{/if}
 			{:else}
 				<h3>No matches</h3>
@@ -328,6 +328,23 @@
 	}
 	.create-btn:hover {
 		background: var(--accent-hover);
+	}
+	.tint-btn {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--accent);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.tint-btn:hover {
+		border-color: var(--accent);
 	}
 	.btn-icon {
 		width: 1rem;
@@ -564,7 +581,7 @@
 		}
 		.page-header {
 			flex-direction: column;
-			align-items: stretch;
+			align-items: flex-start;
 		}
 		.tabs-container {
 			flex-direction: column;

@@ -37,9 +37,9 @@
 </script>
 
 <div class="recipe-strip">
-	<span class="item"><span class="lbl">OG</span> <span class="val">{formatSG(recipe.og)}</span></span>
-	<span class="item"><span class="lbl">FG</span> <span class="val">{formatSG(recipe.fg)}</span></span>
-	<span class="item"><span class="lbl">ABV</span> <span class="val">{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span></span>
+	<span class="item"><span class="lbl">Target OG</span> <span class="val">{formatSG(recipe.og)}</span></span>
+	<span class="item"><span class="lbl">Target FG</span> <span class="val">{formatSG(recipe.fg)}</span></span>
+	<span class="item"><span class="lbl">Target ABV</span> <span class="val">{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span></span>
 	{#if yeastDisplay}
 		<span class="sep"></span>
 		<span class="item yeast">{yeastDisplay}</span>

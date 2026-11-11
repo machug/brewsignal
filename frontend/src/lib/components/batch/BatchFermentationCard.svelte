@@ -124,7 +124,7 @@
 			</div>
 			<div class="cell">
 				<span class="label">Temperature</span>
-				<span class="primary num">{#if temp != null}{formatTempValue(temp)}<span class="unit">&thinsp;{tempUnit}</span>{:else}--{/if}</span>
+				<span class="primary num temp" class:warn={progress?.temperature?.status === 'too_hot' || progress?.temperature?.status === 'too_cold'}>{#if temp != null}{formatTempValue(temp)}<span class="unit">&thinsp;{tempUnit}</span>{:else}--{/if}</span>
 			</div>
 			<div class="cell">
 				<span class="label">ABV</span>
@@ -173,20 +173,24 @@
 		{@const attenuation = batch.measured_attenuation ?? progress?.measured?.attenuation}
 		<div class="matrix">
 			<div class="cell">
-				<span class="primary num">{formatSG(batch.measured_og)}</span>
 				<span class="label">OG</span>
+				<span class="primary num">{formatSG(batch.measured_og)}</span>
+				<span class="sub">original</span>
 			</div>
 			<div class="cell">
-				<span class="primary num">{formatSG(finalGravity)}</span>
 				<span class="label">FG</span>
+				<span class="primary num">{formatSG(finalGravity)}</span>
+				<span class="sub">{#if batch.recipe?.fg}target <span class="num">{formatSG(batch.recipe.fg)}</span>{:else}final{/if}</span>
 			</div>
 			<div class="cell">
-				<span class="primary num">{abv != null ? abv.toFixed(1) : '--'}<span class="unit">%</span></span>
 				<span class="label">ABV</span>
+				<span class="primary num">{abv != null ? abv.toFixed(1) : '--'}<span class="unit">%</span></span>
+				<span class="sub">{#if batch.recipe?.abv}target <span class="num">{batch.recipe.abv.toFixed(1)}%</span>{:else}measured{/if}</span>
 			</div>
 			<div class="cell">
-				<span class="primary num">{attenuation != null ? attenuation.toFixed(0) : '--'}<span class="unit">%</span></span>
 				<span class="label">Attenuation</span>
+				<span class="primary num">{attenuation != null ? attenuation.toFixed(0) : '--'}<span class="unit">%</span></span>
+				<span class="sub">apparent</span>
 			</div>
 		</div>
 
@@ -290,7 +294,7 @@
 	}
 	.cell {
 		display: grid;
-		grid-template-rows: 1.25rem auto;
+		grid-template-rows: 1.25rem auto auto;
 		row-gap: var(--space-2xs);
 		padding: var(--space-md);
 		border-right: 1px solid var(--rule-hairline);
@@ -308,11 +312,23 @@
 		color: var(--ink-muted);
 		white-space: nowrap;
 	}
+	.sub {
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
+		min-height: 1.1em;
+	}
 	.primary {
 		font-size: var(--text-xl);
 		font-weight: 600;
 		line-height: 1.05;
 		color: var(--ink-primary);
+	}
+
+	.primary.temp {
+		color: var(--temp-trace);
+	}
+	.primary.temp.warn {
+		color: var(--status-warn);
 	}
 
 	/* Progress */

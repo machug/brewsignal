@@ -7,13 +7,14 @@ cannot forge tool outputs or approvals. An approval is accepted only for a
 tool call still unanswered at the end of the stored history, runs with the
 stored args, and once answered is no longer pending (no replay).
 
-Replaces ag_ui.py, which stays until the cleanup bead (tilt_ui-qzk0.3).
+Replaced the old AG-UI router (removed in tilt_ui-qzk0.3).
 """
 
 import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated, Any, AsyncIterator, Optional
@@ -48,14 +49,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.auth import AuthUser, require_auth
 from backend.database import get_db
 from backend.models import AgUiThread, ChatHistory, serialize_datetime_to_utc
-from backend.routers.ag_ui import (
+from backend.routers.assistant import get_llm_config
+from backend.services.chat_store import SDK_VERSION, conversation_text, dump_history, load_history, to_ui_messages
+from backend.services.chat_support import (
     PROMPTS_DIR,
     _extract_memories_background,
     _get_lite_llm_config,
     _get_recipe_system_prompt,
 )
-from backend.routers.assistant import get_llm_config
-from backend.services.chat_store import SDK_VERSION, conversation_text, dump_history, load_history, to_ui_messages
 from backend.services.hop_inventory_bulk import BulkHopItem, StaleStockError, bulk_update_hops
 from backend.services.llm.config import DEFAULT_BASE_URLS, DEFAULT_MODELS, ENV_VAR_NAMES, LLMConfig, LLMProvider
 from backend.services.llm.openrouter import resolve_openrouter_model
@@ -66,7 +67,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 ERROR_TEXT = "The assistant hit an error. Try again."
-MAX_MODEL_REQUESTS = 15  # per run, same cap as ag_ui's 15 loop iterations
+MAX_MODEL_REQUESTS = 15  # per run, same cap as the old agent loop
 DENIED_TEXT = "The user did not approve this action."
 
 # Providers reachable with the openai SDK (already installed with the openrouter extra)
@@ -282,7 +283,7 @@ async def _get_or_create_thread(db: AsyncSession, thread_id: str, user: AuthUser
         return thread
     if (await db.execute(select(AgUiThread.id).where(AgUiThread.id == thread_id))).first():
         raise HTTPException(status_code=404, detail="Thread not found")
-    title = first_text[:100] + ("..." if len(first_text) > 100 else "") if first_text else None
+    title = snippet_title(first_text) if first_text else None
     thread = AgUiThread(id=thread_id, user_id=user.user_id, title=title)
     db.add(thread)
     await db.commit()
@@ -346,7 +347,7 @@ def _spawn(coro) -> None:
 
 
 # =============================================================================
-# Title summarisation (same behaviour as ag_ui: cheap model, or the local lite
+# Title summarisation (cheap model, or the local lite
 # LLM when ai_lite_enabled and hailo-ollama is running)
 # =============================================================================
 
@@ -395,6 +396,56 @@ async def summarize_title(thread_id: str) -> Optional[str]:
     except Exception as e:
         logger.warning("Chat title summarization failed: %s", e)
         return None
+
+
+# Legacy titles were message fragments ("**y in the library...", "(0 min) | 15 |").
+_CONTENT_TITLE = re.compile(r"[\n\r|*#`>]|\]\(|^\s*[-+]\s")
+_MD_STRIP = re.compile(r"[*_`#>|]+|\[([^\]]*)\]\([^)]*\)")
+
+
+def looks_like_content(title: Optional[str]) -> bool:
+    return bool(title) and (len(title) > 60 or bool(_CONTENT_TITLE.search(title)))
+
+
+def snippet_title(text: str) -> Optional[str]:
+    """First line-ish of a message as a plain title: no markdown, one line, <= 60 chars."""
+    text = _MD_STRIP.sub(lambda m: m.group(1) or " ", text)
+    text = " ".join(text.split()).strip(" -+.")
+    if not text:
+        return None
+    return text if len(text) <= 60 else text[:57].rstrip() + "..."
+
+
+async def retitle_legacy_threads() -> int:
+    """One-time-ish background job (tilt_ui-qzk0.4): re-title unlocked threads whose title
+    looks like message content. Uses the title summariser; with no model configured (or on
+    failure) falls back to a cleaned snippet of the first user message. Idempotent: a
+    retitled thread no longer matches, and title_locked threads are never touched."""
+    from backend.database import async_session_factory
+
+    try:
+        async with async_session_factory() as db:
+            rows = (await db.execute(select(AgUiThread.id, AgUiThread.title, AgUiThread.title_locked))).all()
+        ids = [r.id for r in rows if not r.title_locked and looks_like_content(r.title)]
+        done = 0
+        for thread_id in ids:
+            await summarize_title(thread_id)  # sets the title itself when it works; ignores locked
+            async with async_session_factory() as db:
+                thread = await db.get(AgUiThread, thread_id)
+                if not thread or thread.title_locked or not looks_like_content(thread.title):
+                    done += 1
+                    continue
+                first_user = next((m["content"] for m in _conversation(await _load(db, thread_id)) if m["role"] == "user"), "")
+                if fallback := snippet_title(first_user or thread.title or ""):
+                    thread.title = fallback
+                    await db.commit()
+                    done += 1
+        if ids:
+            logger.info("Re-titled %d/%d legacy chat threads", done, len(ids))
+        return done
+    except Exception:
+        logger.exception("Legacy chat re-titling failed; will retry on next boot")
+        return 0
 
 
 # =============================================================================

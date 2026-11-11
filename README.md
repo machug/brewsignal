@@ -58,7 +58,7 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
   - Batch yeast assignment with ability to override recipe yeast
   - Search and browse yeast strains with detailed property cards
 - **AI Brewing Assistant** (v2.9.0) - Conversational AI for brewing guidance
-  - AG-UI protocol-based streaming interface for real-time responses
+  - Streaming chat interface (Pydantic AI + Vercel AI SDK) for real-time responses
   - **Tool-Augmented** - Access to yeast library, style guides, inventory, fermentation data
   - **Cross-Thread Memory** - Search and recall information from previous conversations
   - **Web Access** - Fetch brewing resources and documentation from the web

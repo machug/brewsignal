@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db, run_deferred_backfills  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import ag_ui, chat, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, gateway, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, learnings, maintenance, mqtt, recipes, reflections, sync, system, users, yeast_strains  # noqa: E402
+from .routers import chat, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, gateway, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, learnings, maintenance, mqtt, recipes, reflections, sync, system, users, yeast_strains  # noqa: E402
 from .auth import require_auth  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
 from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E402
@@ -46,6 +46,7 @@ cleanup_service: Optional[CleanupService] = None
 # Background task for one-time recipe backfills, run off the startup critical
 # path so a slow sweep can't blow the platform healthcheck window (tilt_ui-h0j)
 backfill_task: Optional[asyncio.Task] = None
+retitle_task: Optional[asyncio.Task] = None
 
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
@@ -529,7 +530,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scanner, scanner_task, cleanup_service, ml_pipeline_manager, backfill_task
+    global scanner, scanner_task, cleanup_service, ml_pipeline_manager, backfill_task, retitle_task
 
     settings = Settings()
 
@@ -543,6 +544,8 @@ async def lifespan(app: FastAPI):
     # healthcheck immediately while the sweep runs concurrently. Idempotent and
     # config-gated, so safe to run post-readiness (tilt_ui-h0j).
     backfill_task = asyncio.create_task(run_deferred_backfills())
+    # Re-title legacy fragment-titled chat threads, also off the critical path (tilt_ui-qzk0.4)
+    retitle_task = asyncio.create_task(chat.retitle_legacy_threads())
 
     # Initialize ML pipeline manager (always enabled)
     ml_pipeline_manager = MLPipelineManager()
@@ -609,6 +612,12 @@ async def lifespan(app: FastAPI):
             await backfill_task
         except asyncio.CancelledError:
             pass
+    if retitle_task and not retitle_task.done():
+        retitle_task.cancel()
+        try:
+            await retitle_task
+        except asyncio.CancelledError:
+            pass
     ml_pipeline_manager = None
     print("Shutdown complete")
 
@@ -646,7 +655,6 @@ app.include_router(yeast_strains.router, dependencies=auth_deps)
 app.include_router(hop_varieties.router, dependencies=auth_deps)
 app.include_router(fermentables.router, dependencies=auth_deps)
 app.include_router(assistant.router, dependencies=auth_deps)
-app.include_router(ag_ui.router, dependencies=auth_deps)
 app.include_router(chat.router, dependencies=auth_deps)
 app.include_router(inventory_equipment.router, dependencies=auth_deps)
 app.include_router(inventory_hops.router, dependencies=auth_deps)

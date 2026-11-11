@@ -25,7 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Other Ingredients table** (tilt_ui-ifl6) - Non-water miscs now show on the recipe detail page.
 - **Deploy script** - `deploy/deploy.sh` runs the Pi deploy in one command: fetch, reset, frontend build when needed, restart, health check.
 
+### Removed
+- **Old assistant chat stack** (tilt_ui-qzk0.3) - The AG-UI router (`/api/ag-ui/*`), its browser client and its tests are gone. Thread headers and old messages stay in their tables. The model-context pruning helper that only the old loop used is removed too.
+
 ### Changed
+- **Guided tasting on the new assistant** (tilt_ui-qzk0.3) - The tasting panel on the batch page now talks to the same chat as the assistant page. It looks and works the same, and each session also appears in the assistant's chat list.
 - **Assistant chat rebuilt** (tilt_ui-qzk0) - The assistant now runs on Pydantic AI and the Vercel AI SDK instead of a hand-built chat loop.
   - The server keeps the chat history. The browser sends only the new message, so a client cannot fake a tool result or an approval.
   - Hop stock changes show one card that goes from Proposed to Applied. An approval only works once, and only for the change the assistant actually proposed.
@@ -53,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster startup** (tilt_ui-h0j) - Recipe backfills run after boot instead of blocking it.
 
 ### Fixed
+- **Legacy chat titles** (tilt_ui-qzk0.4) - Old chats titled with a fragment of message text (markdown, table pipes, line breaks, over 60 characters) are re-titled in the background after startup. Renamed chats are left alone. Without a model, the title is a cleaned start of your first message. New chats get a clean first-message title instead of raw text.
 - **Calibration** (tilt_ui-nv1r.6.1, tilt_ui-y5nm) - The API accepts empty and single-point calibration lists, so the first add, remove and clear work. A single point is stored but only applied with two or more points.
 - **Inventory hop names** (tilt_ui-vket) - Hop name matching ignores accents.
 - **Assistant chat** - Markdown tables render (tilt_ui-mizm). The busy indicator stays on for the whole run (tilt_ui-4acv). Replies are no longer empty when model reasoning uses up max_tokens (tilt_ui-atvb). Restoring a thread brings back a pending hop inventory card (tilt_ui-86wt). Thread titles no longer cut off mid-sentence. The memory service uses OpenRouter correctly. The review tool no longer fails on an uninitialised LLM service.

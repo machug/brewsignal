@@ -1,4 +1,4 @@
-"""Tests for AG-UI tasting tools."""
+"""Tests for tasting tools."""
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,7 @@ async def test_batch(test_db: AsyncSession) -> Batch:
 
 
 class TestTastingTools:
-    """Test AG-UI tasting tool functions."""
+    """Test tasting tool functions."""
 
     @pytest.mark.asyncio
     async def test_start_tasting_session(self, test_db: AsyncSession, test_batch: Batch):

@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { Chat } from '@ai-sdk/svelte';
+	import { DefaultChatTransport } from 'ai';
 	import { renderMarkdown } from '$lib/markdown';
-	import { useAgent } from '$lib/ag-ui';
-	import type { Message } from '$lib/ag-ui/types';
 	import type { BatchResponse } from '$lib/api';
 	import { getAccessToken } from '$lib/supabase';
 	import { config } from '$lib/config';
+	import { buildChatRequest, newChatId } from '$lib/chat/logic';
 
 	interface Props {
 		batch: BatchResponse;
@@ -20,40 +21,55 @@
 	let inputRef = $state<HTMLInputElement | null>(null);
 	let messagesContainer = $state<HTMLElement | null>(null);
 	let started = $state(false);
+	let dismissedError = $state(false);
 
-	// Async function to get auth headers (same pattern as assistant page)
 	async function getAuthHeaders(): Promise<Record<string, string>> {
 		if (config.authEnabled) {
 			const token = await getAccessToken();
-			if (token) {
-				return { 'Authorization': `Bearer ${token}` };
-			}
+			if (token) return { Authorization: `Bearer ${token}` };
 		}
 		return {};
 	}
 
-	// Initialize AG-UI agent
-	const agent = useAgent({
-		url: '/api/ag-ui/run',
-		headers: getAuthHeaders,
-		initialState: {},
-		onStateChange: (state) => {
-			// Check if tasting note was saved
-			if (state.tastingNoteSaved) {
-				onSaved();
-			}
-		},
-		onError: (error) => {
-			console.error('Tasting agent error:', error);
+	// Each panel is its own server-held chat, scoped to this batch.
+	const chat = new Chat({
+		id: newChatId(),
+		transport: new DefaultChatTransport({
+			api: '/api/chat',
+			headers: getAuthHeaders,
+			prepareSendMessagesRequest: ({ id, messages, trigger }) => ({
+				body: buildChatRequest({ id, messages, trigger, context: { batch_id: batch.id } })
+			})
+		}),
+		onFinish: ({ message }) => {
+			// The note is saved when save_tasting_note returns without an error
+			const saved = message.parts.some(
+				(p: any) =>
+					p.type === 'tool-save_tasting_note' &&
+					p.state === 'output-available' &&
+					!(p.output && typeof p.output === 'object' && p.output.error)
+			);
+			if (saved) onSaved();
 		}
 	});
 
+	const isRunning = $derived(chat.status === 'submitted' || chat.status === 'streaming');
+	// Only text is shown; tool and reasoning parts are not part of the tasting transcript.
+	const textOf = (m: (typeof chat.messages)[number]) =>
+		m.parts.map((p: any) => (p.type === 'text' ? p.text : '')).join('');
+	const visible = $derived(
+		chat.messages
+			.slice(1) // the auto-sent kickoff prompt
+			.map((m) => ({ id: m.id, role: m.role, text: textOf(m) }))
+			.filter((m) => m.text)
+	);
+	const error = $derived(chat.error && !dismissedError ? 'The assistant hit an error. Try again.' : '');
+	// Waiting with nothing streamed yet in the last assistant bubble
+	const showTyping = $derived(isRunning && visible.at(-1)?.role !== 'assistant');
+
 	// Auto-scroll when messages update
 	$effect(() => {
-		// Track message count and streaming content
-		const _ = agent.messages.length;
-		const __ = agent.streamingContent;
-
+		const _ = visible.at(-1)?.text;
 		if (messagesContainer) {
 			requestAnimationFrame(() => {
 				messagesContainer?.scrollTo({
@@ -69,16 +85,17 @@
 		if (!started) {
 			started = true;
 			const prompt = `Start a guided tasting session for batch ${batch.id} (${batch.name}). Walk me through a BJCP-style evaluation using scoring_version 2. Use the start_tasting_session tool first to get the batch context and style guidelines, then guide me through each category (Aroma, Appearance, Flavor, Mouthfeel, Overall). At the end, summarize scores and use save_tasting_note with scoring_version=2 to save.`;
-			agent.send(prompt);
+			chat.sendMessage({ text: prompt });
 		}
 	});
 
 	// Send a user message
 	async function handleSend() {
 		const content = input.trim();
-		if (!content || agent.isRunning) return;
+		if (!content || isRunning) return;
 		input = '';
-		await agent.send(content);
+		dismissedError = false;
+		await chat.sendMessage({ text: content });
 	}
 
 	// Handle Enter to send
@@ -147,26 +164,22 @@
 
 		<!-- Messages area -->
 		<div class="tasting-panel-messages" bind:this={messagesContainer}>
-			{#each agent.messages.slice(1) as message (message.id)}
+			{#each visible as message, i (message.id)}
 				<div class="tp-message {message.role}">
 					{#if message.role === 'user'}
 						<div class="tp-message-bubble tp-user-bubble">
-							{message.content}
-						</div>
-					{:else if message.role === 'assistant' && agent.isStreaming && message.id === agent._agentState.streamingMessageId}
-						<div class="tp-message-bubble tp-assistant-bubble streaming">
-							{@html renderMarkdown(agent.streamingContent || '')}
-							<span class="cursor"></span>
+							{message.text}
 						</div>
 					{:else}
-						<div class="tp-message-bubble tp-assistant-bubble">
-							{@html renderMarkdown(message.content)}
+						<div class="tp-message-bubble tp-assistant-bubble" class:streaming={isRunning && i === visible.length - 1}>
+							{@html renderMarkdown(message.text)}
+							{#if isRunning && i === visible.length - 1}<span class="cursor"></span>{/if}
 						</div>
 					{/if}
 				</div>
 			{/each}
 
-			{#if agent.isRunning && !agent.isStreaming}
+			{#if showTyping}
 				<div class="tp-message assistant">
 					<div class="tp-message-bubble tp-assistant-bubble">
 						<div class="typing-indicator">
@@ -178,13 +191,13 @@
 		</div>
 
 		<!-- Error display -->
-		{#if agent.error}
+		{#if error}
 			<div class="tp-error">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
 					<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
 				</svg>
-				<span>{agent.error}</span>
-				<button type="button" onclick={() => agent._agentState.clearError()}>Dismiss</button>
+				<span>{error}</span>
+				<button type="button" onclick={() => (dismissedError = true)}>Dismiss</button>
 			</div>
 		{/if}
 
@@ -197,15 +210,15 @@
 					type="text"
 					placeholder="Describe what you taste..."
 					onkeydown={handleKeydown}
-					disabled={agent.isRunning}
+					disabled={isRunning}
 				/>
 				<button
 					type="button"
 					class="tp-send-btn"
 					onclick={handleSend}
-					disabled={!input.trim() || agent.isRunning}
+					disabled={!input.trim() || isRunning}
 				>
-					{#if agent.isRunning}
+					{#if isRunning}
 						<svg class="spinner" width="18" height="18" viewBox="0 0 24 24">
 							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31.4" stroke-dashoffset="10"/>
 						</svg>

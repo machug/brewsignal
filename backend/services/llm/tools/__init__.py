@@ -1,4 +1,4 @@
-"""AG-UI Tools for the AI brewing assistant.
+"""Tools for the AI brewing assistant.
 
 This package defines tools that the LLM can call to query the database
 for yeast strains, beer styles, and other brewing information.

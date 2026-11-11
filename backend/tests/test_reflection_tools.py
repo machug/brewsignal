@@ -1,4 +1,4 @@
-"""Tests for AG-UI reflection tools."""
+"""Tests for reflection tools."""
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,7 @@ async def test_batch(test_db: AsyncSession) -> Batch:
 
 
 class TestReflectionTools:
-    """Test AG-UI reflection tool functions."""
+    """Test reflection tool functions."""
 
     @pytest.mark.asyncio
     async def test_create_batch_reflection(self, test_db: AsyncSession, test_batch: Batch):

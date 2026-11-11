@@ -92,18 +92,18 @@
   --bg-elevated: oklch(0.945 0.008 195);
   --bg-subtle: oklch(0.918 0.010 195);
   --rule-hairline: oklch(0.855 0.011 195);
-  --rule-strong: oklch(0.735 0.015 195);
+  --rule-strong: oklch(0.64 0.015 195); /* >=3:1 on canvas: form-control boundary (WCAG 1.4.11) */
   --ink-primary: oklch(0.195 0.012 195);
   --ink-secondary: oklch(0.425 0.014 195);
   --ink-muted: oklch(0.48 0.014 195);
-  --accent: oklch(0.54 0.142 70);
+  --accent: oklch(0.51 0.142 70); /* >=4.5:1 as text on --bg-subtle */
   --accent-hover: oklch(0.48 0.14 68);
   --accent-ink: oklch(0.985 0.006 76);
   --accent-tint: oklch(0.94 0.028 76);
   --accent-rule: oklch(0.74 0.085 72);
   --temp-trace: oklch(0.48 0.085 205);
   --status-steady: oklch(0.47 0.095 162);
-  --status-warn: oklch(0.52 0.135 65);
+  --status-warn: oklch(0.50 0.135 65);
   --status-danger: oklch(0.52 0.17 25);
 
   --gray-950: oklch(0.968 0.006 195);

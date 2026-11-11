@@ -587,11 +587,12 @@
 		grid-column: 1 / -1;
 		background: var(--accent);
 		border-color: var(--accent);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.override-btn.auto-mode:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 		border-color: var(--accent-hover);
 	}
 

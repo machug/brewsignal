@@ -702,13 +702,14 @@
 		background: var(--accent);
 		border: none;
 		border-radius: 6px;
-		color: white;
+		color: var(--accent-ink);
 		cursor: pointer;
 		transition: background var(--transition);
 	}
 
 	.new-chat-btn:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.sidebar-content {
@@ -1277,13 +1278,14 @@
 		background: var(--accent);
 		border: none;
 		border-radius: 8px;
-		color: white;
+		color: var(--accent-ink);
 		cursor: pointer;
 		transition: background var(--transition);
 	}
 
 	.send-button:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.send-button:disabled {

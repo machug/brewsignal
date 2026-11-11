@@ -689,13 +689,14 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: none;
 	}
 
 	.btn-submit:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-cancel:disabled,

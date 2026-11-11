@@ -718,7 +718,7 @@
 		justify-content: center;
 		width: 2.25rem;
 		height: 2.25rem;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: 1px solid var(--accent);
 		border-radius: 0.5rem;
@@ -728,6 +728,7 @@
 
 	.btn-add:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 		border-color: var(--accent-hover);
 	}
 
@@ -878,7 +879,7 @@
 		padding: 0.625rem 1.25rem;
 		font-size: 0.875rem;
 		font-weight: 500;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: 1px solid var(--accent);
 		border-radius: 0.5rem;
@@ -889,6 +890,7 @@
 
 	.btn-primary:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 		border-color: var(--accent-hover);
 	}
 

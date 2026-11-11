@@ -6,6 +6,10 @@
    Archivo = display/headings/nav, Atkinson Hyperlegible = body, Chivo Mono = all numbers. */
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@90..110,500..700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Chivo+Mono:wght@400;500;600&display=swap');
 
+/* `dark:` utilities follow the app theme (dark unless data-theme="light"),
+   not the device's prefers-color-scheme. */
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
+
 /* Remap Tailwind's grey scales onto the theme-aware neutral ramp, so existing
    bg-zinc-900 / text-gray-400 style classes follow the palette and the light theme.
    ponytail: semantic flip of a dark-designed ramp; per-screen beads (tilt_ui-nv1r.2-.6)

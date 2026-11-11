@@ -2203,6 +2203,7 @@
 		width: 6px;
 		height: 6px;
 		background: var(--recipe-accent);
+		color: var(--accent-ink);
 		border-radius: 50%;
 		animation: pulse-dot 2s ease-in-out infinite;
 	}
@@ -2427,7 +2428,7 @@
 
 	.toggle-btn.active {
 		background: var(--accent);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	/* Input Groups */
@@ -2567,6 +2568,7 @@
 
 	.switch.on {
 		background: var(--accent);
+		color: var(--accent-ink);
 	}
 
 	.switch-thumb {
@@ -2792,13 +2794,14 @@
 		background: var(--accent);
 		border: none;
 		border-radius: 0.5rem;
-		color: white;
+		color: var(--accent-ink);
 		cursor: pointer;
 		transition: background 0.15s ease;
 	}
 
 	.save-btn:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.save-btn:disabled {

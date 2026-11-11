@@ -142,6 +142,7 @@
 
 	.step.current .dot {
 		background: var(--accent);
+		color: var(--accent-ink);
 		box-shadow: 0 0 0 4px var(--accent-muted);
 		animation: pulse-dot 2.5s ease-in-out infinite;
 	}

@@ -180,7 +180,7 @@
 	.btn-add {
 		padding: var(--space-2) var(--space-3);
 		background: var(--recipe-accent);
-		color: var(--gray-950);
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 6px;
 		font-size: 13px;

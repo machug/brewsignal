@@ -696,7 +696,7 @@
 					</p>
 					<button
 						onclick={() => openEquipmentModal()}
-						class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
 					>
 						Add Equipment
 					</button>
@@ -798,7 +798,7 @@
 					/>
 					<button
 						onclick={() => openHopModal()}
-						class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
 					>
 						Add Hops
 					</button>
@@ -935,7 +935,7 @@
 					</div>
 					<button
 						onclick={() => openYeastModal()}
-						class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+						class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
 					>
 						Add Yeast
 					</button>
@@ -1102,7 +1102,7 @@
 				<button
 					onclick={handleSaveEquipment}
 					disabled={saving || !newEquipment.name.trim()}
-					class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>
 					{saving ? 'Saving...' : 'Save'}
 				</button>
@@ -1236,7 +1236,7 @@
 				<button
 					onclick={handleSaveHop}
 					disabled={saving || !newHop.variety.trim()}
-					class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>
 					{saving ? 'Saving...' : 'Save'}
 				</button>
@@ -1279,7 +1279,7 @@
 				<button
 					onclick={handleAdjustHop}
 					disabled={saving || adjustAmount === 0}
-					class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>
 					{saving ? 'Adjusting...' : 'Adjust'}
 				</button>
@@ -1414,7 +1414,7 @@
 				<button
 					onclick={handleSaveYeast}
 					disabled={saving}
-					class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+					class="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>
 					{saving ? 'Saving...' : 'Save'}
 				</button>

@@ -500,7 +500,7 @@
 		background: var(--recipe-accent, #f59e0b);
 		border: none;
 		border-radius: 8px;
-		color: #1a1208;
+		color: var(--accent-ink);
 		font-weight: 600;
 		cursor: pointer;
 	}

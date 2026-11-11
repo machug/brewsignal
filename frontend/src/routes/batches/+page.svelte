@@ -367,7 +367,7 @@
 		padding: 0.625rem 1rem;
 		font-size: 0.875rem;
 		font-weight: 500;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: none;
 		border-radius: 0.5rem;
@@ -377,6 +377,7 @@
 
 	.create-btn:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-icon {

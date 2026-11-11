@@ -656,11 +656,12 @@
 
 	.btn-primary {
 		background: var(--accent);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-secondary {
@@ -773,7 +774,7 @@
 		font-size: 0.75rem;
 		font-weight: 500;
 		background: var(--accent);
-		color: white;
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 0.25rem;
 		cursor: pointer;
@@ -783,6 +784,7 @@
 
 	.copy-btn:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.docs-link {

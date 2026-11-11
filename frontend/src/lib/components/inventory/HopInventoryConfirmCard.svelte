@@ -170,9 +170,9 @@
 	button.primary {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: var(--bg-base);
+		color: var(--accent-ink);
 	}
-	button.primary:hover { background: var(--accent-hover); }
+	button.primary:hover { background: var(--accent-hover); color: var(--accent-ink); }
 	button.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
 	.ok { color: var(--positive); }
 	.error { color: var(--negative); }

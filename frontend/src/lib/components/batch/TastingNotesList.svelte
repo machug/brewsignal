@@ -877,6 +877,7 @@
 
 	.score-bar.score-medium {
 		background: var(--recipe-accent);
+		color: var(--accent-ink);
 	}
 
 	.score-bar.score-low {
@@ -885,6 +886,7 @@
 
 	.score-bar.bjcp-bar {
 		background: var(--accent);
+		color: var(--accent-ink);
 	}
 
 	.score-notes {

@@ -110,7 +110,7 @@
 		width: 28px;
 		height: 28px;
 		background: var(--recipe-accent);
-		color: var(--gray-950);
+		color: var(--accent-ink);
 		border-radius: 50%;
 		font-size: 13px;
 		font-weight: 600;

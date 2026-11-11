@@ -146,7 +146,7 @@
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-4);
 		background: var(--recipe-accent);
-		color: white;
+		color: var(--accent-ink);
 		text-decoration: none;
 		border-radius: 6px;
 		font-size: 14px;
@@ -156,6 +156,7 @@
 
 	.new-btn:hover {
 		background: var(--recipe-accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.import-btn {
@@ -164,7 +165,7 @@
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-4);
 		background: var(--recipe-accent);
-		color: white;
+		color: var(--accent-ink);
 		text-decoration: none;
 		border-radius: 6px;
 		font-size: 14px;
@@ -174,6 +175,7 @@
 
 	.import-btn:hover {
 		background: var(--recipe-accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.icon {
@@ -257,7 +259,7 @@
 		gap: var(--space-2);
 		padding: var(--space-3) var(--space-5);
 		background: var(--recipe-accent);
-		color: white;
+		color: var(--accent-ink);
 		text-decoration: none;
 		border-radius: 6px;
 		font-size: 14px;
@@ -267,6 +269,7 @@
 
 	.empty-cta:hover {
 		background: var(--recipe-accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.error-state {

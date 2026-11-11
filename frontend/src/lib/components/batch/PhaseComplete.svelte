@@ -613,7 +613,7 @@
 		gap: 0.5rem;
 		padding: 0.875rem 1rem;
 		background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, purple) 100%);
-		color: white;
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 0.5rem;
 		font-size: 0.875rem;

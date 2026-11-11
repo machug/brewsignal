@@ -840,7 +840,7 @@
 		margin-top: var(--space-3);
 		padding: 8px 16px;
 		background: var(--recipe-accent);
-		color: var(--gray-950);
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 6px;
 		font-weight: 500;
@@ -850,6 +850,7 @@
 
 	.btn-collection-save:hover:not(:disabled) {
 		background: var(--recipe-accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-collection-save:disabled {

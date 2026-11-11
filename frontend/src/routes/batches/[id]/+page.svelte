@@ -1134,6 +1134,7 @@
 		height: 8px;
 		border-radius: 50%;
 		background: var(--accent);
+		color: var(--accent-ink);
 		flex-shrink: 0;
 		animation: pulse-tab-dot 2.5s ease-in-out infinite;
 	}

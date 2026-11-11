@@ -174,7 +174,7 @@
 				<button
 					type="submit"
 					disabled={loading}
-					class="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/50 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+					class="w-full py-2.5 px-4 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
 				>
 					{#if loading}
 						<svg class="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">

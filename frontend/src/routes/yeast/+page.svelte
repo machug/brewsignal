@@ -464,12 +464,13 @@
 
 	.add-btn {
 		background: var(--accent);
-		color: white;
+		color: var(--accent-ink);
 		border: none;
 	}
 
 	.add-btn:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.refresh-btn {
@@ -879,11 +880,12 @@
 	.btn-submit {
 		background: var(--accent);
 		border: none;
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.btn-submit:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-submit:disabled {

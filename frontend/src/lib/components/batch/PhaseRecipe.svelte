@@ -109,13 +109,14 @@
 		cursor: pointer;
 		transition: all var(--transition);
 		margin-top: 0.5rem;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: none;
 	}
 
 	.start-brewday-btn:hover:not(:disabled) {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 		transform: translateY(-1px);
 	}
 

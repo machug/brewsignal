@@ -231,7 +231,7 @@
 		gap: 8px;
 		padding: 10px 16px;
 		background: var(--accent, #3b82f6);
-		color: white;
+		color: var(--accent-ink);
 		border: none;
 		border-radius: 24px;
 		cursor: pointer;
@@ -244,6 +244,7 @@
 
 	.tasting-panel-collapsed:hover {
 		background: var(--accent-hover, #2563eb);
+		color: var(--accent-ink);
 		transform: translateY(-1px);
 	}
 
@@ -284,6 +285,13 @@
 		}
 		to {
 			transform: translateX(0);
+		}
+	}
+
+	/* Phone: float above the bottom tab bar (--tabbar-h from +layout.svelte) */
+	@media (max-width: 760px) {
+		.tasting-panel-collapsed {
+			bottom: calc(var(--tabbar-h, 0px) + 16px + env(safe-area-inset-bottom, 0px));
 		}
 	}
 
@@ -567,7 +575,7 @@
 		background: var(--accent, #3b82f6);
 		border: none;
 		border-radius: 8px;
-		color: white;
+		color: var(--accent-ink);
 		cursor: pointer;
 		flex-shrink: 0;
 		transition: background 0.15s ease;
@@ -575,6 +583,7 @@
 
 	.tp-send-btn:hover:not(:disabled) {
 		background: var(--accent-hover, #2563eb);
+		color: var(--accent-ink);
 	}
 
 	.tp-send-btn:disabled {

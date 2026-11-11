@@ -438,6 +438,7 @@
 		width: 1.125rem;
 		height: 1.125rem;
 		background: var(--accent);
+		color: var(--accent-ink);
 		border: 2px solid var(--bg-surface);
 		border-radius: 50%;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -453,6 +454,7 @@
 		width: 1.125rem;
 		height: 1.125rem;
 		background: var(--accent);
+		color: var(--accent-ink);
 		border: 2px solid var(--bg-surface);
 		border-radius: 50%;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -648,7 +650,7 @@
 	.save-btn {
 		background: var(--accent);
 		border: none;
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.save-btn:hover {

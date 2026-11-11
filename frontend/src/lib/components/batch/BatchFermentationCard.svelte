@@ -250,6 +250,7 @@
 		width: 6px;
 		height: 6px;
 		background: var(--recipe-accent);
+		color: var(--accent-ink);
 		border-radius: 50%;
 		animation: pulse 2s ease-in-out infinite;
 	}

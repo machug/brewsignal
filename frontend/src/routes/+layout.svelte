@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -179,8 +179,76 @@
 	$effect(() => {
 		$page.url.pathname;
 		moreOpen = false;
+		moreView = 'menu';
 	});
+
+	// More sheet: focus management, Escape, Tab trap
+	let moreBtn: HTMLButtonElement | undefined = $state();
+	let moreSheet: HTMLDivElement | undefined = $state();
+	let moreView: 'menu' | 'weather' = $state('menu');
+
+	async function openMore() {
+		moreOpen = true;
+		await tick();
+		moreSheet?.querySelector<HTMLElement>('a, button')?.focus();
+	}
+
+	async function closeMore(restoreFocus = true) {
+		if (!moreOpen) return;
+		moreOpen = false;
+		moreView = 'menu';
+		if (restoreFocus) {
+			await tick(); // inert is cleared after the DOM updates
+			moreBtn?.focus();
+		}
+	}
+
+	function onWindowKeydown(e: KeyboardEvent) {
+		if (!moreOpen) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeMore();
+		} else if (e.key === 'Tab' && moreSheet) {
+			const items = [...moreSheet.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+			if (!items.length) return;
+			const first = items[0];
+			const last = items[items.length - 1];
+			const active = document.activeElement;
+			if (!moreSheet.contains(active)) {
+				e.preventDefault();
+				first.focus();
+			} else if (e.shiftKey && active === first) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && active === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		}
+	}
+
+	// Leaving phone width while the sheet is open would leave the page inert
+	function onWindowResize() {
+		if (moreOpen && window.innerWidth > 760) closeMore(false);
+	}
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} onresize={onWindowResize} />
+
+{#snippet forecastDays()}
+	<div class="weather-days">
+		{#each weatherState.forecast.slice(0, 5) as day}
+			<div class="weather-day">
+				<span class="weather-day-name">{formatDayName(day.datetime)}</span>
+				<span class="weather-day-icon">{getWeatherIcon(day.condition)}</span>
+				<span class="num weather-temps">
+					<span class="temp-high">{formatForecastTemp(day.temperature)}°</span>
+					<span class="temp-low">{formatForecastTemp(day.templow)}°</span>
+				</span>
+			</div>
+		{/each}
+	</div>
+{/snippet}
 
 <svelte:head>
 	<title>BrewSignal</title>
@@ -188,8 +256,8 @@
 </svelte:head>
 
 <div class="layout-container">
-	<header class="topbar">
-		<Brand />
+	<header class="topbar" inert={moreOpen}>
+		<div class="brand-slot"><Brand /></div>
 
 		<nav class="primary-nav" aria-label="Primary">
 			{#each navLinks as link}
@@ -223,18 +291,7 @@
 						<div class="backdrop" onclick={closeWeatherDropdown}></div>
 						<div class="dropdown weather-dropdown" transition:slide={{ duration: 150 }}>
 							<div class="dropdown-header">5-Day Forecast</div>
-							<div class="weather-days">
-								{#each weatherState.forecast.slice(0, 5) as day}
-									<div class="weather-day">
-										<span class="weather-day-name">{formatDayName(day.datetime)}</span>
-										<span class="weather-day-icon">{getWeatherIcon(day.condition)}</span>
-										<span class="num weather-temps">
-											<span class="temp-high">{formatForecastTemp(day.temperature)}°</span>
-											<span class="temp-low">{formatForecastTemp(day.templow)}°</span>
-										</span>
-									</div>
-								{/each}
-							</div>
+							{@render forecastDays()}
 						</div>
 					{/if}
 				</div>
@@ -252,7 +309,13 @@
 			{/if}
 
 			{#if showHeaterIndicator && tiltsState.heater.available}
-				<div class="chip heater-chip" class:heater-on={tiltsState.heater.state === 'on'} title="Heater">
+				<div
+					class="chip heater-chip"
+					class:heater-on={tiltsState.heater.state === 'on'}
+					title="Heater"
+					role="status"
+					aria-label={tiltsState.heater.state === 'on' ? 'Heater heating' : 'Heater off'}
+				>
 					<span class="dot" aria-hidden="true"></span>
 					<span class="chip-text num">{tiltsState.heater.state === 'on' ? 'Heating' : 'Heater off'}</span>
 				</div>
@@ -299,7 +362,7 @@
 		</div>
 	</header>
 
-	<main class="page">
+	<main class="page" inert={moreOpen}>
 		{#if !configInitialized}
 			<div class="auth-loading">
 				<div class="auth-loading-spinner"></div>
@@ -319,25 +382,46 @@
 		{/if}
 	</main>
 
+	<!-- Phone More sheet (outside the tab bar so the tab bar can be inert while open) -->
+	{#if moreOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="more-backdrop" onclick={() => closeMore()}></div>
+		<div class="more-sheet" id="more-sheet" role="dialog" aria-modal="true" aria-labelledby="more-title" bind:this={moreSheet}>
+			<div class="more-title" id="more-title">More</div>
+			{#each moreLinks as link}
+				<a
+					href={link.href}
+					class="more-link"
+					aria-current={isActive(link.href, $page.url.pathname) ? 'page' : undefined}
+				>
+					{link.label}
+				</a>
+			{/each}
+			{#if todayForecast}
+				<button
+					type="button"
+					class="more-link more-weather-toggle"
+					aria-expanded={moreView === 'weather'}
+					aria-controls="more-weather"
+					onclick={() => (moreView = moreView === 'weather' ? 'menu' : 'weather')}
+				>
+					<span>Weather</span>
+					<span class="num">{getWeatherIcon(todayForecast.condition)} {formatForecastTemp(todayForecast.temperature)}°</span>
+				</button>
+				{#if moreView === 'weather'}
+					<div class="more-weather" id="more-weather">
+						<div class="dropdown-header">5-Day Forecast</div>
+						{@render forecastDays()}
+					</div>
+				{/if}
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Phone bottom tab bar -->
 	<nav class="tabbar" aria-label="Mobile navigation">
-		{#if moreOpen}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="more-backdrop" onclick={() => (moreOpen = false)}></div>
-			<div class="more-sheet" id="more-sheet">
-				{#each moreLinks as link}
-					<a
-						href={link.href}
-						class="more-link"
-						aria-current={isActive(link.href, $page.url.pathname) ? 'page' : undefined}
-					>
-						{link.label}
-					</a>
-				{/each}
-			</div>
-		{/if}
-		<div class="tabs">
+		<div class="tabs" inert={moreOpen}>
 			<a href="/" class="tab" aria-current={isActive('/', $page.url.pathname) ? 'page' : undefined}>
 				<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 9.5L10 3.5l7 6V17H3V9.5z" /></svg>
 				<span>Home</span>
@@ -360,7 +444,9 @@
 				class:current={moreActive || moreOpen}
 				aria-expanded={moreOpen}
 				aria-controls="more-sheet"
-				onclick={() => (moreOpen = !moreOpen)}
+				aria-haspopup="dialog"
+				bind:this={moreBtn}
+				onclick={() => (moreOpen ? closeMore() : openMore())}
 			>
 				<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="10" r="1.2" /><circle cx="10" cy="10" r="1.2" /><circle cx="15" cy="10" r="1.2" /></svg>
 				<span>More</span>
@@ -370,6 +456,11 @@
 </div>
 
 <style>
+	/* Phone tab bar height: 56px row + 6px bottom padding + 1px top border (safe-area added separately). Shared with TastingPanel. */
+	:global(:root) {
+		--tabbar-h: 63px;
+	}
+
 	.layout-container {
 		min-height: 100vh;
 		background: var(--bg-canvas);
@@ -384,17 +475,27 @@
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
-		gap: var(--space-lg);
+		gap: var(--space-sm);
 		height: 56px;
-		padding: 0 var(--space-lg);
+		padding-inline: var(--space-lg);
 		background: var(--bg-canvas);
 		border-bottom: 1px solid var(--rule-hairline);
+	}
+
+	/* Nameplate: full-height divider so the wordmark does not read as the first tab */
+	.brand-slot {
+		align-self: stretch;
+		display: flex;
+		align-items: center;
+		padding-right: var(--space-md);
+		margin-right: var(--space-xs);
+		border-right: 1px solid var(--rule-hairline);
 	}
 
 	.primary-nav {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2xs);
+		gap: var(--space-lg);
 		height: 100%;
 		min-width: 0;
 		overflow-x: auto;
@@ -408,12 +509,10 @@
 		position: relative;
 		display: inline-flex;
 		align-items: center;
+		flex-shrink: 0;
 		height: 100%;
-		padding: 0 var(--space-sm);
 		white-space: nowrap;
-		font-family: var(--font-display);
-		font-size: var(--text-sm);
-		font-weight: 500;
+		font: 500 var(--text-sm) / 1 var(--font-display);
 		color: var(--ink-secondary);
 		transition: color 160ms var(--ease-out-quart);
 	}
@@ -427,8 +526,8 @@
 	.nav-link[aria-current='page']::after {
 		content: '';
 		position: absolute;
-		left: var(--space-sm);
-		right: var(--space-sm);
+		left: 0;
+		right: 0;
 		bottom: -1px;
 		height: 2px;
 		background: var(--accent);
@@ -489,7 +588,7 @@
 		align-items: center;
 		gap: 6px;
 		font-size: var(--text-xs);
-		color: var(--ink-muted);
+		color: var(--ink-secondary);
 	}
 	.status .dot.connected {
 		background: var(--status-steady);
@@ -517,19 +616,20 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: 36px;
-		padding: 0 var(--space-sm);
-		border: 1px solid var(--accent-rule);
+		padding-inline: var(--space-sm);
+		border: 1px solid var(--rule-strong);
 		border-radius: 4px;
+		background: var(--bg-surface);
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: var(--accent);
+		color: var(--ink-primary);
 		transition: background 150ms var(--ease-out-quart);
 	}
 	.sign-in-link:hover {
-		background: var(--accent-tint);
+		background: var(--bg-subtle);
 	}
 
 	/* Dropdowns */
@@ -629,7 +729,9 @@
 		padding: var(--space-lg);
 	}
 
-	.tabbar {
+	.tabbar,
+	.more-backdrop,
+	.more-sheet {
 		display: none;
 	}
 
@@ -657,17 +759,18 @@
 		}
 	}
 
-	/* Tablet: nav scrolls, secondary status text hidden */
+	/* Tablet: nav scrolls with a right-edge fade, secondary status text hidden */
 	@media (max-width: 1040px) {
 		.topbar {
+			gap: var(--space-xs);
+		}
+		.primary-nav {
 			gap: var(--space-md);
+			/* ponytail: always-on fade; only needed when the nav overflows */
+			mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
 		}
-		.nav-link {
-			padding: 0 var(--space-xs);
-		}
-		.nav-link[aria-current='page']::after {
-			left: var(--space-xs);
-			right: var(--space-xs);
+		.sign-in-link {
+			min-height: 40px;
 		}
 		.status-text,
 		.chip-text,
@@ -681,17 +784,24 @@
 		.topbar {
 			grid-template-columns: 1fr auto;
 			height: 52px;
-			padding: 0 var(--space-md);
+			padding-inline: var(--space-md);
+		}
+		.brand-slot {
+			padding-right: 0;
+			margin-right: 0;
+			border-right: none;
 		}
 		.primary-nav,
 		.weather-wrapper,
-		.ambient-chip,
-		.heater-chip {
+		.ambient-chip {
 			display: none;
+		}
+		.status-text {
+			display: inline;
 		}
 		.page {
 			padding: var(--space-md);
-			padding-bottom: calc(60px + env(safe-area-inset-bottom) + var(--space-md));
+			padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + var(--space-md));
 		}
 
 		.tabbar {
@@ -703,12 +813,12 @@
 			z-index: 40;
 			background: var(--bg-surface);
 			border-top: 1px solid var(--rule-strong);
-			padding-bottom: env(safe-area-inset-bottom);
+			padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
 		}
 		.tabs {
 			display: grid;
 			grid-template-columns: repeat(5, 1fr);
-			height: 60px;
+			min-height: 56px;
 		}
 		.tab {
 			position: relative;
@@ -717,7 +827,8 @@
 			align-items: center;
 			justify-content: center;
 			gap: 3px;
-			min-height: 48px;
+			min-height: 56px;
+			min-width: 44px;
 			background: transparent;
 			border: none;
 			font-family: var(--font-display);
@@ -733,46 +844,72 @@
 		}
 		.tab[aria-current='page'],
 		.tab.current {
+			color: var(--ink-primary);
+		}
+		.tab[aria-current='page'] svg,
+		.tab.current svg {
 			color: var(--accent);
 		}
 		.tab[aria-current='page']::before,
 		.tab.current::before {
 			content: '';
 			position: absolute;
-			top: 0;
+			top: -1px;
 			left: 24%;
 			right: 24%;
 			height: 2px;
 			background: var(--accent);
 		}
 		.more-backdrop {
+			display: block;
 			position: fixed;
 			inset: 0;
-			bottom: calc(60px + env(safe-area-inset-bottom));
-			z-index: -1;
+			bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+			z-index: 41;
 		}
 		.more-sheet {
-			position: absolute;
+			display: grid;
+			position: fixed;
 			left: 0;
 			right: 0;
-			bottom: 100%;
-			display: grid;
+			bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+			z-index: 42;
+			max-height: 70vh;
+			overflow-y: auto;
 			background: var(--bg-elevated);
 			border-top: 1px solid var(--rule-strong);
+		}
+		.more-title {
+			padding: var(--space-xs) var(--space-md);
+			border-bottom: 1px solid var(--rule-hairline);
+			font-family: var(--font-display);
+			font-size: var(--text-xs);
+			font-weight: 600;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			color: var(--ink-muted);
 		}
 		.more-link {
 			display: flex;
 			align-items: center;
 			min-height: 48px;
 			padding: 0 var(--space-md);
+			border: none;
 			border-bottom: 1px solid var(--rule-hairline);
+			background: transparent;
 			font-family: var(--font-display);
 			font-size: var(--text-base);
 			font-weight: 500;
+			text-align: left;
 			color: var(--ink-secondary);
 		}
-		.more-link:last-child {
-			border-bottom: none;
+		.more-weather-toggle {
+			justify-content: space-between;
+			width: 100%;
+			cursor: pointer;
+		}
+		.more-weather {
+			border-bottom: 1px solid var(--rule-hairline);
 		}
 		.more-link[aria-current='page'] {
 			color: var(--accent);

@@ -1633,7 +1633,7 @@ onMount(async () => {
 
 	.retry-btn:hover {
 		background: var(--accent-hover);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.chart-empty {

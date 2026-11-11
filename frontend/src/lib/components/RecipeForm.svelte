@@ -330,11 +330,12 @@
 
 	.btn-primary {
 		background: var(--recipe-accent);
-		color: white;
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:hover:not(:disabled) {
 		background: var(--recipe-accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-secondary:disabled,

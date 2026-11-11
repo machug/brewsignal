@@ -449,7 +449,7 @@
 	.btn-primary {
 		padding: 0.5rem 1rem;
 		background: var(--accent);
-		color: #fff;
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:hover {

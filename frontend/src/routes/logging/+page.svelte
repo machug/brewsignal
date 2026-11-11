@@ -321,6 +321,7 @@
 	.toggle.active .toggle-slider {
 		left: calc(100% - 1.125rem - 2px);
 		background: var(--accent);
+		color: var(--accent-ink);
 	}
 
 	/* Select Input */
@@ -358,7 +359,7 @@
 		padding: 0.625rem 1.25rem;
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: white;
+		color: var(--accent-ink);
 		background: var(--accent);
 		border: none;
 		border-radius: 0.5rem;
@@ -368,6 +369,7 @@
 
 	.btn-primary:hover {
 		background: var(--accent-hover);
+		color: var(--accent-ink);
 	}
 
 	.btn-primary:disabled {
@@ -393,7 +395,7 @@
 
 	.btn-secondary:hover {
 		background: var(--accent-hover);
-		color: white;
+		color: var(--accent-ink);
 		border-color: var(--accent-hover);
 	}
 

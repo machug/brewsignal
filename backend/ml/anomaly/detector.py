@@ -27,7 +27,7 @@ class FermentationAnomalyDetector:
         self,
         slope_window_hours: float = 12.0,
         step_threshold: float = 0.001,  # 1 gravity point
-        step_count: int = 6,  # ~30 min at the 5-min storage cadence
+        step_count: int = 6,
         baseline_hours: float = 2.0,
         min_baseline_readings: int = 6,
     ):
@@ -44,6 +44,7 @@ class FermentationAnomalyDetector:
         self.sg_history: list[float] = []  # filtered SG
         self.raw_history: list[float] = []
         self._step_active = False
+        self._rebase_t: Optional[float] = None  # baseline starts here after a step
 
     def check_reading(
         self,
@@ -75,11 +76,12 @@ class FermentationAnomalyDetector:
         }
 
     def _trim(self) -> None:
-        """Keep only what the longest window needs (bounded memory)."""
-        keep_hours = max(self.slope_window_hours, self.baseline_hours) + 1.0
-        cutoff = self.time_history[-1] - keep_hours
+        """Keep the slope window plus enough readings for a step check (bounded memory)."""
+        cutoff = self.time_history[-1] - self.slope_window_hours - 1.0
+        keep_min = self.min_baseline_readings + self.step_count
         drop = 0
-        while drop < len(self.time_history) and self.time_history[drop] < cutoff:
+        while (drop < len(self.time_history) - keep_min
+               and self.time_history[drop] < cutoff):
             drop += 1
         if drop:
             del self.time_history[:drop]
@@ -100,8 +102,17 @@ class FermentationAnomalyDetector:
         t = np.array(self.time_history)
         z = np.array(self.raw_history)
         recent_t, recent_z = t[-n:], z[-n:]
-        base = (t[:-n] >= recent_t[0] - self.baseline_hours)
-        base_t, base_z = t[:-n][base], z[:-n][base]
+        # Baseline: the last baseline_hours before the recent readings, but at
+        # least min_baseline_readings, so slow reporters (30-60 min) still
+        # qualify. After a step, only post-step readings form the baseline, so
+        # the old level cannot produce a false reverse step.
+        base_t, base_z = t[:-n], z[:-n]
+        if self._rebase_t is not None:
+            keep = base_t >= self._rebase_t
+            base_t, base_z = base_t[keep], base_z[keep]
+        in_window = int(np.sum(base_t >= recent_t[0] - self.baseline_hours))
+        take = max(in_window, self.min_baseline_readings)
+        base_t, base_z = base_t[-take:], base_z[-take:]
         if len(base_t) < self.min_baseline_readings or base_t[-1] - base_t[0] <= 0:
             return "normal"
         slope, intercept = np.polyfit(base_t, base_z, 1)
@@ -117,4 +128,5 @@ class FermentationAnomalyDetector:
         if self._step_active:
             return "normal"  # already flagged this event
         self._step_active = True
+        self._rebase_t = recent_t[0]
         return direction

@@ -9,6 +9,7 @@ gravity are left alone.
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models import Recipe, RecipeFermentable
@@ -52,7 +53,10 @@ class TestBackfillColorSrm:
         await backfill_recipe_color_srm(test_db)
         recipe = (
             await test_db.execute(
-                select(Recipe).where(Recipe.id == rid)
+                select(Recipe)
+                .where(Recipe.id == rid)
+                .options(selectinload(Recipe.fermentables))
+                .execution_options(populate_existing=True)
             )
         ).scalar_one()
         roasted = next(f for f in recipe.fermentables if f.name == "Roasted Barley")

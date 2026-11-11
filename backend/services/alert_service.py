@@ -194,19 +194,28 @@ async def detect_and_persist_alerts(
             await _clear_alert(db, batch_id, AlertType.TEMPERATURE_HIGH, now)
             await _clear_alert(db, batch_id, AlertType.TEMPERATURE_LOW, now)
 
-    # --- Anomaly Alerts ---
+    # --- Anomaly Alerts (step change) ---
+    # The detector flags a level shift once per event (tilt_ui-zbhm), so the
+    # alert must NOT clear on the next normal reading or nobody would see it.
+    # It stays until dismissed; a later step updates the same alert.
     if live_reading and live_reading.get("is_anomaly"):
-        anomaly_reasons = live_reading.get("anomaly_reasons", "unknown reason")
+        reasons = live_reading.get("anomaly_reasons") or []
+        if "step_change_up" in reasons:
+            message = "Gravity jumped up suddenly - dry hop, or the hydrometer was moved?"
+        elif "step_change_down" in reasons:
+            message = "Gravity dropped suddenly - was the hydrometer lifted or moved?"
+        else:
+            message = f"Anomaly detected: {reasons or 'unknown reason'}"
         alert = await _upsert_alert(
             db=db,
             batch_id=batch_id,
             device_id=device_id,
             alert_type=AlertType.ANOMALY,
-            severity=AlertSeverity.INFO,
-            message=f"Anomaly detected: {anomaly_reasons}",
+            severity=AlertSeverity.WARNING,
+            message=message,
             context=json.dumps({
                 "anomaly_score": live_reading.get("anomaly_score"),
-                "anomaly_reasons": anomaly_reasons,
+                "anomaly_reasons": reasons,
                 "sg": live_reading.get("sg"),
                 "temp": live_reading.get("temp"),
             }),
@@ -214,9 +223,6 @@ async def detect_and_persist_alerts(
             now=now,
         )
         current_alerts.append(alert)
-    else:
-        # No anomaly - clear alert if one exists
-        await _clear_alert(db, batch_id, AlertType.ANOMALY, now)
 
     # --- Stall Alerts (tilt_ui-zbhm) ---
     # Stalled = the trailing 12 h slope is flatter than 0.6 pt/day, AFTER the

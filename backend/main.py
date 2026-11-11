@@ -47,6 +47,7 @@ scanner_task: Optional[asyncio.Task] = None
 backfill_task: Optional[asyncio.Task] = None
 retitle_task: Optional[asyncio.Task] = None
 memory_task: Optional[asyncio.Task] = None
+warm_task: Optional[asyncio.Task] = None
 
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
@@ -487,7 +488,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scanner, scanner_task, ml_pipeline_manager, backfill_task, retitle_task, memory_task
+    global scanner, scanner_task, ml_pipeline_manager, backfill_task, retitle_task, memory_task, warm_task
 
     settings = Settings()
 
@@ -509,6 +510,8 @@ async def lifespan(app: FastAPI):
     # Initialize ML pipeline manager (always enabled)
     ml_pipeline_manager = MLPipelineManager()
     logging.info("ML Pipeline Manager initialized")
+    # Refill in-memory ML windows from saved readings, off the critical path (tilt_ui-zbhm)
+    warm_task = asyncio.create_task(ml_pipeline_manager.warm_active_batches(async_session_factory))
 
     # Scanner: BLE Tilt scanning (local only, cloud uses gateway)
     if settings.is_enabled("scanner"):

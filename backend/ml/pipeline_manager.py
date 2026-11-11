@@ -181,6 +181,30 @@ class MLPipelineManager:
             "history_count": len(pipeline.sg_history)
         }
 
+    async def warm_active_batches(self, session_factory) -> int:
+        """Reload history for every active batch with a device (startup).
+
+        Without this the in-memory windows (12 h stall slope, Kalman) start
+        empty after each restart (tilt_ui-zbhm). Returns batches warmed.
+        """
+        from sqlalchemy import select
+        from backend.models import Batch
+
+        async with session_factory() as db:
+            rows = (await db.execute(
+                select(Batch.id, Batch.device_id).where(
+                    Batch.status.in_(("fermenting", "conditioning")),
+                    Batch.deleted_at.is_(None),
+                    Batch.device_id.is_not(None),
+                )
+            )).all()
+            warmed = 0
+            for batch_id, device_id in rows:
+                result = await self.reload_from_database(device_id, batch_id, db)
+                warmed += bool(result.get("success"))
+        logger.info(f"Warmed ML pipelines for {warmed}/{len(rows)} active batches")
+        return warmed
+
     async def reload_from_database(
         self,
         device_id: str,

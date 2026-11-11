@@ -275,6 +275,13 @@ class MLPipeline:
         if self.kalman_filter and len(sgs) > 0:
             self.kalman_filter.reset(sg=sgs[-1], temp=temps[-1])
 
-        # Reset anomaly detector (will rebuild stats from history)
+        # Refill the anomaly detector's trailing window from history, so the
+        # 12 h stall slope survives restarts instead of going blind for 12 h
+        # (tilt_ui-zbhm). Only the window is replayed; flags are discarded.
         if self.anomaly_detector:
             self.anomaly_detector.reset()
+            if times:
+                since = times[-1] - self.anomaly_detector.slope_window_hours - 1.0
+                for t, s in zip(times, sgs):
+                    if t >= since:
+                        self.anomaly_detector.check_reading(sg=s, time_hours=t)

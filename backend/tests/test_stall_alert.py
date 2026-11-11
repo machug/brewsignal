@@ -66,3 +66,50 @@ async def test_unknown_fg_is_info_only(test_db):
 @pytest.mark.asyncio
 async def test_unknown_og_no_judgement(test_db):
     assert await _run(test_db, sg=1.030, slope=FLAT, og=None) == []
+
+
+@pytest.mark.asyncio
+async def test_startup_warms_active_batch_pipelines(test_db):
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from backend.ml.pipeline_manager import MLPipelineManager
+
+    batch = Batch(name="APA", status="fermenting", device_id="BLUE")
+    test_db.add(batch)
+    await test_db.flush()
+    start = datetime.now(timezone.utc) - timedelta(hours=14)
+    for i in range(14 * 12):
+        test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_raw=1.030, sg_calibrated=1.030,
+                            temp_calibrated=19.0, timestamp=start + timedelta(minutes=5 * i)))
+    await test_db.commit()
+
+    mgr = MLPipelineManager()
+    assert await mgr.warm_active_batches(async_sessionmaker(test_db.bind, expire_on_commit=False)) == 1
+    det = mgr.pipelines["BLUE"].anomaly_detector
+    assert det.check_reading(1.030, 14.0)["sg_slope_12h"] is not None
+
+
+@pytest.mark.asyncio
+async def test_step_alert_stays_until_dismissed(test_db):
+    """Side-agent catch: a once-per-event flag must not clear on the next reading."""
+    batch = Batch(name="APA", status="fermenting")
+    test_db.add(batch)
+    await test_db.flush()
+    for flagged in (True, False, False):
+        reading = Reading(batch_id=batch.id, sg_raw=1.030, sg_calibrated=1.030)
+        test_db.add(reading)
+        await test_db.flush()
+        await detect_and_persist_alerts(
+            db=test_db, batch_id=batch.id, device_id="BLUE", reading=reading,
+            live_reading={"sg": 1.030, "is_anomaly": flagged,
+                          "anomaly_reasons": ["step_change_down"] if flagged else []},
+        )
+        await test_db.flush()
+    rows = (await test_db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch.id,
+        FermentationAlert.alert_type == AlertType.ANOMALY,
+        FermentationAlert.cleared_at.is_(None),
+    ))).scalars().all()
+    assert len(rows) == 1 and "lifted" in rows[0].message

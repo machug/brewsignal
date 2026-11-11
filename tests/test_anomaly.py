@@ -1,6 +1,7 @@
 """Tests for fermentation anomaly detection (tilt_ui-zbhm)."""
 
 import numpy as np
+import pytest
 
 from backend.ml.anomaly.detector import FermentationAnomalyDetector
 
@@ -78,3 +79,37 @@ def test_reset_clears_history():
     feed(det, np.arange(0, 13, STEP), np.full(int(13 / STEP), 1.040))
     det.reset()
     assert det.check_reading(1.050, 0.0)["sg_slope_12h"] is None
+
+
+CADENCES = [5 / 60, 0.25, 0.5, 1.0]  # 5 min (Tilt default), 15 min, 30 min, 1 h
+
+
+@pytest.mark.parametrize("cadence", CADENCES)
+@pytest.mark.parametrize("peak", [0.0007, 0.002])
+def test_no_false_flags_at_any_cadence(cadence, peak):
+    for seed in range(5):
+        rng = np.random.default_rng(seed)
+        hours = np.arange(0, 168, cadence)
+        sgs = logistic_curve(hours, peak=peak) + rng.normal(0, 1.2e-4, len(hours))
+        assert not any(r["is_anomaly"] for r in feed(FermentationAnomalyDetector(), hours, sgs))
+
+
+@pytest.mark.parametrize("cadence", CADENCES)
+def test_one_permanent_shift_gives_exactly_one_flag(cadence):
+    """Codex P2: the old level entering the baseline caused a false reverse step."""
+    hours = np.arange(0, 24, cadence)
+    sgs = np.where(hours < 6, 1.040, 1.0375)
+    results = feed(FermentationAnomalyDetector(), hours, sgs)
+    assert [r["reason"] for r in results if r["is_anomaly"]] == ["step_change_down"]
+
+
+def test_reload_refills_stall_window():
+    """Side-agent catch: a restart must not blind the 12 h stall slope for 12 h."""
+    from backend.ml.pipeline import MLPipeline
+
+    pipe = MLPipeline()
+    hours = np.arange(0, 20, STEP)
+    sgs = list(1.030 - 1e-6 * hours)
+    pipe.load_history(sgs=sgs, temps=[19.0] * len(sgs), times=list(hours))
+    slope = pipe.anomaly_detector.check_reading(1.030, 20.0)["sg_slope_12h"]
+    assert slope is not None and abs(slope) < 2.5e-5

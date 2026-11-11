@@ -880,25 +880,26 @@ if _serve_frontend:
         """Serve the inventory page."""
         return FileResponse(static_dir / "inventory.html")
 
-    @app.get("/favicon.png", response_class=FileResponse)
-    async def serve_favicon():
-        """Serve the favicon."""
-        return FileResponse(static_dir / "favicon.png")
+    # Top-level static assets from the frontend build (brand icons, manifest).
+    # Explicit allow-list: only these names are served from static_dir root.
+    ROOT_ASSETS = {
+        "favicon.png": "image/png",
+        "apple-touch-icon.png": "image/png",
+        "icon-512.png": "image/png",
+        "icon.svg": "image/svg+xml",
+        "logo.svg": "image/svg+xml",
+        "manifest.webmanifest": "application/manifest+json",
+        "robots.txt": "text/plain",
+    }
 
-    @app.get("/logo.svg", response_class=FileResponse)
-    async def serve_logo():
-        """Serve the logo SVG."""
-        return FileResponse(static_dir / "logo.svg", media_type="image/svg+xml")
+    def _root_asset_route(name: str, media_type: str):
+        async def serve():
+            return FileResponse(static_dir / name, media_type=media_type)
+        return serve
 
-    @app.get("/icon.svg", response_class=FileResponse)
-    async def serve_icon():
-        """Serve the icon SVG."""
-        return FileResponse(static_dir / "icon.svg", media_type="image/svg+xml")
-
-    @app.get("/logo-preview.html", response_class=FileResponse)
-    async def serve_logo_preview():
-        """Serve the logo preview page."""
-        return FileResponse(static_dir / "logo-preview.html")
+    for _name, _media in ROOT_ASSETS.items():
+        app.add_api_route(f"/{_name}", _root_asset_route(_name, _media), methods=["GET"],
+                          response_class=FileResponse, include_in_schema=False)
 
     # Mount static files (Svelte build output)
     app_assets = static_dir / "_app"

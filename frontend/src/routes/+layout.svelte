@@ -256,6 +256,8 @@
 </svelte:head>
 
 <div class="layout-container">
+	<!-- The sign-in page has no app chrome: none of its links work before sign-in -->
+	{#if !isLoginPage}
 	<header class="topbar" inert={moreOpen}>
 		<div class="brand-slot"><Brand /></div>
 
@@ -361,6 +363,7 @@
 			{/if}
 		</div>
 	</header>
+	{/if}
 
 	<main class="page" inert={moreOpen}>
 		{#if !configInitialized}
@@ -381,6 +384,7 @@
 			{@render children()}
 		{/if}
 	</main>
+	{#if !isLoginPage}
 
 	<!-- Phone More sheet (outside the tab bar so the tab bar can be inert while open) -->
 	{#if moreOpen}
@@ -456,6 +460,7 @@
 			</button>
 		</div>
 	</nav>
+	{/if}
 </div>
 
 <style>

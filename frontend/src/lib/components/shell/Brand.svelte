@@ -1,12 +1,9 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	// TODO(logo): a new logo is being designed separately. Pass it via the `mark`
-	// snippet (20x20 box); until then the slot stays empty.
-	let { mark }: { mark?: Snippet } = $props();
+	import Mark from './Mark.svelte';
 </script>
 
 <a href="/" class="brand" aria-label="BrewSignal home">
-	<span class="brand-mark" aria-hidden="true">{#if mark}{@render mark()}{/if}</span>
+	<span class="brand-mark"><Mark size={22} /></span>
 	<span class="brand-word">BrewSignal</span>
 </a>
 
@@ -20,20 +17,15 @@
 		min-height: 44px;
 	}
 	.brand-mark {
-		width: 20px;
-		height: 20px;
-		flex-shrink: 0;
 		display: inline-flex;
+		flex-shrink: 0;
 	}
-	.brand-mark:empty {
-		display: none; /* no gap reserved until a mark exists */
-	}
+	/* Wordmark per the chosen lockup: Archivo wdth 100, wght 600, -0.018em */
 	.brand-word {
 		font-family: var(--font-display);
-		font-weight: 700;
-		font-stretch: 95%;
-		font-variation-settings: 'wdth' 95;
-		font-size: var(--text-base);
-		letter-spacing: -0.01em;
+		font-weight: 600;
+		font-variation-settings: 'wdth' 100;
+		font-size: 1.0625rem;
+		letter-spacing: -0.018em;
 	}
 </style>

@@ -222,7 +222,7 @@
 	});
 
 	const retryApply = () => {
-		if (!busy && chat) chat.sendMessage({ text: 'Prepare that hop inventory update again.' });
+		if (!busy && !composerOff && chat) chat.sendMessage({ text: 'Prepare that hop inventory update again.' });
 	};
 
 	function usePrompt(p: string) {
@@ -272,7 +272,7 @@
 		</div>
 	{:else}
 		{#each messages as m (m.id)}
-			<MessageTurn message={m} approvalError={m.id === lastAssistant?.id ? approvalError : ''} onApprove={approve} onCancel={cancel} onKeepUnlisted={keepUnlisted} onRetry={retryApply} />
+			<MessageTurn message={m} approvalError={m.id === lastAssistant?.id ? approvalError : ''} onApprove={approve} onCancel={cancel} onKeepUnlisted={keepUnlisted} onRetry={retryApply} retryDisabled={busy || composerOff} />
 		{/each}
 		{#if chat?.status === 'submitted'}
 			<p class="quiet working"><span class="dot" aria-hidden="true"></span>Thinking…</p>

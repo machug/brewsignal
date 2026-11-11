@@ -11,8 +11,9 @@
 		onCancel: (approvalId: string) => void;
 		onKeepUnlisted: (approvalId: string) => void;
 		onRetry: () => void;
+		retryDisabled?: boolean;
 	}
-	let { message, approvalError = '', onApprove, onCancel, onKeepUnlisted, onRetry }: Props = $props();
+	let { message, approvalError = '', onApprove, onCancel, onKeepUnlisted, onRetry, retryDisabled = false }: Props = $props();
 
 	const segments = $derived(segmentParts(message.parts));
 
@@ -42,7 +43,7 @@
 				{@const html = renderMarkdown(seg.part.text)}
 				{#if html}<div class="md" use:enhance={html}>{@html html}</div>{/if}
 			{:else}
-				<HopApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onKeepUnlisted} {onRetry} />
+				<HopApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onKeepUnlisted} {onRetry} {retryDisabled} />
 			{/if}
 		{/each}
 	</div>

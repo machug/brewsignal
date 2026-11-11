@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster startup** (tilt_ui-h0j) - Recipe backfills run after boot instead of blocking it.
 
 ### Fixed
+- **Fermentation alerts work again** (tilt_ui-xrq5.5) - Alert detection crashed on every check because it read recipe fields that no longer exist (yeast, OG/FG on the batch), so no fermentation alert could fire. It now uses the recipe's yeast culture temperature range and the measured or recipe OG.
 - **Temperature control safety** (tilt_ui-f50x, tilt_ui-xrq5.1) - If the wort reading is more than 15 minutes old, the heater and cooler both switch off and an alert is raised. The heater is limited to 4 hours on and the cooler to 12 hours, then a 30-minute lockout. The 5-minute minimum between switches now survives restarts. A device only turns on after the other is confirmed off, including manual overrides and the manual heater button.
 - **One set of equipment per active batch** (tilt_ui-8d49) - Two fermenting or conditioning batches can no longer share a heater, cooler or hydrometer. Saving such a batch shows an error, and if a conflict still exists the controller turns the shared equipment off and raises an alert naming both batches.
 - **Batch cooler saved on create, 0.0 C readings** (tilt_ui-xrq5.2, tilt_ui-xrq5.3) - Creating a batch now keeps its cooler switch, and a wort reading of exactly 0.0 C is no longer treated as missing.

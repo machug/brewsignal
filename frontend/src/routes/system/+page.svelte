@@ -1572,6 +1572,7 @@
 						{/if}
 
 						{#if aiEnabled}
+							<p class="memory-link"><a href="/system/memory">Manage memory</a> to see or delete what the assistant remembers.</p>
 							<div class="form-grid">
 								<div class="form-field">
 									<label for="ai-provider">Provider</label>
@@ -2071,6 +2072,15 @@
 	{/if}
 </div>
 <style>
+	.memory-link {
+		margin: 0 0 var(--space-md);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.memory-link a {
+		color: var(--accent);
+		text-underline-offset: 0.2em;
+	}
 	/* Page layout: sticky section index (desk) + main column */
 	.system-page {
 		display: grid;

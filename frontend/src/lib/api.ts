@@ -2464,6 +2464,33 @@ export async function deleteLearning(id: number): Promise<void> {
 }
 
 // ============================================================================
+// Assistant memory (Memory page)
+// ============================================================================
+
+export interface MemoryItem {
+	id: string;
+	text: string;
+	source: 'learning' | 'chat';
+	created_at: string | null;
+}
+
+export async function getMemory(): Promise<MemoryItem[]> {
+	const response = await authFetch(`${BASE_URL}/memory`);
+	if (!response.ok) throw new Error(`Failed to load memory: ${response.statusText}`);
+	return response.json();
+}
+
+export async function deleteMemoryItem(id: string): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	if (!response.ok) throw new Error(`Failed to delete memory: ${response.statusText}`);
+}
+
+export async function deleteAllMemory(): Promise<void> {
+	const response = await authFetch(`${BASE_URL}/memory`, { method: 'DELETE' });
+	if (!response.ok) throw new Error(`Failed to delete memory: ${response.statusText}`);
+}
+
+// ============================================================================
 // Recipe Nested Collections API
 // ============================================================================
 

@@ -153,6 +153,14 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
         logger.info("LLM not configured. Memory features disabled.")
         return None
 
+    # Embedder is required — without it mem0 falls back to a default OpenAI
+    # config that 401s when no OPENAI_API_KEY is set. Better to disable
+    # memory cleanly than to let mem0 generate noisy auth errors on every
+    # turn. Resolved before any DB pool is opened.
+    embedder = _get_embedder_config(llm_config)
+    if not embedder:
+        return None
+
     if settings.is_cloud and not os.environ.get("BREWSIGNAL_MEMORY_DIR"):
         # Hosted: vectors live in the Supabase Postgres (durable, per-user rows). No disk.
         # mem0's history log is SQLite-only: keep it in RAM (loses only the per-memory edit audit trail).
@@ -188,13 +196,6 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
             "llm": llm_provider,
         }
 
-    # Embedder is required — without it mem0 falls back to a default OpenAI
-    # config that 401s when no OPENAI_API_KEY is set. Better to disable
-    # memory cleanly than to let mem0 generate noisy auth errors on every
-    # turn.
-    embedder = _get_embedder_config(llm_config)
-    if not embedder:
-        return None
     config["embedder"] = embedder
 
     return config
@@ -236,7 +237,13 @@ def get_memory(llm_config: Optional[LLMConfig] = None):
         if config is None:
             return None
 
-        _memory_instance = Memory.from_config(config)
+        try:
+            _memory_instance = Memory.from_config(config)
+        except Exception:
+            pool = config["vector_store"]["config"].get("connection_pool")
+            if pool is not None:
+                pool.close()  # do not leak a pool when init fails
+            raise
         _memory_config_hash = new_hash
         logger.info(
             "Assistant memory enabled: embedder=%s, extraction model=%s",
@@ -397,6 +404,19 @@ async def backfill_learnings_background() -> None:
         logger.warning("Memory backfill failed: %s", e)
 
 
+class MemoryUnavailable(Exception):
+    """The vector store could not be reached or errored; the delete may not have happened."""
+
+
+def _store_or_raise(llm_config: Optional[LLMConfig]):
+    """The mem0 instance, None when memory is off by configuration, MemoryUnavailable when it
+    should be on but failed to start."""
+    memory = get_memory(llm_config)
+    if memory is None and _memory_instance is None and llm_config is not None and llm_config.is_configured():
+        raise MemoryUnavailable("memory store is not available")
+    return memory
+
+
 async def delete_memory(
     memory_id: str,
     user_id: str,
@@ -404,12 +424,12 @@ async def delete_memory(
 ) -> bool:
     """Delete one memory, only if it belongs to user_id (mem0 itself deletes by bare id).
 
-    Returns True if deleted; False if not found, not the user's, or mem0 is unavailable.
+    Returns True if deleted; False if absent, not the user's, or memory is off.
+    Raises MemoryUnavailable if the vector store failed (caller must not report success).
     """
-    memory = get_memory(llm_config)
+    memory = _store_or_raise(llm_config)
     if not memory:
         return False
-
     try:
         async with _mem_lock:
             found = await asyncio.to_thread(memory.get, memory_id)
@@ -419,33 +439,25 @@ async def delete_memory(
         return True
     except Exception as e:
         logger.warning(f"Memory delete failed: {e}")
-        return False
+        raise MemoryUnavailable(str(e)) from e
 
 
 async def delete_all_memories(
     user_id: str,
     llm_config: Optional[LLMConfig] = None,
 ) -> bool:
-    """Delete all memories for a user.
-
-    Args:
-        user_id: The user's ID
-        llm_config: LLM configuration (optional, uses cached if available)
-
-    Returns:
-        True if deleted successfully
-    """
-    memory = get_memory(llm_config)
+    """Delete all of a user's memories. Raises MemoryUnavailable if the store failed;
+    returns False only when memory is off (nothing to delete)."""
+    memory = _store_or_raise(llm_config)
     if not memory:
         return False
-
     try:
         async with _mem_lock:
             await asyncio.to_thread(memory.delete_all, user_id=user_id)
         return True
     except Exception as e:
         logger.warning(f"Delete all memories failed: {e}")
-        return False
+        raise MemoryUnavailable(str(e)) from e
 
 
 def format_memories_for_context(memories: list[dict]) -> str:

@@ -14,8 +14,11 @@ from backend.database import get_db
 from backend.models import BrewingLearning
 from backend.routers.assistant import get_llm_config
 from backend.services import memory as mem
+from backend.services.memory import MemoryUnavailable
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
+
+UNAVAILABLE = "The memory store is unavailable, nothing was deleted. Try again."
 
 
 class MemoryItem(BaseModel):
@@ -50,20 +53,24 @@ async def delete_memory_item(item_id: str, db: AsyncSession = Depends(get_db), u
     kind, _, ref = item_id.partition(":")
     config = await get_llm_config(db)
     learning = None
-    if kind == "learning" and ref.isdigit():
-        learning = (await db.execute(select(BrewingLearning).where(
-            BrewingLearning.id == int(ref), BrewingLearning.user_id == user.user_id))).scalar_one_or_none()
-        if not learning:
+    # vectors first; DB rows only after the vector store confirmed, so a 204 never hides a recallable vector
+    try:
+        if kind == "learning" and ref.isdigit():
+            learning = (await db.execute(select(BrewingLearning).where(
+                BrewingLearning.id == int(ref), BrewingLearning.user_id == user.user_id))).scalar_one_or_none()
+            if not learning:
+                raise HTTPException(404, "Memory not found")
+            if learning.mem0_memory_id:
+                await mem.delete_memory(learning.mem0_memory_id, user.user_id, config)
+        elif kind == "mem" and ref:
+            if not await mem.delete_memory(ref, user.user_id, config):
+                raise HTTPException(404, "Memory not found")  # also: someone else's id
+            learning = (await db.execute(select(BrewingLearning).where(
+                BrewingLearning.mem0_memory_id == ref, BrewingLearning.user_id == user.user_id))).scalar_one_or_none()
+        else:
             raise HTTPException(404, "Memory not found")
-        if learning.mem0_memory_id:
-            await mem.delete_memory(learning.mem0_memory_id, user.user_id, config)
-    elif kind == "mem" and ref:
-        if not await mem.delete_memory(ref, user.user_id, config):
-            raise HTTPException(404, "Memory not found")  # also: someone else's id
-        learning = (await db.execute(select(BrewingLearning).where(
-            BrewingLearning.mem0_memory_id == ref, BrewingLearning.user_id == user.user_id))).scalar_one_or_none()
-    else:
-        raise HTTPException(404, "Memory not found")
+    except MemoryUnavailable:
+        raise HTTPException(503, UNAVAILABLE)
     if learning:
         await db.delete(learning)
         await db.commit()
@@ -71,6 +78,9 @@ async def delete_memory_item(item_id: str, db: AsyncSession = Depends(get_db), u
 
 @router.delete("", status_code=204)
 async def delete_all_memory(db: AsyncSession = Depends(get_db), user: AuthUser = Depends(require_auth)):
-    await mem.delete_all_memories(user.user_id, await get_llm_config(db))
+    try:
+        await mem.delete_all_memories(user.user_id, await get_llm_config(db))
+    except MemoryUnavailable:
+        raise HTTPException(503, UNAVAILABLE)
     await db.execute(delete(BrewingLearning).where(BrewingLearning.user_id == user.user_id))
     await db.commit()

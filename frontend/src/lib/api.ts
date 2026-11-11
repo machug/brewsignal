@@ -2474,6 +2474,16 @@ export interface MemoryItem {
 	created_at: string | null;
 }
 
+async function memoryError(response: Response): Promise<string> {
+	try {
+		const body = await response.json();
+		if (typeof body?.detail === 'string') return body.detail;
+	} catch {
+		/* no JSON body */
+	}
+	return `Failed to delete memory: ${response.statusText}`;
+}
+
 export async function getMemory(): Promise<MemoryItem[]> {
 	const response = await authFetch(`${BASE_URL}/memory`);
 	if (!response.ok) throw new Error(`Failed to load memory: ${response.statusText}`);
@@ -2482,12 +2492,12 @@ export async function getMemory(): Promise<MemoryItem[]> {
 
 export async function deleteMemoryItem(id: string): Promise<void> {
 	const response = await authFetch(`${BASE_URL}/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
-	if (!response.ok) throw new Error(`Failed to delete memory: ${response.statusText}`);
+	if (!response.ok) throw new Error(await memoryError(response));
 }
 
 export async function deleteAllMemory(): Promise<void> {
 	const response = await authFetch(`${BASE_URL}/memory`, { method: 'DELETE' });
-	if (!response.ok) throw new Error(`Failed to delete memory: ${response.statusText}`);
+	if (!response.ok) throw new Error(await memoryError(response));
 }
 
 // ============================================================================

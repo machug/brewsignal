@@ -114,3 +114,84 @@ class TestMemoryApi:
         assert (await client.get("/api/memory")).json() == []
         as_user(B)
         assert {i["text"] for i in (await client.get("/api/memory")).json()} == {"b1", "b chat"}
+
+
+class _BrokenStore:
+    """mem0 stand-in whose vector store errors on every call."""
+    def get(self, *a, **k): raise RuntimeError("db down")
+    def delete(self, *a, **k): raise RuntimeError("db down")
+    def delete_all(self, *a, **k): raise RuntimeError("db down")
+    def get_all(self, *a, **k): return {"results": []}
+
+
+class TestStoreFailure:
+    async def _seed(self, test_db):
+        test_db.add(BrewingLearning(user_id=A, category="technique", learning="keep me", mem0_memory_id="vec-1"))
+        await test_db.commit()
+
+    async def test_delete_one_learning_503_keeps_row(self, client, test_db, monkeypatch, as_user):
+        monkeypatch.setattr(mem, "get_memory", lambda cfg=None: _BrokenStore())
+        await self._seed(test_db)
+        as_user(A)
+        r = await client.delete("/api/memory/learning:1")
+        assert r.status_code == 503 and "nothing was deleted" in r.json()["detail"]
+        assert len((await client.get("/api/memory")).json()) == 1
+
+    async def test_delete_learning_endpoint_503_keeps_row(self, client, test_db, monkeypatch, as_user):
+        monkeypatch.setattr(mem, "get_memory", lambda cfg=None: _BrokenStore())
+        await self._seed(test_db)
+        as_user(A)
+        assert (await client.delete("/api/learnings/1")).status_code == 503
+        assert len((await client.get("/api/memory")).json()) == 1
+
+    async def test_delete_all_503_keeps_rows(self, client, test_db, monkeypatch, as_user):
+        monkeypatch.setattr(mem, "get_memory", lambda cfg=None: _BrokenStore())
+        await self._seed(test_db)
+        as_user(A)
+        assert (await client.delete("/api/memory")).status_code == 503
+        assert len((await client.get("/api/memory")).json()) == 1
+
+    async def test_store_off_by_config_is_not_an_error(self, client, test_db, monkeypatch, as_user):
+        monkeypatch.setattr(mem, "get_memory", lambda cfg=None: None)
+        monkeypatch.setattr(mem, "_memory_instance", None)
+        from backend.routers import assistant
+        async def unconfigured(db): return LLMConfig(enabled=False)
+        monkeypatch.setattr(assistant, "get_llm_config", unconfigured)
+        monkeypatch.setattr(memory_router, "get_llm_config", unconfigured)
+        await self._seed(test_db)
+        as_user(A)
+        assert (await client.delete("/api/memory/learning:1")).status_code == 204
+
+
+class TestPoolLifecycle:
+    def _cloud(self, monkeypatch, pools):
+        monkeypatch.setattr(mem.settings, "deployment_mode", "cloud", raising=False)
+        monkeypatch.delenv("BREWSIGNAL_MEMORY_DIR", raising=False)
+        monkeypatch.setattr(mem, "_memory_instance", None)
+        monkeypatch.setattr(mem, "_memory_config_hash", None)
+
+        class Pool:
+            closed = False
+            def close(self): self.closed = True
+        def make():
+            pools.append(Pool())
+            return pools[-1]
+        monkeypatch.setattr(mem, "_pg_pool", make)
+
+    def test_no_pool_when_embedder_unavailable(self, monkeypatch):
+        pools = []
+        self._cloud(monkeypatch, pools)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        groq = LLMConfig(enabled=True, provider=LLMProvider.GROQ, api_key="k", model="m")
+        for _ in range(3):
+            assert mem.get_memory(groq) is None
+        assert pools == []
+
+    def test_pool_closed_when_init_fails(self, monkeypatch):
+        pools = []
+        self._cloud(monkeypatch, pools)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        import mem0
+        monkeypatch.setattr(mem0.Memory, "from_config", classmethod(lambda cls, c: (_ for _ in ()).throw(RuntimeError("boom"))))
+        assert mem.get_memory(CFG) is None
+        assert len(pools) == 1 and pools[0].closed

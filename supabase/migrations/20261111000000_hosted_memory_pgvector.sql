@@ -10,7 +10,12 @@
 -- Created here up front so RLS is in place before the first memory is written.
 -- Index names match what mem0 would create, so its CREATE ... IF NOT EXISTS is a no-op.
 
-CREATE EXTENSION IF NOT EXISTS vector;
+BEGIN;
+
+-- Supabase keeps extensions in the "extensions" schema; if vector is already installed elsewhere
+-- this is a no-op. search_path lets the unqualified vector type / ops resolve either way.
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+SET LOCAL search_path = public, extensions;
 
 CREATE TABLE IF NOT EXISTS "public"."mem0" (
     "id" uuid PRIMARY KEY,
@@ -33,25 +38,30 @@ CREATE INDEX IF NOT EXISTS "mem0_entities_text_lemmatized_idx" ON "public"."mem0
 CREATE INDEX IF NOT EXISTS "mem0_user_id_idx" ON "public"."mem0" (("payload"->>'user_id'));
 CREATE INDEX IF NOT EXISTS "mem0_entities_user_id_idx" ON "public"."mem0_entities" (("payload"->>'user_id'));
 
--- Row Level Security: a signed-in user can read and delete only their own rows.
--- No INSERT/UPDATE for API roles; only the backend writes.
+-- Row Level Security (defence in depth). The frontend never uses the Supabase Data API for
+-- these tables and only the backend (direct Postgres, table owner, bypasses RLS) touches them,
+-- so API roles get no table privileges at all. The policies still restrict any future grant
+-- to the owner's own rows.
 ALTER TABLE "public"."mem0" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."mem0_entities" ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON "public"."mem0", "public"."mem0_entities" FROM "anon", "authenticated";
-GRANT SELECT, DELETE ON "public"."mem0", "public"."mem0_entities" TO "authenticated";
 
 DROP POLICY IF EXISTS "mem0_owner_policy" ON "public"."mem0";
-CREATE POLICY "mem0_owner_policy" ON "public"."mem0"
-    FOR ALL TO "authenticated"
-    USING (("payload"->>'user_id') = ("auth"."uid"())::text)
-    WITH CHECK (("payload"->>'user_id') = ("auth"."uid"())::text);
+DROP POLICY IF EXISTS "mem0_owner_select" ON "public"."mem0";
+DROP POLICY IF EXISTS "mem0_owner_delete" ON "public"."mem0";
+CREATE POLICY "mem0_owner_select" ON "public"."mem0" FOR SELECT TO "authenticated"
+    USING (("payload"->>'user_id') = (SELECT "auth"."uid"())::text);
+CREATE POLICY "mem0_owner_delete" ON "public"."mem0" FOR DELETE TO "authenticated"
+    USING (("payload"->>'user_id') = (SELECT "auth"."uid"())::text);
 
 DROP POLICY IF EXISTS "mem0_entities_owner_policy" ON "public"."mem0_entities";
-CREATE POLICY "mem0_entities_owner_policy" ON "public"."mem0_entities"
-    FOR ALL TO "authenticated"
-    USING (("payload"->>'user_id') = ("auth"."uid"())::text)
-    WITH CHECK (("payload"->>'user_id') = ("auth"."uid"())::text);
+DROP POLICY IF EXISTS "mem0_entities_owner_select" ON "public"."mem0_entities";
+DROP POLICY IF EXISTS "mem0_entities_owner_delete" ON "public"."mem0_entities";
+CREATE POLICY "mem0_entities_owner_select" ON "public"."mem0_entities" FOR SELECT TO "authenticated"
+    USING (("payload"->>'user_id') = (SELECT "auth"."uid"())::text);
+CREATE POLICY "mem0_entities_owner_delete" ON "public"."mem0_entities" FOR DELETE TO "authenticated"
+    USING (("payload"->>'user_id') = (SELECT "auth"."uid"())::text);
 
 -- Account deletion: the backend has no delete-account path (accounts are removed in Supabase
 -- Auth), so remove a user's memories when their auth.users row is deleted.
@@ -65,14 +75,23 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION "public"."delete_user_memories"() FROM PUBLIC, "anon", "authenticated";
+-- SECURITY DEFINER runs as the owner; it must be a role that bypasses RLS on the mem0 tables
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+        ALTER FUNCTION "public"."delete_user_memories"() OWNER TO postgres;
+    END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS "delete_user_memories_on_user_delete" ON "auth"."users";
 CREATE TRIGGER "delete_user_memories_on_user_delete"
     AFTER DELETE ON "auth"."users"
     FOR EACH ROW EXECUTE FUNCTION "public"."delete_user_memories"();
 
--- One-time: the old hosted index was a /tmp folder wiped on every deploy, yet learnings were
--- marked as indexed. Clear the marks so the startup backfill re-adds every learning into the
--- durable store. Guarded so re-running after memories exist does not duplicate them.
-UPDATE "public"."brewing_learnings" SET "mem0_memory_id" = NULL
-WHERE "mem0_memory_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "public"."mem0");
+-- Re-backfill: the old hosted index was a /tmp folder wiped on every deploy, yet learnings were
+-- marked as indexed. Clear the mark on every learning whose vector is not in the durable store, so
+-- the startup backfill re-adds it. Per-row, so re-running never duplicates a present memory.
+UPDATE "public"."brewing_learnings" bl SET "mem0_memory_id" = NULL
+WHERE bl."mem0_memory_id" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "public"."mem0" m WHERE m."id"::text = bl."mem0_memory_id");
+
+COMMIT;

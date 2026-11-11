@@ -78,13 +78,14 @@ async def delete_learning(
     if not learning:
         raise HTTPException(404, "Learning not found")
 
-    # Best-effort Mem0 cleanup
+    # Vector first: if the store fails, keep the row so the delete can be retried
     if learning.mem0_memory_id:
+        from backend.routers.assistant import get_llm_config
+        from backend.services.memory import MemoryUnavailable, delete_memory
         try:
-            from backend.services.memory import delete_memory
-            await delete_memory(learning.mem0_memory_id, user.user_id)
-        except Exception:
-            pass
+            await delete_memory(learning.mem0_memory_id, user.user_id, await get_llm_config(db))
+        except MemoryUnavailable:
+            raise HTTPException(503, "The memory store is unavailable, nothing was deleted. Try again.")
 
     await db.delete(learning)
     await db.commit()

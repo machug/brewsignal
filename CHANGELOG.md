@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **New logo and app icons** (tilt_ui-nv1r.7) - New "Tilt Meniscus" mark (a tilted hydrometer at the wort surface) in the top bar, favicon, apple-touch icon, 512px icon and web manifest. The old hop-cone icon and logo are gone. The sign-in page now renders without the app chrome.
+- **Automatic recipe scaling** - New `POST /api/recipes/{id}/scale`. Pick a vessel preset (Grainfather, BrewZilla, Braumeister, corny keg) or type a size, and every per-batch amount scales to match: fermentables, hops, miscs, yeast, mash infusions, water volumes and salts (ppm kept constant), boil size and priming sugar. Stats are recalculated. A preview shows current and scaled amounts before you save over the recipe. Large jumps are handed to the AI reviewer.
+- **Equipment-aware brewability warnings** - The recipe page checks mash volume, grain weight, pre-boil volume and batch size (with 20% headspace) against the largest vessel of each type in your Equipment inventory. Vessel types you have not registered stay silent.
+- **BrewSignal Recipe Format v2 export and import** (tilt_ui-0jkg, tilt_ui-4bwa, tilt_ui-cnzl) - New `/export/brewsignal` and `/export/beerjson` endpoints. v2 is BeerJSON 1.0 plus one `brewsignal` extension block, and it round-trips Brewfather data. v2 documents can be imported. Brewfather export now includes water profiles and adjustments. v1 and v2 schemas are generated from the models. The design is written up in `docs/recipe-format-v2-design.md`.
+- **Hop extract support** (tilt_ui-0l5, tilt_ui-m4y) - Recipes can hold hop extracts (for example Abstrax products) measured in ml. The hop picker has an extract mode that switches units and limits timing to the cold side. Extracts add no IBU. Boil-side extracts are rejected. Extracts survive save, reload, review and export.
+- **Bulk hop inventory update from the assistant** (tilt_ui-86wt) - Paste a list of hop names and grams into the assistant. It matches names against the hop library (typos like "Galaxxy" resolve to Galaxy), shows a preview card, and updates inventory only after you confirm. Crop year, storage and notes are kept. New `POST /api/inventory/hops/bulk` with dry-run and apply modes.
+- **Assistant status line** (tilt_ui-jx3p) - While the assistant works, the chat shows "Reading your question...", "Using tool: ..." or "Thinking..." next to the busy dots.
+- **Assistant can edit recipes in place** - New `update_recipe` tool. Before, an edit request created a duplicate recipe. The assistant also offers to apply fixes after a low style-fit review, and exposes the recipe review as a `review_recipe` tool. Saving or updating a recipe needs your confirmation in the conversation.
+- **Kalman-filtered temperature and gravity on the chart** (tilt_ui-96m) - Filtered SG and filtered temperature show as separate dashed series with legend toggles. The legend hides them when no filtered data exists.
+- **Heating and cooling bands on the chart** (tilt_ui-wims) - Control events are drawn as translucent red (heating) and blue (cooling) bands, with a Heat/Cool legend toggle.
+- **API reference at `/scalar`** (tilt_ui-zilo) - Interactive Scalar API docs next to the existing Swagger `/docs`.
+- **AI Review on the recipe view page** - The AI Review button and modal were only on the edit page. The modal no longer closes when a text selection ends on the overlay.
+- **Add First Reflection works** - The button on the completed-batch tab opens a form with a phase selector and four fields: what went well, what went wrong, lessons learned and next-time changes.
+- **BJCP style on the recipe header** (tilt_ui-6b9) - The beer header stats card shows the BJCP style. Common brewer names (West Coast IPA, NEIPA, XPA, DIPA, Dry Stout) resolve to the right BJCP style. A one-time migration fills in the missing style on older recipes. The strict match never guesses from name or notes.
+- **Other Ingredients table** (tilt_ui-ifl6) - Non-water miscs now show on the recipe detail page.
+- **Deploy script** - `deploy/deploy.sh` runs the Pi deploy in one command: fetch, reset, frontend build when needed, restart, health check.
+
+### Changed
+- **Clean Instrument UI redesign** (tilt_ui-nv1r, tilt_ui-bf4p) - New design system and app shell across the whole app. Direction chosen from four mockups.
+  - Foundation: new colour and type tokens, brand fonts loaded by link, new top bar and phone "More" menu.
+  - Home: new layout. Chart gravity ticks no longer repeat, and the chart hides its stats on Home (tilt_ui-nv1r.2).
+  - Batches: list and detail screens restyled (tilt_ui-nv1r.3).
+  - Recipes: list and detail restyled. The phone layout gets a More menu, a two-column stat grid and no clipped tables (tilt_ui-nv1r.4).
+  - Recipe builder (new, edit, import): sticky side rail, grid rows for hops and fermentables, inline units. Pickers close with Escape and return focus (tilt_ui-nv1r.4).
+  - Inventory, Library, Knowledge and Yeast restyled (tilt_ui-nv1r.5).
+  - System, Devices, Calibration, Logging and Login restyled, with sub-page navigation state, breadcrumbs and aligned ledgers (tilt_ui-nv1r.6).
+  - Light and dark theme toggle. Light theme form-control borders meet 3:1 contrast, and accent and warning text meet 4.5:1 on subtle fills.
+- **Hop stand IBU depends on temperature** - Brewfather and BeerXML "Aroma" hops now import as whirlpool and keep the stand temperature. Whirlpool IBU uses the existing stand-time ramp times a temperature factor (0.23 at 80 C, 0.50 at 90 C). Whirlpool hops with no temperature behave as before. Hop stands export to Brewfather as "Aroma". The editor keeps stand temperature and short hop uses on export.
+- **Backend IBU matches the frontend** (tilt_ui-nbh0) - Pellet and first-wort hops get the +10% utilisation in the backend calculator too.
+- **Sugars and extracts use full potential** (tilt_ui-ju0z) - Brewhouse efficiency no longer applies to them.
+- **Water volumes match Brewfather** (tilt_ui-4pzy) - Mash ratio, grain absorption, mash-tun deadspace and boil-off defaults were recalibrated against a real Brewfather export. Total volume stays equal to mash plus sparge when sparge clamps to zero.
+- **Dry hop durations show in days** - The Hop Schedule shows editor-saved dry hop durations in days. The BU:GU balance label is shared, and "Very Bitter" starts at 1.0.
+- **Water additions panel** (tilt_ui-r1ya) - Clearer treated-volume labels, empty stages hidden, lime and MgCl2 shown.
+- **Assistant model list** (tilt_ui-e2xg) - The OpenRouter model dropdown uses the live catalogue, and default models resolve against it.
+- **Assistant recipe saves** - The assistant saves first and offers a review after, instead of reviewing before it saves. Tool descriptions and prompts were aligned with this flow.
+- **Recipes sync to cloud with fewer failures** - Recipe hop sync lands on the cloud database and reports failures (tilt_ui-nyn). Cloud user ids use the Postgres uuid type (tilt_ui-unt). Column drift is fixed on boot (tilt_ui-xf8). The healthcheck timeout is longer so a cold boot passes (tilt_ui-7ba).
+- **Faster startup** (tilt_ui-h0j) - Recipe backfills run after boot instead of blocking it.
+
+### Fixed
+- **Calibration** (tilt_ui-nv1r.6.1, tilt_ui-y5nm) - The API accepts empty and single-point calibration lists, so the first add, remove and clear work. A single point is stored but only applied with two or more points.
+- **Inventory hop names** (tilt_ui-vket) - Hop name matching ignores accents.
+- **Assistant chat** - Markdown tables render (tilt_ui-mizm). The busy indicator stays on for the whole run (tilt_ui-4acv). Replies are no longer empty when model reasoning uses up max_tokens (tilt_ui-atvb). Restoring a thread brings back a pending hop inventory card (tilt_ui-86wt). Thread titles no longer cut off mid-sentence. The memory service uses OpenRouter correctly. The review tool no longer fails on an uninitialised LLM service.
+- **AI review modal** (tilt_ui-6h2c) - Shows the BJCP style, not the recipe type. Reviews use the stats the card displays, not `target_*` (set from import).
+- **Brewability warnings** - Fixed false negatives. Warnings read grain total from the editor data, leave out kettle additions, fetch the full equipment page, and treat zero or negative capacities as unknown.
+- **Brewfather import and export** (tilt_ui-zlzz, tilt_ui-mjdc, tilt_ui-mrn) - Duplicate water-adjustment miscs are skipped when a water block exists. Misc amounts show in their true unit. Importing a multi-yeast recipe warns that extra cultures are dropped in v1 conversion.
+- **v2 format hardening** (tilt_ui-4bwa) - Strict BeerJSON placeholders for bare recipes, safe download filenames, per-item format extensions kept on export, and explicit step types preferred on import. Duplicate hop extras merge and bad water entries are named in errors. Acids given only as a concentration survive export, and empty water profiles are skipped. The style link is applied on import. Exports of another user's recipe are denied, and the loss of `created_at` is documented.
+- **SRM for dark grains** - Missing grain colours come from the fermentable reference table, so a stout with roasted barley no longer shows about 4 SRM. The editor backfills grain colour from stored rows.
+- **Recipe saves** - UI ingredients are written to the relationship tables, not only to the editor cache. The edit form saves the BJCP style, not just free text in `type`. BeerXML and Brewfather import resolve the BJCP style.
+- **Imported hop stands** - A migration moves old zero-minute boil hops to whirlpool, once and only when the duration is explicitly zero (the local database also retags a missing duration). Supabase has a matching backfill.
+- **Recipe page stats** - Stats are computed live to match the editor and the 2.13.0 IBU model. Stored SRM is kept when fermentables lack colour. Empty fermentable or hop lists are respected.
+- **Recipe review** - Reviews use edited ingredients and ignore stale imported targets. Stored dry hop duration is kept. The watcher skips its first run.
+- **Dry hops** - Boil time is zero on dry hops, and the IBU calculator handles BeerJSON use forms in saved recipes.
+- **Fermentation prediction** - The curve fit uses calibrated SG, not Kalman-filtered SG. Early filtered values sat far below real readings, so predictions stayed on "Waiting for fermentation to progress".
+- **Mobile recipe page** - The action row wraps below 640px, so Brew This and Delete are no longer clipped.
+- **Pi deploy** (tilt_ui-l842) - Backend dependencies sync when the dependency manifest changes.
+- **Build lockfile** (tilt_ui-rnf) - `uv.lock` matches the current version.
+
 ## [2.13.0] - 2026-04-25
 
 ### Fixed

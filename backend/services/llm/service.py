@@ -1,10 +1,25 @@
-"""LLM service using LiteLLM for unified API access."""
+"""LLM service on Pydantic AI (direct model requests; model built by services/llm/model.py)."""
 
 import logging
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
+from pydantic_ai.direct import model_request, model_request_stream
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
+    SystemPromptPart,
+    TextPart,
+    TextPartDelta,
+    UserPromptPart,
+)
+from pydantic_ai.models import ModelRequestParameters
+
 from backend.services.llm.config import DEFAULT_BASE_URLS, LLMConfig, LLMProvider
+from backend.services.llm.model import build_model, model_settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,39 +59,34 @@ class LLMNotConfiguredError(LLMServiceError):
     pass
 
 
-class LLMNotAvailableError(LLMServiceError):
-    """Raised when LLM dependencies are not installed."""
-
-    pass
-
-
 class LLMService:
-    """Service for interacting with LLMs via LiteLLM."""
+    """Service for interacting with LLMs via Pydantic AI."""
 
     def __init__(self, config: LLMConfig):
         self.config = config
-        self._litellm = None
 
-    def _get_litellm(self):
-        """Lazy import of litellm to handle missing dependency gracefully."""
-        if self._litellm is None:
-            try:
-                import litellm
-
-                # Suppress litellm's verbose logging
-                litellm.suppress_debug_info = True
-                self._litellm = litellm
-            except ImportError:
-                raise LLMNotAvailableError(
-                    "LiteLLM is not installed. Install with: pip install 'brewsignal[ai]'"
-                )
-        return self._litellm
-
-    def _get_api_key(self) -> Optional[str]:
-        """Get the API key as a string."""
-        if self.config.api_key:
-            return self.config.api_key.get_secret_value()
-        return None
+    def _request_args(self, messages: list[dict], temperature: Optional[float], max_tokens: Optional[int]):
+        """(model, pydantic-ai messages, settings) for one request; per-call overrides beat config."""
+        config = self.config.model_copy(
+            update={
+                "temperature": temperature or self.config.temperature,
+                "max_tokens": max_tokens or self.config.max_tokens,
+            }
+        )
+        history: list[ModelMessage] = []
+        parts: list = []
+        for m in messages:
+            role, content = m.get("role", "user"), m.get("content", "")
+            if role == "assistant":
+                if parts:
+                    history.append(ModelRequest(parts=parts))
+                    parts = []
+                history.append(ModelResponse(parts=[TextPart(content=content)]))
+            else:
+                parts.append(SystemPromptPart(content=content) if role == "system" else UserPromptPart(content=content))
+        if parts:
+            history.append(ModelRequest(parts=parts))
+        return build_model(config), history, model_settings(config)
 
     def _strip_ollama_prefix(self, model: str) -> str:
         """Remove ollama/ prefix for direct Ollama-compatible APIs."""
@@ -157,34 +167,13 @@ class LLMService:
         if not self.config.is_configured():
             raise LLMNotConfiguredError("LLM is not configured or disabled")
 
-        litellm = self._get_litellm()
-
-        # Build kwargs
-        kwargs = {
-            "model": self.config.effective_model,
-            "messages": messages,
-            "temperature": temperature or self.config.temperature,
-            "max_tokens": max_tokens or self.config.max_tokens,
-        }
-
-        # Only pass explicit API key if configured in UI (not from env)
-        # LiteLLM automatically reads env vars like ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
-        api_key = self._get_api_key()
-        if api_key:
-            kwargs["api_key"] = api_key
-
-        # Add base URL for local providers (Ollama and Hailo)
-        provider_str = self.config._provider_str()
-        if provider_str in ("local", "hailo"):
-            default_url = DEFAULT_BASE_URLS.get(
-                LLMProvider(provider_str), "http://localhost:11434"
-            )
-            kwargs["api_base"] = self.config.base_url or default_url
-
         try:
             logger.info(f"Sending chat request to {self.config.effective_model}")
-            response = await litellm.acompletion(**kwargs)
-            return response.choices[0].message.content
+            model, history, settings = self._request_args(messages, temperature, max_tokens)
+            response = await model_request(
+                model, history, model_settings=settings, model_request_parameters=ModelRequestParameters()
+            )
+            return response.text
         except Exception as e:
             provider_str = self.config._provider_str()
             if provider_str == "hailo":
@@ -231,37 +220,17 @@ class LLMService:
         if not self.config.is_configured():
             raise LLMNotConfiguredError("LLM is not configured or disabled")
 
-        litellm = self._get_litellm()
-
-        # Build kwargs
-        kwargs = {
-            "model": self.config.effective_model,
-            "messages": messages,
-            "temperature": temperature or self.config.temperature,
-            "max_tokens": max_tokens or self.config.max_tokens,
-            "stream": True,
-        }
-
-        # Only pass explicit API key if configured in UI (not from env)
-        api_key = self._get_api_key()
-        if api_key:
-            kwargs["api_key"] = api_key
-
-        # Add base URL for local providers (Ollama and Hailo)
-        provider_str = self.config._provider_str()
-        if provider_str in ("local", "hailo"):
-            default_url = DEFAULT_BASE_URLS.get(
-                LLMProvider(provider_str), "http://localhost:11434"
-            )
-            kwargs["api_base"] = self.config.base_url or default_url
-
         try:
             logger.info(f"Starting streaming chat to {self.config.effective_model}")
-            response = await litellm.acompletion(**kwargs)
-
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            model, history, settings = self._request_args(messages, temperature, max_tokens)
+            async with model_request_stream(
+                model, history, model_settings=settings, model_request_parameters=ModelRequestParameters()
+            ) as stream:
+                async for event in stream:
+                    if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart) and event.part.content:
+                        yield event.part.content
+                    elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                        yield event.delta.content_delta
 
         except Exception as e:
             provider_str = self.config._provider_str()
@@ -312,8 +281,6 @@ class LLMService:
                 "model": self.config.effective_model,
                 "response": response,
             }
-        except LLMNotAvailableError as e:
-            return {"success": False, "error": str(e)}
         except LLMServiceError as e:
             return {"success": False, "error": str(e)}
         except Exception as e:
@@ -321,13 +288,6 @@ class LLMService:
 
     def get_status(self) -> dict:
         """Get the current LLM service status."""
-        # Check if litellm is available
-        litellm_available = True
-        try:
-            self._get_litellm()
-        except LLMNotAvailableError:
-            litellm_available = False
-
         # Handle provider as either enum or string
         provider = self.config.provider
         if hasattr(provider, "value"):
@@ -343,7 +303,7 @@ class LLMService:
             "requires_api_key": self.config.requires_api_key,
             "has_api_key": self.config.has_any_api_key,
             "has_env_api_key": self.config.has_env_api_key,
-            "litellm_available": litellm_available,
+            "litellm_available": True,  # kept for API shape; LiteLLM is no longer used
         }
 
 

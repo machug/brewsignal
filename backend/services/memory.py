@@ -10,7 +10,8 @@ Deployment modes:
 
 LLM Configuration:
 - Uses the same LLM config as the assistant (from database)
-- Supports OpenRouter, Anthropic, OpenAI, Groq, etc. via LiteLLM
+- Uses mem0's OpenAI-compatible provider against the configured provider's
+  base URL (OpenRouter, OpenAI, Groq, DeepSeek, Google, HF, Ollama/Hailo /v1)
 - Memory features disabled if no LLM is configured
 """
 
@@ -20,7 +21,8 @@ from pathlib import Path
 from typing import Optional
 
 from backend.config import settings
-from backend.services.llm.config import LLMConfig, LLMProvider
+from backend.services.llm.config import LLMConfig
+from backend.services.llm.model import UnsupportedProvider, api_key_for, model_name, openai_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,30 +32,32 @@ _memory_config_hash = None
 
 
 def _get_llm_provider_config(llm_config: LLMConfig) -> Optional[dict]:
-    """Convert LLMConfig to Mem0's LLM provider config.
+    """Convert LLMConfig to Mem0's LLM provider config (its OpenAI-compatible provider).
 
-    Mem0 supports: openai, anthropic, groq, ollama, litellm
-    We'll use litellm for maximum compatibility with our existing setup.
+    Returns None for providers without an OpenAI-compatible endpoint (Anthropic).
     """
     if not llm_config.is_configured():
         return None
 
-    provider = llm_config._provider_str()
-    api_key = None
-    if llm_config.api_key:
-        api_key = llm_config.api_key.get_secret_value()
+    try:
+        base_url = openai_base_url(llm_config)
+    except UnsupportedProvider:
+        logger.warning(
+            "Memory needs an OpenAI-compatible provider; '%s' is not one. Memory disabled.",
+            llm_config._provider_str(),
+        )
+        return None
 
-    # Use LiteLLM backend for all providers (same as assistant)
-    # This gives us OpenRouter, Anthropic, OpenAI, etc. support
-    return {
-        "provider": "litellm",
-        "config": {
-            "model": llm_config.effective_model,
-            "api_key": api_key,
-            "temperature": 0.1,  # Low temp for factual memory extraction
-            "max_tokens": 500,   # Memories should be concise
-        }
+    config = {
+        "model": model_name(llm_config),
+        # Ollama-compatible servers ignore the key but the OpenAI client needs one
+        "api_key": api_key_for(llm_config) or "ollama",
+        "temperature": 0.1,  # Low temp for factual memory extraction
+        "max_tokens": 500,  # Memories should be concise
     }
+    if base_url:
+        config["openai_base_url"] = base_url
+    return {"provider": "openai", "config": config}
 
 
 def _get_embedder_config(llm_config: LLMConfig) -> Optional[dict]:
@@ -76,7 +80,7 @@ def _get_embedder_config(llm_config: LLMConfig) -> Optional[dict]:
     # is why the call fell through to a web-auth path ("No cookie auth
     # credentials found, code:401"). mem0's openai embedder respects the
     # api_key and openai_base_url config fields, so embeddings work directly
-    # — the chat (LLM) side needs the env-var fix in get_memory (see there).
+    # — the chat (LLM) side uses mem0's OpenAI provider with the same key and base URL.
     provider = llm_config._provider_str()
     if provider == "openrouter" and llm_config.api_key:
         return {
@@ -145,53 +149,6 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
     return config
 
 
-_PROVIDER_ENV_VARS: dict[str, str] = {
-    "openrouter": "OPENROUTER_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "deepseek": "DEEPSEEK_API_KEY",
-    "google": "GEMINI_API_KEY",
-    "huggingface": "HUGGINGFACE_API_KEY",
-}
-
-# Track env vars THIS process seeded from the LLMConfig, so rotating the
-# key in AI Assistant settings updates them on the next memory init.
-# Vars that were already set before we touched them are treated as
-# operator-managed and left alone.
-_APP_SEEDED_PROVIDER_ENV: set[str] = set()
-
-
-def _seed_provider_env(llm_config: LLMConfig) -> None:
-    """Export the chat provider's API key to the env var LiteLLM expects.
-
-    Workaround for a mem0 limitation: mem0.llms.litellm.LiteLLM drops
-    config.api_key when calling litellm.completion(). LiteLLM then reads
-    the provider's env var (e.g. OPENROUTER_API_KEY) for auth. If that
-    var isn't set the request goes auth-less and 401s.
-
-    Update semantics:
-      - If the env var was set before we touched it, leave it alone
-        (operator-managed, e.g. systemd EnvironmentFile).
-      - If we previously seeded it, refresh from the current LLMConfig
-        so a rotated key in AI Assistant settings actually reaches mem0.
-    """
-    if not llm_config.api_key:
-        return
-    env_var = _PROVIDER_ENV_VARS.get(llm_config._provider_str())
-    if not env_var:
-        return
-    current = os.getenv(env_var)
-    if current is not None and env_var not in _APP_SEEDED_PROVIDER_ENV:
-        # Operator-set; respect it.
-        return
-    new_value = llm_config.api_key.get_secret_value()
-    if current == new_value:
-        return
-    os.environ[env_var] = new_value
-    _APP_SEEDED_PROVIDER_ENV.add(env_var)
-
-
 def get_memory(llm_config: Optional[LLMConfig] = None):
     """Get or create the Mem0 memory instance.
 
@@ -226,15 +183,6 @@ def get_memory(llm_config: Optional[LLMConfig] = None):
         config = get_memory_config(llm_config)
         if config is None:
             return None
-
-        # mem0's LiteLLM wrapper (used for chat / memory extraction) drops
-        # the api_key from its config and only honors provider-specific env
-        # vars (OPENROUTER_API_KEY, OPENAI_API_KEY, etc.). Without this,
-        # mem0's chat call to OpenRouter hits the endpoint with no auth
-        # header and OpenRouter falls back to a web-cookie path responding
-        # 'No cookie auth credentials found' on every memory add. Re-export
-        # the configured key to the matching env var so LiteLLM picks it up.
-        _seed_provider_env(llm_config)
 
         _memory_instance = Memory.from_config(config)
         _memory_config_hash = new_hash

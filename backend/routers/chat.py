@@ -13,7 +13,6 @@ Replaced the old AG-UI router (removed in tilt_ui-qzk0.3).
 import asyncio
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -32,12 +31,6 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models import Model
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.models.openrouter import OpenRouterModel, OpenRouterModelSettings
-from pydantic_ai.providers.ollama import OllamaProvider
-from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.providers.openrouter import OpenRouterProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.ui._adapter import pending_tool_calls
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
@@ -58,7 +51,14 @@ from backend.services.chat_support import (
     _get_recipe_system_prompt,
 )
 from backend.services.hop_inventory_bulk import BulkHopItem, StaleStockError, bulk_update_hops
-from backend.services.llm.config import DEFAULT_BASE_URLS, DEFAULT_MODELS, ENV_VAR_NAMES, LLMConfig, LLMProvider
+from backend.services.llm.config import DEFAULT_MODELS, LLMConfig, LLMProvider
+from backend.services.llm.model import (
+    OPENAI_COMPATIBLE_URLS,
+    UnsupportedProvider,
+    _ollama_model,
+    build_model,
+    model_settings,
+)
 from backend.services.llm.openrouter import resolve_openrouter_model
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
 from backend.services.memory import format_memories_for_context, search_memories
@@ -70,15 +70,7 @@ ERROR_TEXT = "The assistant hit an error. Try again."
 MAX_MODEL_REQUESTS = 15  # per run, same cap as the old agent loop
 DENIED_TEXT = "The user did not approve this action."
 
-# Providers reachable with the openai SDK (already installed with the openrouter extra)
-OPENAI_COMPATIBLE_URLS: dict[str, Optional[str]] = {
-    "openai": None,
-    "deepseek": "https://api.deepseek.com",
-    "groq": "https://api.groq.com/openai/v1",
-    "google": "https://generativelanguage.googleapis.com/v1beta/openai/",
-    "huggingface": "https://router.huggingface.co/v1",
-}
-# Cheap models for title summarisation (bare ids, no litellm prefixes)
+# Cheap models for title summarisation (bare model ids)
 FAST_TITLE_MODELS = {
     "openrouter": "anthropic/claude-haiku-4.5",
     "openai": "gpt-4o-mini",
@@ -99,41 +91,6 @@ _background: set[asyncio.Task] = set()  # keep refs so tasks are not garbage col
 # =============================================================================
 # Model
 # =============================================================================
-
-
-class UnsupportedProvider(Exception):
-    pass
-
-
-def _ollama_model(name: str, base_url: str) -> Model:
-    base = base_url.rstrip("/")
-    return OpenAIChatModel(name, provider=OllamaProvider(base_url=base if base.endswith("/v1") else f"{base}/v1"))
-
-
-def build_model(config: LLMConfig, model_name: Optional[str] = None) -> Model:
-    """Pydantic AI model for the configured provider."""
-    provider = config._provider_str()
-    name = model_name or config.model or DEFAULT_MODELS[LLMProvider(provider)]
-    key = config.api_key.get_secret_value() if config.api_key else os.environ.get(ENV_VAR_NAMES.get(provider, ""))
-    if provider == "openrouter":
-        return OpenRouterModel(name, provider=OpenRouterProvider(api_key=key))
-    if provider in ("local", "hailo"):
-        return _ollama_model(name, config.base_url or DEFAULT_BASE_URLS[LLMProvider(provider)])
-    if provider in OPENAI_COMPATIBLE_URLS:
-        return OpenAIChatModel(name, provider=OpenAIProvider(base_url=OPENAI_COMPATIBLE_URLS[provider], api_key=key))
-    raise UnsupportedProvider(provider)
-
-
-def model_settings(config: LLMConfig) -> ModelSettings:
-    if config._provider_str() == "openrouter":
-        # Reasoning models can spend the whole max_tokens budget thinking after
-        # tool results and emit no text: cap reasoning at half (tilt_ui-atvb)
-        return OpenRouterModelSettings(
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
-            openrouter_reasoning={"max_tokens": config.max_tokens // 2},
-        )
-    return ModelSettings(max_tokens=config.max_tokens, temperature=config.temperature)
 
 
 # =============================================================================

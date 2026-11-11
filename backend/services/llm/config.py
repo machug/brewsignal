@@ -46,7 +46,7 @@ DEFAULT_MODELS = {
     LLMProvider.OPENROUTER: "anthropic/claude-sonnet-4.5",
 }
 
-# Model prefixes for LiteLLM
+# Display prefixes shown in effective_model (API responses); not used to route requests
 MODEL_PREFIXES = {
     LLMProvider.LOCAL: "ollama/",
     LLMProvider.HAILO: "ollama/",  # hailo-ollama is Ollama-compatible
@@ -101,7 +101,7 @@ class LLMConfig(BaseModel):
 
     @property
     def effective_model(self) -> str:
-        """Get the model name with appropriate prefix for LiteLLM."""
+        """Model name with its display prefix (as shown in API responses)."""
         provider_str = self._provider_str()
         # Look up using string key or enum key
         base_model = self.model

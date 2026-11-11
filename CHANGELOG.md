@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Old assistant chat stack** (tilt_ui-qzk0.3) - The AG-UI router (`/api/ag-ui/*`), its browser client and its tests are gone. Thread headers and old messages stay in their tables. The model-context pruning helper that only the old loop used is removed too.
 
 ### Changed
+- **LiteLLM removed** (tilt_ui-i5nw) - Recipe review, the assistant status and test endpoints and the memory feature now call the model through Pydantic AI and the OpenAI-compatible API, using the same AI settings as the chat. The Pi install is smaller (about 15 fewer packages). The `litellm_available` status field stays and always reads true. Anthropic as a direct provider is not supported by any assistant feature; use OpenRouter for Claude models.
 - **Guided tasting on the new assistant** (tilt_ui-qzk0.3) - The tasting panel on the batch page now talks to the same chat as the assistant page. It looks and works the same, and each session also appears in the assistant's chat list.
 - **Assistant chat rebuilt** (tilt_ui-qzk0) - The assistant now runs on Pydantic AI and the Vercel AI SDK instead of a hand-built chat loop.
   - The server keeps the chat history. The browser sends only the new message, so a client cannot fake a tool result or an approval.

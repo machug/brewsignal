@@ -339,7 +339,7 @@
 		<div class="telemetry">
 			{#if chartMounted}
 				{#key batch.id}
-					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} {controlEvents} />
+					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} {controlEvents} showStats={false} />
 				{/key}
 			{/if}
 		</div>

@@ -38,9 +38,11 @@
 		deviceColor?: string;
 		originalGravity?: number | null;
 		controlEvents?: ControlEvent[];
+		/** Show the stats block under the chart (off on Home, where readouts sit above). */
+		showStats?: boolean;
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [] }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], showStats = true }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -458,6 +460,11 @@
 					font: '11px "Chivo Mono", ui-monospace, monospace',
 					labelFont: '11px "Chivo Mono", ui-monospace, monospace',
 					values: (u, vals) => vals.map((v) => formatGravity(v)),
+					// Tick steps no finer than the display precision, so labels never repeat
+					// (SG shows 3 decimals; Plato/Brix show 1).
+					incrs: gravityUnit === 'SG'
+						? [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1]
+						: [0.1, 0.2, 0.5, 1, 2, 5, 10],
 					side: 3 // left
 				},
 				{
@@ -1334,7 +1341,7 @@ onMount(async () => {
 	{/if}
 
 	<!-- Fermentation Stats -->
-	{#if readings.length > 0}
+	{#if showStats && readings.length > 0}
 		<FermentationStats
 			{readings}
 			{originalGravity}

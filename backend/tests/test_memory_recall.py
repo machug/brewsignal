@@ -169,3 +169,4 @@ async def test_ai_lite_setting_persists_via_config_api(client):
     r = await client.patch("/api/config", json={"ai_lite_enabled": True})
     assert r.status_code == 200 and r.json()["ai_lite_enabled"] is True
     assert (await client.get("/api/config")).json()["ai_lite_enabled"] is True
+

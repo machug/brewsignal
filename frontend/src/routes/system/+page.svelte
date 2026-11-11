@@ -81,9 +81,6 @@
 		authEnabled = config.authEnabled;
 	});
 
-	// Cleanup state
-	let cleanupRetentionDays = $state(30);
-	let cleanupPreview = $state<{ readings_to_delete: number } | null>(null);
 
 	// Home Assistant state
 	let haEnabled = $state(false);
@@ -720,49 +717,6 @@
 			}
 		} catch (e) {
 			console.error('Failed to set timezone:', e);
-		} finally {
-			actionInProgress = null;
-		}
-	}
-
-	async function previewCleanup() {
-		actionInProgress = 'cleanup-preview';
-		try {
-			const response = await fetch('/api/system/cleanup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retention_days: cleanupRetentionDays, confirm: false })
-			});
-			if (response.ok) {
-				cleanupPreview = await response.json();
-			}
-		} catch (e) {
-			console.error('Failed to preview cleanup:', e);
-		} finally {
-			actionInProgress = null;
-		}
-	}
-
-	async function executeCleanup() {
-		if (!cleanupPreview || cleanupPreview.readings_to_delete === 0) return;
-
-		if (!confirm(`Delete ${cleanupPreview.readings_to_delete.toLocaleString()} readings older than ${cleanupRetentionDays} days?`)) {
-			return;
-		}
-
-		actionInProgress = 'cleanup';
-		try {
-			const response = await fetch('/api/system/cleanup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ retention_days: cleanupRetentionDays, confirm: true })
-			});
-			if (response.ok) {
-				cleanupPreview = null;
-				await loadStorageStats();
-			}
-		} catch (e) {
-			console.error('Failed to execute cleanup:', e);
 		} finally {
 			actionInProgress = null;
 		}
@@ -1836,7 +1790,7 @@
 					aria-expanded={expandedSection === 'storage'}
 				>
 					<div class="section-title-group">
-						<h2>Storage & Cleanup</h2>
+						<h2>Storage</h2>
 						{#if storageStats}
 							<span class="storage-badge">{formatBytes(storageStats.estimated_size_bytes)}</span>
 						{/if}
@@ -1858,27 +1812,7 @@
 							</div>
 						</div>
 
-						<div class="cleanup-section">
-							<p>Remove old readings to free storage. This action is permanent.</p>
-							<div class="cleanup-controls">
-								<span class="cleanup-label">Keep readings from last</span>
-								<div class="input-group compact">
-									<input type="number" min="1" max="365" bind:value={cleanupRetentionDays} class="num-input" aria-label="Retention days" />
-									<span class="input-unit">&thinsp;days</span>
-								</div>
-								<button type="button" class="secondary-btn" onclick={previewCleanup} disabled={actionInProgress !== null}>
-									{actionInProgress === 'cleanup-preview' ? 'Checking...' : 'Preview'}
-								</button>
-								{#if cleanupPreview && cleanupPreview.readings_to_delete > 0}
-									<button type="button" class="danger-btn" onclick={executeCleanup} disabled={actionInProgress !== null}>
-										{actionInProgress === 'cleanup' ? 'Deleting...' : `Delete ${formatNumber(cleanupPreview.readings_to_delete)}`}
-									</button>
-								{/if}
-							</div>
-							{#if cleanupPreview && cleanupPreview.readings_to_delete === 0}
-								<p class="cleanup-result">No readings older than {cleanupRetentionDays} days.</p>
-							{/if}
-						</div>
+						<p class="retention-note">Readings are kept permanently, so past fermentations can inform predictions and the assistant.</p>
 					</div>
 				{/if}
 			</section>
@@ -2990,21 +2924,10 @@
 		letter-spacing: 0.07em;
 		color: var(--ink-muted);
 	}
-	.cleanup-section > p,
-	.cleanup-result {
+	.retention-note {
 		font-size: var(--text-sm);
 		color: var(--ink-secondary);
 		margin-bottom: var(--space-sm);
-	}
-	.cleanup-controls {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: var(--space-sm);
-	}
-	.cleanup-label {
-		font-size: var(--text-sm);
-		color: var(--ink-secondary);
 	}
 
 	/* Power */
@@ -3409,10 +3332,6 @@
 		.add-device-form .add-btn {
 			width: 100%;
 			justify-content: center;
-		}
-		.cleanup-controls {
-			flex-direction: column;
-			align-items: flex-start;
 		}
 		.add-device-form {
 			flex-direction: column;

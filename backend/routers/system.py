@@ -9,14 +9,13 @@ import json
 import logging
 import socket
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ..cleanup import cleanup_old_readings, get_reading_stats
+from ..cleanup import get_reading_stats
 
 # Hailo detection paths
 HAILORTCLI_PATH = "/usr/bin/hailortcli"
@@ -380,11 +379,6 @@ async def get_storage_stats():
     return stats
 
 
-class CleanupRequest(BaseModel):
-    retention_days: int = 30
-    confirm: bool = False
-
-
 class AIAcceleratorDevice(BaseModel):
     path: str
     architecture: str
@@ -404,43 +398,6 @@ class AIAcceleratorStatus(BaseModel):
     available: bool
     device: Optional[AIAcceleratorDevice] = None
     ollama_server: Optional[HailoOllamaStatus] = None
-
-
-@router.post("/cleanup")
-async def trigger_cleanup(cleanup: CleanupRequest, request: Request):
-    """Manually trigger data cleanup. Requires confirmation."""
-    if not is_local_request(request):
-        raise HTTPException(
-            status_code=403,
-            detail="System controls only available from local network",
-        )
-    if not cleanup.confirm:
-        # Return preview of what would be deleted
-        from datetime import timedelta
-        from sqlalchemy import func, select
-        from ..database import async_session_factory
-        from ..models import Reading
-
-        cutoff = datetime.now(timezone.utc) - timedelta(days=cleanup.retention_days)
-        async with async_session_factory() as session:
-            result = await session.execute(
-                select(func.count()).select_from(Reading).where(Reading.timestamp < cutoff)
-            )
-            count = result.scalar() or 0
-
-        return {
-            "status": "preview",
-            "retention_days": cleanup.retention_days,
-            "readings_to_delete": count,
-            "message": "Set confirm=true to proceed with deletion",
-        }
-
-    deleted = await cleanup_old_readings(cleanup.retention_days)
-    return {
-        "status": "completed",
-        "retention_days": cleanup.retention_days,
-        "deleted_readings": deleted,
-    }
 
 
 def check_hailo_ollama_status(url: str) -> Optional[HailoOllamaStatus]:

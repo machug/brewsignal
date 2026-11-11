@@ -26,7 +26,6 @@ from .ambient_poller import start_ambient_poller, stop_ambient_poller  # noqa: E
 from .chamber_poller import start_chamber_poller, stop_chamber_poller  # noqa: E402
 from .temp_controller import start_temp_controller, stop_temp_controller  # noqa: E402
 from .mqtt_manager import start_mqtt_manager, stop_mqtt_manager, publish_batch_reading  # noqa: E402
-from .cleanup import CleanupService  # noqa: E402
 from .scanner import RAPTPillReading, TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
@@ -43,7 +42,6 @@ import os  # noqa: E402
 # Global scanner instance
 scanner: Optional[TiltScanner] = None
 scanner_task: Optional[asyncio.Task] = None
-cleanup_service: Optional[CleanupService] = None
 # Background task for one-time recipe backfills, run off the startup critical
 # path so a slow sweep can't blow the platform healthcheck window (tilt_ui-h0j)
 backfill_task: Optional[asyncio.Task] = None
@@ -532,7 +530,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scanner, scanner_task, cleanup_service, ml_pipeline_manager, backfill_task, retitle_task, memory_task
+    global scanner, scanner_task, ml_pipeline_manager, backfill_task, retitle_task, memory_task
 
     settings = Settings()
 
@@ -562,12 +560,6 @@ async def lifespan(app: FastAPI):
         scanner = TiltScanner(on_reading=handle_tilt_reading, on_rapt_reading=handle_rapt_reading)
         scanner_task = asyncio.create_task(scanner.start())
         print("Scanner started")
-
-    # Cleanup service: prune old readings
-    if settings.is_enabled("cleanup"):
-        cleanup_service = CleanupService(retention_days=30, interval_hours=1)
-        await cleanup_service.start()
-        print("Cleanup service started")
 
     # Home Assistant integration: ambient/chamber polling
     if settings.is_enabled("ha"):
@@ -600,8 +592,6 @@ async def lifespan(app: FastAPI):
     if settings.is_enabled("ha"):
         stop_chamber_poller()
         stop_ambient_poller()
-    if cleanup_service:
-        await cleanup_service.stop()
     if scanner:
         await scanner.stop()
     if scanner_task:
@@ -733,19 +723,19 @@ async def download_log():
 
         # Stream readings in batches
         async with async_session_factory() as session:
-            # Get all tilts for beer_name lookup
-            tilts_result = await session.execute(select(Tilt))
-            tilts_map = {t.id: t for t in tilts_result.scalars()}
+            # Devices for colour / beer_name lookup
+            devices_result = await session.execute(select(Device))
+            devices_map = {d.id: d for d in devices_result.scalars()}
 
             # Get readings ordered by timestamp
             result = await session.execute(
                 select(Reading).order_by(Reading.timestamp)
             )
             for reading in result.scalars():
-                tilt = tilts_map.get(reading.tilt_id)
+                tilt = devices_map.get(reading.device_id)
                 writer.writerow([
                     serialize_datetime_to_utc(reading.timestamp) if reading.timestamp else "",
-                    reading.tilt_id,
+                    reading.device_id,
                     tilt.color if tilt else "",
                     tilt.beer_name if tilt else "",
                     reading.sg_raw,

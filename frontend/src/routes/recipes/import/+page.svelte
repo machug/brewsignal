@@ -115,7 +115,9 @@
 				<div class="spinner"></div>
 				<p class="drop-text">Importing recipe...</p>
 			{:else}
-				<div class="upload-icon">📄</div>
+				<svg class="upload-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" />
+				</svg>
 				<p class="drop-text">Drop recipe file here</p>
 				<p class="drop-subtext">or click to browse</p>
 				<input
@@ -149,28 +151,35 @@
 
 <style>
 	.page-container {
-		max-width: 600px;
+		max-width: 640px;
 		margin: 0 auto;
-		padding: var(--space-6);
+		padding: var(--space-lg);
 	}
 
 	.back-link {
-		margin-bottom: var(--space-6);
+		margin-bottom: var(--space-lg);
 	}
 
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text-secondary);
+		gap: var(--space-xs);
+		min-height: 44px;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
 		text-decoration: none;
 		transition: color var(--transition);
 	}
 
 	.back-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
+	}
+
+	.back-btn:focus-visible,
+	.drop-zone:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.back-icon {
@@ -181,19 +190,22 @@
 	.import-container {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--space-md);
 	}
 
 	.page-title {
-		font-size: 28px;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
 		font-weight: 600;
+		letter-spacing: -0.01em;
+		line-height: 1.2;
 		margin: 0;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.page-description {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		margin: 0;
 	}
 
@@ -203,23 +215,26 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-3);
-		padding: var(--space-12) var(--space-6);
+		gap: var(--space-xs);
+		min-height: 220px;
+		padding: var(--space-2xl) var(--space-lg);
 		background: var(--bg-surface);
-		border: 2px dashed var(--border-default);
-		border-radius: 8px;
+		border: 1px dashed var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all var(--transition);
+		text-align: center;
+		transition: border-color var(--transition), background var(--transition);
 	}
 
 	.drop-zone:hover:not(.uploading) {
-		border-color: var(--recipe-accent-border);
+		border-color: var(--accent-rule);
 		background: var(--bg-elevated);
 	}
 
 	.drop-zone.active {
-		border-color: var(--recipe-accent);
-		background: var(--recipe-accent-muted);
+		border-style: solid;
+		border-color: var(--accent);
+		background: var(--accent-tint);
 	}
 
 	.drop-zone.uploading {
@@ -228,25 +243,30 @@
 	}
 
 	.upload-icon {
-		font-size: 48px;
+		width: 40px;
+		height: 40px;
+		color: var(--ink-muted);
 	}
 
 	.drop-text {
-		font-size: 16px;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-family: var(--font-display);
+		font-size: var(--text-base);
+		font-weight: 600;
+		color: var(--ink-primary);
 		margin: 0;
 	}
 
 	.drop-subtext {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		margin: 0;
 	}
 
 	.file-input {
 		position: absolute;
 		inset: 0;
+		width: 100%;
+		height: 100%;
 		opacity: 0;
 		cursor: pointer;
 	}
@@ -257,21 +277,21 @@
 
 	.file-info {
 		display: flex;
-		justify-content: center;
 	}
 
 	.info-text {
-		font-size: 12px;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 		margin: 0;
-		font-family: var(--font-mono);
+		font-family: var(--font-num);
+		line-height: 1.6;
 	}
 
 	.spinner {
-		width: 32px;
-		height: 32px;
-		border: 3px solid var(--gray-700);
-		border-top-color: var(--recipe-accent);
+		width: 28px;
+		height: 28px;
+		border: 2px solid var(--rule-strong);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -282,26 +302,39 @@
 		}
 	}
 
+	@media (prefers-reduced-motion: reduce) {
+		.spinner {
+			animation-duration: 2.4s;
+		}
+	}
+
 	.error-box {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
-		padding: var(--space-4);
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid var(--negative);
-		border-radius: 6px;
+		gap: var(--space-sm);
+		padding: var(--space-sm) var(--space-md);
+		background: var(--bg-surface);
+		border: 1px solid var(--status-danger);
+		border-radius: 4px;
 	}
 
 	.error-icon {
 		width: 20px;
 		height: 20px;
-		color: var(--negative);
+		color: var(--status-danger);
 		flex-shrink: 0;
 	}
 
 	.error-text {
-		font-size: 14px;
-		color: var(--negative);
+		font-size: var(--text-sm);
+		color: var(--status-danger);
 		margin: 0;
+		overflow-wrap: anywhere;
+	}
+
+	@media (max-width: 760px) {
+		.page-container {
+			padding: var(--space-md);
+		}
 	}
 </style>

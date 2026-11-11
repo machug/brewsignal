@@ -63,12 +63,14 @@
 					<input
 						type="text"
 						class="input-name"
+						aria-label="Step name"
 						value={step.name}
 						placeholder="Step name"
 						onchange={(e) => updateStep(i, 'name', e.currentTarget.value)}
 					/>
 					<select
 						class="input-type"
+						aria-label="Step type"
 						value={step.type}
 						onchange={(e) => updateStep(i, 'type', e.currentTarget.value)}
 					>
@@ -79,6 +81,7 @@
 					<input
 						type="number"
 						class="input-temp"
+						aria-label="Temperature in °C"
 						value={step.temp_c}
 						placeholder="Temp"
 						onchange={(e) => updateStep(i, 'temp_c', parseFloat(e.currentTarget.value) || 0)}
@@ -87,12 +90,13 @@
 					<input
 						type="number"
 						class="input-time"
+						aria-label="Time in minutes"
 						value={step.time_minutes}
 						placeholder="Time"
 						onchange={(e) => updateStep(i, 'time_minutes', parseInt(e.currentTarget.value) || 0)}
 					/>
 					<span class="unit">min</span>
-					<button type="button" class="btn-remove" onclick={() => removeStep(i)}>×</button>
+					<button type="button" class="btn-remove" aria-label="Remove" onclick={() => removeStep(i)}>×</button>
 				</div>
 			{/each}
 		</div>
@@ -103,186 +107,174 @@
 	.editor-section {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--space-sm);
 	}
 
 	.section-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		padding-bottom: var(--space-xs);
+		border-bottom: 1px solid var(--rule-strong);
 	}
 
-	.section-header h4 {
-		margin: 0;
-		font-size: 14px;
+	h4 {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: var(--ink-secondary);
+		margin: 0;
 	}
 
 	.btn-add {
-		padding: var(--space-2) var(--space-3);
-		background: var(--recipe-accent);
-		color: var(--accent-ink);
-		border: none;
-		border-radius: 6px;
-		font-size: 13px;
-		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 44px;
+		padding: var(--space-xs) var(--space-md);
+		background: transparent;
+		color: var(--ink-secondary);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		white-space: nowrap;
 		cursor: pointer;
-		transition: background var(--transition), transform var(--transition);
+		transition: border-color var(--transition), color var(--transition);
 	}
 
 	.btn-add:hover {
-		filter: brightness(1.1);
-		transform: translateY(-1px);
+		border-color: var(--ink-secondary);
+		color: var(--ink-primary);
+	}
+
+	.btn-add:focus-visible,
+	.btn-remove:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.empty-state {
-		color: var(--text-muted);
-		font-size: 14px;
-		text-align: center;
-		padding: var(--space-6);
-		background: var(--bg-surface);
-		border: 1px dashed var(--border-subtle);
-		border-radius: 6px;
 		margin: 0;
+		padding: var(--space-md);
+		border: 1px dashed var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-secondary);
+		font-size: var(--text-sm);
+	}
+
+	/* Fields: 44px, 1px strong rule, visible accent focus ring */
+	input,
+	select {
+		min-height: 44px;
+		padding: var(--space-xs) var(--space-sm);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		color: var(--ink-primary);
+		font-family: var(--font-body);
+		font-size: var(--text-sm);
+		box-sizing: border-box;
+		min-width: 0;
+	}
+
+	input[type='number'] {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+
+	input::placeholder {
+		color: var(--ink-muted);
+	}
+
+	input:focus-visible,
+	select:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+		border-color: var(--accent);
+	}
+
+	.unit {
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		white-space: nowrap;
+	}
+
+	.btn-remove {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		background: transparent;
+		color: var(--ink-muted);
+		border: 1px solid transparent;
+		border-radius: 4px;
+		font-size: 20px;
+		line-height: 1;
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: border-color var(--transition), color var(--transition);
+	}
+
+	.btn-remove:hover {
+		border-color: var(--status-danger);
+		color: var(--status-danger);
 	}
 
 	.steps-list {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
 	}
 
+	/* Hairline rows: one row per step/item */
 	.step-row {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-3);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.step-num {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		background: var(--recipe-accent);
-		color: var(--accent-ink);
-		border-radius: 50%;
-		font-size: 12px;
-		font-weight: 600;
+		width: 2ch;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		text-align: right;
 		flex-shrink: 0;
 	}
 
 	.input-name {
-		flex: 1;
-		min-width: 100px;
-		padding: var(--space-2);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 4px;
-		color: var(--text-primary);
-		font-size: 13px;
-	}
-
-	.input-name:focus {
-		outline: none;
-		border-color: var(--recipe-accent);
+		flex: 1 1 160px;
 	}
 
 	.input-type {
-		width: 120px;
-		padding: var(--space-2);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 4px;
-		color: var(--text-primary);
-		font-size: 13px;
-		cursor: pointer;
-	}
-
-	.input-type:focus {
-		outline: none;
-		border-color: var(--recipe-accent);
+		flex: 0 1 140px;
 	}
 
 	.input-temp,
 	.input-time {
-		width: 70px;
-		padding: var(--space-2);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 4px;
-		color: var(--text-primary);
-		font-size: 13px;
-		text-align: right;
+		width: 84px;
+		flex: none;
 	}
 
-	.input-temp:focus,
-	.input-time:focus {
-		outline: none;
-		border-color: var(--recipe-accent);
-	}
-
-	.unit {
-		font-size: 12px;
-		color: var(--text-muted);
-		min-width: 24px;
-	}
-
-	.btn-remove {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		padding: 0;
-		background: transparent;
-		border: 1px solid var(--border-subtle);
-		border-radius: 4px;
-		color: var(--text-muted);
-		font-size: 18px;
-		cursor: pointer;
-		transition: all var(--transition);
-		flex-shrink: 0;
-	}
-
-	.btn-remove:hover {
-		background: var(--negative-muted);
-		border-color: var(--negative);
-		color: var(--negative);
-	}
-
-	@media (max-width: 640px) {
-		.step-row {
-			flex-wrap: wrap;
+	@media (max-width: 760px) {
+		.step-row .input-name {
+			flex: 1 1 calc(100% - 44px - 2ch - var(--space-md));
 		}
 
-		.input-name {
-			order: 1;
-			flex-basis: calc(100% - 60px);
-		}
-
-		.step-num {
-			order: 0;
-		}
-
-		.btn-remove {
-			order: 2;
-		}
-
-		.input-type {
-			order: 3;
-			flex: 1;
-		}
-
-		.input-temp,
-		.input-time {
-			order: 4;
-			width: 60px;
+		.step-row .btn-remove {
+			margin-left: auto;
 		}
 	}
 </style>

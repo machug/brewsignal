@@ -188,29 +188,30 @@
 
 <style>
 	.page-container {
-		max-width: 1200px;
+		max-width: 1280px;
 		margin: 0 auto;
-		padding: var(--space-6);
+		padding: var(--space-lg);
 		position: relative;
 	}
 
 	.back-link {
-		margin-bottom: var(--space-4);
+		margin-bottom: var(--space-md);
 	}
 
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text-secondary);
+		gap: var(--space-xs);
+		min-height: 44px;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
 		text-decoration: none;
 		transition: color var(--transition);
 	}
 
 	.back-btn:hover {
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
 
 	.back-icon {
@@ -222,143 +223,132 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: var(--space-4);
-		margin-bottom: var(--space-6);
-		padding-bottom: var(--space-4);
-		border-bottom: 1px solid var(--border-subtle);
+		gap: var(--space-md);
+		flex-wrap: wrap;
+		margin-bottom: var(--space-lg);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
 	.header-content {
-		flex: 1;
+		flex: 1 1 280px;
+		min-width: 0;
 	}
 
 	.page-title {
-		font-size: 28px;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
 		font-weight: 600;
-		margin: 0 0 var(--space-2) 0;
-		color: var(--text-primary);
+		letter-spacing: -0.01em;
+		line-height: 1.2;
+		margin: 0 0 var(--space-xs) 0;
+		color: var(--ink-primary);
 	}
 
 	.page-description {
-		font-size: 14px;
-		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		margin: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.import-link {
-		color: var(--recipe-accent);
-		text-decoration: none;
-		font-weight: 500;
+		color: var(--ink-primary);
+		font-weight: 600;
+		text-decoration: underline;
+		text-decoration-color: var(--accent-rule);
+		text-underline-offset: 3px;
 	}
 
 	.import-link:hover {
-		text-decoration: underline;
+		text-decoration-color: var(--accent);
 	}
 
-	/* Header Actions */
+	/* Header actions: accent only on the primary (save) action */
 	.header-actions {
 		display: flex;
-		gap: var(--space-3);
+		gap: var(--space-xs);
 		align-items: center;
-		flex-shrink: 0;
+		flex-wrap: wrap;
 	}
 
 	.action-divider {
 		width: 1px;
 		height: 24px;
-		background: var(--border-subtle, rgba(255, 255, 255, 0.08));
-		margin: 0 var(--space-1);
+		background: var(--rule-hairline);
 	}
 
-	/* Button Base Styles */
 	.btn-ghost,
 	.btn-review,
 	.btn-save {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-2);
-		border-radius: 8px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: var(--space-xs) var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
 		white-space: nowrap;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: background var(--transition), border-color var(--transition), color var(--transition);
 	}
 
-	/* Cancel - Tertiary/Ghost (smallest, most subtle) */
 	.btn-ghost {
-		padding: 8px 14px;
-		font-size: 13px;
 		background: transparent;
 		border: 1px solid transparent;
-		color: var(--text-muted);
+		color: var(--ink-secondary);
 	}
 
 	.btn-ghost:hover {
-		background: rgba(255, 255, 255, 0.04);
-		color: var(--text-secondary);
+		border-color: var(--rule-strong);
+		color: var(--ink-primary);
 	}
 
-	/* AI Review - Secondary (medium prominence) */
 	.btn-review {
-		padding: 9px 16px;
-		font-size: 13px;
-		background: rgba(16, 185, 129, 0.08);
-		border: 1px solid rgba(16, 185, 129, 0.3);
-		color: var(--positive);
+		background: transparent;
+		border: 1px solid var(--rule-strong);
+		color: var(--ink-secondary);
 	}
 
 	.btn-review:hover:not(:disabled) {
-		background: rgba(16, 185, 129, 0.15);
-		border-color: rgba(16, 185, 129, 0.5);
-		transform: translateY(-1px);
+		border-color: var(--ink-secondary);
+		color: var(--ink-primary);
 	}
 
-	.btn-review:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	/* Save Recipe - Primary (largest, most prominent) */
 	.btn-save {
-		padding: 10px 22px;
-		font-size: 14px;
-		font-weight: 600;
-		background: linear-gradient(135deg, var(--recipe-accent) 0%, var(--recipe-accent-hover) 100%);
-		border: none;
-		color: var(--gray-950);
-		box-shadow:
-			0 2px 8px var(--recipe-accent-border),
-			0 1px 2px rgba(0, 0, 0, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.15);
-		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		color: var(--accent-ink);
 	}
 
 	.btn-save:hover:not(:disabled) {
-		background: linear-gradient(135deg, var(--tilt-yellow) 0%, var(--recipe-accent) 100%);
-		box-shadow:
-			0 4px 12px var(--recipe-accent-border),
-			0 2px 4px rgba(0, 0, 0, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.2);
-		transform: translateY(-1px);
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
 	}
 
-	.btn-save:active:not(:disabled) {
-		transform: translateY(0);
-		box-shadow:
-			0 1px 4px rgba(245, 158, 11, 0.3),
-			inset 0 1px 2px rgba(0, 0, 0, 0.1);
-	}
-
+	.btn-review:disabled,
 	.btn-save:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
-		box-shadow: none;
+	}
+
+	.btn-ghost:focus-visible,
+	.btn-review:focus-visible,
+	.btn-save:focus-visible,
+	.back-btn:focus-visible,
+	.import-link:focus-visible,
+	.error-dismiss:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	.btn-icon {
 		width: 16px;
 		height: 16px;
+		flex-shrink: 0;
 	}
 
 	.btn-spinner {
@@ -370,17 +360,18 @@
 		animation: spin 0.8s linear infinite;
 	}
 
+	/* Errors: danger text plus outline plus icon, never colour alone */
 	.error-banner {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
-		padding: var(--space-4);
-		background: var(--error-bg);
-		border: 1px solid var(--negative);
-		border-radius: 6px;
-		color: var(--negative);
-		margin-bottom: var(--space-6);
-		font-size: 14px;
+		gap: var(--space-sm);
+		padding: var(--space-sm) var(--space-md);
+		background: var(--bg-surface);
+		border: 1px solid var(--status-danger);
+		border-radius: 4px;
+		color: var(--status-danger);
+		margin-bottom: var(--space-lg);
+		font-size: var(--text-sm);
 	}
 
 	.error-icon {
@@ -391,28 +382,28 @@
 
 	.error-message {
 		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.error-dismiss {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 24px;
-		height: 24px;
+		width: 44px;
+		height: 44px;
+		margin: -10px -10px -10px 0;
 		padding: 0;
 		background: transparent;
-		border: none;
+		border: 1px solid transparent;
 		border-radius: 4px;
-		color: var(--negative);
+		color: var(--status-danger);
 		cursor: pointer;
-		opacity: 0.7;
-		transition: opacity 0.15s ease, background 0.15s ease;
 		flex-shrink: 0;
 	}
 
 	.error-dismiss:hover {
-		opacity: 1;
-		background: rgba(239, 68, 68, 0.1);
+		border-color: var(--status-danger);
 	}
 
 	.error-dismiss svg {
@@ -422,26 +413,23 @@
 
 	.saving-overlay {
 		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: rgba(0, 0, 0, 0.7);
+		inset: 0;
+		background: color-mix(in oklch, var(--bg-canvas) 80%, transparent);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-4);
+		gap: var(--space-md);
 		z-index: 1000;
-		color: white;
-		font-size: 16px;
+		color: var(--ink-primary);
+		font-size: var(--text-base);
 	}
 
 	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid rgba(255, 255, 255, 0.3);
-		border-top-color: var(--recipe-accent);
+		width: 28px;
+		height: 28px;
+		border: 2px solid var(--rule-strong);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -449,6 +437,32 @@
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.spinner,
+		.btn-spinner {
+			animation-duration: 2.4s;
+		}
+	}
+
+	@media (max-width: 760px) {
+		.page-container {
+			padding: var(--space-md);
+		}
+
+		.header-actions {
+			width: 100%;
+		}
+
+		.action-divider {
+			display: none;
+		}
+
+		.btn-review,
+		.btn-save {
+			flex: 1 1 0;
 		}
 	}
 </style>

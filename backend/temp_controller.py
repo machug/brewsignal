@@ -171,8 +171,9 @@ def get_device_temp(device_id: str) -> Optional[float]:
         return None
 
     reading = latest_readings[device_id]
-    # Return calibrated temp, or raw temp if not available
-    return reading.get("temp") or reading.get("temp_raw")
+    # Calibrated temp, or raw temp if not available (explicit None check: 0.0 C is valid)
+    temp = reading.get("temp")
+    return temp if temp is not None else reading.get("temp_raw")
 
 
 def get_latest_tilt_temp() -> Optional[float]:

@@ -1,1544 +1,336 @@
 <script lang="ts">
-	import { renderMarkdown } from '$lib/markdown';
-	import HopInventoryConfirmCard from '$lib/components/inventory/HopInventoryConfirmCard.svelte';
-	import { useAgent } from '$lib/ag-ui';
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import type { Message, ToolCall, Thread } from '$lib/ag-ui/types';
-	import { configState } from '$lib/stores/config.svelte';
-	import { authFetch } from '$lib/api';
+	import { onMount, tick } from 'svelte';
+	import { page } from '$app/state';
+	import { goto, replaceState } from '$app/navigation';
+	import { Chat } from '@ai-sdk/svelte';
+	import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses, type UIMessage } from 'ai';
+	import { authFetch, fetchBatch, type BatchResponse } from '$lib/api';
 	import { getAccessToken } from '$lib/supabase';
 	import { config } from '$lib/config';
+	import { configState } from '$lib/stores/config.svelte';
+	import { APPLY_TOOL, buildChatRequest, isToolPart, toolName, type ToolPart } from '$lib/chat/logic';
+	import ChatShell from '$lib/components/chat/ChatShell.svelte';
+	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
+	import MessageTurn from '$lib/components/chat/MessageTurn.svelte';
+	import ThreadDrawer, { type ThreadItem } from '$lib/components/chat/ThreadDrawer.svelte';
 
 	// Redirect if AI is not enabled
 	$effect(() => {
-		if (configState.loaded && !configState.config.ai_enabled) {
-			goto('/');
-		}
+		if (configState.loaded && !configState.config.ai_enabled) goto('/');
 	});
 
-	// Configuration
-	let showDebugPanel = $state(false);
-	let showSidebar = $state(false); // Start collapsed, especially important for mobile
-	let isMobile = $state(false);
+	const PROMPTS = [
+		'Audit the hop schedule of my latest recipe',
+		'Update my hop inventory: ',
+		'Build a recipe from the stock I have',
+		'Troubleshoot my active fermentation'
+	];
+	const STEER_KEEP = 'Apply those hop changes without removing my other hops.';
 
-	// Thread state
-	let threads = $state<Thread[]>([]);
-	let currentThreadId = $state<string | null>(null);
-	let loadingThreads = $state(false);
-
-	// Async function to get auth headers - called fresh before each request
 	async function getAuthHeaders(): Promise<Record<string, string>> {
-		console.log('[getAuthHeaders] config.authEnabled:', config.authEnabled);
 		if (config.authEnabled) {
 			const token = await getAccessToken();
-			console.log('[getAuthHeaders] token:', token ? `${token.slice(0, 20)}...` : 'null');
-			if (token) {
-				return { 'Authorization': `Bearer ${token}` };
-			}
+			if (token) return { Authorization: `Bearer ${token}` };
 		}
 		return {};
 	}
 
-	// Initialize AG-UI agent with dynamic auth headers
-	// Note: Batch size and efficiency are now fetched from equipment inventory on the backend
-	const agent = useAgent({
-		url: '/api/ag-ui/run',
-		headers: getAuthHeaders,  // Async function called before each request
-		initialState: {},
-		onStateChange: (state) => {
-			// Handle recipe extraction from agent
-			if (state.recipe) {
-				console.log('Recipe extracted:', state.recipe);
-			}
-			// Handle thread rename from agent
-			if (state.renamedThread) {
-				const renamed = state.renamedThread as { id: string; title: string };
-				threads = threads.map(t =>
-					t.id === renamed.id ? { ...t, title: renamed.title } : t
-				);
-			}
-		},
-		onComplete: () => {
-			// If this is a new thread (not in list), refresh the thread list
-			const threadId = agent.threadId;
-			if (threadId && !threads.some(t => t.id === threadId)) {
-				fetchThreads();
-			}
-		},
-		onError: (error) => {
-			console.error('Agent error:', error);
-		}
-	});
+	let chat = $state<Chat | null>(null);
+	let chatId = $state('');
+	// 'error' blocks sending: the saved transcript could not be read, so a send would overwrite it.
+	let loadState = $state<'loading' | 'ready' | 'error'>('loading');
+	let loadToken = 0;
+	let threads = $state<ThreadItem[]>([]);
+	let loadingThreads = $state(false);
+	let drawerOpen = $state(false);
+	let input = $state('');
+	let inputEl = $state<HTMLTextAreaElement | null>(null);
+	let follow = $state(true);
+	let pendingSteer = $state('');
 
-	// Reactive tool calls array - toolCalls is now an array in the client
-	let toolCallsArray = $derived(agent.toolCalls);
+	// Live batch context (?batch=<id>), toggleable chip above the composer.
+	let batch = $state<BatchResponse | null>(null);
+	let useContext = $state(true);
+	const chatContext = $derived(batch && useContext ? { batch_id: batch.id } : null);
 
-	// Status line under the typing dots, so a long run (tools + model
-	// reasoning can take a minute) visibly shows progress.
-	// Confirm cards for hop inventory previews from the update_hop_inventory tool.
-	// Live tool calls are lost on reload/thread switch, so loadThread restores
-	// the newest saved preview into restoredHopPlan. A stale plan is refused by
-	// the server (stock_version check), so restoring an old one is safe.
-	function parseHopPlan(json: unknown) {
-		if (typeof json !== 'string') return null;
+	function makeChat(id: string, messages: UIMessage[]) {
+		return new Chat({
+			id,
+			messages,
+			transport: new DefaultChatTransport({
+				api: '/api/chat',
+				headers: getAuthHeaders,
+				prepareSendMessagesRequest: ({ id, messages, trigger }) => ({
+					body: buildChatRequest({ id, messages, trigger, context: chatContext })
+				})
+			}),
+			sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+			onFinish: () => fetchThreads()
+		});
+	}
+
+	function setUrlChat(id: string) {
+		const url = new URL(page.url);
+		url.searchParams.set('chat', id);
+		url.searchParams.delete('q');
+		url.searchParams.delete('batch');
 		try {
-			const plan = JSON.parse(json);
-			return plan?.confirmation && plan?.stock_version ? plan : null;
+			replaceState(url, {});
 		} catch {
-			return null;
+			/* router not ready */
 		}
 	}
-	let restoredHopPlan = $state<{ id: string; plan: any } | null>(null);
-	// Only the newest plan gets a card: an older card for a since-corrected list
-	// would share the same stock_version and could apply outdated amounts.
-	let hopInventoryPlans = $derived(
-		[
-			...(restoredHopPlan ? [restoredHopPlan] : []),
-			...toolCallsArray.flatMap((tc) => {
-				const plan = tc.name === 'update_hop_inventory' ? parseHopPlan(tc.result) : null;
-				return plan ? [{ id: tc.id, plan }] : [];
-			})
-		].slice(-1)
-	);
 
-	// toolCalls accumulates across the conversation (debug panel shows all),
-	// so only look at calls made since this run started.
-	let runToolStart = $state(0);
-	let activityLabel = $derived.by(() => {
-		const runCalls = toolCallsArray.slice(runToolStart);
-		const running = runCalls.findLast((tc) => tc.status === 'running');
-		if (running) return `Using tool: ${running.name.replaceAll('_', ' ')}…`;
-		return runCalls.length ? 'Thinking…' : 'Reading your question…';
-	});
+	function startNew() {
+		chat?.stop();
+		loadToken++;
+		chatId = crypto.randomUUID();
+		chat = makeChat(chatId, []);
+		loadState = 'ready';
+		pendingSteer = '';
+		drawerOpen = false;
+		setUrlChat(chatId);
+		focusInput();
+	}
 
-	// Input state
-	let input = $state('');
-	let inputRef = $state<HTMLTextAreaElement | null>(null);
-	let messagesContainer = $state<HTMLElement | null>(null);
+	// No autofocus on touch screens: it pops the keyboard and lights the composer.
+	function focusInput() {
+		if (matchMedia('(pointer: coarse)').matches) return;
+		tick().then(() => inputEl?.focus());
+	}
 
-	// Auto-scroll to bottom when messages change
-	$effect(() => {
-		// Track message count and streaming content to trigger scroll
-		const _ = agent.messages.length;
-		const __ = agent.streamingContent;
-
-		// Use tick to ensure DOM is updated before scrolling
-		if (messagesContainer) {
-			requestAnimationFrame(() => {
-				messagesContainer?.scrollTo({
-					top: messagesContainer.scrollHeight,
-					behavior: 'smooth'
-				});
-			});
+	async function openThread(id: string) {
+		chat?.stop();
+		const token = ++loadToken;
+		loadState = 'loading';
+		chatId = id;
+		chat = null;
+		drawerOpen = false;
+		pendingSteer = '';
+		try {
+			const res = await authFetch(`/api/chat/threads/${encodeURIComponent(id)}`);
+			if (token !== loadToken) return;
+			if (res.status === 404) {
+				// Missing (or not ours): never reuse the id, start clean under a new one.
+				startNew();
+				return;
+			}
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			if (token !== loadToken) return;
+			chat = makeChat(id, data.messages ?? []);
+			loadState = 'ready';
+			setUrlChat(id);
+			follow = true;
+		} catch {
+			if (token === loadToken) loadState = 'error';
 		}
-	});
+	}
 
-	// Thread management functions - use authFetch for JWT auth
 	async function fetchThreads() {
 		loadingThreads = true;
 		try {
-			const res = await authFetch('/api/ag-ui/threads?limit=50');
-			if (res.ok) {
-				threads = await res.json();
-			}
-		} catch (e) {
-			console.error('Failed to fetch threads:', e);
+			const res = await authFetch('/api/chat/threads');
+			if (res.ok) threads = await res.json();
+		} catch {
+			/* list is optional */
 		} finally {
 			loadingThreads = false;
 		}
 	}
 
-	async function loadThread(threadId: string) {
-		try {
-			const res = await authFetch(`/api/ag-ui/threads/${threadId}`);
-			if (res.ok) {
-				const thread = await res.json();
-				currentThreadId = threadId;
-				// Convert thread messages to agent messages format
-				const messages: Message[] = thread.messages
-					.filter((m: any) => m.role === 'user' || m.role === 'assistant')
-					.map((m: any) => ({
-						id: String(m.id),
-						role: m.role,
-						content: m.content,
-						createdAt: m.created_at
-					}));
-				agent.loadMessages(messages, threadId);
-				const saved = [...thread.messages].reverse().find(
-					(m: any) => m.role === 'tool' && parseHopPlan(m.content)
-				);
-				restoredHopPlan = saved ? { id: `saved-${saved.id}`, plan: parseHopPlan(saved.content) } : null;
-			}
-		} catch (e) {
-			console.error('Failed to load thread:', e);
+	async function renameThread(id: string, title: string) {
+		const res = await authFetch(`/api/chat/threads/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ title })
+		});
+		if (res.ok) {
+			const t = await res.json();
+			threads = threads.map((x) => (x.id === id ? { ...x, title: t.title ?? title } : x));
 		}
 	}
 
-	async function deleteThread(threadId: string) {
-		if (!confirm('Delete this conversation?')) return;
-		try {
-			const res = await authFetch(`/api/ag-ui/threads/${threadId}`, { method: 'DELETE' });
-			if (res.ok) {
-				threads = threads.filter(t => t.id !== threadId);
-				if (currentThreadId === threadId) {
-					startNewConversation();
-				}
-			}
-		} catch (e) {
-			console.error('Failed to delete thread:', e);
+	async function deleteThread(id: string) {
+		if (!confirm('Delete this chat?')) return;
+		const res = await authFetch(`/api/chat/threads/${encodeURIComponent(id)}`, { method: 'DELETE' });
+		if (res.ok || res.status === 404) {
+			threads = threads.filter((t) => t.id !== id);
+			if (id === chatId) startNew();
 		}
-	}
-
-	function startNewConversation() {
-		currentThreadId = null;
-		restoredHopPlan = null;
-		agent.clear();
-		inputRef?.focus();
-	}
-
-	// Auto-resize textarea
-	function autoResize(textarea: HTMLTextAreaElement) {
-		textarea.style.height = 'auto';
-		textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
-	}
-
-	// Handle send
-	async function handleSend() {
-		const content = input.trim();
-		if (!content || agent.isRunning) return;
-
-		input = '';
-		if (inputRef) {
-			inputRef.style.height = 'auto';
-		}
-
-		runToolStart = toolCallsArray.length;
-		await agent.send(content, currentThreadId || undefined);
-
-		// Update currentThreadId after first message (agent creates new thread)
-		if (!currentThreadId && agent.threadId) {
-			currentThreadId = agent.threadId;
-			// Refresh thread list to show new conversation
-			fetchThreads();
-		}
-	}
-
-	// Handle keyboard shortcuts
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			e.preventDefault();
-			handleSend();
-		}
-	}
-
-	// Example prompts
-	const examplePrompts = [
-		'Help me create an American IPA recipe',
-		'What temperature should I ferment a Belgian Tripel?',
-		'Create a simple wheat beer recipe for summer',
-		'Explain the difference between ale and lager yeast'
-	];
-
-	function usePrompt(prompt: string) {
-		input = prompt;
-		if (inputRef) {
-			inputRef.focus();
-			autoResize(inputRef);
-		}
-	}
-
-	// Format relative time
-	function formatRelativeTime(dateStr: string): string {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffDays = Math.floor(diffMs / 86400000);
-
-		if (diffMins < 1) return 'just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		if (diffDays < 7) return `${diffDays}d ago`;
-		return date.toLocaleDateString();
-	}
-
-	// Check if mobile on mount and on resize
-	function checkMobile() {
-		isMobile = window.innerWidth < 768;
 	}
 
 	onMount(() => {
-		// Prefill from the Home screen's assistant entry (?q=...); user still sends it
-		const q = new URLSearchParams(window.location.search).get('q');
-		if (q) {
-			input = q;
-			setTimeout(() => inputRef && autoResize(inputRef), 0);
-		}
-		inputRef?.focus();
+		const params = page.url.searchParams;
+		const q = params.get('q');
+		if (q) input = q;
+		const b = Number(params.get('batch'));
+		if (b > 0) fetchBatch(b).then((r) => (batch = r)).catch(() => {});
 		fetchThreads();
-		checkMobile();
-		window.addEventListener('resize', checkMobile);
-		return () => window.removeEventListener('resize', checkMobile);
+		const id = params.get('chat');
+		if (id) openThread(id);
+		else startNew();
 	});
 
-	// Close sidebar on mobile after selecting a thread
-	function handleThreadSelect(threadId: string) {
-		loadThread(threadId);
-		if (isMobile) {
-			showSidebar = false;
+	const busy = $derived(chat?.status === 'submitted' || chat?.status === 'streaming');
+	const messages = $derived(chat?.messages ?? []);
+	const lastAssistant = $derived(messages.findLast((m) => m.role === 'assistant'));
+	const model = $derived(((lastAssistant?.metadata as any)?.model as string) || '');
+	const title = $derived(threads.find((t) => t.id === chatId)?.title || 'Assistant');
+	// A rejected approval answers HTTP 400 {"detail"} before any stream: show it on the card, not as a stream error.
+	const approvalPending = $derived(
+		!!lastAssistant?.parts.some((p) => isToolPart(p) && (p as unknown as ToolPart).state === 'approval-responded')
+	);
+	const approvalError = $derived.by(() => {
+		if (!chat?.error || !approvalPending) return '';
+		try {
+			const d = JSON.parse(chat.error.message)?.detail;
+			if (typeof d === 'string') return d;
+		} catch {
+			/* not JSON */
 		}
+		return 'The approval was rejected. It may have been used already.';
+	});
+	const awaitingApproval = $derived(
+		!!lastAssistant?.parts.some((p) => isToolPart(p) && toolName(p) === APPLY_TOOL && (p as unknown as ToolPart).state === 'approval-requested')
+	);
+	const composerOff = $derived(!chat || loadState !== 'ready' || awaitingApproval);
+	const placeholder = $derived(awaitingApproval ? 'Confirm or cancel the update above' : loadState === 'error' ? 'Chat locked: could not load it' : undefined);
+
+	function send() {
+		const text = input.trim();
+		if (!text || busy || composerOff || !chat) return;
+		input = '';
+		follow = true;
+		chat.sendMessage({ text }).then(fetchThreads);
+	}
+
+	const approve = (id: string) => chat?.addToolApprovalResponse({ id, approved: true });
+	const cancel = (id: string) => chat?.addToolApprovalResponse({ id, approved: false, reason: 'Cancelled by user' });
+	function keepUnlisted(id: string) {
+		pendingSteer = STEER_KEEP;
+		chat?.addToolApprovalResponse({ id, approved: false, reason: 'User wants unlisted hops kept' });
+	}
+	// Send the steering message only after the denial round trip finished (no tool awaiting a result).
+	$effect(() => {
+		if (!pendingSteer || !chat || chat.status !== 'ready') return;
+		const waiting = chat.messages.some((m) => m.parts.some((p) => isToolPart(p) && (p as unknown as ToolPart).state === 'approval-responded'));
+		if (waiting) return;
+		const text = pendingSteer;
+		pendingSteer = '';
+		chat.sendMessage({ text });
+	});
+
+	const retryApply = () => {
+		if (!busy && chat) chat.sendMessage({ text: 'Prepare that hop inventory update again.' });
+	};
+
+	function usePrompt(p: string) {
+		input = p;
+		tick().then(() => {
+			inputEl?.focus();
+			inputEl?.setSelectionRange(p.length, p.length);
+		});
 	}
 </script>
 
-<svelte:head>
-	<title>AI Assistant | BrewSignal</title>
-</svelte:head>
+<svelte:head><title>Assistant | BrewSignal</title></svelte:head>
 
-<div class="assistant-page" class:sidebar-open={showSidebar}>
-	<!-- Mobile backdrop overlay -->
-	{#if showSidebar && isMobile}
-		<button
-			type="button"
-			class="sidebar-backdrop"
-			onclick={() => showSidebar = false}
-			aria-label="Close sidebar"
-		></button>
+<ChatShell {title} {model} onToggleDrawer={() => (drawerOpen = !drawerOpen)} onNew={startNew} bind:follow>
+	{#snippet drawer()}
+		<ThreadDrawer
+			open={drawerOpen}
+			{threads}
+			activeId={chatId}
+			loading={loadingThreads}
+			onSelect={openThread}
+			onNew={startNew}
+			onRename={renameThread}
+			onDelete={deleteThread}
+			onClose={() => (drawerOpen = false)}
+		/>
+	{/snippet}
+
+	{#if loadState === 'error'}
+		<div class="callout" role="alert">
+			<p>Could not load this chat. Sending is turned off so the saved conversation is not overwritten.</p>
+			<div class="row">
+				<button type="button" onclick={() => openThread(chatId)}>Retry</button>
+				<button type="button" onclick={startNew}>Start a new chat</button>
+			</div>
+		</div>
+	{:else if loadState === 'loading'}
+		<p class="quiet">Loading chat…</p>
+	{:else if messages.length === 0}
+		<div class="empty">
+			<h2>What are we brewing?</h2>
+			<ul class="prompts">
+				{#each PROMPTS as p}
+					<li><button type="button" onclick={() => usePrompt(p)}>{p.trim().replace(/:$/, '')}</button></li>
+				{/each}
+			</ul>
+		</div>
+	{:else}
+		{#each messages as m (m.id)}
+			<MessageTurn message={m} approvalError={m.id === lastAssistant?.id ? approvalError : ''} onApprove={approve} onCancel={cancel} onKeepUnlisted={keepUnlisted} onRetry={retryApply} />
+		{/each}
+		{#if chat?.status === 'submitted'}
+			<p class="quiet working"><span class="dot" aria-hidden="true"></span>Thinking…</p>
+		{/if}
 	{/if}
 
-	<!-- Sidebar with conversation history -->
-	<aside class="sidebar" class:open={showSidebar}>
-		<div class="sidebar-header">
-			<h2>History</h2>
-			<button type="button" class="new-chat-btn" onclick={startNewConversation} title="New conversation">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M12 5v14M5 12h14"/>
-				</svg>
-			</button>
+	{#if chat?.error && !approvalError}
+		<div class="callout" role="alert">
+			<p>The assistant hit an error. Try again.</p>
+			<div class="row"><button type="button" onclick={() => chat?.regenerate()}>Retry</button></div>
 		</div>
-		<div class="sidebar-content">
-			{#if loadingThreads}
-				<div class="sidebar-loading">Loading...</div>
-			{:else if threads.length === 0}
-				<div class="sidebar-empty">No conversations yet</div>
-			{:else}
-				<div class="thread-list">
-					{#each threads as thread (thread.id)}
-						<div
-							class="thread-item"
-							class:active={currentThreadId === thread.id}
-							role="button"
-							tabindex="0"
-							onclick={() => handleThreadSelect(thread.id)}
-							onkeydown={(e) => e.key === 'Enter' && handleThreadSelect(thread.id)}
-						>
-							<div class="thread-title">{thread.title || 'Untitled'}</div>
-							<div class="thread-meta">
-								<span>{thread.message_count} msgs</span>
-								<span>{formatRelativeTime(thread.updated_at)}</span>
-							</div>
-							<button
-								type="button"
-								class="thread-delete"
-								onclick={(e) => { e.stopPropagation(); deleteThread(thread.id); }}
-								title="Delete conversation"
-							>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-									<path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-								</svg>
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	</aside>
+	{/if}
 
-	<!-- Main content -->
-	<div class="main-content">
-		<header class="page-header">
-			<div class="header-left">
-				<button
-					type="button"
-					class="sidebar-toggle"
-					onclick={() => showSidebar = !showSidebar}
-					title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
-				>
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M3 12h18M3 6h18M3 18h18"/>
-					</svg>
-				</button>
-				<div class="header-content">
-					<h1>Brewing Assistant</h1>
-					<p class="subtitle">AI-powered recipe creation and brewing advice</p>
-				</div>
-			</div>
-			<div class="settings">
-				<button
-					type="button"
-					class="debug-toggle"
-					class:active={showDebugPanel}
-					onclick={() => showDebugPanel = !showDebugPanel}
-					title="Toggle agent debug panel"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-					</svg>
-				</button>
-			</div>
-		</header>
-
-		<main class="chat-container" bind:this={messagesContainer}>
-		{#if agent.messages.length === 0}
-			<!-- Empty state with example prompts -->
-			<div class="empty-state">
-				<div class="empty-icon">
-					<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M12 2L2 7l10 5 10-5-10-5z"/>
-						<path d="M2 17l10 5 10-5"/>
-						<path d="M2 12l10 5 10-5"/>
-					</svg>
-				</div>
-				<h2>Start a conversation</h2>
-				<p class="empty-description">Ask about recipes, techniques, or ingredients</p>
-				<div class="example-prompts">
-					{#each examplePrompts as prompt}
-						<button type="button" class="prompt-chip" onclick={() => usePrompt(prompt)}>
-							{prompt}
-						</button>
-					{/each}
-				</div>
-			</div>
-		{:else}
-			<!-- Message list -->
-			<div class="messages">
-				{#each agent.messages as message (message.id)}
-					<div class="message {message.role}">
-						<div class="message-avatar">
-							{#if message.role === 'user'}
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-									<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-								</svg>
-							{:else}
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-									<path d="M12 2L2 7l10 5 10-5-10-5z"/>
-									<path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" fill="none"/>
-								</svg>
-							{/if}
-						</div>
-						<div class="message-content">
-							{#if message.role === 'assistant' && agent.isStreaming && message.id === agent._agentState.streamingMessageId}
-								<!-- Streaming message -->
-								<div class="message-text streaming">
-									{@html renderMarkdown(agent.streamingContent || '')}
-									<span class="cursor"></span>
-								</div>
-							{:else}
-								<div class="message-text">
-									{@html renderMarkdown(message.content)}
-								</div>
-							{/if}
-						</div>
-					</div>
-				{/each}
-
-				{#each hopInventoryPlans as card (card.id)}
-					<HopInventoryConfirmCard plan={card.plan} />
-				{/each}
-
-				{#if agent.isRunning && !agent.isStreaming}
-					<!-- Loading indicator -->
-					<div class="message assistant">
-						<div class="message-avatar">
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-								<path d="M12 2L2 7l10 5 10-5-10-5z"/>
-								<path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" fill="none"/>
-							</svg>
-						</div>
-						<div class="message-content">
-							<div class="typing-indicator" role="status" aria-live="polite">
-								<span></span><span></span><span></span>
-								<em class="activity-label">{activityLabel}</em>
-							</div>
-						</div>
+	{#snippet footer()}
+		<ChatComposer bind:value={input} bind:inputEl {busy} disabled={composerOff} {placeholder} onSend={send} onStop={() => chat?.stop()}>
+			{#snippet context()}
+				{#if batch}
+					<div class="ctx" class:off={!useContext}>
+						<span class="ctx-label">Context</span>
+						<span class="ctx-text">Batch #{batch.batch_number ?? batch.id}{batch.name ? ` · ${batch.name}` : ''} · {batch.status}</span>
+						<button type="button" aria-pressed={useContext} onclick={() => (useContext = !useContext)}>{useContext ? 'Remove' : 'Add'}</button>
 					</div>
 				{/if}
-			</div>
-		{/if}
-
-		{#if agent.error}
-			<div class="error-banner">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-					<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-				</svg>
-				<span>{agent.error}</span>
-				<button type="button" onclick={() => agent._agentState.clearError()}>Dismiss</button>
-			</div>
-		{/if}
-
-		{#if showDebugPanel}
-			<div class="debug-panel">
-				<div class="debug-header">
-					<h3>Agent Debug</h3>
-					<button type="button" class="debug-close" onclick={() => showDebugPanel = false}>×</button>
-				</div>
-				<div class="debug-content">
-					<div class="debug-section">
-						<div class="debug-label">Status</div>
-						<div class="debug-value">
-							<span class="status-badge" class:running={agent.isRunning} class:streaming={agent.isStreaming}>
-								{agent.status}
-								{#if agent.isStreaming}(streaming){/if}
-							</span>
-						</div>
-					</div>
-
-					{#if agent.threadId}
-						<div class="debug-section">
-							<div class="debug-label">Thread</div>
-							<div class="debug-value mono">{agent.threadId.slice(0, 8)}...</div>
-						</div>
-					{/if}
-
-					<div class="debug-section">
-						<div class="debug-label">Messages</div>
-						<div class="debug-value">{agent.messages.length}</div>
-					</div>
-
-					{#if toolCallsArray.length > 0}
-						<div class="debug-section tool-calls-section">
-							<div class="debug-label">Tool Calls ({toolCallsArray.length})</div>
-							<div class="tool-calls-list">
-								{#each toolCallsArray as tool (tool.id)}
-									<div class="tool-call" class:running={tool.status === 'running'} class:completed={tool.status === 'completed'}>
-										<div class="tool-call-header">
-											<span class="tool-name">{tool.name}</span>
-											<span class="tool-status">{tool.status}</span>
-										</div>
-										{#if tool.args}
-											<details class="tool-details">
-												<summary>Arguments</summary>
-												<pre class="tool-json">{formatJson(tool.args)}</pre>
-											</details>
-										{/if}
-										{#if tool.result}
-											<details class="tool-details">
-												<summary>Result</summary>
-												<pre class="tool-json">{formatJson(tool.result)}</pre>
-											</details>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					{#if Object.keys(agent.sharedState).length > 0}
-						<div class="debug-section">
-							<div class="debug-label">Shared State</div>
-							<details class="tool-details">
-								<summary>{Object.keys(agent.sharedState).length} keys</summary>
-								<pre class="tool-json">{JSON.stringify(agent.sharedState, null, 2)}</pre>
-							</details>
-						</div>
-					{/if}
-				</div>
-			</div>
-		{/if}
-	</main>
-
-	<footer class="input-area">
-		<div class="input-wrapper">
-			<textarea
-				bind:this={inputRef}
-				bind:value={input}
-				placeholder="Ask about brewing..."
-				rows="1"
-				oninput={(e) => autoResize(e.currentTarget)}
-				onkeydown={handleKeydown}
-				disabled={agent.isRunning}
-			></textarea>
-			<button
-				type="button"
-				class="send-button"
-				onclick={handleSend}
-				disabled={!input.trim() || agent.isRunning}
-			>
-				{#if agent.isRunning}
-					<svg class="spinner" width="20" height="20" viewBox="0 0 24 24">
-						<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31.4" stroke-dashoffset="10"/>
-					</svg>
-				{:else}
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-					</svg>
-				{/if}
-			</button>
-		</div>
-		<div class="input-hint">
-			Press Enter to send, Shift+Enter for new line
-		</div>
-	</footer>
-	</div><!-- end main-content -->
-</div>
-
-<script lang="ts" module>
-	// Format JSON for display
-	function formatJson(str: string): string {
-		try {
-			const parsed = JSON.parse(str);
-			return JSON.stringify(parsed, null, 2);
-		} catch {
-			return str;
-		}
-	}
-
-</script>
+			{/snippet}
+		</ChatComposer>
+	{/snippet}
+</ChatShell>
 
 <style>
-	.assistant-page {
-		display: flex;
-		flex-direction: row;
-		/* Account for nav (56px) + layout padding (24px top + 24px bottom) */
-		height: calc(100vh - 56px - 48px);
-		max-height: calc(100vh - 56px - 48px);
-		background: var(--bg-base);
-		margin: -24px -16px; /* Offset the layout padding */
-		width: calc(100% + 32px);
-	}
-
-	/* Mobile: use dvh to account for browser chrome (address bar, etc.) */
-	@media (max-width: 767px) {
-		.assistant-page {
-			/* Use dvh for mobile browsers, with vh fallback */
-			height: calc(100vh - 56px - 48px);
-			height: calc(100dvh - 56px - 48px);
-			max-height: calc(100vh - 56px - 48px);
-			max-height: calc(100dvh - 56px - 48px);
-		}
-	}
-
-	@media (min-width: 640px) {
-		.assistant-page {
-			margin: -24px -24px;
-			width: calc(100% + 48px);
-		}
-	}
-
-	@media (min-width: 1024px) {
-		.assistant-page {
-			margin: -24px -32px;
-			width: calc(100% + 64px);
-		}
-	}
-
-	/* Sidebar backdrop for mobile */
-	.sidebar-backdrop {
-		display: none;
-	}
-
-	@media (max-width: 767px) {
-		.sidebar-backdrop {
-			display: block;
-			position: fixed;
-			inset: 0;
-			background: rgba(0, 0, 0, 0.5);
-			z-index: 40;
-			border: none;
-			cursor: pointer;
-		}
-	}
-
-	/* Sidebar */
-	.sidebar {
-		width: 280px;
-		flex-shrink: 0;
-		display: none;
-		flex-direction: column;
-		background: var(--bg-surface);
-		border-right: 1px solid var(--border-subtle);
-	}
-
-	.sidebar.open {
-		display: flex;
-	}
-
-	/* Mobile: sidebar as fixed drawer overlay */
-	@media (max-width: 767px) {
-		.sidebar {
-			position: fixed;
-			left: 0;
-			top: 0;
-			bottom: 0;
-			z-index: 50;
-			transform: translateX(-100%);
-			transition: transform 0.2s ease-out;
-			display: flex;
-		}
-
-		.sidebar.open {
-			transform: translateX(0);
-		}
-	}
-
-	.sidebar-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: var(--space-4);
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.sidebar-header h2 {
-		margin: 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.new-chat-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		background: var(--accent);
-		border: none;
-		border-radius: 6px;
-		color: var(--accent-ink);
-		cursor: pointer;
-		transition: background var(--transition);
-	}
-
-	.new-chat-btn:hover {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.sidebar-content {
-		flex: 1;
-		overflow-y: auto;
-		padding: var(--space-2);
-	}
-
-	.sidebar-loading,
-	.sidebar-empty {
-		padding: var(--space-4);
-		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.875rem;
-	}
-
-	.thread-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-	}
-
-	.thread-item {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		width: 100%;
-		padding: var(--space-3);
-		background: transparent;
-		border: none;
-		border-radius: 8px;
-		cursor: pointer;
-		text-align: left;
-		transition: background var(--transition);
-		position: relative;
-	}
-
-	.thread-item:hover {
-		background: var(--bg-hover);
-	}
-
-	.thread-item.active {
-		background: var(--accent-muted);
-	}
-
-	.thread-title {
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		width: 100%;
-		padding-right: 24px;
-	}
-
-	.thread-meta {
-		display: flex;
-		gap: var(--space-2);
-		margin-top: var(--space-1);
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
-	.thread-delete {
-		position: absolute;
-		top: 50%;
-		right: var(--space-2);
-		transform: translateY(-50%);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		background: none;
-		border: none;
-		border-radius: 4px;
-		color: var(--text-muted);
-		cursor: pointer;
-		opacity: 0;
-		transition: all var(--transition);
-	}
-
-	.thread-item:hover .thread-delete {
-		opacity: 1;
-	}
-
-	.thread-delete:hover {
-		background: var(--negative-muted, rgba(239, 68, 68, 0.1));
-		color: var(--negative);
-	}
-
-	/* Main content */
-	.main-content {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		min-height: 0; /* Critical for flex shrinking */
-		overflow: hidden;
-	}
-
-	/* Main content takes full width when sidebar is closed */
-	.assistant-page:not(.sidebar-open) .main-content {
-		width: 100%;
-	}
-
-	/* On mobile, main content always takes full width */
-	@media (max-width: 767px) {
-		.assistant-page .main-content {
-			width: 100%;
-		}
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-	}
-
-	.sidebar-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 8px;
-		color: var(--text-muted);
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.sidebar-toggle:hover {
-		background: var(--bg-hover);
-		color: var(--text-secondary);
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		padding: var(--space-4) var(--space-6);
-		border-bottom: 1px solid var(--border-subtle);
-		background: var(--bg-surface);
-		gap: var(--space-3);
-	}
-
-	@media (max-width: 767px) {
-		.page-header {
-			padding: var(--space-3) var(--space-4);
-			flex-wrap: wrap;
-		}
-	}
-
-	.header-content h1 {
-		margin: 0;
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.subtitle {
-		margin: var(--space-1) 0 0;
-		font-size: 0.875rem;
-		color: var(--text-muted);
-	}
-
-	@media (max-width: 767px) {
-		.subtitle {
-			display: none;
-		}
-
-		.header-content h1 {
-			font-size: 1.125rem;
-		}
-	}
-
-	.settings {
-		display: flex;
-		gap: var(--space-4);
-	}
-
-	@media (max-width: 767px) {
-		.settings {
-			display: none;
-		}
-	}
-
-	.setting {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: 0.875rem;
-		color: var(--text-secondary);
-	}
-
-	.setting input {
-		width: 60px;
-		padding: var(--space-1) var(--space-2);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 4px;
-		color: var(--text-primary);
-		font-size: 0.875rem;
-		text-align: right;
-	}
-
-	.setting input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.chat-container {
-		flex: 1;
-		overflow-y: auto;
-		padding: var(--space-4);
-		min-height: 0; /* Allow flex shrinking */
-	}
-
-	@media (max-width: 767px) {
-		.chat-container {
-			padding: var(--space-3);
-		}
-	}
-
-	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		min-height: 200px;
-		padding: var(--space-4) 0;
-		text-align: center;
-		color: var(--text-secondary);
-	}
-
-	.empty-icon {
-		color: var(--text-muted);
-		margin-bottom: var(--space-2);
-	}
-
-	.empty-state h2 {
-		margin: 0 0 var(--space-1);
-		font-size: 1rem;
-		font-weight: 500;
-		color: var(--text-primary);
-	}
-
-	.empty-description {
-		margin: 0 0 var(--space-3);
-		font-size: 0.875rem;
-	}
-
-	.example-prompts {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: var(--space-2);
-		max-width: 600px;
-	}
-
-	.prompt-chip {
-		padding: var(--space-2) var(--space-3);
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 16px;
-		color: var(--text-secondary);
-		font-size: 0.8125rem;
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.prompt-chip:hover {
-		background: var(--bg-hover);
-		border-color: var(--border-default);
-		color: var(--text-primary);
-	}
-
-	.messages {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-		max-width: 800px;
-		margin: 0 auto;
-	}
-
-	.message {
-		display: flex;
-		gap: var(--space-3);
-	}
-
-	.message-avatar {
-		flex-shrink: 0;
-		width: 32px;
-		height: 32px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 50%;
-		background: var(--bg-elevated);
-		color: var(--text-muted);
-	}
-
-	.message.user .message-avatar {
-		background: var(--accent-muted);
-		color: var(--accent);
-	}
-
-	.message.assistant .message-avatar {
-		background: var(--recipe-accent-muted);
-		color: var(--recipe-accent);
-	}
-
-	.message-content {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.message-text {
-		padding: var(--space-3) var(--space-4);
-		background: var(--bg-surface);
-		border-radius: 12px;
-		border-top-left-radius: 4px;
-		color: var(--text-primary);
-		line-height: 1.6;
-	}
-
-	.message.user .message-text {
-		background: var(--accent-muted);
-		border-top-left-radius: 12px;
-		border-top-right-radius: 4px;
-	}
-
-	.message-text :global(code) {
-		font-family: var(--font-mono);
-		background: var(--bg-elevated);
-		padding: 2px 6px;
-		border-radius: 4px;
-		font-size: 0.9em;
-	}
-
-	.message-text :global(pre) {
-		background: var(--bg-elevated);
-		padding: var(--space-3);
-		border-radius: 8px;
-		overflow-x: auto;
-		margin: var(--space-2) 0;
-	}
-
-	.message-text :global(pre code) {
-		background: none;
-		padding: 0;
-	}
-
-	.message-text :global(strong) {
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.message-text :global(a) {
-		color: var(--accent);
-		text-decoration: none;
-	}
-
-	.message-text :global(a:hover) {
-		text-decoration: underline;
-	}
-
-	.message-text :global(h2),
-	.message-text :global(h3),
-	.message-text :global(h4) {
-		margin: var(--space-3) 0 var(--space-2);
-		font-weight: 600;
-		color: var(--text-primary);
-		line-height: 1.3;
-	}
-
-	.message-text :global(h2) {
-		font-size: 1.25rem;
-	}
-
-	.message-text :global(h3) {
-		font-size: 1.1rem;
-	}
-
-	.message-text :global(h4) {
-		font-size: 1rem;
-	}
-
-	.message-text :global(h2:first-child),
-	.message-text :global(h3:first-child),
-	.message-text :global(h4:first-child) {
-		margin-top: 0;
-	}
-
-	.message-text :global(ul),
-	.message-text :global(ol) {
-		margin: var(--space-2) 0;
-		padding-left: 1.5rem;
-	}
-
-	.message-text :global(li) {
-		margin: var(--space-1) 0;
-		line-height: 1.5;
-	}
-
-	.message-text :global(p) {
-		margin: 0 0 var(--space-2);
-	}
-
-	.message-text :global(p:last-child) {
-		margin-bottom: 0;
-	}
-
-	.message-text :global(table) {
-		display: block;
-		overflow-x: auto;
-		border-collapse: collapse;
-		margin: var(--space-2) 0;
-		font-size: 0.9em;
-	}
-
-	.message-text :global(th),
-	.message-text :global(td) {
-		padding: var(--space-1) var(--space-3);
-		border-bottom: 1px solid var(--border-subtle);
-		text-align: left;
-	}
-
-	.message-text :global(th) {
-		color: var(--text-secondary);
-		font-weight: 600;
-	}
-
-	.message-text :global(hr) {
-		margin: var(--space-3) 0;
-		border: none;
-		border-top: 1px solid var(--border-subtle);
-	}
-
-	.streaming .cursor {
-		display: inline-block;
-		width: 2px;
-		height: 1em;
-		background: var(--text-primary);
-		margin-left: 2px;
-		animation: blink 1s infinite;
-	}
-
-	@keyframes blink {
-		0%, 50% { opacity: 1; }
-		51%, 100% { opacity: 0; }
-	}
-
-	.typing-indicator {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: var(--space-3) var(--space-4);
-	}
-
-	.typing-indicator span {
-		width: 8px;
-		height: 8px;
-		background: var(--text-muted);
-		border-radius: 50%;
-		animation: bounce 1.4s infinite ease-in-out both;
-	}
-
-	.activity-label {
-		margin-left: var(--space-2);
-		font-size: 0.85em;
-		font-style: normal;
-		color: var(--text-muted);
-	}
-
-	.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-	.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-
-	@keyframes bounce {
-		0%, 80%, 100% { transform: scale(0); }
-		40% { transform: scale(1); }
-	}
-
-	.error-banner {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-3) var(--space-4);
-		background: var(--error-bg);
-		border-radius: 8px;
-		color: var(--negative);
-		font-size: 0.875rem;
-		margin-top: var(--space-4);
-	}
-
-	.error-banner button {
-		margin-left: auto;
-		padding: var(--space-1) var(--space-2);
-		background: none;
-		border: 1px solid currentColor;
-		border-radius: 4px;
-		color: inherit;
-		cursor: pointer;
-		font-size: 0.75rem;
-	}
-
-	.input-area {
-		padding: var(--space-4) var(--space-6);
-		border-top: 1px solid var(--border-subtle);
-		background: var(--bg-surface);
-	}
-
-	@media (max-width: 767px) {
-		.input-area {
-			padding: var(--space-3) var(--space-4);
-		}
-	}
-
-	.input-wrapper {
-		display: flex;
-		gap: var(--space-2);
-		align-items: flex-end;
-		max-width: 800px;
-		margin: 0 auto;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 12px;
-		padding: var(--space-2);
-	}
-
-	.input-wrapper:focus-within {
-		border-color: var(--accent);
-	}
-
-	.input-wrapper textarea {
-		flex: 1;
-		padding: var(--space-2) var(--space-3);
-		background: none;
-		border: none;
-		color: var(--text-primary);
-		font-family: var(--font-sans);
-		font-size: 0.9375rem;
-		line-height: 1.5;
-		resize: none;
-		min-height: 24px;
-		max-height: 200px;
-	}
-
-	.input-wrapper textarea:focus {
-		outline: none;
-	}
-
-	.input-wrapper textarea::placeholder {
-		color: var(--text-muted);
-	}
-
-	.send-button {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		background: var(--accent);
-		border: none;
-		border-radius: 8px;
-		color: var(--accent-ink);
-		cursor: pointer;
-		transition: background var(--transition);
-	}
-
-	.send-button:hover:not(:disabled) {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.send-button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.spinner {
-		animation: spin 1s linear infinite;
-	}
-
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-
-	.input-hint {
-		text-align: center;
-		margin-top: var(--space-2);
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
-	@media (max-width: 767px) {
-		.input-hint {
-			display: none;
-		}
-	}
-
-	/* Debug toggle button */
-	.debug-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 6px;
-		color: var(--text-muted);
-		cursor: pointer;
-		transition: all var(--transition);
-	}
-
-	.debug-toggle:hover {
-		background: var(--bg-hover);
-		color: var(--text-secondary);
-	}
-
-	.debug-toggle.active {
-		background: var(--accent-muted);
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-
-	/* Debug panel */
-	.debug-panel {
-		position: fixed;
-		bottom: 80px;
-		right: var(--space-4);
-		width: 360px;
-		max-height: 60vh;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 12px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-		overflow: hidden;
-		display: flex;
-		flex-direction: column;
-		z-index: 100;
-	}
-
-	.debug-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: var(--space-3) var(--space-4);
-		background: var(--bg-elevated);
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.debug-header h3 {
-		margin: 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-	}
-
-	.debug-close {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		background: none;
-		border: none;
-		border-radius: 4px;
-		color: var(--text-muted);
-		font-size: 1.25rem;
-		cursor: pointer;
-	}
-
-	.debug-close:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.debug-content {
-		flex: 1;
-		overflow-y: auto;
-		padding: var(--space-3);
-	}
-
-	.debug-section {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-		padding: var(--space-2) 0;
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.debug-section:last-child {
-		border-bottom: none;
-	}
-
-	.debug-label {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.debug-value {
-		font-size: 0.875rem;
-		color: var(--text-primary);
-	}
-
-	.debug-value.mono {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-	}
-
-	.status-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-1);
-		padding: var(--space-1) var(--space-2);
-		background: var(--bg-elevated);
-		border-radius: 4px;
-		font-size: 0.75rem;
-		font-weight: 500;
-	}
-
-	.status-badge.running {
-		background: var(--accent-muted);
-		color: var(--accent);
-	}
-
-	.status-badge.streaming {
-		background: var(--positive-muted, rgba(34, 197, 94, 0.1));
-		color: var(--positive);
-	}
-
-	/* Tool calls */
-	.tool-calls-section {
-		flex-direction: column;
-	}
-
-	.tool-calls-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-		margin-top: var(--space-2);
-	}
-
-	.tool-call {
-		background: var(--bg-elevated);
-		border-radius: 8px;
-		padding: var(--space-2) var(--space-3);
-		border-left: 3px solid var(--text-muted);
-	}
-
-	.tool-call.running {
-		border-left-color: var(--accent);
-		background: var(--accent-muted);
-	}
-
-	.tool-call.completed {
-		border-left-color: var(--positive);
-	}
-
-	.tool-call-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.tool-name {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-primary);
-	}
-
-	.tool-status {
-		font-size: 0.6875rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.tool-call.running .tool-status {
-		color: var(--accent);
-	}
-
-	.tool-call.completed .tool-status {
-		color: var(--positive);
-	}
-
-	.tool-details {
-		margin-top: var(--space-2);
-	}
-
-	.tool-details summary {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		cursor: pointer;
-		user-select: none;
-	}
-
-	.tool-details summary:hover {
-		color: var(--text-secondary);
-	}
-
-	.tool-json {
-		margin: var(--space-2) 0 0;
-		padding: var(--space-2);
-		background: var(--bg-deep);
-		border-radius: 4px;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		line-height: 1.5;
-		color: var(--text-secondary);
-		overflow-x: auto;
-		max-height: 150px;
-		overflow-y: auto;
-	}
+	.quiet { margin: 0; font-size: var(--text-sm); color: var(--ink-secondary); }
+	.working { display: flex; align-items: center; gap: var(--space-sm); }
+	.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+	@keyframes pulse { 0%, 100% { opacity: 0.35; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.1); } }
+	@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+	.empty { margin: auto 0; display: flex; flex-direction: column; gap: var(--space-md); }
+	.empty h2 { margin: 0; word-spacing: 0.08em; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; }
+	.prompts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); }
+	.prompts button {
+		width: 100%; min-height: 56px; padding: var(--space-sm) var(--space-md); text-align: left; cursor: pointer;
+		font: inherit; font-size: var(--text-sm); color: var(--ink-primary); background: transparent; border: 1px solid var(--rule-strong);
+		transition: border-color 150ms var(--ease-out-quart, ease-out);
+	}
+	.prompts button:hover { border-color: var(--accent-rule); background: var(--bg-surface); }
+	.prompts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	@media (max-width: 560px) { .prompts { grid-template-columns: 1fr; } }
+
+	.callout { padding: var(--space-md); background: var(--error-bg); border: 1px solid color-mix(in oklch, var(--status-danger) 45%, transparent); color: var(--ink-primary); font-size: var(--text-sm); }
+	.callout p { margin: 0 0 var(--space-sm); }
+	.row { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+	.callout button { min-height: 44px; padding: 0 var(--space-md); font: inherit; font-size: var(--text-sm); color: var(--ink-primary); background: transparent; border: 1px solid var(--rule-strong); cursor: pointer; }
+	.callout button:hover { background: var(--bg-subtle); }
+
+	.ctx { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; padding: 0 var(--space-sm); border: 1px solid var(--rule-hairline); background: var(--bg-elevated); font-size: 0.8125rem; color: var(--ink-secondary); }
+	.ctx::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--status-steady); flex: none; }
+	.ctx.off { background: transparent; }
+	.ctx.off::before { background: var(--ink-muted); }
+	.ctx-label { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+	.ctx-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.ctx button { min-height: 44px; padding: 0 var(--space-sm); font: inherit; font-size: 0.8125rem; background: none; border: 0; color: var(--ink-secondary); text-decoration: underline; cursor: pointer; }
 </style>

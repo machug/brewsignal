@@ -61,6 +61,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ai_temperature": 0.7,
     "ai_max_tokens": 2000,
     "ai_memory_auto_extract": True,
+    "ai_lite_enabled": False,
     # MQTT settings for Home Assistant
     "mqtt_enabled": False,
     "mqtt_host": "",

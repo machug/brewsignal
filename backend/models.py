@@ -1369,6 +1369,7 @@ class ConfigUpdate(BaseModel):
     ai_temperature: Optional[float] = None
     ai_max_tokens: Optional[int] = None
     ai_memory_auto_extract: Optional[bool] = None  # mem0 fact extraction after each chat turn
+    ai_lite_enabled: Optional[bool] = None  # title summaries via local hailo-ollama when running
     # MQTT settings for Home Assistant
     mqtt_enabled: Optional[bool] = None
     mqtt_host: Optional[str] = None
@@ -1522,6 +1523,7 @@ class ConfigResponse(BaseModel):
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
     ai_memory_auto_extract: bool = True
+    ai_lite_enabled: bool = False
     # MQTT settings for Home Assistant
     mqtt_enabled: bool = False
     mqtt_host: str = ""

@@ -53,23 +53,81 @@
 	<title>Authenticating... - BrewSignal</title>
 </svelte:head>
 
-<div class="min-h-screen flex items-center justify-center bg-zinc-900 px-4">
-	<div class="text-center">
+<div class="auth-page">
+	<div class="center">
 		{#if error}
-			<div class="bg-red-500/10 border border-red-500/30 rounded-lg p-6 max-w-md">
-				<p class="text-red-400 mb-4">{error}</p>
-				<a href="/login" class="text-amber-500 hover:text-amber-400">
-					Back to login
-				</a>
+			<div class="notice" role="alert">
+				<p class="msg-error">{error}</p>
+				<a href="/login" class="back">Back to login</a>
 			</div>
 		{:else}
-			<div class="flex flex-col items-center gap-4">
-				<svg class="animate-spin w-8 h-8 text-amber-500" viewBox="0 0 24 24" fill="none">
-					<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
-					<path fill="currentColor" class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+			<div class="busy" role="status">
+				<svg class="spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="o25" />
+					<path fill="currentColor" class="o75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
 				</svg>
-				<p class="text-zinc-400">Completing authentication...</p>
+				<p>Completing authentication&hellip;</p>
 			</div>
 		{/if}
 	</div>
 </div>
+
+<style>
+	.auth-page {
+		min-height: 100vh;
+		min-height: 100dvh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-md);
+		background: var(--bg-canvas);
+		color: var(--ink-secondary);
+	}
+	.center {
+		text-align: center;
+	}
+	.notice {
+		max-width: 22rem;
+		padding: var(--space-md);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent);
+		border-radius: 4px;
+	}
+	.msg-error {
+		color: var(--status-danger);
+		margin-bottom: var(--space-sm);
+	}
+	.back {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		color: var(--accent);
+		font-family: var(--font-display);
+		font-weight: 600;
+	}
+	.back:hover {
+		color: var(--accent-hover);
+	}
+	.busy {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-sm);
+	}
+	.spin {
+		width: 2rem;
+		height: 2rem;
+		color: var(--accent);
+		animation: spin 0.9s linear infinite;
+	}
+	.o25 {
+		opacity: 0.25;
+	}
+	.o75 {
+		opacity: 0.75;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+</style>

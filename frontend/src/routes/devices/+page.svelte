@@ -15,6 +15,11 @@
 	let tokenLoading = $state(false);
 	let copied = $state<string | null>(null);
 
+	const ingestItems = [
+		{ key: 'gravitymon', name: 'GravityMon', hint: "Enter this URL in your GravityMon's HTTP Post settings", href: 'https://github.com/mp-se/gravitymon/wiki' },
+		{ key: 'ispindel', name: 'iSpindel', hint: "Enter this URL in your iSpindel's HTTP configuration", href: 'https://www.ispindel.de/docs/README_en.html' }
+	] as const;
+
 	onMount(async () => {
 		// Try to load from cache first for instant display
 		const cached = deviceCache.getCachedDevices();
@@ -175,13 +180,94 @@
 	<title>Devices | BrewSignal</title>
 </svelte:head>
 
+{#snippet ingestRows()}
+	<ul class="ledger setup-ledger">
+		{#each ingestItems as item}
+			<li class="setup-row">
+				<div class="setup-meta">
+					<h3 class="setup-name">{item.name}</h3>
+					<p class="setup-description">{item.hint}</p>
+					<a href={item.href} target="_blank" rel="noopener" class="docs-link">
+						{item.name} setup guide
+					</a>
+				</div>
+				<div class="url-display">
+					<code>{getIngestUrl(item.key)}</code>
+					<button class="btn-secondary btn-sm" onclick={() => copyToClipboard(getIngestUrl(item.key), item.key)}>
+						{copied === item.key ? 'Copied' : 'Copy'}
+					</button>
+				</div>
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
+{#snippet deviceRow(device: DeviceResponse, paired: boolean)}
+	<li class="device-row">
+		<div class="device-info">
+			{#if device.device_type === 'tilt' && device.color}
+				<span class="swatch" style="background: var(--tilt-{device.color.toLowerCase()})" aria-hidden="true"></span>
+			{:else}
+				<span class="type-badge">{getDeviceTypeLabel(device.device_type)}</span>
+			{/if}
+			<div class="device-id-block">
+				<h3 class="device-name">{getDeviceDisplayName(device)}</h3>
+				<p class="device-id">{device.id}</p>
+			</div>
+		</div>
+
+		<div class="device-status-cell">
+			<span class="pill" class:pill-on={paired}>{paired ? 'Paired' : 'Unpaired'}</span>
+		</div>
+
+		<dl class="readouts">
+			{#if device.beer_name}
+				<div class="readout">
+					<dt>Beer</dt>
+					<dd class="text-val">{device.beer_name}</dd>
+				</div>
+			{/if}
+			<div class="readout">
+				<dt>Last seen</dt>
+				<dd>{timeSince(device.last_seen)}</dd>
+			</div>
+			{#if device.device_type === 'tilt' && device.mac}
+				<div class="readout">
+					<dt>MAC</dt>
+					<dd>{device.mac}</dd>
+				</div>
+			{/if}
+			{#if (device.device_type === 'ispindel' || device.device_type === 'gravitymon') && device.battery_voltage !== null && Number.isFinite(device.battery_voltage)}
+				<div class="readout">
+					<dt>Battery</dt>
+					<dd>{device.battery_voltage.toFixed(2)}&thinsp;V</dd>
+				</div>
+			{/if}
+			{#if device.firmware_version}
+				<div class="readout">
+					<dt>Firmware</dt>
+					<dd>{device.firmware_version}</dd>
+				</div>
+			{/if}
+		</dl>
+
+		<div class="device-action">
+			{#if paired}
+				<button onclick={() => handleUnpair(device.id)} class="btn-secondary btn-sm">Unpair Device</button>
+			{:else}
+				<button onclick={() => handlePair(device.id)} class="btn-primary btn-sm">Pair Device</button>
+			{/if}
+		</div>
+	</li>
+{/snippet}
+
 <div class="page-header">
 	<h1 class="page-title">Devices</h1>
 	<p class="page-description">Manage your hydrometer devices (Tilt, iSpindel, GravityMon)</p>
 </div>
 
 <!-- HTTP Device Setup Section -->
-<section class="setup-section">
+<section class="section">
 	<h2 class="section-title">HTTP Device Setup</h2>
 	<p class="section-description">
 		Configure your GravityMon or iSpindel to send data to BrewSignal
@@ -189,47 +275,7 @@
 
 	{#if config.isLocalMode}
 		{#if systemIp}
-			<div class="setup-cards">
-				<div class="setup-card">
-					<div class="setup-card-header">
-						<span class="setup-icon">📡</span>
-						<h3>GravityMon</h3>
-					</div>
-					<p class="setup-description">Enter this URL in your GravityMon's HTTP Post settings</p>
-					<div class="url-display">
-						<code>{getIngestUrl('gravitymon')}</code>
-						<button
-							class="copy-btn"
-							onclick={() => copyToClipboard(getIngestUrl('gravitymon'), 'gravitymon')}
-						>
-							{copied === 'gravitymon' ? '✓ Copied' : 'Copy'}
-						</button>
-					</div>
-					<a href="https://github.com/mp-se/gravitymon/wiki" target="_blank" rel="noopener" class="docs-link">
-						GravityMon Setup Guide →
-					</a>
-				</div>
-
-				<div class="setup-card">
-					<div class="setup-card-header">
-						<span class="setup-icon">🧪</span>
-						<h3>iSpindel</h3>
-					</div>
-					<p class="setup-description">Enter this URL in your iSpindel's HTTP configuration</p>
-					<div class="url-display">
-						<code>{getIngestUrl('ispindel')}</code>
-						<button
-							class="copy-btn"
-							onclick={() => copyToClipboard(getIngestUrl('ispindel'), 'ispindel')}
-						>
-							{copied === 'ispindel' ? '✓ Copied' : 'Copy'}
-						</button>
-					</div>
-					<a href="https://www.ispindel.de/docs/README_en.html" target="_blank" rel="noopener" class="docs-link">
-						iSpindel Setup Guide →
-					</a>
-				</div>
-			</div>
+			{@render ingestRows()}
 
 			<div class="setup-note">
 				<strong>Tilt Hydrometers</strong> are automatically detected via Bluetooth - no configuration needed.
@@ -242,57 +288,18 @@
 		{#if tokenLoading}
 			<div class="setup-loading">Loading your ingest token...</div>
 		{:else if ingestToken}
-			<div class="setup-cards">
-				<div class="setup-card">
-					<div class="setup-card-header">
-						<span class="setup-icon">📡</span>
-						<h3>GravityMon</h3>
-					</div>
-					<p class="setup-description">Enter this URL in your GravityMon's HTTP Post settings</p>
-					<div class="url-display">
-						<code>{getIngestUrl('gravitymon')}</code>
-						<button
-							class="copy-btn"
-							onclick={() => copyToClipboard(getIngestUrl('gravitymon'), 'gravitymon')}
-						>
-							{copied === 'gravitymon' ? '✓ Copied' : 'Copy'}
-						</button>
-					</div>
-					<a href="https://github.com/mp-se/gravitymon/wiki" target="_blank" rel="noopener" class="docs-link">
-						GravityMon Setup Guide →
-					</a>
-				</div>
-
-				<div class="setup-card">
-					<div class="setup-card-header">
-						<span class="setup-icon">🧪</span>
-						<h3>iSpindel</h3>
-					</div>
-					<p class="setup-description">Enter this URL in your iSpindel's HTTP configuration</p>
-					<div class="url-display">
-						<code>{getIngestUrl('ispindel')}</code>
-						<button
-							class="copy-btn"
-							onclick={() => copyToClipboard(getIngestUrl('ispindel'), 'ispindel')}
-						>
-							{copied === 'ispindel' ? '✓ Copied' : 'Copy'}
-						</button>
-					</div>
-					<a href="https://www.ispindel.de/docs/README_en.html" target="_blank" rel="noopener" class="docs-link">
-						iSpindel Setup Guide →
-					</a>
-				</div>
-			</div>
+			{@render ingestRows()}
 
 			<div class="token-section">
 				<p class="token-note">
-					Your ingest token: <code class="token-display">{ingestToken.slice(0, 8)}...{ingestToken.slice(-4)}</code>
+					Ingest token <code class="token-display">{ingestToken.slice(0, 8)}...{ingestToken.slice(-4)}</code>
 				</p>
 				<button class="btn-secondary btn-sm" onclick={regenerateToken} disabled={tokenLoading}>
 					Regenerate Token
 				</button>
 				<p class="token-warning">
-					⚠️ Regenerating will invalidate URLs configured in your devices
+					<span class="pill pill-warn">Warning</span>
+					Regenerating will invalidate URLs configured in your devices
 				</p>
 			</div>
 
@@ -301,7 +308,7 @@
 				<a href="/system">Configure your gateway</a> in System Settings.
 			</div>
 		{:else}
-			<div class="setup-error">Unable to load ingest token. Please try refreshing the page.</div>
+			<div class="setup-error" role="alert">Unable to load ingest token. Please try refreshing the page.</div>
 		{/if}
 	{/if}
 </section>
@@ -309,550 +316,369 @@
 {#if loading}
 	<div class="loading-state">Loading devices...</div>
 {:else if error}
-	<div class="error-state">
+	<div class="error-state" role="alert">
 		<p>{error}</p>
 		<button onclick={() => loadDevices(true)} class="btn-secondary">Retry</button>
 	</div>
 {:else}
-	<div class="devices-container">
-		<!-- Paired Devices Section -->
-		<section class="device-section">
-			<h2 class="section-title">Paired Devices ({pairedDevices.length})</h2>
-			<p class="section-description">These devices are actively logging readings</p>
+	<section class="section">
+		<h2 class="section-title">Paired Devices <span class="count">{pairedDevices.length}</span></h2>
+		<p class="section-description">These devices are actively logging readings</p>
 
-			{#if pairedDevices.length === 0}
-				<div class="empty-state">
-					<p>No paired devices. Pair a device below to start logging readings.</p>
-				</div>
-			{:else}
-				<div class="device-grid">
-					{#each pairedDevices as device}
-						<div class="device-card paired">
-							<div class="device-header">
-								<div class="device-info">
-									{#if device.device_type === 'tilt' && device.color}
-										<div class="device-color-badge" style="background: var(--tilt-{device.color.toLowerCase()})"></div>
-									{:else}
-										<div class="device-type-badge">
-											<span class="device-type-label">{getDeviceTypeLabel(device.device_type)}</span>
-										</div>
-									{/if}
-									<div>
-										<h3 class="device-name">{getDeviceDisplayName(device)}</h3>
-										<p class="device-id">{device.id}</p>
-									</div>
-								</div>
-								<div class="device-status paired">
-									<span class="status-dot"></span>
-									Paired
-								</div>
-							</div>
+		{#if pairedDevices.length === 0}
+			<div class="empty-state">
+				<p>No paired devices. Pair a device below to start logging readings.</p>
+			</div>
+		{:else}
+			<ul class="ledger">
+				{#each pairedDevices as device}
+					{@render deviceRow(device, true)}
+				{/each}
+			</ul>
+		{/if}
+	</section>
 
-							<div class="device-details">
-								{#if device.beer_name}
-									<div class="detail-row">
-										<span class="detail-label">Beer Name:</span>
-										<span class="detail-value">{device.beer_name}</span>
-									</div>
-								{/if}
-								<div class="detail-row">
-									<span class="detail-label">Last Seen:</span>
-									<span class="detail-value">{timeSince(device.last_seen)}</span>
-								</div>
-								{#if device.device_type === 'tilt' && device.mac}
-									<div class="detail-row">
-										<span class="detail-label">MAC:</span>
-										<span class="detail-value mono">{device.mac}</span>
-									</div>
-								{/if}
-								{#if (device.device_type === 'ispindel' || device.device_type === 'gravitymon') && device.battery_voltage !== null && Number.isFinite(device.battery_voltage)}
-									<div class="detail-row">
-										<span class="detail-label">Battery:</span>
-										<span class="detail-value">{device.battery_voltage.toFixed(2)}V</span>
-									</div>
-								{/if}
-								{#if device.firmware_version}
-									<div class="detail-row">
-										<span class="detail-label">Firmware:</span>
-										<span class="detail-value">{device.firmware_version}</span>
-									</div>
-								{/if}
-							</div>
+	<section class="section">
+		<h2 class="section-title">Detected Devices <span class="count">{unpairedDevices.length}</span></h2>
+		<p class="section-description">These devices are detected but not logging readings</p>
 
-							<button
-								onclick={() => handleUnpair(device.id)}
-								class="btn-secondary btn-sm"
-							>
-								Unpair Device
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-
-		<!-- Unpaired Devices Section -->
-		<section class="device-section">
-			<h2 class="section-title">Detected Devices ({unpairedDevices.length})</h2>
-			<p class="section-description">These devices are detected but not logging readings</p>
-
-			{#if unpairedDevices.length === 0}
-				<div class="empty-state">
-					<p>No unpaired devices detected. Make sure your devices are broadcasting and within range.</p>
-				</div>
-			{:else}
-				<div class="device-grid">
-					{#each unpairedDevices as device}
-						<div class="device-card unpaired">
-							<div class="device-header">
-								<div class="device-info">
-									{#if device.device_type === 'tilt' && device.color}
-										<div class="device-color-badge" style="background: var(--tilt-{device.color.toLowerCase()})"></div>
-									{:else}
-										<div class="device-type-badge">
-											<span class="device-type-label">{getDeviceTypeLabel(device.device_type)}</span>
-										</div>
-									{/if}
-									<div>
-										<h3 class="device-name">{getDeviceDisplayName(device)}</h3>
-										<p class="device-id">{device.id}</p>
-									</div>
-								</div>
-								<div class="device-status unpaired">
-									<span class="status-dot"></span>
-									Unpaired
-								</div>
-							</div>
-
-							<div class="device-details">
-								<div class="detail-row">
-									<span class="detail-label">Last Seen:</span>
-									<span class="detail-value">{timeSince(device.last_seen)}</span>
-								</div>
-								{#if device.device_type === 'tilt' && device.mac}
-									<div class="detail-row">
-										<span class="detail-label">MAC:</span>
-										<span class="detail-value mono">{device.mac}</span>
-									</div>
-								{/if}
-								{#if (device.device_type === 'ispindel' || device.device_type === 'gravitymon') && device.battery_voltage !== null && Number.isFinite(device.battery_voltage)}
-									<div class="detail-row">
-										<span class="detail-label">Battery:</span>
-										<span class="detail-value">{device.battery_voltage.toFixed(2)}V</span>
-									</div>
-								{/if}
-								{#if device.firmware_version}
-									<div class="detail-row">
-										<span class="detail-label">Firmware:</span>
-										<span class="detail-value">{device.firmware_version}</span>
-									</div>
-								{/if}
-							</div>
-
-							<button
-								onclick={() => handlePair(device.id)}
-								class="btn-primary btn-sm"
-							>
-								Pair Device
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-	</div>
+		{#if unpairedDevices.length === 0}
+			<div class="empty-state">
+				<p>No unpaired devices detected. Make sure your devices are broadcasting and within range.</p>
+			</div>
+		{:else}
+			<ul class="ledger">
+				{#each unpairedDevices as device}
+					{@render deviceRow(device, false)}
+				{/each}
+			</ul>
+		{/if}
+	</section>
 {/if}
 
 <style>
 	.page-header {
-		margin-bottom: 2rem;
+		margin-bottom: var(--space-lg);
 	}
-
 	.page-title {
-		font-size: 1.875rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
 		font-weight: 700;
-		color: var(--text-primary);
-		margin-bottom: 0.5rem;
+		letter-spacing: -0.02em;
+		line-height: 1.15;
+		color: var(--ink-primary);
 	}
-
 	.page-description {
-		color: var(--text-muted);
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-top: var(--space-2xs);
 	}
-
-	.devices-container {
-		display: flex;
-		flex-direction: column;
-		gap: 3rem;
+	.section {
+		margin-bottom: var(--space-xl);
 	}
-
-	.device-section {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1.5rem;
-	}
-
 	.section-title {
-		font-size: 1.25rem;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.25rem;
+		color: var(--ink-primary);
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-strong);
 	}
-
+	.count {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: var(--ink-muted);
+		margin-left: var(--space-2xs);
+	}
 	.section-description {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		margin-bottom: 1.5rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin: var(--space-2xs) 0 var(--space-md);
 	}
 
-	.device-grid {
+	/* Buttons */
+	.btn-primary,
+	.btn-secondary {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		border-radius: 4px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.btn-primary {
+		color: var(--accent-ink);
+		background: var(--accent);
+	}
+	.btn-primary:hover {
+		background: var(--accent-hover);
+	}
+	.btn-secondary {
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+	}
+	.btn-secondary:hover:not(:disabled) {
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
+	}
+	.btn-secondary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-sm {
+		font-size: var(--text-xs);
+	}
+	/* pairing is a row action, not the screen's primary action */
+	.device-action .btn-primary {
+		color: var(--accent);
+		background: var(--accent-tint);
+		border: 1px solid var(--accent-rule);
+	}
+	.device-action .btn-primary:hover {
+		background: var(--accent-tint);
+		border-color: var(--accent);
+	}
+
+	/* Pills */
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+	}
+	.pill-on {
+		color: var(--status-steady);
+		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
+	}
+	.pill-warn {
+		color: var(--status-warn);
+		border-color: color-mix(in oklch, var(--status-warn) 60%, transparent);
+	}
+
+	/* Ledgers */
+	.ledger {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.device-row {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-		gap: 1rem;
+		grid-template-columns: minmax(11rem, 1.2fr) 6.5rem minmax(0, 3fr) auto;
+		align-items: center;
+		gap: var(--space-md);
+		padding: var(--space-sm) var(--space-xs);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
-	.device-card {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1.25rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.device-card.paired {
-		border-left: 3px solid var(--positive);
-	}
-
-	.device-card.unpaired {
-		border-left: 3px solid var(--text-muted);
-	}
-
-	.device-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 1rem;
-	}
-
 	.device-info {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		flex: 1;
+		gap: var(--space-sm);
 		min-width: 0;
 	}
-
-	.device-color-badge {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 0.375rem;
-		flex-shrink: 0;
+	.swatch {
+		flex: none;
+		width: 0.875rem;
+		height: 2rem;
+		border-radius: 2px;
 	}
-
-	.device-type-badge {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 0.375rem;
-		flex-shrink: 0;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		display: flex;
+	.type-badge {
+		flex: none;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-	}
-
-	.device-type-label {
-		font-size: 0.625rem;
+		min-width: 3.5rem;
+		padding: 2px var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-secondary);
 		text-transform: uppercase;
-		text-align: center;
-		line-height: 1.1;
+		letter-spacing: 0.07em;
+		color: var(--ink-secondary);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 	}
-
+	.device-id-block {
+		min-width: 0;
+	}
 	.device-name {
-		font-size: 1rem;
+		font-family: var(--font-display);
+		font-size: var(--text-base);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.125rem;
+		color: var(--ink-primary);
 	}
-
 	.device-id {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		font-family: monospace;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		overflow-wrap: anywhere;
 	}
-
-	.device-status {
+	.readouts {
 		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		padding: 0.25rem 0.625rem;
-		border-radius: 9999px;
-		white-space: nowrap;
-	}
-
-	.device-status.paired {
-		background: var(--positive-muted);
-		color: var(--positive);
-	}
-
-	.device-status.unpaired {
-		background: var(--bg-hover);
-		color: var(--text-muted);
-	}
-
-	.status-dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		background: currentColor;
-	}
-
-	.device-details {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.75rem 0;
-		border-top: 1px solid var(--border-subtle);
-		border-bottom: 1px solid var(--border-subtle);
-	}
-
-	.detail-row {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.8125rem;
-	}
-
-	.detail-label {
-		color: var(--text-muted);
-	}
-
-	.detail-value {
-		color: var(--text-secondary);
-		font-weight: 500;
-	}
-
-	.detail-value.mono {
-		font-family: monospace;
-		font-size: 0.75rem;
-	}
-
-	.btn-primary,
-	.btn-secondary {
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all var(--transition);
-		border: 1px solid transparent;
-	}
-
-	.btn-primary {
-		background: var(--accent);
-		color: var(--accent-ink);
-	}
-
-	.btn-primary:hover {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.btn-secondary {
-		background: var(--bg-surface);
-		border-color: var(--border-default);
-		color: var(--text-secondary);
-	}
-
-	.btn-secondary:hover {
-		background: var(--bg-hover);
-		color: var(--text-primary);
-	}
-
-	.btn-sm {
-		padding: 0.375rem 0.75rem;
-		font-size: 0.8125rem;
-	}
-
-	.empty-state {
-		padding: 2rem;
-		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.875rem;
-	}
-
-	.loading-state {
-		padding: 3rem;
-		text-align: center;
-		color: var(--text-muted);
-	}
-
-	.error-state {
-		padding: 2rem;
-		text-align: center;
-		color: var(--negative);
-	}
-
-	.error-state button {
-		margin-top: 1rem;
-	}
-
-	/* HTTP Device Setup Section */
-	.setup-section {
-		background: var(--bg-surface);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1.5rem;
-		margin-bottom: 2rem;
-	}
-
-	.setup-cards {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.setup-card {
-		background: var(--bg-elevated);
-		border: 1px solid var(--border-subtle);
-		border-radius: 0.5rem;
-		padding: 1.25rem;
-	}
-
-	.setup-card-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.setup-card-header h3 {
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--text-primary);
+		flex-wrap: wrap;
+		gap: var(--space-xs) var(--space-lg);
 		margin: 0;
 	}
-
-	.setup-icon {
-		font-size: 1.25rem;
+	.readout dt {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
-	.setup-description {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		margin-bottom: 0.75rem;
+	.readout dd {
+		margin: 0;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
 	}
-
-	.url-display {
+	.readout dd.text-val {
+		font-family: var(--font-body);
+	}
+	.device-action {
 		display: flex;
+		justify-content: flex-end;
+	}
+
+	/* Setup ledger */
+	.setup-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+		gap: var(--space-md);
 		align-items: center;
-		gap: 0.5rem;
-		background: var(--bg-surface);
-		border: 1px solid var(--border-default);
-		border-radius: 0.375rem;
-		padding: 0.5rem 0.75rem;
-		margin-bottom: 0.75rem;
+		padding: var(--space-sm) var(--space-xs);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
-	.url-display code {
-		flex: 1;
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--accent);
-		word-break: break-all;
+	.setup-name {
+		font-family: var(--font-display);
+		font-size: var(--text-base);
+		font-weight: 600;
+		color: var(--ink-primary);
 	}
-
-	.copy-btn {
-		padding: 0.25rem 0.5rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: var(--accent);
-		color: var(--accent-ink);
-		border: none;
-		border-radius: 0.25rem;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background var(--transition);
+	.setup-description {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
-	.copy-btn:hover {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-	}
-
-	.docs-link {
-		font-size: 0.8125rem;
-		color: var(--accent);
-		text-decoration: none;
-	}
-
-	.docs-link:hover {
-		text-decoration: underline;
-	}
-
-	.setup-note {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		padding: 0.75rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		border-left: 3px solid var(--accent);
-	}
-
+	.docs-link,
 	.setup-note a {
 		color: var(--accent);
-		text-decoration: none;
+		font-size: var(--text-sm);
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
 	}
-
+	.docs-link:hover,
 	.setup-note a:hover {
-		text-decoration: underline;
+		color: var(--accent-hover);
 	}
-
-	.setup-loading,
-	.setup-error {
-		padding: 1.5rem;
-		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.875rem;
+	.url-display {
+		display: flex;
+		gap: var(--space-xs);
+		align-items: center;
+		min-width: 0;
 	}
-
-	.setup-error {
-		color: var(--negative);
-	}
-
-	.token-section {
-		margin-top: 1rem;
-		padding: 1rem;
-		background: var(--bg-elevated);
-		border-radius: 0.375rem;
-		border: 1px solid var(--border-subtle);
-	}
-
-	.token-note {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		margin-bottom: 0.5rem;
-	}
-
+	.url-display code,
 	.token-display {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		padding: 0.125rem 0.375rem;
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-primary);
 		background: var(--bg-surface);
-		border-radius: 0.25rem;
-		color: var(--text-muted);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		padding: var(--space-xs) var(--space-sm);
+	}
+	.url-display code {
+		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.setup-note {
+		margin-top: var(--space-md);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.setup-note strong {
+		color: var(--ink-primary);
+	}
+	.token-section {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-sm) var(--space-md);
+		margin-top: var(--space-md);
+		padding-top: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.token-note {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.token-warning {
+		flex-basis: 100%;
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
-	.token-warning {
-		font-size: 0.75rem;
-		color: var(--warning);
-		margin-top: 0.5rem;
+	/* States */
+	.setup-loading,
+	.loading-state,
+	.empty-state {
+		padding: var(--space-md) var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.setup-error,
+	.error-state {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-md);
+		padding: var(--space-sm) var(--space-md);
+		font-size: var(--text-sm);
+		color: var(--status-danger);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 60%, transparent);
+		border-radius: 4px;
+	}
+
+	@media (max-width: 1040px) {
+		.device-row {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.readouts {
+			grid-column: 1 / -1;
+			order: 3;
+		}
+		.device-action {
+			grid-column: 1 / -1;
+			order: 4;
+			justify-content: flex-start;
+		}
+	}
+	@media (max-width: 760px) {
+		.setup-row {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.device-action .btn-primary,
+		.device-action .btn-secondary {
+			width: 100%;
+		}
 	}
 </style>

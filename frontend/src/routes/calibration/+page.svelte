@@ -269,54 +269,51 @@
 	</div>
 
 	{#if loading}
-		<div class="loading-state">
+		<div class="loading-state" role="status">
 			<div class="loading-spinner"></div>
 			<span>Loading Devices...</span>
 		</div>
 	{:else if devices.length === 0}
 		<div class="empty-state">
-			<div class="empty-icon">📊</div>
 			<h3 class="empty-title">No Tilt Devices Found</h3>
 			<p class="empty-description">
 				Pair a Tilt hydrometer on the Devices page to calibrate it.
 				Only Tilt devices appear here (iSpindel/GravityMon calibrate on-device).
 			</p>
-			<a href="/devices" class="btn-primary mt-4">Go to Devices</a>
+			<a href="/devices" class="btn-primary">Go to Devices</a>
 		</div>
 	{:else}
 		<!-- Device Selector -->
-		<div class="card mb-6">
-			<div class="card-header">
-				<h2 class="card-title">Select Device</h2>
+		<section class="panel selector-panel">
+			<h2 class="panel-title">Select Device</h2>
+			<div class="tilt-selector">
+				<label class="sr-only" for="tilt-select">Tilt device</label>
+				<select
+					id="tilt-select"
+					bind:value={selectedDeviceId}
+					onchange={handleDeviceChange}
+					class="select-input"
+				>
+					{#each devices as device}
+						<option value={device.id}>
+							{device.color} — {device.beer_name}
+						</option>
+					{/each}
+				</select>
+				{#if selectedDevice}
+					<div class="tilt-info">
+						<span class="tilt-color-dot" style="background: var(--tilt-{selectedDevice.color.toLowerCase()});"></span>
+						<span class="device-id">{selectedDevice.id}</span>
+					</div>
+				{/if}
 			</div>
-			<div class="card-body">
-				<div class="tilt-selector">
-					<select
-						bind:value={selectedDeviceId}
-						onchange={handleDeviceChange}
-						class="select-input"
-					>
-						{#each devices as device}
-							<option value={device.id}>
-								{device.color} — {device.beer_name}
-							</option>
-						{/each}
-					</select>
-					{#if selectedDevice}
-						<div class="tilt-info">
-							<span class="tilt-color-dot" style="background: var(--tilt-{selectedDevice.color.toLowerCase()});"></span>
-							<span class="font-mono text-xs text-[var(--text-muted)]">{selectedDevice.id}</span>
-						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
+		</section>
 
-		<div class="grid gap-6 md:grid-cols-2">
+		<div class="workbench">
 			<!-- SG Calibration -->
-			<div class="card">
-				<div class="card-header flex items-center justify-between">
-					<h2 class="card-title">Gravity (SG)</h2>
+			<section class="panel">
+				<div class="panel-head">
+					<h2 class="panel-title">Gravity (SG)</h2>
 					{#if sgPoints.length > 0}
 						<button
 							type="button"
@@ -329,87 +326,84 @@
 						</button>
 					{/if}
 				</div>
-				<div class="card-body">
-					<p class="section-description">
-						Add calibration points by measuring with a reference hydrometer.
-						The system will interpolate between points.
-					</p>
+				<p class="section-description">
+					Add calibration points by measuring with a reference hydrometer.
+					The system will interpolate between points.
+				</p>
 
-					{#if loadingPoints}
-						<div class="loading-inline">
-							<div class="loading-spinner-small"></div>
-							<span>Loading...</span>
-						</div>
-					{:else}
-						<!-- Existing Points -->
-						{#if sgPoints.length > 0}
-							<div class="calibration-table">
-								<div class="table-header">
-									<span>Raw</span>
-									<span>→</span>
-									<span>Actual</span>
-								</div>
+				{#if loadingPoints}
+					<div class="loading-inline" role="status">
+						<div class="loading-spinner-small"></div>
+						<span>Loading...</span>
+					</div>
+				{:else}
+					{#if sgPoints.length > 0}
+						<table class="calibration-table">
+							<thead>
+								<tr>
+									<th scope="col" class="num">Raw</th>
+									<th scope="col" class="num">Actual</th>
+								</tr>
+							</thead>
+							<tbody>
 								{#each sgPoints as point}
-									<div class="table-row">
-										<span class="font-mono">{formatSG(point[0])}</span>
-										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{formatSG(point[1])}</span>
-									</div>
+									<tr>
+										<td class="num">{formatSG(point[0])}</td>
+										<td class="num actual">{formatSG(point[1])}</td>
+									</tr>
 								{/each}
-							</div>
-						{:else}
-							<div class="no-points">
-								<span>No calibration points yet</span>
-							</div>
-						{/if}
-
-						<!-- Add New Point Form -->
-						<div class="add-point-form">
-							<div class="form-row">
-								<div class="form-group">
-									<label for="sg-raw">Raw SG</label>
-									<input
-										id="sg-raw"
-										type="number"
-										step="0.001"
-										placeholder="1.050"
-										bind:value={sgRawValue}
-										class="input-field"
-									/>
-								</div>
-								<div class="form-arrow">→</div>
-								<div class="form-group">
-									<label for="sg-actual">Actual SG</label>
-									<input
-										id="sg-actual"
-										type="number"
-										step="0.001"
-										placeholder="1.048"
-										bind:value={sgActualValue}
-										class="input-field"
-									/>
-								</div>
-								<button
-									type="button"
-									class="btn-add"
-									onclick={() => addSGPoint(sgRawValue, sgActualValue)}
-									disabled={saving || !sgRawValue || !sgActualValue}
-									aria-label="Add SG calibration point"
-								>
-									<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-									</svg>
-								</button>
-							</div>
+							</tbody>
+						</table>
+					{:else}
+						<div class="no-points">
+							<span>No calibration points yet</span>
 						</div>
 					{/if}
-				</div>
-			</div>
+
+					<div class="add-point-form">
+						<div class="form-row">
+							<div class="form-group">
+								<label for="sg-raw">Raw SG</label>
+								<input
+									id="sg-raw"
+									type="number"
+									step="0.001"
+									placeholder="1.050"
+									bind:value={sgRawValue}
+									class="input-field"
+								/>
+							</div>
+							<div class="form-group">
+								<label for="sg-actual">Actual SG</label>
+								<input
+									id="sg-actual"
+									type="number"
+									step="0.001"
+									placeholder="1.048"
+									bind:value={sgActualValue}
+									class="input-field"
+								/>
+							</div>
+							<button
+								type="button"
+								class="btn-add"
+								onclick={() => addSGPoint(sgRawValue, sgActualValue)}
+								disabled={saving || !sgRawValue || !sgActualValue}
+								aria-label="Add SG calibration point"
+							>
+								<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+								</svg>
+							</button>
+						</div>
+					</div>
+				{/if}
+			</section>
 
 			<!-- Temperature Calibration -->
-			<div class="card">
-				<div class="card-header flex items-center justify-between">
-					<h2 class="card-title">Temperature ({tempUnit})</h2>
+			<section class="panel">
+				<div class="panel-head">
+					<h2 class="panel-title">Temperature ({tempUnit})</h2>
 					{#if tempPoints.length > 0}
 						<button
 							type="button"
@@ -422,508 +416,427 @@
 						</button>
 					{/if}
 				</div>
-				<div class="card-body">
-					<p class="section-description">
-						Calibrate temperature by comparing with a reference thermometer.
-						Values are stored in °C internally.
-					</p>
+				<p class="section-description">
+					Calibrate temperature by comparing with a reference thermometer.
+					Values are stored in &deg;C internally.
+				</p>
 
-					{#if loadingPoints}
-						<div class="loading-inline">
-							<div class="loading-spinner-small"></div>
-							<span>Loading...</span>
-						</div>
-					{:else}
-						<!-- Existing Points -->
-						{#if tempPoints.length > 0}
-							<div class="calibration-table">
-								<div class="table-header">
-									<span>Raw ({tempUnit})</span>
-									<span>→</span>
-									<span>Actual ({tempUnit})</span>
-								</div>
+				{#if loadingPoints}
+					<div class="loading-inline" role="status">
+						<div class="loading-spinner-small"></div>
+						<span>Loading...</span>
+					</div>
+				{:else}
+					{#if tempPoints.length > 0}
+						<table class="calibration-table">
+							<thead>
+								<tr>
+									<th scope="col" class="num">Raw ({tempUnit})</th>
+									<th scope="col" class="num">Actual ({tempUnit})</th>
+								</tr>
+							</thead>
+							<tbody>
 								{#each tempPoints as point}
 									{@const [rawDisplay, actualDisplay] = convertTempPointFromCelsius(point[0], point[1], useCelsius)}
-									<div class="table-row">
-										<span class="font-mono">{rawDisplay.toFixed(1)}°</span>
-										<span class="text-[var(--text-muted)]">→</span>
-										<span class="font-mono text-[var(--accent)]">{actualDisplay.toFixed(1)}°</span>
-									</div>
+									<tr>
+										<td class="num">{rawDisplay.toFixed(1)}&deg;</td>
+										<td class="num actual">{actualDisplay.toFixed(1)}&deg;</td>
+									</tr>
 								{/each}
-							</div>
-						{:else}
-							<div class="no-points">
-								<span>No calibration points yet</span>
-							</div>
-						{/if}
-
-						<!-- Add New Point Form -->
-						<div class="add-point-form">
-							<div class="form-row">
-								<div class="form-group">
-									<label for="temp-raw">Raw {tempUnit}</label>
-									<input
-										id="temp-raw"
-										type="number"
-										step="0.1"
-										placeholder={useCelsius ? '20.0' : '68.0'}
-										bind:value={tempRawValue}
-										class="input-field"
-									/>
-								</div>
-								<div class="form-arrow">→</div>
-								<div class="form-group">
-									<label for="temp-actual">Actual {tempUnit}</label>
-									<input
-										id="temp-actual"
-										type="number"
-										step="0.1"
-										placeholder={useCelsius ? '19.5' : '67.5'}
-										bind:value={tempActualValue}
-										class="input-field"
-									/>
-								</div>
-								<button
-									type="button"
-									class="btn-add"
-									onclick={() => addTempPoint(tempRawValue, tempActualValue)}
-									disabled={saving || !tempRawValue || !tempActualValue}
-									aria-label="Add temperature calibration point"
-								>
-									<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-									</svg>
-								</button>
-							</div>
+							</tbody>
+						</table>
+					{:else}
+						<div class="no-points">
+							<span>No calibration points yet</span>
 						</div>
 					{/if}
-				</div>
-			</div>
+
+					<div class="add-point-form">
+						<div class="form-row">
+							<div class="form-group">
+								<label for="temp-raw">Raw {tempUnit}</label>
+								<input
+									id="temp-raw"
+									type="number"
+									step="0.1"
+									placeholder={useCelsius ? '20.0' : '68.0'}
+									bind:value={tempRawValue}
+									class="input-field"
+								/>
+							</div>
+							<div class="form-group">
+								<label for="temp-actual">Actual {tempUnit}</label>
+								<input
+									id="temp-actual"
+									type="number"
+									step="0.1"
+									placeholder={useCelsius ? '19.5' : '67.5'}
+									bind:value={tempActualValue}
+									class="input-field"
+								/>
+							</div>
+							<button
+								type="button"
+								class="btn-add"
+								onclick={() => addTempPoint(tempRawValue, tempActualValue)}
+								disabled={saving || !tempRawValue || !tempActualValue}
+								aria-label="Add temperature calibration point"
+							>
+								<svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+								</svg>
+							</button>
+						</div>
+					</div>
+				{/if}
+			</section>
 		</div>
 
 		<!-- Calibration Info -->
-		<div class="info-section mt-6">
+		<section class="info-section">
 			<h3 class="info-title">How Tilt Calibration Works</h3>
 			<p class="info-text">
 				Tilt calibration is applied in software to raw BLE readings. Add at least two calibration
 				points for accurate linear interpolation. Calibration happens app-side, not on the device.
 			</p>
-			<div class="info-tips">
+			<dl class="info-tips">
 				<div class="tip">
-					<span class="tip-label">Gravity:</span>
-					<span>Use distilled water (1.000 SG) and a known sugar solution (1.061 or 1.110 SG) for best results.</span>
+					<dt class="tip-label">Gravity</dt>
+					<dd>Use distilled water (1.000 SG) and a known sugar solution (1.061 or 1.110 SG) for best results.</dd>
 				</div>
 				<div class="tip">
-					<span class="tip-label">Temperature:</span>
-					<span>Rarely needed for Tilts (accurate 38°F-98°F range). Calibrate only if you notice consistent offsets.</span>
+					<dt class="tip-label">Temperature</dt>
+					<dd>Rarely needed for Tilts (accurate 38&thinsp;&deg;F to 98&thinsp;&deg;F range). Calibrate only if you notice consistent offsets.</dd>
 				</div>
 				<div class="tip">
-					<span class="tip-label">iSpindel/GravityMon:</span>
-					<span>These devices calibrate on-board via polynomial formulas. Configure calibration through the device's web interface.</span>
+					<dt class="tip-label">iSpindel/GravityMon</dt>
+					<dd>These devices calibrate on-board via polynomial formulas. Configure calibration through the device's web interface.</dd>
 				</div>
-			</div>
-		</div>
+			</dl>
+		</section>
 	{/if}
 </div>
 
 <style>
-	.page-container {
-		max-width: 56rem;
-	}
-
 	.page-header {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--space-lg);
 	}
-
 	.page-title {
-		font-size: 1.5rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xl);
 		font-weight: 700;
-		color: var(--text-primary);
-		margin-bottom: 0.25rem;
+		letter-spacing: -0.02em;
+		line-height: 1.15;
+		color: var(--ink-primary);
 	}
-
 	.page-description {
-		color: var(--text-secondary);
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-top: var(--space-2xs);
 	}
-
-	.card {
-		background: var(--bg-card);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.75rem;
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
 		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
 	}
 
-	.card-header {
-		padding: 1rem 1.25rem;
-		border-bottom: 1px solid var(--bg-hover);
+	.panel {
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-strong);
+		margin-bottom: var(--space-lg);
+		min-width: 0;
 	}
-
-	.card-title {
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.card-body {
-		padding: 1.25rem;
-	}
-
-	.section-description {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-bottom: 1rem;
-		line-height: 1.5;
-	}
-
-	/* Tilt Selector */
-	.tilt-selector {
+	.panel-head {
+		min-height: 44px;
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		justify-content: space-between;
+		gap: var(--space-md);
+	}
+	.panel-title {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: 600;
+		color: var(--ink-primary);
+	}
+	.section-description {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin: var(--space-2xs) 0 var(--space-md);
+	}
+	.workbench {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0 var(--space-xl);
 	}
 
+	.tilt-selector {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-md);
+		margin-top: var(--space-sm);
+	}
+	.select-input,
+	.input-field {
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+	}
 	.select-input {
-		flex: 1;
-		max-width: 20rem;
-		padding: 0.625rem 2.5rem 0.625rem 1rem;
-		font-size: 0.875rem;
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.5rem;
-		cursor: pointer;
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2371717a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 0.75rem center;
-		background-size: 1.25rem;
+		min-width: min(18rem, 100%);
 	}
-
-	.select-input:focus {
-		outline: none;
+	.input-field {
+		width: 100%;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+	.select-input:focus-visible,
+	.input-field:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
 		border-color: var(--accent);
 	}
-
 	.tilt-info {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-xs);
 	}
-
 	.tilt-color-dot {
-		width: 0.625rem;
-		height: 0.625rem;
-		border-radius: 50%;
+		width: 0.875rem;
+		height: 1.5rem;
+		border-radius: 2px;
+	}
+	.device-id {
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		overflow-wrap: anywhere;
 	}
 
-	/* Calibration Table */
+	/* Points table */
 	.calibration-table {
-		margin-bottom: 1rem;
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.5rem;
-		overflow: hidden;
+		width: 100%;
+		border-collapse: collapse;
+		margin-bottom: var(--space-md);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
 	}
-
-	.table-header {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		background: var(--bg-elevated);
-		font-size: 0.6875rem;
+	.calibration-table th {
+		padding: var(--space-xs) var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
-		color: var(--text-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+		border-bottom: 1px solid var(--rule-strong);
 	}
-
-	.table-row {
-		display: grid;
-		grid-template-columns: 1fr auto 1fr;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		border-top: 1px solid var(--bg-hover);
+	.calibration-table td {
+		padding: var(--space-xs) var(--space-sm);
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
+	.calibration-table .num {
+		text-align: right;
+	}
+	.calibration-table td.actual {
+		color: var(--accent);
+	}
 	.no-points {
-		padding: 1.5rem;
-		text-align: center;
-		color: var(--text-muted);
-		font-size: 0.8125rem;
-		background: var(--bg-elevated);
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
+		padding: var(--space-sm) var(--space-xs);
+		margin-bottom: var(--space-md);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
+		border-top: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
 
-	/* Add Point Form */
-	.add-point-form {
-		padding-top: 1rem;
-		border-top: 1px solid var(--bg-hover);
-	}
-
+	/* Add form */
 	.form-row {
-		display: flex;
-		align-items: flex-end;
-		gap: 0.75rem;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
+		align-items: end;
+		gap: var(--space-sm);
 	}
-
-	.form-group {
-		flex: 1;
-	}
-
 	.form-group label {
 		display: block;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--text-muted);
+		margin-bottom: var(--space-2xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin-bottom: 0.375rem;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
-	.input-field {
-		width: 100%;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		font-family: var(--font-mono);
-		color: var(--text-primary);
-		background: var(--bg-elevated);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.375rem;
-	}
-
-	.input-field:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.input-field::placeholder {
-		color: var(--text-muted);
-		opacity: 0.5;
-	}
-
-	.form-arrow {
-		padding-bottom: 0.625rem;
-		color: var(--text-muted);
-		font-size: 0.875rem;
-	}
-
 	.btn-add {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 2.25rem;
-		height: 2.25rem;
+		width: 44px;
+		height: 44px;
 		color: var(--accent-ink);
 		background: var(--accent);
-		border: 1px solid var(--accent);
-		border-radius: 0.5rem;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.btn-add:hover:not(:disabled) {
 		background: var(--accent-hover);
-		color: var(--accent-ink);
-		border-color: var(--accent-hover);
 	}
-
 	.btn-add:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
-
+	.icon {
+		width: 1rem;
+		height: 1rem;
+	}
+	.btn-primary {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--accent-ink);
+		background: var(--accent);
+		border-radius: 4px;
+	}
+	.btn-primary:hover {
+		background: var(--accent-hover);
+	}
 	.btn-danger-small {
-		padding: 0.25rem 0.625rem;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		color: var(--tilt-red);
-		background: rgba(244, 63, 94, 0.1);
-		border: 1px solid rgba(244, 63, 94, 0.2);
-		border-radius: 0.375rem;
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--status-danger);
+		background: var(--bg-surface);
+		border: 1px solid color-mix(in oklch, var(--status-danger) 55%, transparent);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
 	.btn-danger-small:hover:not(:disabled) {
-		background: rgba(244, 63, 94, 0.15);
-		border-color: rgba(244, 63, 94, 0.3);
+		background: var(--negative-muted);
 	}
-
 	.btn-danger-small:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	/* Info Section */
-	.info-section {
-		background: var(--bg-card);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-	}
-
-	.info-title {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.5rem;
-	}
-
-	.info-text {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		line-height: 1.6;
-		margin-bottom: 1rem;
-	}
-
-	.info-tips {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.tip {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		line-height: 1.5;
-	}
-
-	.tip-label {
-		font-weight: 600;
-		color: var(--accent);
-		margin-right: 0.25rem;
-	}
-
-	/* Loading States */
-	.loading-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		padding: 4rem 2rem;
-		color: var(--text-muted);
-	}
-
-	.loading-spinner {
-		width: 2rem;
-		height: 2rem;
-		border: 2px solid var(--bg-hover);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
+	/* States */
+	.loading-state,
 	.loading-inline {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 1rem;
-		color: var(--text-muted);
-		font-size: 0.8125rem;
+		gap: var(--space-sm);
+		padding: var(--space-md) var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 	}
-
+	.loading-spinner,
+	.loading-spinner-small {
+		width: 1.25rem;
+		height: 1.25rem;
+		border: 2px solid var(--rule-strong);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.9s linear infinite;
+	}
 	.loading-spinner-small {
 		width: 1rem;
 		height: 1rem;
-		border: 2px solid var(--bg-hover);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
 	}
-
 	@keyframes spin {
-		to { transform: rotate(360deg); }
+		to {
+			transform: rotate(360deg);
+		}
 	}
-
-	/* Empty State */
 	.empty-state {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
-		text-align: center;
-		background: var(--bg-card);
-		border: 1px solid var(--bg-hover);
-		border-radius: 0.75rem;
+		align-items: flex-start;
+		gap: var(--space-sm);
+		padding: var(--space-md) 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
-	.empty-icon {
-		font-size: 3rem;
-		margin-bottom: 1rem;
-		opacity: 0.6;
-	}
-
 	.empty-title {
-		font-size: 1.125rem;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.5rem;
+		color: var(--ink-primary);
 	}
-
 	.empty-description {
-		font-size: 0.875rem;
-		color: var(--text-muted);
-		max-width: 20rem;
-		line-height: 1.6;
+		max-width: 40rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
-	.btn-primary {
-		display: inline-block;
-		padding: 0.625rem 1.25rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--accent-ink);
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		border-radius: 0.5rem;
-		text-decoration: none;
-		cursor: pointer;
-		transition: all 0.15s ease;
+	/* Info */
+	.info-section {
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-strong);
+	}
+	.info-title {
+		font-family: var(--font-display);
+		font-size: var(--text-base);
+		font-weight: 600;
+		color: var(--ink-primary);
+	}
+	.info-text {
+		max-width: 48rem;
+		margin-top: var(--space-2xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.info-tips {
+		margin: var(--space-sm) 0 0;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.tip {
+		display: grid;
+		grid-template-columns: 12rem minmax(0, 1fr);
+		gap: var(--space-md);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.tip dd {
+		margin: 0;
+	}
+	.tip-label {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
 
-	.btn-primary:hover {
-		background: var(--accent-hover);
-		color: var(--accent-ink);
-		border-color: var(--accent-hover);
-	}
-
-	/* Grid utilities */
-	.mb-6 {
-		margin-bottom: 1.5rem;
-	}
-
-	.mt-4 {
-		margin-top: 1rem;
-	}
-
-	.mt-6 {
-		margin-top: 1.5rem;
-	}
-
-	@media (max-width: 768px) {
-		.form-row {
-			flex-wrap: wrap;
+	@media (max-width: 1040px) {
+		.workbench {
+			grid-template-columns: minmax(0, 1fr);
 		}
-
-		.form-group {
-			flex: 1 1 40%;
+	}
+	@media (max-width: 760px) {
+		.tip {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0;
 		}
-
-		.form-arrow {
-			display: none;
-		}
-
-		.btn-add {
-			flex: 0 0 100%;
+		.select-input {
 			width: 100%;
-			margin-top: 0.5rem;
 		}
 	}
 </style>

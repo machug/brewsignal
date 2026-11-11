@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 	import { config, onConfigLoaded, configStores } from '$lib/config';
 	import { authState } from '$lib/stores/auth.svelte';
@@ -965,6 +965,28 @@
 		});
 		return unsubscribe;
 	});
+
+	// Left index: open the section and scroll to it
+	const sectionIndex = $derived([
+		{ label: 'AI', id: 'ai', open: 'ai' },
+		{ label: 'Home Assistant', id: 'homeassistant', open: 'homeassistant' },
+		{ label: 'MQTT', id: 'mqtt', open: 'mqtt' },
+		{ label: 'Temperature control', id: 'temp-control', open: 'homeassistant' },
+		{ label: 'Units', id: 'display', open: 'display' },
+		{ label: 'Devices', id: 'devicecontrol', open: 'devicecontrol' },
+		{ label: 'Data', id: 'storage', open: 'storage' },
+		...(authEnabled ? [{ label: 'Cloud sync', id: 'cloud', open: 'cloud' }] : []),
+		{ label: 'Power', id: 'power', open: 'power' },
+		{ label: 'About', id: 'about', open: null as string | null }
+	]);
+
+	async function goSection(id: string, open: string | null) {
+		if (open) expandedSection = open;
+		await tick();
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		document.getElementById('sec-' + id)?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+	}
+
 </script>
 
 <svelte:head>
@@ -978,8 +1000,27 @@
 			<span>Loading system information...</span>
 		</div>
 	{:else}
+		<nav class="section-index" aria-label="Settings sections">
+			<ul>
+				{#each sectionIndex as item}
+					<li>
+						<button
+							type="button"
+							class="index-link"
+							class:current={item.open !== null && item.id !== 'temp-control' && expandedSection === item.open}
+							onclick={() => goSection(item.id, item.open)}
+						>
+							{item.label}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</nav>
+
+		<div class="system-main">
 		<!-- System Status Banner -->
-		<header class="status-banner">
+		<header class="status-banner" id="sec-about">
+			<h2 class="about-title">About this system</h2>
 			<div class="status-grid">
 				<div class="status-item">
 					<span class="status-label">Hostname</span>
@@ -1067,7 +1108,7 @@
 		<!-- Settings Sections -->
 		<div class="settings-container">
 			<!-- Display & Units Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-display" style="order: 4">
 				<button
 					type="button"
 					class="section-header"
@@ -1088,30 +1129,31 @@
 					<div class="section-content">
 						<div class="settings-grid">
 							<div class="setting-group">
-								<label class="setting-label">Temperature</label>
-								<div class="toggle-group">
+								<span class="setting-label">Temperature</span>
+								<div class="toggle-group" role="group" aria-label="Temperature units">
 									<button type="button" class="toggle-btn" class:active={tempUnits === 'C'} onclick={() => (tempUnits = 'C')}>°C</button>
 									<button type="button" class="toggle-btn" class:active={tempUnits === 'F'} onclick={() => (tempUnits = 'F')}>°F</button>
 								</div>
 							</div>
 							<div class="setting-group">
-								<label class="setting-label">Gravity</label>
-								<div class="toggle-group triple">
+								<span class="setting-label">Gravity</span>
+								<div class="toggle-group triple" role="group" aria-label="Gravity units">
 									<button type="button" class="toggle-btn" class:active={sgUnits === 'sg'} onclick={() => (sgUnits = 'sg')}>SG</button>
 									<button type="button" class="toggle-btn" class:active={sgUnits === 'plato'} onclick={() => (sgUnits = 'plato')}>°P</button>
 									<button type="button" class="toggle-btn" class:active={sgUnits === 'brix'} onclick={() => (sgUnits = 'brix')}>°Bx</button>
 								</div>
 							</div>
 							<div class="setting-group">
-								<label class="setting-label">Min Signal</label>
+								<label class="setting-label" for="min-rssi">Min Signal</label>
 								<div class="input-group">
-									<input type="number" min="-100" max="0" bind:value={minRssi} class="num-input" />
-									<span class="input-unit">dBm</span>
+									<input id="min-rssi" type="number" min="-100" max="0" bind:value={minRssi} class="num-input" />
+									<span class="input-unit">&thinsp;dBm</span>
 								</div>
 							</div>
 							<div class="setting-group">
-								<label class="setting-label">Timezone</label>
+								<label class="setting-label" for="timezone">Timezone</label>
 								<select
+									id="timezone"
 									class="select-input"
 									value={currentTimezone}
 									onchange={(e) => setTimezone(e.currentTarget.value)}
@@ -1134,7 +1176,7 @@
 								</div>
 								<div class="toggle-controls">
 									{#if smoothingEnabled}
-										<select bind:value={smoothingSamples} class="mini-select">
+										<select bind:value={smoothingSamples} class="mini-select" aria-label="Smoothing samples">
 											<option value={3}>3</option>
 											<option value={5}>5</option>
 											<option value={10}>10</option>
@@ -1144,12 +1186,13 @@
 									{/if}
 									<button
 										type="button"
-										class="switch"
+										class="switch" aria-label="Reading Smoothing"
 										class:on={smoothingEnabled}
 										onclick={() => (smoothingEnabled = !smoothingEnabled)}
 										aria-pressed={smoothingEnabled}
 									>
-										<span class="switch-thumb"></span>
+										<span class="switch-state">{smoothingEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 									</button>
 								</div>
 							</div>
@@ -1160,12 +1203,13 @@
 								</div>
 								<button
 									type="button"
-									class="switch"
+									class="switch" aria-label="Identify by MAC"
 									class:on={idByMac}
 									onclick={() => (idByMac = !idByMac)}
 									aria-pressed={idByMac}
 								>
-									<span class="switch-thumb"></span>
+									<span class="switch-state">{idByMac ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 								</button>
 							</div>
 						</div>
@@ -1182,7 +1226,7 @@
 			</section>
 
 			<!-- Home Assistant Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-homeassistant" style="order: 2">
 				<button
 					type="button"
 					class="section-header"
@@ -1213,12 +1257,13 @@
 							</div>
 							<button
 								type="button"
-								class="switch"
+								class="switch" aria-label="Enable Integration"
 								class:on={haEnabled}
 								onclick={() => (haEnabled = !haEnabled)}
 								aria-pressed={haEnabled}
 							>
-								<span class="switch-thumb"></span>
+								<span class="switch-state">{haEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 							</button>
 						</div>
 
@@ -1259,7 +1304,7 @@
 									{haTesting ? 'Testing...' : 'Test Connection'}
 								</button>
 								{#if haTestResult}
-									<span class="test-result" class:success={haTestResult.success}>{haTestResult.message}</span>
+									<span role="status" class="test-result" class:success={haTestResult.success}>{haTestResult.message}</span>
 								{/if}
 							</div>
 
@@ -1273,20 +1318,21 @@
 										</div>
 										<button
 											type="button"
-											class="switch"
+											class="switch" aria-label="Enable Alerts"
 											class:on={weatherAlertsEnabled}
 											onclick={() => (weatherAlertsEnabled = !weatherAlertsEnabled)}
 											aria-pressed={weatherAlertsEnabled}
 										>
-											<span class="switch-thumb"></span>
+											<span class="switch-state">{weatherAlertsEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 										</button>
 									</div>
 									{#if weatherAlertsEnabled}
 										<div class="inline-setting">
-											<label>Alert when forecast differs by more than</label>
+	<span>Alert when forecast differs by more than</span>
 											<div class="input-group compact">
-												<input type="number" min="1" max="15" step="0.5" bind:value={alertTempThreshold} class="num-input" />
-												<span class="input-unit">°C</span>
+												<input aria-label="Alert when forecast differs by more than" type="number" min="1" max="15" step="0.5" bind:value={alertTempThreshold} class="num-input" />
+												<span class="input-unit">&thinsp;°C</span>
 											</div>
 										</div>
 									{/if}
@@ -1294,7 +1340,7 @@
 							{/if}
 
 							{#if haEnabled}
-								<div class="subsection">
+								<div class="subsection" id="sec-temp-control">
 									<h3>Temperature Control</h3>
 									<div class="toggle-setting">
 										<div class="toggle-info">
@@ -1303,27 +1349,28 @@
 										</div>
 										<button
 											type="button"
-											class="switch"
+											class="switch" aria-label="Enable Control"
 											class:on={tempControlEnabled}
 											onclick={() => (tempControlEnabled = !tempControlEnabled)}
 											aria-pressed={tempControlEnabled}
 										>
-											<span class="switch-thumb"></span>
+											<span class="switch-state">{tempControlEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 										</button>
 									</div>
 									{#if tempControlEnabled}
 										<div class="control-defaults">
 											<div class="inline-setting">
-												<label>Default target</label>
+	<span>Default target</span>
 												<div class="input-group compact">
-													<input type="number" bind:value={tempTarget} min={useCelsius ? 0 : 32} max={useCelsius ? 38 : 100} step="0.5" class="num-input" />
+													<input aria-label="Default target" type="number" bind:value={tempTarget} min={useCelsius ? 0 : 32} max={useCelsius ? 38 : 100} step="0.5" class="num-input" />
 													<span class="input-unit">{tempUnitSymbol}</span>
 												</div>
 											</div>
 											<div class="inline-setting">
-												<label>Hysteresis</label>
+	<span>Hysteresis</span>
 												<div class="input-group compact">
-													<input type="number" bind:value={tempHysteresis} min={useCelsius ? 0.3 : 0.5} max={useCelsius ? 5.5 : 10} step={useCelsius ? 0.25 : 0.5} class="num-input" />
+													<input aria-label="Hysteresis" type="number" bind:value={tempHysteresis} min={useCelsius ? 0.3 : 0.5} max={useCelsius ? 5.5 : 10} step={useCelsius ? 0.25 : 0.5} class="num-input" />
 													<span class="input-unit">±{tempUnitSymbol}</span>
 												</div>
 											</div>
@@ -1340,27 +1387,28 @@
 											</div>
 											<button
 												type="button"
-												class="switch"
+												class="switch" aria-label="Enable Idle Control"
 												class:on={chamberIdleEnabled}
 												onclick={() => (chamberIdleEnabled = !chamberIdleEnabled)}
 												aria-pressed={chamberIdleEnabled}
 											>
-												<span class="switch-thumb"></span>
+												<span class="switch-state">{chamberIdleEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 											</button>
 										</div>
 										{#if chamberIdleEnabled}
 											<div class="control-defaults">
 												<div class="inline-setting">
-													<label>Idle target</label>
+	<span>Idle target</span>
 													<div class="input-group compact">
-														<input type="number" bind:value={chamberIdleTarget} min={useCelsius ? 0 : 32} max={useCelsius ? 30 : 86} step="0.5" class="num-input" />
+														<input aria-label="Idle target" type="number" bind:value={chamberIdleTarget} min={useCelsius ? 0 : 32} max={useCelsius ? 30 : 86} step="0.5" class="num-input" />
 														<span class="input-unit">{tempUnitSymbol}</span>
 													</div>
 												</div>
 												<div class="inline-setting">
-													<label>Hysteresis</label>
+	<span>Hysteresis</span>
 													<div class="input-group compact">
-														<input type="number" bind:value={chamberIdleHysteresis} min={useCelsius ? 0.5 : 1} max={useCelsius ? 5.5 : 10} step={useCelsius ? 0.25 : 0.5} class="num-input" />
+														<input aria-label="Hysteresis" type="number" bind:value={chamberIdleHysteresis} min={useCelsius ? 0.5 : 1} max={useCelsius ? 5.5 : 10} step={useCelsius ? 0.25 : 0.5} class="num-input" />
 														<span class="input-unit">±{tempUnitSymbol}</span>
 													</div>
 												</div>
@@ -1392,7 +1440,7 @@
 			</section>
 
 			<!-- Device Control Backend Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-devicecontrol" style="order: 5">
 				<button
 					type="button"
 					class="section-header"
@@ -1449,7 +1497,7 @@
 							<div class="subsection">
 								<h3>Shelly Devices</h3>
 								<p class="subsection-desc">Add your Shelly device IP addresses. Supports Gen1 (original) and Gen2 (Plus/Pro) devices.</p>
-								<p class="local-only-note">⚠️ Direct Shelly control requires BrewSignal and Shelly devices on the same local network.</p>
+								<p class="local-only-note"><span class="pill-tag">Note</span> Direct Shelly control requires BrewSignal and Shelly devices on the same local network.</p>
 
 								<div class="device-list">
 									{#each shellyDevices as ip}
@@ -1464,14 +1512,14 @@
 												>
 													{shellyTesting === ip ? 'Testing...' : 'Test'}
 												</button>
-												<button type="button" class="remove-btn" onclick={() => removeShellyDevice(ip)} title="Remove device">
+												<button type="button" class="remove-btn" onclick={() => removeShellyDevice(ip)} title="Remove device" aria-label="Remove device {ip}">
 													<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 														<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 													</svg>
 												</button>
 											</div>
 											{#if shellyTestResult?.ip === ip}
-												<span class="test-result" class:success={shellyTestResult.success}>
+												<span role="status" class="test-result" class:success={shellyTestResult.success}>
 													{shellyTestResult.message}
 												</span>
 											{/if}
@@ -1514,7 +1562,7 @@
 			</section>
 
 			<!-- AI Assistant Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-ai" style="order: 1">
 				<button
 					type="button"
 					class="section-header"
@@ -1548,12 +1596,13 @@
 							</div>
 							<button
 								type="button"
-								class="switch"
+								class="switch" aria-label="Enable AI Assistant"
 								class:on={aiEnabled}
 								onclick={() => (aiEnabled = !aiEnabled)}
 								aria-pressed={aiEnabled}
 							>
-								<span class="switch-thumb"></span>
+								<span class="switch-state">{aiEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 							</button>
 						</div>
 
@@ -1565,17 +1614,18 @@
 								</div>
 								<button
 									type="button"
-									class="switch"
+									class="switch" aria-label="Local Lite LLM"
 									class:on={aiLiteEnabled}
 									onclick={() => (aiLiteEnabled = !aiLiteEnabled)}
 									aria-pressed={aiLiteEnabled}
 								>
-									<span class="switch-thumb"></span>
+									<span class="switch-state">{aiLiteEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 								</button>
 							</div>
 							{#if aiLiteEnabled}
 								<div class="info-box success compact">
-									<p>✓ Hailo AI HAT+ will handle thread summaries and other lightweight tasks locally.</p>
+									<p>Hailo AI HAT+ will handle thread summaries and other lightweight tasks locally.</p>
 								</div>
 							{/if}
 						{/if}
@@ -1676,7 +1726,7 @@
 									{#if aiTestResult.success}
 										<span class="test-result success">Connected! "{aiTestResult.response}"</span>
 									{:else}
-										<span class="test-result">{aiTestResult.error}</span>
+										<span role="status" class="test-result">{aiTestResult.error}</span>
 									{/if}
 								{/if}
 							</div>
@@ -1694,7 +1744,7 @@
 			</section>
 
 			<!-- MQTT Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-mqtt" style="order: 3">
 				<button
 					type="button"
 					class="section-header"
@@ -1728,12 +1778,13 @@
 							</div>
 							<button
 								type="button"
-								class="switch"
+								class="switch" aria-label="Enable MQTT Publishing"
 								class:on={mqttEnabled}
 								onclick={() => (mqttEnabled = !mqttEnabled)}
 								aria-pressed={mqttEnabled}
 							>
-								<span class="switch-thumb"></span>
+								<span class="switch-state">{mqttEnabled ? 'On' : 'Off'}</span>
+						<span class="switch-thumb"></span>
 							</button>
 						</div>
 
@@ -1774,7 +1825,7 @@
 									{mqttTesting ? 'Testing...' : 'Test Connection'}
 								</button>
 								{#if mqttTestResult}
-									<span class="test-result" class:success={mqttTestResult.success}>{mqttTestResult.message}</span>
+									<span role="status" class="test-result" class:success={mqttTestResult.success}>{mqttTestResult.message}</span>
 								{/if}
 							</div>
 						{/if}
@@ -1791,7 +1842,7 @@
 			</section>
 
 			<!-- Storage Section -->
-			<section class="settings-section">
+			<section class="settings-section" id="sec-storage" style="order: 6">
 				<button
 					type="button"
 					class="section-header"
@@ -1827,10 +1878,10 @@
 						<div class="cleanup-section">
 							<p>Remove old readings to free storage. This action is permanent.</p>
 							<div class="cleanup-controls">
-								<label>Keep readings from last</label>
+								<span class="cleanup-label">Keep readings from last</span>
 								<div class="input-group compact">
-									<input type="number" min="1" max="365" bind:value={cleanupRetentionDays} class="num-input" />
-									<span class="input-unit">days</span>
+									<input type="number" min="1" max="365" bind:value={cleanupRetentionDays} class="num-input" aria-label="Retention days" />
+									<span class="input-unit">&thinsp;days</span>
 								</div>
 								<button type="button" class="secondary-btn" onclick={previewCleanup} disabled={actionInProgress !== null}>
 									{actionInProgress === 'cleanup-preview' ? 'Checking...' : 'Preview'}
@@ -1851,7 +1902,7 @@
 
 			<!-- Cloud Sync Section -->
 			{#if authEnabled}
-				<section class="settings-section">
+				<section class="settings-section" id="sec-cloud" style="order: 7">
 					<button
 						type="button"
 						class="section-header"
@@ -1975,11 +2026,11 @@
 												onclick={handleCloudGoogleSignIn}
 												disabled={cloudAuthLoading}
 											>
-												<svg class="google-icon" viewBox="0 0 24 24">
-													<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-													<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-													<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-													<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+												<svg class="google-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+													<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+													<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+													<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+													<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
 												</svg>
 												Continue with Google
 											</button>
@@ -2067,7 +2118,7 @@
 			{/if}
 
 			<!-- Power Controls -->
-			<section class="settings-section danger-section">
+			<section class="settings-section danger-section" id="sec-power" style="order: 8">
 				<button
 					type="button"
 					class="section-header"
@@ -2105,1553 +2156,1289 @@
 				{/if}
 			</section>
 		</div>
+		</div>
 	{/if}
 </div>
-
 <style>
-	/* Page Layout */
+	/* Page layout: sticky section index (desk) + main column */
 	.system-page {
-		max-width: 52rem;
+		display: grid;
+		grid-template-columns: 12rem minmax(0, 1fr);
+		gap: var(--space-xl);
+		align-items: start;
+		max-width: 64rem;
 		margin: 0 auto;
 	}
+	.system-main {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.system-main > .quick-links {
+		order: 0;
+	}
+	.system-main > .settings-container {
+		order: 1;
+	}
+	.system-main > .status-banner {
+		order: 2;
+	}
 
-	/* Loading State */
+	/* Section index */
+	.section-index {
+		position: sticky;
+		top: var(--space-lg);
+		align-self: start;
+	}
+	.section-index ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid var(--rule-hairline);
+	}
+	.index-link {
+		display: block;
+		width: 100%;
+		min-height: 44px;
+		padding: 0 var(--space-xs);
+		text-align: left;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-secondary);
+		border-bottom: 1px solid var(--rule-hairline);
+		cursor: pointer;
+		transition: color 140ms var(--ease-out-quart);
+	}
+	.index-link:hover {
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+	}
+	.index-link.current {
+		color: var(--accent);
+	}
+	.index-link:focus-visible,
+	.section-header:focus-visible,
+	.quick-link:focus-visible,
+	.switch:focus-visible,
+	.toggle-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
+	}
+
+	/* Loading */
 	.loading-state {
+		grid-column: 1 / -1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1rem;
+		gap: var(--space-md);
 		padding: 6rem 2rem;
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.loading-spinner {
-		width: 2.5rem;
-		height: 2.5rem;
-		border: 2px solid var(--gray-800);
-		border-top-color: var(--recipe-accent);
+		width: 2rem;
+		height: 2rem;
+		border: 2px solid var(--rule-strong);
+		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-
 	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* Status Banner */
-	.status-banner {
-		background: linear-gradient(135deg, var(--gray-900) 0%, var(--gray-850) 100%);
-		border: 1px solid var(--gray-800);
-		border-radius: 0.75rem;
-		padding: 1.25rem 1.5rem;
-		margin-bottom: 1rem;
-	}
-
-	.status-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 1rem;
-	}
-
-	@media (min-width: 640px) {
-		.status-grid {
-			grid-template-columns: repeat(6, 1fr);
+		to {
+			transform: rotate(360deg);
 		}
 	}
 
+	/* About: readout grid */
+	.status-banner {
+		scroll-margin-top: var(--space-lg);
+		margin-top: var(--space-xl);
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-strong);
+	}
+	.about-title {
+		font-family: var(--font-display);
+		font-size: var(--text-base);
+		font-weight: 600;
+		color: var(--ink-primary);
+		margin-bottom: var(--space-sm);
+	}
+	.status-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		border: 1px solid var(--rule-hairline);
+		background: var(--bg-surface);
+	}
 	.status-item {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: var(--space-2xs);
+		padding: var(--space-sm);
+		border-right: 1px solid var(--rule-hairline);
+		border-bottom: 1px solid var(--rule-hairline);
+		min-width: 0;
 	}
-
 	.status-label {
-		font-size: 0.625rem;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
 	.status-value {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		color: var(--text-primary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+		overflow-wrap: anywhere;
 	}
-
-	/* AI Status */
-	.ai-status.active .ai-chip {
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(251, 146, 60, 0.1) 100%);
-		border: 1px solid rgba(245, 158, 11, 0.3);
-		color: var(--recipe-accent);
-	}
-
 	.ai-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.25rem 0.5rem;
-		background: var(--gray-800);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		font-size: 0.6875rem;
+		gap: var(--space-xs);
+		padding: 2px var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-secondary);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 	}
-
+	.ai-status.active .ai-chip {
+		color: var(--accent);
+		border-color: var(--accent-rule);
+		background: var(--accent-tint);
+	}
 	.ai-dot {
 		width: 6px;
 		height: 6px;
-		background: var(--recipe-accent);
-		color: var(--accent-ink);
+		background: var(--accent);
 		border-radius: 50%;
-		animation: pulse-dot 2s ease-in-out infinite;
 	}
-
-	@keyframes pulse-dot {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
 	.ai-tops {
-		color: var(--text-muted);
+		color: var(--ink-muted);
+		font-family: var(--font-num);
 		font-weight: 500;
 	}
-
 	.ai-unavailable {
-		color: var(--text-muted);
-		font-size: 0.75rem;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
 	}
 
-	/* Quick Links */
+	/* Quick links */
 	.quick-links {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
 		flex-wrap: wrap;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-lg);
 	}
-
 	.quick-link {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 0.875rem;
-		background: var(--gray-900);
-		border: 1px solid var(--gray-800);
-		border-radius: 0.5rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-secondary);
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		text-decoration: none;
-		transition: all 0.15s ease;
 	}
-
 	.quick-link:hover {
-		background: var(--gray-850);
-		border-color: var(--gray-700);
-		color: var(--text-primary);
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
 	.quick-link .icon {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	/* Settings Container */
+	/* Settings sections: hairline, flat */
 	.settings-container {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
 	}
-
-	/* Settings Sections */
 	.settings-section {
-		background: var(--gray-900);
-		border: 1px solid var(--gray-800);
-		border-radius: 0.625rem;
-		overflow: hidden;
+		scroll-margin-top: var(--space-lg);
+		border-top: 1px solid var(--rule-strong);
+		margin-bottom: var(--space-md);
 	}
-
 	.settings-section.danger-section {
-		border-color: rgba(239, 68, 68, 0.2);
+		border-top-color: color-mix(in oklch, var(--status-danger) 55%, transparent);
 	}
-
 	.section-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 1rem 1.25rem;
+		min-height: 52px;
+		padding: var(--space-xs) var(--space-xs);
 		background: transparent;
-		border: none;
 		cursor: pointer;
 		text-align: left;
 	}
-
 	.section-header:hover {
-		background: var(--gray-850);
+		background: var(--bg-surface);
 	}
-
 	.section-title-group {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
 	}
-
 	.section-icon {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--text-muted);
+		width: 1.125rem;
+		height: 1.125rem;
+		color: var(--ink-muted);
 	}
-
 	.section-header h2 {
-		font-size: 0.875rem;
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 		margin: 0;
 	}
-
 	.chevron {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--text-muted);
-		transition: transform 0.2s ease;
+		width: 1.125rem;
+		height: 1.125rem;
+		color: var(--ink-muted);
+		transition: transform 140ms var(--ease-out-quart);
 	}
-
 	.chevron.rotated {
 		transform: rotate(180deg);
 	}
-
-	/* Section Content */
 	.section-content {
-		padding: 0 1.25rem 1.25rem;
-		border-top: 1px solid var(--gray-800);
+		padding: 0 var(--space-xs) var(--space-md);
 	}
-
 	.section-intro {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		line-height: 1.5;
-		margin: 1rem 0;
+		max-width: 44rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin: 0 0 var(--space-sm);
 	}
 
-	/* Status Pills */
-	.status-pill {
-		font-size: 0.625rem;
+	/* Outlined status pills */
+	.status-pill,
+	.storage-badge,
+	.pill-tag {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		padding: 0.25rem 0.5rem;
-		border-radius: 9999px;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 	}
-
-	.status-pill.connected {
-		background: rgba(34, 197, 94, 0.15);
-		color: var(--tilt-green);
-	}
-
-	.status-pill.disconnected {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--tilt-red);
-	}
-
-	.status-pill.enabled {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--accent);
-	}
-
 	.storage-badge {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.25rem 0.5rem;
-		background: var(--gray-800);
-		border-radius: 0.25rem;
-		color: var(--text-secondary);
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.status-pill.connected {
+		color: var(--status-steady);
+		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
+	}
+	.status-pill.disconnected {
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
+	}
+	.status-pill.enabled {
+		color: var(--accent);
+		border-color: var(--accent-rule);
+	}
+	.pill-tag {
+		color: var(--status-warn);
+		border-color: color-mix(in oklch, var(--status-warn) 60%, transparent);
 	}
 
-	/* Settings Grid */
+	/* Unit grid */
 	.settings-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		padding: 1rem 0;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: var(--space-md);
+		padding: var(--space-sm) 0 var(--space-md);
 	}
-
-	@media (min-width: 640px) {
-		.settings-grid {
-			grid-template-columns: repeat(4, 1fr);
-		}
-	}
-
 	.setting-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-xs);
+		min-width: 0;
 	}
-
-	.setting-label {
-		font-size: 0.6875rem;
+	.setting-label,
+	.form-field label,
+	.subsection h3 {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
 
-	/* Toggle Groups */
+	/* Segmented toggle */
 	.toggle-group {
 		display: flex;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		overflow: hidden;
 	}
-
-	.toggle-group.triple .toggle-btn {
-		min-width: 2.5rem;
-	}
-
 	.toggle-btn {
 		flex: 1;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.75rem;
+		min-height: 42px;
+		padding: 0 var(--space-sm);
+		font-family: var(--font-num);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		background: transparent;
-		border: none;
-		color: var(--text-muted);
+		color: var(--ink-secondary);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
+	.toggle-btn + .toggle-btn {
+		border-left: 1px solid var(--rule-strong);
+	}
 	.toggle-btn:hover {
-		color: var(--text-secondary);
+		color: var(--ink-primary);
 	}
-
 	.toggle-btn.active {
 		background: var(--accent);
 		color: var(--accent-ink);
 	}
 
-	/* Input Groups */
+	/* Fields */
 	.input-group {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-2xs);
 	}
-
-	.input-group.compact {
-		gap: 0.25rem;
+	.num-input,
+	.select-input,
+	.mini-select,
+	.form-field input,
+	.form-field select,
+	.add-device-form input {
+		min-height: 44px;
+		padding: 0 var(--space-sm);
+		font-size: var(--text-base);
+		color: var(--ink-primary);
+		background-color: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 	}
-
 	.num-input {
-		width: 4rem;
-		padding: 0.5rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		text-align: center;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
+		width: 5.5rem;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
 	}
-
-	.num-input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.input-unit {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		font-family: var(--font-mono);
-	}
-
-	/* Select Input */
-	.select-input {
-		width: 100%;
-		padding: 0.5rem 2rem 0.5rem 0.75rem;
-		font-size: 0.8125rem;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
-		cursor: pointer;
+	.select-input,
+	.mini-select,
+	.form-field select {
 		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2371717a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+		padding-right: 2rem;
+		cursor: pointer;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
 		background-repeat: no-repeat;
 		background-position: right 0.5rem center;
 		background-size: 1rem;
 	}
-
-	.select-input:focus {
-		outline: none;
+	.select-input {
+		width: 100%;
+	}
+	.mini-select {
+		font-family: var(--font-num);
+		font-size: var(--text-sm);
+	}
+	.num-input:focus-visible,
+	.select-input:focus-visible,
+	.mini-select:focus-visible,
+	.form-field input:focus-visible,
+	.form-field select:focus-visible,
+	.add-device-form input:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
 		border-color: var(--accent);
 	}
-
-	.mini-select {
-		padding: 0.25rem 1.5rem 0.25rem 0.5rem;
-		font-size: 0.75rem;
-		font-family: var(--font-mono);
-		background: var(--gray-800);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.25rem;
-		color: var(--text-primary);
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2371717a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 0.25rem center;
-		background-size: 0.75rem;
+	.input-unit {
+		font-family: var(--font-num);
+		font-size: var(--text-sm);
+		color: var(--ink-muted);
 	}
-
-	/* Divider */
 	.settings-divider {
-		height: 1px;
-		background: var(--gray-800);
-		margin: 0.5rem 0;
+		height: 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
 
-	/* Toggle Settings */
+	/* Setting rows: label + help left, control right */
 	.toggle-settings {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		padding: 0.75rem 0;
 	}
-
 	.toggle-setting {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.5rem 0;
+		gap: var(--space-md);
+		min-height: 56px;
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.toggle-setting.prominent {
-		padding: 1rem;
-		background: var(--gray-850);
-		border-radius: 0.5rem;
-		margin: 0.75rem 0;
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.toggle-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: 2px;
+		min-width: 0;
 	}
-
 	.toggle-label {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-weight: 700;
+		color: var(--ink-primary);
 	}
-
 	.toggle-desc {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.toggle-controls {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 	}
 
-	/* Switch */
+	/* Switch with On/Off text */
 	.switch {
-		position: relative;
-		width: 2.75rem;
-		height: 1.5rem;
-		background: var(--gray-700);
-		border: none;
-		border-radius: 0.75rem;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-2xs);
 		cursor: pointer;
-		transition: background 0.2s ease;
 	}
-
-	.switch.on {
-		background: var(--accent);
-		color: var(--accent-ink);
+	.switch-state {
+		min-width: 1.75rem;
+		text-align: right;
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
+	.switch.on .switch-state {
+		color: var(--accent);
+	}
 	.switch-thumb {
+		position: relative;
+		flex: none;
+		width: 2.5rem;
+		height: 1.5rem;
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
+		background: var(--bg-subtle);
+	}
+	.switch-thumb::after {
+		content: '';
 		position: absolute;
 		top: 2px;
 		left: 2px;
-		width: 1.25rem;
-		height: 1.25rem;
-		background: var(--gray-400);
-		border-radius: 50%;
-		transition: all 0.2s ease;
+		width: calc(1.5rem - 6px);
+		height: calc(1.5rem - 6px);
+		border-radius: 2px;
+		background: var(--ink-muted);
+		transition: transform 140ms var(--ease-out-quart);
 	}
-
 	.switch.on .switch-thumb {
-		left: calc(100% - 1.25rem - 2px);
-		background: white;
-	}
-
-	/* Form Grid */
-	.form-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		padding: 1rem 0;
-	}
-
-	.form-field {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.form-field.full {
-		grid-column: 1 / -1;
-	}
-
-	.form-field label {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--text-secondary);
-	}
-
-	.form-field input,
-	.form-field select {
-		padding: 0.625rem 0.75rem;
-		font-size: 0.8125rem;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
-	}
-
-	.form-field input:focus,
-	.form-field select:focus {
-		outline: none;
+		background: var(--accent-tint);
 		border-color: var(--accent);
 	}
+	.switch.on .switch-thumb::after {
+		transform: translateX(1rem);
+		background: var(--accent);
+	}
 
+	/* Form rows */
+	.form-grid {
+		display: flex;
+		flex-direction: column;
+		padding: var(--space-xs) 0;
+	}
+	.form-field {
+		display: grid;
+		grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-2xs) var(--space-md);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--rule-hairline);
+	}
+	.form-field > :not(label) {
+		grid-column: 2;
+	}
 	.form-field input::placeholder {
-		color: var(--text-muted);
+		color: var(--ink-muted);
 	}
-
 	.field-hint {
-		font-size: 0.6875rem;
-		color: var(--text-muted);
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
 	}
-
 	.field-hint.success {
-		color: var(--tilt-green);
+		color: var(--status-steady);
 	}
 
 	/* Subsections */
 	.subsection {
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--gray-800);
+		margin-top: var(--space-lg);
+		padding-top: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
+		scroll-margin-top: var(--space-lg);
 	}
-
 	.subsection h3 {
-		font-size: 0.75rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-		margin-bottom: 0.75rem;
+		margin-bottom: var(--space-xs);
 	}
-
-	/* Inline Settings */
 	.inline-setting {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0;
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		padding: var(--space-xs) 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.control-defaults {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1rem;
-		margin-top: 0.75rem;
+		gap: var(--space-xs) var(--space-lg);
 	}
 
-	/* Info Box */
+	/* Info box: hairline, flat */
 	.info-box {
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.5rem;
-		padding: 1rem;
-		margin: 0.75rem 0;
+		padding: var(--space-sm) var(--space-md);
+		margin: var(--space-sm) 0;
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
 	}
-
+	.info-box.success {
+		border-color: color-mix(in oklch, var(--status-steady) 55%, transparent);
+	}
+	.info-box.compact {
+		padding: var(--space-xs) var(--space-sm);
+	}
 	.info-box h4 {
-		font-size: 0.8125rem;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		color: var(--text-primary);
-		margin-bottom: 0.5rem;
+		color: var(--ink-primary);
+		margin-bottom: var(--space-xs);
 	}
-
 	.info-box p {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-		line-height: 1.5;
-		margin: 0.5rem 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin: var(--space-xs) 0;
 	}
-
 	.info-box ol {
-		font-size: 0.75rem;
-		color: var(--text-secondary);
-		padding-left: 1.25rem;
-		margin: 0.5rem 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		padding-left: var(--space-lg);
+		margin: var(--space-xs) 0;
 	}
-
 	.info-box li {
-		margin: 0.25rem 0;
+		margin: var(--space-2xs) 0;
 	}
-
-	.info-box code {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.125rem 0.375rem;
-		background: var(--gray-800);
-		border-radius: 0.25rem;
+	.info-box code,
+	.help-text code {
+		font-family: var(--font-num);
+		font-size: var(--text-xs);
+		padding: 1px var(--space-xs);
+		background: var(--bg-subtle);
+		border-radius: 2px;
+		color: var(--ink-primary);
+	}
+	.info-box a,
+	.help-text a,
+	.info-hint a {
 		color: var(--accent);
 	}
-
-	.info-box a {
-		color: var(--accent);
-	}
-
-	.info-box a:hover {
+	.info-box a:hover,
+	.help-text a:hover,
+	.info-hint a:hover {
 		text-decoration: underline;
 	}
-
 	.info-box .gpu-detected {
-		color: var(--positive);
-		font-size: 0.8125rem;
-		margin-bottom: 0.5rem;
+		color: var(--status-steady);
+	}
+	.info-box .hint,
+	.info-hint {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+		margin-top: var(--space-xs);
+	}
+	.info-box svg {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+		color: var(--ink-muted);
+	}
+	.section-content > .info-box {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-sm);
+	}
+	.section-content > .info-box > div > span {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
 
-	.info-box .ai-detected {
-		color: var(--recipe-accent);
-		font-size: 0.75rem;
-		margin-left: 0.5rem;
-	}
-
-	.info-box .warning {
-		color: var(--error);
-		font-size: 0.85rem;
-		font-weight: 500;
-	}
-
-	.info-box.hailo {
-		border-left: 3px solid var(--recipe-accent);
-	}
-
-	.info-box .hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-top: 0.5rem;
-	}
-
-	/* Advanced Settings */
 	.advanced-settings {
-		margin-top: 0.75rem;
+		margin-top: var(--space-sm);
 	}
-
 	.advanced-settings summary {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		display: flex;
+		align-items: center;
+		min-height: 44px;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		cursor: pointer;
-		padding: 0.5rem 0;
 	}
-
 	.advanced-settings summary:hover {
-		color: var(--text-secondary);
+		color: var(--ink-primary);
 	}
 
 	/* Actions */
 	.inline-actions {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
 		flex-wrap: wrap;
-		padding: 0.75rem 0;
+		gap: var(--space-sm);
+		padding: var(--space-sm) 0;
 	}
-
 	.section-actions {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--gray-800);
-		margin-top: 1rem;
+		flex-wrap: wrap;
+		gap: var(--space-md);
+		margin-top: var(--space-md);
+		padding-top: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
-	/* Buttons */
-	.save-btn {
-		padding: 0.625rem 1.25rem;
-		font-size: 0.8125rem;
+	.save-btn,
+	.primary-btn,
+	.submit-btn {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
+		color: var(--accent-ink);
 		background: var(--accent);
-		border: none;
-		border-radius: 0.5rem;
-		color: var(--accent-ink);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: background 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
-	.save-btn:hover:not(:disabled) {
+	.save-btn:hover:not(:disabled),
+	.primary-btn:hover:not(:disabled),
+	.submit-btn:hover:not(:disabled) {
 		background: var(--accent-hover);
-		color: var(--accent-ink);
 	}
-
-	.save-btn:disabled {
+	.save-btn:disabled,
+	.submit-btn:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
-
+	.submit-btn {
+		width: 100%;
+	}
 	.test-btn,
-	.secondary-btn {
-		padding: 0.5rem 0.875rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: var(--gray-800);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		color: var(--text-secondary);
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.test-btn:hover:not(:disabled),
-	.secondary-btn:hover:not(:disabled) {
-		background: var(--gray-700);
-		color: var(--text-primary);
-	}
-
-	.test-btn:disabled,
-	.secondary-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.warning-btn {
+	.secondary-btn,
+	.sync-btn,
+	.add-btn,
+	.claim-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
+		justify-content: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		background: rgba(251, 146, 60, 0.1);
-		border: 1px solid rgba(251, 146, 60, 0.25);
-		border-radius: 0.5rem;
-		color: var(--tilt-orange);
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background-color 140ms var(--ease-out-quart);
 	}
-
-	.warning-btn:hover:not(:disabled) {
-		background: rgba(251, 146, 60, 0.15);
+	.test-btn:hover:not(:disabled),
+	.secondary-btn:hover:not(:disabled),
+	.sync-btn:hover:not(:disabled),
+	.add-btn:hover,
+	.claim-btn:hover:not(:disabled) {
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
-	.warning-btn:disabled {
+	.test-btn:disabled,
+	.secondary-btn:disabled,
+	.sync-btn:disabled,
+	.claim-btn:disabled,
+	.google-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-
-	.warning-btn svg {
-		width: 1rem;
-		height: 1rem;
+	.test-btn.small {
+		font-size: var(--text-xs);
+		padding: 0 var(--space-sm);
 	}
-
-	.danger-btn {
-		padding: 0.5rem 0.875rem;
-		font-size: 0.75rem;
+	.warning-btn,
+	.danger-btn,
+	.disconnect-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-xs);
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
 		font-weight: 600;
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid rgba(239, 68, 68, 0.25);
-		border-radius: 0.375rem;
-		color: var(--tilt-red);
+		background: var(--bg-surface);
+		border: 1px solid;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s ease;
 	}
-
-	.danger-btn:hover:not(:disabled) {
-		background: rgba(239, 68, 68, 0.15);
+	.warning-btn {
+		color: var(--status-warn);
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
 	}
-
+	.danger-btn,
+	.disconnect-btn {
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 55%, transparent);
+	}
+	.warning-btn:hover:not(:disabled) {
+		background: var(--warning-muted);
+	}
+	.danger-btn:hover:not(:disabled),
+	.disconnect-btn:hover {
+		background: var(--negative-muted);
+	}
+	.warning-btn:disabled,
 	.danger-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-
-	.danger-btn.large {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		font-size: 0.8125rem;
-		border-radius: 0.5rem;
-	}
-
-	.danger-btn.large svg {
-		width: 1rem;
-		height: 1rem;
-	}
-
-	/* Feedback Messages */
-	.error-msg {
-		font-size: 0.75rem;
-		color: var(--tilt-red);
-	}
-
-	.success-msg {
-		font-size: 0.75rem;
-		color: var(--tilt-green);
-	}
-
-	.test-result {
-		font-size: 0.75rem;
-		color: var(--tilt-red);
-	}
-
-	.test-result.success {
-		color: var(--tilt-green);
-	}
-
-	/* Storage Section */
-	.storage-stats {
-		display: flex;
-		gap: 2rem;
-		padding: 1rem 0;
-	}
-
-	.stat {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.stat-value {
-		font-family: var(--font-mono);
-		font-size: 1.5rem;
-		font-weight: 600;
-		color: var(--recipe-accent);
-	}
-
-	.stat-label {
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-	}
-
-	.cleanup-section {
-		padding-top: 1rem;
-		border-top: 1px solid var(--gray-800);
-	}
-
-	.cleanup-section > p {
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-		margin-bottom: 0.75rem;
-	}
-
-	.cleanup-controls {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-	}
-
-	.cleanup-controls label {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.cleanup-result {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-top: 0.5rem;
-	}
-
-	/* Power Section */
-	.warning-text {
-		font-size: 0.8125rem;
-		color: var(--tilt-red);
-		margin: 1rem 0;
-	}
-
-	.power-actions {
-		display: flex;
-		gap: 0.75rem;
-	}
-
-	/* Responsive */
-	@media (max-width: 640px) {
-		.status-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-
-		.settings-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.form-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.form-field.full {
-			grid-column: 1;
-		}
-
-		.storage-stats {
-			flex-direction: column;
-			gap: 1rem;
-		}
-
-		.power-actions {
-			flex-direction: column;
-		}
-
-		.cleanup-controls {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-	}
-
-	/* Cloud Sync Styles */
-	.loading-inline {
-		padding: 1rem;
-		color: var(--text-muted);
-		text-align: center;
-	}
-
-	.cloud-connected {
-		display: flex;
-		flex-direction: column;
-		gap: 1.5rem;
-	}
-
-	.connected-status {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 1rem;
-		background: var(--green-900);
-		border: 1px solid var(--green-700);
-		border-radius: 0.5rem;
-	}
-
-	.connected-status .check-icon {
-		width: 1.5rem;
-		height: 1.5rem;
-		color: var(--green-400);
-		flex-shrink: 0;
-	}
-
-	.connected-label {
-		display: block;
-		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-
-	.connected-email {
-		display: block;
-		font-weight: 500;
-		color: var(--text-primary);
-	}
-
-	.claim-data-box {
-		padding: 1rem;
-		background: var(--amber-900);
-		border: 1px solid var(--amber-700);
-		border-radius: 0.5rem;
-	}
-
-	.claim-data-box h4 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--amber-200);
-	}
-
-	.claim-data-box p {
-		margin: 0 0 0.75rem 0;
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.unclaimed-list {
-		margin: 0 0 1rem 1.25rem;
-		padding: 0;
-		font-size: 0.8125rem;
-		color: var(--text-primary);
-	}
-
-	.unclaimed-list li {
-		margin-bottom: 0.25rem;
-	}
-
-	.claim-btn {
-		padding: 0.5rem 1rem;
-		background: var(--amber-600);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.claim-btn:hover:not(:disabled) {
-		background: var(--amber-500);
-	}
-
-	.claim-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.claim-result {
-		display: inline-block;
-		margin-left: 0.75rem;
-		font-size: 0.8125rem;
-		color: var(--red-400);
-	}
-
-	.claim-result.success {
-		color: var(--green-400);
-	}
-
-	.sync-to-cloud-box {
-		padding: 1rem;
-		background: var(--blue-900);
-		border: 1px solid var(--blue-700);
-		border-radius: 0.5rem;
-	}
-
-	.sync-to-cloud-box h4 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--blue-200);
-	}
-
-	.sync-to-cloud-box p {
-		margin: 0 0 0.75rem 0;
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-	}
-
-	.sync-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		background: var(--blue-600);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.sync-btn:hover:not(:disabled) {
-		background: var(--blue-500);
-	}
-
-	.sync-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
+	.warning-btn svg,
+	.danger-btn.large svg,
 	.sync-btn .sync-icon,
 	.sync-btn .spinner {
 		width: 1rem;
 		height: 1rem;
 	}
-
 	.sync-btn .spinner {
 		animation: spin 1s linear infinite;
 	}
 
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+	/* Feedback: outlined messages, text carries meaning */
+	.error-msg,
+	.success-msg,
+	.test-result,
+	.claim-result {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px var(--space-xs);
+		font-size: var(--text-sm);
+		border: 1px solid;
+		border-radius: 4px;
+		overflow-wrap: anywhere;
+	}
+	.error-msg,
+	.test-result,
+	.claim-result {
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
+	}
+	.success-msg,
+	.test-result.success,
+	.claim-result.success {
+		color: var(--status-steady);
+		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
 	}
 
+	/* Storage */
+	.storage-stats {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		border: 1px solid var(--rule-hairline);
+		background: var(--bg-surface);
+		margin-bottom: var(--space-md);
+	}
+	.stat {
+		display: flex;
+		flex-direction: column-reverse;
+		gap: var(--space-2xs);
+		padding: var(--space-sm);
+	}
+	.stat + .stat {
+		border-left: 1px solid var(--rule-hairline);
+	}
+	.stat-value {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-lg);
+		font-weight: 500;
+		color: var(--ink-primary);
+	}
+	.stat-label {
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
+	}
+	.cleanup-section > p,
+	.cleanup-result {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-bottom: var(--space-sm);
+	}
+	.cleanup-controls {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+	}
+	.cleanup-label {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+
+	/* Power */
+	.warning-text {
+		font-size: var(--text-sm);
+		color: var(--status-danger);
+		margin: 0 0 var(--space-md);
+	}
+	.power-actions {
+		display: flex;
+		gap: var(--space-sm);
+	}
+
+	/* Cloud sync */
+	.loading-inline {
+		padding: var(--space-md);
+		color: var(--ink-muted);
+	}
+	.cloud-connected {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+		align-items: flex-start;
+	}
+	.connected-status,
+	.claim-data-box,
+	.sync-to-cloud-box,
+	.cloud-benefits {
+		align-self: stretch;
+		padding: var(--space-sm) var(--space-md);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-hairline);
+		border-radius: 4px;
+	}
+	.connected-status {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
+		border-color: color-mix(in oklch, var(--status-steady) 55%, transparent);
+	}
+	.connected-status .check-icon {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--status-steady);
+		flex-shrink: 0;
+	}
+	.connected-label {
+		display: block;
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+	.connected-email {
+		display: block;
+		font-weight: 700;
+		color: var(--ink-primary);
+	}
+	.claim-data-box {
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
+	}
+	.claim-data-box h4,
+	.sync-to-cloud-box h4,
+	.cloud-benefits h4 {
+		margin: 0 0 var(--space-xs);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+	}
+	.claim-data-box p,
+	.sync-to-cloud-box p {
+		margin: 0 0 var(--space-sm);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.unclaimed-list {
+		margin: 0 0 var(--space-sm) var(--space-lg);
+		padding: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+	}
+	.claim-result {
+		margin-left: var(--space-sm);
+	}
 	.sync-result {
 		display: block;
-		margin-top: 0.75rem;
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
+		margin-top: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border: 1px solid;
+		border-radius: 4px;
+		font-size: var(--text-sm);
 	}
-
 	.sync-result.success {
-		background: var(--green-900);
-		border: 1px solid var(--green-700);
-		color: var(--green-300);
+		color: var(--status-steady);
+		border-color: color-mix(in oklch, var(--status-steady) 60%, transparent);
 	}
-
 	.sync-result.error {
-		background: var(--red-900);
-		border: 1px solid var(--red-700);
-		color: var(--red-300);
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
 	}
-
-	.cloud-features, .cloud-benefits {
-		padding: 1rem;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-800);
-		border-radius: 0.5rem;
-	}
-
-	.cloud-features h4, .cloud-benefits h4 {
-		margin: 0 0 0.75rem 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--text-secondary);
-	}
-
-	.features-list, .benefits-list {
+	.benefits-list {
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
-
-	.features-list li {
-		padding: 0.25rem 0;
-		font-size: 0.8125rem;
-		color: var(--text-muted);
-	}
-
 	.benefits-list li {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0;
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
+		gap: var(--space-xs);
+		padding: var(--space-2xs) 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
 	.benefits-list li svg {
 		width: 1rem;
 		height: 1rem;
-		color: var(--green-500);
+		color: var(--status-steady);
 		flex-shrink: 0;
 	}
-
-	.disconnect-btn {
-		padding: 0.5rem 1rem;
-		background: transparent;
-		color: var(--red-400);
-		border: 1px solid var(--red-700);
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.disconnect-btn:hover {
-		background: var(--red-900);
-		border-color: var(--red-600);
-	}
-
 	.cloud-auth-form {
 		max-width: 24rem;
 	}
-
 	.cloud-auth-form h3 {
-		margin: 0 0 1rem 0;
-		font-size: 1.125rem;
+		margin: 0 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--ink-primary);
 	}
-
+	.cloud-auth-form form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+	}
+	.cloud-auth-form .form-field {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		border-bottom: 0;
+		padding: 0;
+	}
 	.auth-message {
-		padding: 0.75rem;
-		margin-bottom: 1rem;
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
-		background: var(--green-900);
-		border: 1px solid var(--green-700);
-		color: var(--green-300);
+		padding: var(--space-xs) var(--space-sm);
+		margin-bottom: var(--space-md);
+		border: 1px solid color-mix(in oklch, var(--status-steady) 60%, transparent);
+		border-radius: 4px;
+		font-size: var(--text-sm);
+		color: var(--status-steady);
 	}
-
 	.auth-message.error {
-		background: var(--red-900);
-		border: 1px solid var(--red-700);
-		color: var(--red-300);
+		color: var(--status-danger);
+		border-color: color-mix(in oklch, var(--status-danger) 60%, transparent);
 	}
-
 	.google-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.75rem;
+		gap: var(--space-sm);
 		width: 100%;
-		padding: 0.625rem 1rem;
-		background: white;
-		color: #374151;
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--ink-primary);
+		background: var(--bg-surface);
+		border: 1px solid var(--rule-strong);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: background-color 0.15s;
 	}
-
 	.google-btn:hover:not(:disabled) {
-		background: #f3f4f6;
+		background: var(--accent-tint);
+		border-color: var(--accent-rule);
 	}
-
-	.google-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.google-icon {
-		width: 1.25rem;
-		height: 1.25rem;
+		width: 1.125rem;
+		height: 1.125rem;
 	}
-
 	.divider {
 		display: flex;
 		align-items: center;
-		margin: 1rem 0;
+		margin: var(--space-md) 0;
 	}
-
-	.divider::before, .divider::after {
+	.divider::before,
+	.divider::after {
 		content: '';
 		flex: 1;
-		height: 1px;
-		background: var(--gray-700);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.divider span {
-		padding: 0 0.75rem;
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		padding: 0 var(--space-sm);
+		font-family: var(--font-display);
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: var(--ink-muted);
 	}
-
-	.cloud-auth-form form {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.submit-btn {
-		width: 100%;
-		padding: 0.625rem 1rem;
-		background: var(--amber-600);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.submit-btn:hover:not(:disabled) {
-		background: var(--amber-500);
-	}
-
-	.submit-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.auth-footer {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
-		margin-top: 1rem;
+		margin-top: var(--space-md);
 	}
-
 	.link-btn {
-		background: none;
-		border: none;
-		color: var(--text-muted);
-		font-size: 0.8125rem;
+		min-height: 44px;
+		color: var(--ink-secondary);
+		font-size: var(--text-sm);
 		cursor: pointer;
-		padding: 0.25rem 0;
 	}
-
 	.link-btn:hover {
-		color: var(--text-secondary);
+		color: var(--ink-primary);
 		text-decoration: underline;
 	}
-
 	.connect-actions {
 		display: flex;
-		gap: 0.75rem;
-		margin-bottom: 1.5rem;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-lg);
 	}
 
-	.primary-btn {
-		padding: 0.625rem 1.25rem;
-		background: var(--amber-600);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.primary-btn:hover {
-		background: var(--amber-500);
-	}
-
-	/* Device Control Section */
+	/* Device control */
 	.section-desc {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		margin-bottom: 1rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-bottom: var(--space-sm);
 	}
-
 	.radio-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-md);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.radio-option {
 		display: flex;
 		align-items: flex-start;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.5rem;
+		gap: var(--space-sm);
+		min-height: 56px;
+		padding: var(--space-sm) var(--space-xs);
+		border-bottom: 1px solid var(--rule-hairline);
 		cursor: pointer;
-		transition: all 0.15s;
 	}
-
 	.radio-option:hover {
-		border-color: var(--gray-600);
+		background: var(--bg-surface);
 	}
-
 	.radio-option.selected {
-		border-color: var(--accent);
-		background: var(--gray-800);
+		background: var(--accent-tint);
 	}
-
-	.radio-option input[type="radio"] {
-		margin-top: 0.125rem;
+	.radio-option input[type='radio'] {
+		margin-top: 0.25rem;
 		accent-color: var(--accent);
 	}
-
 	.radio-content {
 		display: flex;
 		flex-direction: column;
-		gap: 0.125rem;
+		gap: 2px;
 	}
-
 	.radio-label {
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-weight: 700;
+		color: var(--ink-primary);
 	}
-
 	.radio-desc {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 	}
-
-	.info-box svg {
-		width: 1rem;
-		height: 1rem;
-		flex-shrink: 0;
-		color: var(--accent);
-	}
-
-	.info-box > span {
-		font-size: 0.8125rem;
-		color: var(--text-secondary);
-		line-height: 1.5;
-	}
-
-	.section-content > .info-box {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-	}
-
 	.subsection-desc {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-bottom: 0.75rem;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-bottom: var(--space-sm);
 	}
-
 	.device-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
+		margin-bottom: var(--space-sm);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
 	.device-item {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.5rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--gray-850);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
+		gap: var(--space-xs);
+		min-height: 52px;
+		padding: var(--space-2xs) var(--space-xs);
+		border-bottom: 1px solid var(--rule-hairline);
 	}
-
 	.device-ip {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		color: var(--text-primary);
 		flex: 1;
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-primary);
 	}
-
 	.device-actions {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
+		gap: var(--space-xs);
 	}
-
-	.test-btn.small {
-		padding: 0.25rem 0.5rem;
-		font-size: 0.6875rem;
-	}
-
 	.remove-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		padding: 0;
-		background: transparent;
-		border: none;
-		border-radius: 0.25rem;
-		color: var(--text-muted);
+		width: 44px;
+		height: 44px;
+		color: var(--ink-muted);
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.15s;
 	}
-
 	.remove-btn:hover {
-		background: var(--gray-700);
-		color: var(--error);
+		background: var(--negative-muted);
+		color: var(--status-danger);
 	}
-
 	.remove-btn svg {
-		width: 0.875rem;
-		height: 0.875rem;
+		width: 1rem;
+		height: 1rem;
 	}
-
 	.device-item .test-result {
-		width: 100%;
-		font-size: 0.75rem;
-		margin-top: 0.25rem;
+		margin-bottom: var(--space-2xs);
 	}
-
 	.add-device-form {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
+		gap: var(--space-xs);
+		margin-bottom: var(--space-md);
 	}
-
 	.add-device-form input {
 		flex: 1;
-		padding: 0.5rem 0.75rem;
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		background: var(--gray-900);
-		border: 1px solid var(--gray-700);
-		border-radius: 0.375rem;
-		color: var(--text-primary);
+		min-width: 0;
+		font-family: var(--font-num);
 	}
-
-	.add-device-form input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.add-btn {
-		padding: 0.5rem 0.75rem;
-		background: var(--gray-700);
-		color: var(--text-primary);
-		border: none;
-		border-radius: 0.375rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.add-btn:hover {
-		background: var(--gray-600);
-	}
-
 	.help-text {
-		font-size: 0.75rem;
-		color: var(--text-muted);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
 		line-height: 1.6;
 	}
-
-	.help-text code {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.125rem 0.375rem;
-		background: var(--gray-800);
-		border-radius: 0.25rem;
-		color: var(--accent);
-	}
-
 	.help-text p {
-		margin: 0.25rem 0;
+		margin: var(--space-2xs) 0;
 	}
-
-	.help-text a {
-		color: var(--accent);
-		text-decoration: none;
-	}
-
-	.help-text a:hover {
-		text-decoration: underline;
-	}
-
 	.help-text .help-detail {
-		margin-top: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--gray-700);
+		margin-top: var(--space-xs);
+		padding-top: var(--space-xs);
+		border-top: 1px solid var(--rule-hairline);
 	}
-
-	.info-hint {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		margin-top: 0.5rem;
-	}
-
-	.info-hint a {
-		color: var(--accent);
-	}
-
-	.info-hint a:hover {
-		text-decoration: underline;
-	}
-
 	.local-only-note {
-		font-size: 0.75rem;
-		color: var(--warning, #f59e0b);
-		background: rgba(245, 158, 11, 0.1);
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.375rem;
-		margin-bottom: 0.75rem;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+		margin-bottom: var(--space-sm);
+	}
+
+	/* Tablet: index collapses to a horizontal strip */
+	@media (max-width: 1040px) {
+		.system-page {
+			grid-template-columns: minmax(0, 1fr);
+			gap: var(--space-md);
+		}
+		.section-index {
+			position: static;
+		}
+		.section-index ul {
+			display: flex;
+			overflow-x: auto;
+			scrollbar-width: none;
+			border-top: 0;
+			border-bottom: 1px solid var(--rule-hairline);
+		}
+		.index-link {
+			width: auto;
+			white-space: nowrap;
+			padding: 0 var(--space-md);
+			border-bottom: 2px solid transparent;
+			margin-bottom: -1px;
+		}
+		.index-link.current {
+			border-bottom-color: var(--accent);
+		}
+	}
+	@media (max-width: 760px) {
+		.status-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.settings-grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.form-field {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.form-field > :not(label) {
+			grid-column: 1;
+		}
+		.storage-stats {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.stat + .stat {
+			border-left: 0;
+			border-top: 1px solid var(--rule-hairline);
+		}
+		.power-actions {
+			flex-direction: column;
+		}
+		.power-actions > button,
+		.section-actions > .save-btn,
+		.add-device-form .add-btn {
+			width: 100%;
+			justify-content: center;
+		}
+		.cleanup-controls {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+		.add-device-form {
+			flex-direction: column;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.loading-spinner,
+		.sync-btn .spinner {
+			animation-duration: 3s;
+		}
 	}
 </style>

@@ -116,9 +116,13 @@ REMOTE
 
 # --- verify -------------------------------------------------------------------
 log "Verifying..."
-sleep 6
-ACTIVE="$(ssh_pi "systemctl is-active brewsignal" 2>/dev/null || echo inactive)"
-CODE="$(curl -s -m 8 -o /dev/null -w '%{http_code}' "http://$PI_HOST:$PORT/" 2>/dev/null || echo 000)"
+# Startup can take ~30s (boot migrations), so poll for up to ~90s.
+for _ in $(seq 1 18); do
+  sleep 5
+  ACTIVE="$(ssh_pi "systemctl is-active brewsignal" 2>/dev/null || echo inactive)"
+  CODE="$(curl -s -m 8 -o /dev/null -w '%{http_code}' "http://$PI_HOST:$PORT/" 2>/dev/null || true)"
+  [ "$ACTIVE" = "active" ] && [ "$CODE" = "200" ] && break
+done
 log "service=$ACTIVE  http=$CODE"
 
 if [ "$ACTIVE" = "active" ] && [ "$CODE" = "200" ]; then

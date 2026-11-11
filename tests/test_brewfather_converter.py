@@ -62,7 +62,10 @@ def test_convert_brewfather_json_to_beerjson():
     assert len(recipe['ingredients']['fermentable_additions']) == 4
     assert len(recipe['ingredients']['hop_additions']) == 6
     assert len(recipe['ingredients']['culture_additions']) == 1
-    assert len(recipe['ingredients']['miscellaneous_additions']) == 8
+    # 8 Brewfather miscs, but the 6 mash/sparge water salts duplicate the
+    # water adjustment block and are imported there, not as miscs.
+    miscs = recipe['ingredients']['miscellaneous_additions']
+    assert sorted(m['name'] for m in miscs) == ['Polyclar Brewbrite', 'Yeast Nutrients']
 
     # Verify fermentable conversion
     ale_malt = next(
@@ -83,7 +86,7 @@ def test_convert_brewfather_json_to_beerjson():
         h for h in recipe['ingredients']['hop_additions']
         if h['name'] == 'Citra' and h['timing'].get('duration', {}).get('value') == 30
     )
-    assert citra_hopstand['timing']['use'] == 'add_to_boil'
+    assert citra_hopstand['timing']['use'] == 'add_to_whirlpool'  # Aroma = hop stand (6c4cef1)
     assert citra_hopstand['timing']['duration']['value'] == 30
     assert citra_hopstand['amount']['value'] == 46
     assert citra_hopstand['amount']['unit'] == 'g'

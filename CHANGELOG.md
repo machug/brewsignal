@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-11-12
+
 ### Added
 - **Memory page** (tilt_ui-or48) - New Memory page (System > AI > Manage memory) lists everything the assistant remembers: your saved learnings and facts it picked up from chats. Delete one item, or delete all. New `GET /api/memory`, `DELETE /api/memory/{id}`, `DELETE /api/memory`. Memory text is sent to OpenAI's embedding model (via OpenRouter) to find related memories.
 - **New logo and app icons** (tilt_ui-nv1r.7) - New "Tilt Meniscus" mark (a tilted hydrometer at the wort surface) in the top bar, favicon, apple-touch icon, 512px icon and web manifest. The old hop-cone icon and logo are gone. The sign-in page now renders without the app chrome.

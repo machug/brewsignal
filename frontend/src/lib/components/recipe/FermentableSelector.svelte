@@ -28,6 +28,7 @@
 	let showBrowser = $state(false);
 	let modalEl = $state<HTMLElement | undefined>();
 	let triggerEl: HTMLElement | null = null;
+	let headerAddBtn: HTMLButtonElement | null = $state(null);
 
 	function openBrowser(e: MouseEvent) {
 		triggerEl = e.currentTarget as HTMLElement;
@@ -38,7 +39,7 @@
 	// Close the picker and return focus to the button that opened it
 	function closeBrowser() {
 		showBrowser = false;
-		tick().then(() => triggerEl?.focus());
+		tick().then(() => (triggerEl?.isConnected ? triggerEl : headerAddBtn)?.focus());
 	}
 
 	// Calculate totals
@@ -187,7 +188,7 @@
 				</span>
 			{/if}
 		</div>
-		<button type="button" class="add-btn" onclick={openBrowser}>
+		<button type="button" class="add-btn" bind:this={headerAddBtn} onclick={openBrowser}>
 			+ Add Fermentable
 		</button>
 	</div>

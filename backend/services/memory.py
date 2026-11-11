@@ -6,7 +6,7 @@ remember user preferences, brewing habits, and past learnings across sessions.
 
 Deployment modes:
 - LOCAL: Embedded Qdrant + SQLite (zero external dependencies)
-- CLOUD: Same for now, can be extended to use hosted Qdrant or pgvector
+- CLOUD: pgvector on the app Postgres (Supabase), rows keyed by payload user_id; no disk
 
 LLM Configuration:
 - Uses the same LLM config as the assistant (from database)
@@ -40,6 +40,22 @@ _mem_lock = asyncio.Lock()
 # Lazy-loaded memory instance
 _memory_instance = None
 _memory_config_hash = None
+
+
+PG_COLLECTION = "mem0"  # pgvector table; mem0 also uses "mem0_entities". user_id lives in payload->>'user_id'
+
+
+def _pg_pool():
+    """psycopg pool on the app database for mem0's pgvector store (hosted only)."""
+    from psycopg_pool import ConnectionPool
+
+    url = settings.get_database_url().replace("+asyncpg", "")
+    if "sslmode=" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+    # prepare_threshold=None: Supabase poolers (pgbouncer transaction mode) break server-side prepared statements
+    pool = ConnectionPool(url, min_size=1, max_size=3, open=False, kwargs={"prepare_threshold": None})
+    pool.open(wait=False)
+    return pool
 
 
 def _get_llm_provider_config(llm_config: LLMConfig) -> Optional[dict]:
@@ -137,27 +153,40 @@ def get_memory_config(llm_config: LLMConfig) -> Optional[dict]:
         logger.info("LLM not configured. Memory features disabled.")
         return None
 
-    # Determine data directory
-    if os.environ.get("BREWSIGNAL_MEMORY_DIR"):
-        data_dir = Path(os.environ["BREWSIGNAL_MEMORY_DIR"])
-    elif settings.is_local:
-        data_dir = Path(__file__).parent.parent.parent / "data" / "memory"
+    if settings.is_cloud and not os.environ.get("BREWSIGNAL_MEMORY_DIR"):
+        # Hosted: vectors live in the Supabase Postgres (durable, per-user rows). No disk.
+        # mem0's history log is SQLite-only: keep it in RAM (loses only the per-memory edit audit trail).
+        config = {
+            "vector_store": {
+                "provider": "pgvector",
+                "config": {
+                    "collection_name": PG_COLLECTION,
+                    "embedding_model_dims": EMBEDDING_DIMS,
+                    "hnsw": True,
+                    "connection_pool": _pg_pool(),
+                },
+            },
+            "history_db_path": ":memory:",
+            "llm": llm_provider,
+        }
     else:
-        data_dir = Path("/tmp/brewsignal-memory")
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    config = {
-        "vector_store": {
-            "provider": "qdrant",
-            "config": {
-                "path": str(data_dir / "qdrant"),
-                "embedding_model_dims": EMBEDDING_DIMS,
-                "on_disk": True,
-            }
-        },
-        "history_db_path": str(data_dir / "history.db"),
-        "llm": llm_provider,
-    }
+        if os.environ.get("BREWSIGNAL_MEMORY_DIR"):
+            data_dir = Path(os.environ["BREWSIGNAL_MEMORY_DIR"])
+        else:
+            data_dir = Path(__file__).parent.parent.parent / "data" / "memory"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        config = {
+            "vector_store": {
+                "provider": "qdrant",
+                "config": {
+                    "path": str(data_dir / "qdrant"),
+                    "embedding_model_dims": EMBEDDING_DIMS,
+                    "on_disk": True,
+                }
+            },
+            "history_db_path": str(data_dir / "history.db"),
+            "llm": llm_provider,
+        }
 
     # Embedder is required — without it mem0 falls back to a default OpenAI
     # config that 401s when no OPENAI_API_KEY is set. Better to disable
@@ -370,16 +399,12 @@ async def backfill_learnings_background() -> None:
 
 async def delete_memory(
     memory_id: str,
+    user_id: str,
     llm_config: Optional[LLMConfig] = None,
 ) -> bool:
-    """Delete a specific memory.
+    """Delete one memory, only if it belongs to user_id (mem0 itself deletes by bare id).
 
-    Args:
-        memory_id: The ID of the memory to delete
-        llm_config: LLM configuration (optional, uses cached if available)
-
-    Returns:
-        True if deleted successfully
+    Returns True if deleted; False if not found, not the user's, or mem0 is unavailable.
     """
     memory = get_memory(llm_config)
     if not memory:
@@ -387,6 +412,9 @@ async def delete_memory(
 
     try:
         async with _mem_lock:
+            found = await asyncio.to_thread(memory.get, memory_id)
+            if not found or found.get("user_id") != user_id:
+                return False
             await asyncio.to_thread(memory.delete, memory_id)
         return True
     except Exception as e:

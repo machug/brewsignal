@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from . import models  # noqa: E402, F401 - Import models so SQLAlchemy sees them
 from .database import async_session_factory, init_db, run_deferred_backfills  # noqa: E402
 from .models import Device, Reading, serialize_datetime_to_utc  # noqa: E402
-from .routers import chat, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, gateway, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, learnings, maintenance, mqtt, recipes, reflections, sync, system, users, yeast_strains  # noqa: E402
+from .routers import chat, alerts, ambient, assistant, batches, chamber, config, control, device_control, devices, fermentables, gateway, ha, hop_varieties, ingest, inventory_equipment, inventory_hops, inventory_yeast, learnings, maintenance, memory, mqtt, recipes, reflections, sync, system, users, yeast_strains  # noqa: E402
 from .services.memory import backfill_learnings_background  # noqa: E402
 from .auth import require_auth  # noqa: E402
 from .routers.config import get_config_value  # noqa: E402
@@ -650,6 +650,7 @@ app.include_router(recipes.router, dependencies=auth_deps)
 app.include_router(batches.router, dependencies=auth_deps)
 app.include_router(reflections.router, dependencies=auth_deps)
 app.include_router(learnings.router, dependencies=auth_deps)
+app.include_router(memory.router, dependencies=auth_deps)
 app.include_router(maintenance.router, dependencies=auth_deps)
 app.include_router(yeast_strains.router, dependencies=auth_deps)
 app.include_router(hop_varieties.router, dependencies=auth_deps)

@@ -82,7 +82,7 @@ async def delete_learning(
     if learning.mem0_memory_id:
         try:
             from backend.services.memory import delete_memory
-            await delete_memory(learning.mem0_memory_id)
+            await delete_memory(learning.mem0_memory_id, user.user_id)
         except Exception:
             pass
 

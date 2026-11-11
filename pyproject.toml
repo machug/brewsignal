@@ -37,6 +37,8 @@ dependencies = [
     "pydantic-ai-slim[openrouter]==2.66.0",
     # Assistant long-term memory (embedded qdrant-client is a mem0ai dependency)
     "mem0ai==2.2.1",
+    # mem0 pgvector store on hosted (pure-python psycopg + binary wheels incl. linux aarch64)
+    "psycopg[binary,pool]>=3.2",
 ]
 
 [project.optional-dependencies]

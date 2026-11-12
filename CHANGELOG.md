@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Unused MPC temperature controller** (tilt_ui-29im) - `backend/ml/control/mpc.py` was never switched on and, in simulation, held the beer in band less often and switched far more than the hysteresis controller. The code, its config and its tests are gone. Temperature control is unchanged.
+
 ### Fixed
 - **Dry hops show "In fermenter" instead of a negative time** (tilt_ui-8vd) - Imported dry hops with no day set (stored as -1) showed as a negative time in the recipe hop schedule.
 - **Control status shows Celsius** (tilt_ui-xrq5.6) - The global target and hysteresis were still stored in Fahrenheit (66.2 and 1.08 on the Pi), because the old Fahrenheit-to-Celsius migration missed them. They are converted on startup, and the defaults are now 20 C and 0.5 C.

@@ -16,9 +16,6 @@ class TestMLPipeline:
         assert pipeline.anomaly_detector is not None
         assert pipeline.curve_fitter is not None
 
-        # MPC disabled by default (requires Home Assistant)
-        assert pipeline.mpc_controller is None
-
     def test_processes_single_reading(self):
         """Pipeline processes a reading through all stages."""
         pipeline = MLPipeline()
@@ -28,7 +25,6 @@ class TestMLPipeline:
             temp=68.0,
             rssi=-60,
             time_hours=0,
-            ambient_temp=65.0,
         )
 
         # Should have results from each stage
@@ -50,7 +46,6 @@ class TestMLPipeline:
                 temp=68.0,
                 rssi=-60,
                 time_hours=time_hours,
-                ambient_temp=65.0,
             )
 
         # After enough readings, should have predictions
@@ -59,48 +54,11 @@ class TestMLPipeline:
             temp=68.0,
             rssi=-60,
             time_hours=60.0,
-            ambient_temp=65.0,
         )
 
         assert "predictions" in result
         if result["predictions"]["fitted"]:
             assert result["predictions"]["predicted_fg"] is not None
-
-    def test_learns_thermal_model_for_mpc(self):
-        """Pipeline learns thermal model for MPC control."""
-        from backend.ml.config import MLConfig
-
-        # Enable MPC for this test
-        config = MLConfig(enable_mpc=True)
-        pipeline = MLPipeline(config=config)
-
-        # Process readings with temperature and heater state
-        for i in range(10):
-            time_hours = float(i)
-            temp = 68.0 + i * 0.5  # Warming
-            pipeline.process_reading(
-                sg=1.050,
-                temp=temp,
-                rssi=-60,
-                time_hours=time_hours,
-                ambient_temp=65.0,
-                heater_on=True,  # Heater causing warming
-            )
-
-        # Should be able to compute MPC action
-        result = pipeline.process_reading(
-            sg=1.050,
-            temp=70.0,
-            rssi=-60,
-            time_hours=10.0,
-            ambient_temp=65.0,
-            target_temp=72.0,
-        )
-
-        assert "mpc" in result
-        if result["mpc"]["heater_on"] is not None:
-            # MPC has learned model
-            assert result["mpc"]["reason"] is not None
 
     def test_resets_for_new_batch(self):
         """Pipeline can reset state for new fermentation batch."""
@@ -113,7 +71,6 @@ class TestMLPipeline:
                 temp=68.0,
                 rssi=-60,
                 time_hours=float(i * 4),
-                ambient_temp=65.0,
             )
 
         # Reset for new batch
@@ -125,7 +82,6 @@ class TestMLPipeline:
             temp=70.0,
             rssi=-60,
             time_hours=0,
-            ambient_temp=65.0,
         )
 
         # Kalman should be at new initial state
@@ -145,7 +101,6 @@ class TestMLPipeline:
             temp=68.0,
             rssi=-60,
             time_hours=0,
-            ambient_temp=65.0,
         )
 
         # Predictions should be skipped
@@ -162,8 +117,6 @@ class TestMLPipeline:
                 temp=68.0 + i * 0.1,
                 rssi=-60,
                 time_hours=float(i * 4),
-                ambient_temp=65.0,
-                heater_on=i % 2 == 0,
             )
 
         result = pipeline.process_reading(
@@ -171,15 +124,12 @@ class TestMLPipeline:
             temp=70.0,
             rssi=-60,
             time_hours=100.0,
-            ambient_temp=65.0,
-            target_temp=70.0,
         )
 
         # Should have all component results
         assert "kalman" in result
         assert "anomaly" in result
         assert "predictions" in result
-        assert "mpc" in result
 
         # Verify structure
         assert "sg_filtered" in result["kalman"]

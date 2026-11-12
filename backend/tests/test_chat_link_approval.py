@@ -99,3 +99,13 @@ async def test_more_than_five_unapproved_opens_per_turn_ask(client, test_db, cha
     r = await _send(client, "l4", _user_msg(f"Read {url}"))
     assert len(fake_fetch) == 5
     assert "tool-approval-request" in [e["type"] for e in _events(r)]
+
+    # Declining starts a new request; the budget must not reset (codex)
+    deny = {"id": "a2", "role": "assistant", "parts": [{
+        "type": "tool-fetch_url", "toolCallId": "c6", "state": "approval-responded",
+        "input": {"url": url}, "approval": {"id": "c6", "approved": False, "reason": "No"},
+    }]}
+    r = await _send(client, "l4", deny)
+    assert r.status_code == 200
+    assert len(fake_fetch) == 5
+    assert "tool-approval-request" in [e["type"] for e in _events(r)]  # the 7th open asks too

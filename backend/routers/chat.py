@@ -107,7 +107,6 @@ class ChatDeps:
     # approval-gated calls that already ran: tool_call_id -> (tool_name, result)
     executed: dict = field(default_factory=dict)
     web_searches: int = 0  # per chat turn, capped (each costs a Tavily credit)
-    unapproved_fetches: int = 0  # per chat turn; beyond the cap every page open asks
 
 
 def _bridge(name: str, description: str, schema: dict) -> Tool:
@@ -267,6 +266,21 @@ MAX_WEB_SEARCHES_PER_TURN = 5
 MAX_UNAPPROVED_FETCHES_PER_TURN = 5
 
 
+def _fetches_since_user_message(messages) -> int:
+    """Page opens since the user's last message, counted from the history itself so the
+    budget survives approval round trips, which start a new request (codex)."""
+    count = 0
+    for message in reversed(messages or []):
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            if isinstance(part, UserPromptPart):
+                return count
+            if isinstance(part, ToolReturnPart) and part.tool_name == "fetch_url":
+                count += 1
+    return count
+
+
 async def _only_with_tavily_key(ctx: RunContext[ChatDeps], tool_def):
     """Offer web_search only when a key is set, so the model does not try it in vain."""
     return tool_def if await get_config_value(ctx.deps.db, "tavily_api_key") else None
@@ -312,9 +326,8 @@ async def fetch_url(ctx: RunContext[ChatDeps], url: str, offset: int = 0) -> dic
     if not ctx.tool_call_approved:
         # ponytail: a search-index oracle (attacker pages indexed per token) can still leak a few
         # bits per open; the per-turn cap bounds it. Asking for every open would bury real use.
-        if not is_known(url, ctx.messages) or ctx.deps.unapproved_fetches >= MAX_UNAPPROVED_FETCHES_PER_TURN:
+        if not is_known(url, ctx.messages) or _fetches_since_user_message(ctx.messages) >= MAX_UNAPPROVED_FETCHES_PER_TURN:
             raise ApprovalRequired()
-        ctx.deps.unapproved_fetches += 1
     return await fetch_page(url, offset)
 
 

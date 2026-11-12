@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import type { BatchCreate } from '$lib/api';
@@ -13,7 +14,7 @@
 
 	async function handleSubmit(data: BatchCreate) {
 		const batch = await createBatch(data);
-		goto(`/batches/${batch.id}`);
+		goto(batchUrl(batch));
 	}
 
 	function handleCancel() {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import { configState, formatTemp, getTempUnit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import { updateBatch, fetchBatchControlEvents, type BatchResponse, type BatchProgressResponse, type ControlEvent } from '$lib/api';
 	import FermentationChart from './FermentationChart.svelte';
@@ -357,7 +358,7 @@
 			<div class="flex items-center gap-2">
 				<!-- View Details Link -->
 				<a
-					href="/batches/{batch.id}"
+					href={batchUrl(batch)}
 					class="view-details-link"
 					aria-label="View batch details"
 				>

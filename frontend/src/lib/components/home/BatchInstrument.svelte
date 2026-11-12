@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import { onMount } from 'svelte';
 	import {
 		formatTemp,
@@ -366,7 +367,7 @@
 		{/if}
 
 		<footer class="foot">
-			<a class="link" href="/batches/{batch.id}">View batch details &rarr;</a>
+			<a class="link" href={batchUrl(batch)}>View batch details &rarr;</a>
 		</footer>
 	</div>
 

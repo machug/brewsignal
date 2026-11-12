@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import { goto } from '$app/navigation';
 	import type { BatchResponse, BatchStatus } from '$lib/api';
 	import StatusBadge from './StatusBadge.svelte';
@@ -81,7 +82,7 @@
 			<button
 				type="button"
 				class="featured-batch"
-				onclick={() => goto(`/batches/${featuredBatch.id}`)}
+				onclick={() => goto(batchUrl(featuredBatch))}
 			>
 				<div class="featured-left">
 					<span class="batch-number">#{featuredBatch.batch_number || '?'}</span>
@@ -106,7 +107,7 @@
 					<button
 						type="button"
 						class="mini-batch"
-						onclick={() => goto(`/batches/${batch.id}`)}
+						onclick={() => goto(batchUrl(batch))}
 					>
 						<span class="mini-name">{batch.name || batch.recipe?.name || 'Unnamed'}</span>
 						<span class="mini-days">{daysSinceBrew(batch.brew_date)}</span>

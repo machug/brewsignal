@@ -38,6 +38,17 @@ class RecipeImporter:
         self.validator = BeerJSONValidator()
         self.serializer = RecipeSerializer()
 
+    @staticmethod
+    async def _rollback(session: AsyncSession) -> None:
+        """Roll back on failure, unless a caller's savepoint owns the transaction.
+
+        The assistant's preview runs the import inside a savepoint; a full
+        session.rollback() here would close it and discard the caller's work
+        (tilt_ui-eevz.1). The caller rolls its savepoint back instead.
+        """
+        if not session.in_nested_transaction():
+            await session.rollback()
+
     async def import_recipe(
         self,
         content: str,
@@ -90,7 +101,7 @@ class RecipeImporter:
                 elif detected_format in ("brewfather", "beerjson", "brewsignal"):
                     parsed_dict = json.loads(content)
                 else:
-                    await session.rollback()
+                    await self._rollback(session)
                     return ImportResult(
                         success=False,
                         format=detected_format,
@@ -98,7 +109,7 @@ class RecipeImporter:
                         errors=[f"Unsupported format: {detected_format}"]
                     )
             except ValueError as e:
-                await session.rollback()
+                await self._rollback(session)
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -106,7 +117,7 @@ class RecipeImporter:
                     errors=[f"Parse error: {str(e)}"]
                 )
             except json.JSONDecodeError as e:
-                await session.rollback()
+                await self._rollback(session)
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -158,7 +169,7 @@ class RecipeImporter:
                 elif detected_format == "beerjson":
                     beerjson_dict = parsed_dict
             except Exception as e:
-                await session.rollback()
+                await self._rollback(session)
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -173,7 +184,7 @@ class RecipeImporter:
             if detected_format == "beerjson":
                 is_valid, validation_errors = self.validator.validate(beerjson_dict)
                 if not is_valid:
-                    await session.rollback()
+                    await self._rollback(session)
                     return ImportResult(
                         success=False,
                         format=detected_format,
@@ -225,7 +236,7 @@ class RecipeImporter:
                         if resolved:
                             recipe.style_id = resolved
             except Exception as e:
-                await session.rollback()
+                await self._rollback(session)
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -238,7 +249,7 @@ class RecipeImporter:
                 session.add(recipe)
                 await session.flush()  # Flush to get ID, but don't commit yet
             except Exception as e:
-                await session.rollback()
+                await self._rollback(session)
                 return ImportResult(
                     success=False,
                     format=detected_format,
@@ -256,7 +267,7 @@ class RecipeImporter:
 
         except Exception as e:
             # Catch-all for unexpected errors
-            await session.rollback()
+            await self._rollback(session)
             return ImportResult(
                 success=False,
                 format=detected_format,

@@ -682,10 +682,22 @@ class RecipeSerializer:
         return unit_obj.get('value')
 
     def _extract_color(self, unit_obj: Optional[Dict[str, Any]]) -> Optional[float]:
-        """Extract color value (SRM) from BeerJSON unit object."""
+        """Extract color as SRM from a BeerJSON color object (SRM, EBC or Lovi).
+
+        The unit used to be ignored, so an EBC color (what European breweries
+        publish) was stored as SRM, about twice as dark (tilt_ui-eevz.1).
+        """
         if unit_obj is None or not isinstance(unit_obj, dict):
             return None
-        return unit_obj.get('value')
+        value = unit_obj.get('value')
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None
+        unit = str(unit_obj.get('unit') or 'SRM').strip().lower()
+        if unit == 'ebc':
+            return round(value / 1.97, 2)
+        if unit in ('lovi', 'lovibond', '°l', 'l'):
+            return round(max(1.3546 * value - 0.76, 0.0), 2)
+        return value
 
     # Helper methods
 

@@ -37,14 +37,9 @@ from .fermentation import (
     get_yeast_fermentation_advice,
 )
 from .recipe import (
-    normalize_recipe_to_beerjson,
-    calculate_recipe_stats,
-    save_recipe,
-    update_recipe,
     review_recipe,
     review_recipe_narrative,  # back-compat alias for review_recipe
     review_recipe_style,
-    get_recipe,
     list_recipes,
 )
 from .utility import (
@@ -614,23 +609,6 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "get_recipe",
-            "description": "Get a recipe from the user's recipe library by ID. Returns the full recipe with all ingredients (fermentables, hops, cultures), stats (OG, FG, ABV, IBU, SRM), and brewing notes. Use this when the user references a specific recipe by name or ID.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "recipe_id": {
-                        "type": "integer",
-                        "description": "The recipe ID to retrieve"
-                    }
-                },
-                "required": ["recipe_id"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "list_recipes",
             "description": "List recipes from the user's recipe library. Optionally search by name or notes. Use this when the user asks about their recipes, wants to find a recipe, or references a recipe by name.",
             "parameters": {
@@ -647,162 +625,6 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "save_recipe",
-            "description": "Save a NEW recipe to the user's recipe library. Include ALL ingredients as structured arrays: fermentables (with amounts in kg), hops (with amounts in grams and boil times), and cultures/yeast. The server automatically calculates OG, FG, ABV, IBU, and color from the ingredients - you don't need to calculate these. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) summarized the candidate recipe back to the user, and (b) received an explicit yes ('save it', 'yes, save', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first. review_recipe cannot be run on an unsaved candidate (it requires a persisted recipe_id) — call it AFTER save_recipe succeeds to report the new style_fit_score.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "recipe": {
-                        "type": "object",
-                        "description": "Recipe object with structured ingredient arrays. Stats (OG/FG/ABV/IBU/SRM) are auto-calculated from ingredients.",
-                        "properties": {
-                            "name": {"type": "string", "description": "Recipe name"},
-                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"], "description": "Brewing METHOD — not the BJCP style. Use 'style' for the BJCP name."},
-                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA', 'Czech Premium Pale Lager'). Server resolves to a BJCP Style row and sets recipe.style_id. Required for review_recipe and the recipe-detail style review to find the target. Use search_styles first if unsure of the exact name."},
-                            "batch_size_liters": {"type": "number", "description": "Batch size in liters"},
-                            "notes": {"type": "string", "description": "Recipe notes, brewing tips, etc."},
-                            "fermentables": {
-                                "type": "array",
-                                "description": "REQUIRED: Array of grains/malts/sugars",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string", "description": "Grain name (e.g. 'Pale Malt', 'Crystal 40L')"},
-                                        "amount_kg": {"type": "number", "description": "Amount in kg (e.g. 4.1)"},
-                                        "color_srm": {"type": "number", "description": "Color in SRM/Lovibond"}
-                                    },
-                                    "required": ["name", "amount_kg"]
-                                }
-                            },
-                            "hops": {
-                                "type": "array",
-                                "description": "REQUIRED: Array of hop additions. Traditional pellet/whole/cryo hops carry amount_g + alpha_acid + a boil/whirlpool/dry_hop use. Abstrax-style liquid hop extracts (Quantum series — MOS, CIT, KRU, AZA, NSN, STT, CEN etc.) carry is_extract=true + amount_ml and a cold-side use; they contribute ZERO IBU and cannot be added boil-side. Set amount_g=0 and omit alpha_acid for extracts.",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string", "description": "Hop name (e.g. 'Centennial', 'Cascade', 'Quantum MOS')"},
-                                        "amount_g": {"type": "number", "description": "Amount in grams. Use 0 for extracts (dose in amount_ml)."},
-                                        "amount_ml": {"type": "number", "description": "Extract dose in milliliters. Required when is_extract=true. Rule of thumb: 1 mL Quantum ≈ 1 oz (28g) T90 pellet equivalent. Typical batch dose 1–5 mL."},
-                                        "is_extract": {"type": "boolean", "description": "Set true for liquid hop extracts (Abstrax Quantum series, etc.). Extracts contribute zero IBU and must be added cold-side."},
-                                        "time_minutes": {"type": "number", "description": "Boil time in minutes (0 for flameout, -1 for dry hop). Always 0 for extracts."},
-                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool", "add_to_fermentation", "add_to_package", "package", "keg", "brite"], "description": "When hop is added. Extracts must use one of the cold-side values: dry_hop, add_to_fermentation, add_to_package, package, keg, brite. boil and whirlpool are hot-side only."},
-                                        "alpha_acid": {"type": "number", "description": "Alpha acid percentage. REQUIRED for non-extract hops. Omit (or set to 0) for extracts — they have no alpha."}
-                                    },
-                                    "required": ["name", "time_minutes"]
-                                }
-                            },
-                            "cultures": {
-                                "type": "array",
-                                "description": "REQUIRED: Array of yeast - ALWAYS include the yeast for the recipe",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string", "description": "Yeast name (e.g. 'US-05', 'Safale S-04')"},
-                                        "producer": {"type": "string", "description": "Yeast lab (e.g. 'Fermentis', 'White Labs')"},
-                                        "product_id": {"type": "string", "description": "Product code (e.g. 'WLP001')"},
-                                        "attenuation": {"type": "number", "description": "Expected attenuation % (e.g. 77)"}
-                                    },
-                                    "required": ["name"]
-                                }
-                            },
-                            "mash_temp": {"type": "number", "description": "Mash temperature in Celsius"},
-                            "mash_time": {"type": "number", "description": "Mash time in minutes"}
-                        },
-                        "required": ["name", "fermentables", "hops", "cultures"]
-                    },
-                    "name_override": {
-                        "type": "string",
-                        "description": "Optional name to use instead of the name in the recipe object"
-                    },
-                    "user_confirmed": {
-                        "type": "boolean",
-                        "description": "Set to true ONLY after the user has explicitly agreed to save this recipe in this conversation. Defaults to false; calling without true returns a no-op with guidance to ask the user first."
-                    }
-                },
-                "required": ["recipe"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_recipe",
-            "description": "Update an EXISTING recipe in place (preserves recipe_id). USE THIS instead of save_recipe whenever the user asks to edit, modify, tweak, or change a recipe you have already loaded via get_recipe. Full-replacement semantics: pass the complete updated recipe shape (same as save_recipe). Children (fermentables/hops/cultures/mash/fermentation) are replaced wholesale — fetch the current recipe via get_recipe first, apply the user's requested change to that shape, then send the whole thing. The server recalculates OG/FG/ABV/IBU/SRM from ingredients. REQUIRES EXPLICIT USER CONSENT: only call with user_confirmed=true after you have (a) summarized the proposed change back to the user, and (b) received an explicit yes ('update it', 'yes apply', etc.). Calling without user_confirmed=true returns a no-op telling you to ask the user first. review_recipe cannot be run on the candidate diff (it only accepts persisted recipe_ids) — the user's confirmation should be based on your prose summary plus the pre-edit review you already have. After update_recipe succeeds, call review_recipe(recipe_id) again to report the new style_fit_score.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "recipe_id": {
-                        "type": "integer",
-                        "description": "ID of the existing recipe to update."
-                    },
-                    "recipe": {
-                        "type": "object",
-                        "description": "Full updated recipe shape. Same structure as save_recipe's recipe arg. Anything you omit is removed (full replacement).",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string", "enum": ["all-grain", "extract", "partial-mash"], "description": "Brewing METHOD — not the BJCP style."},
-                            "style": {"type": "string", "description": "BJCP style NAME (e.g. 'American IPA'). Server resolves to BJCP Style row."},
-                            "batch_size_liters": {"type": "number"},
-                            "notes": {"type": "string"},
-                            "fermentables": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string"},
-                                        "amount_kg": {"type": "number"},
-                                        "color_srm": {"type": "number"}
-                                    },
-                                    "required": ["name", "amount_kg"]
-                                }
-                            },
-                            "hops": {
-                                "type": "array",
-                                "description": "Replaces the recipe's hop bill wholesale. Mix of traditional pellet/whole/cryo hops (amount_g + alpha_acid + hot-side use) and Abstrax-style liquid extracts (is_extract=true + amount_ml + cold-side use, zero IBU, no alpha) is allowed. Same shape as save_recipe.hops.",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string"},
-                                        "amount_g": {"type": "number", "description": "Grams. Use 0 for extracts."},
-                                        "amount_ml": {"type": "number", "description": "mL — required when is_extract=true."},
-                                        "is_extract": {"type": "boolean", "description": "True for liquid hop extracts (Abstrax Quantum series). Zero IBU; cold-side only."},
-                                        "time_minutes": {"type": "number"},
-                                        "use": {"type": "string", "enum": ["boil", "dry_hop", "whirlpool", "add_to_fermentation", "add_to_package", "package", "keg", "brite"], "description": "Cold-side uses (dry_hop, add_to_fermentation, add_to_package, package, keg, brite) are required for extracts."},
-                                        "alpha_acid": {"type": "number", "description": "Required for non-extracts; omit for extracts."}
-                                    },
-                                    "required": ["name", "time_minutes"]
-                                }
-                            },
-                            "cultures": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string"},
-                                        "producer": {"type": "string"},
-                                        "product_id": {"type": "string"},
-                                        "attenuation": {"type": "number"}
-                                    },
-                                    "required": ["name"]
-                                }
-                            },
-                            "mash_temp": {"type": "number"},
-                            "mash_time": {"type": "number"}
-                        },
-                        "required": ["name"]
-                    },
-                    "user_confirmed": {
-                        "type": "boolean",
-                        "description": "Set to true ONLY after the user has explicitly agreed to apply this update in this conversation. Defaults to false; calling without true returns a no-op with guidance to ask the user first."
-                    }
-                },
-                "required": ["recipe_id", "recipe"]
             }
         }
     },
@@ -1462,14 +1284,8 @@ async def execute_tool(
     elif tool_name == "get_yeast_fermentation_advice":
         return await get_yeast_fermentation_advice(db, user_id=user_id, **arguments)
     # Recipe tools - pass user_id for multi-tenant isolation
-    elif tool_name == "get_recipe":
-        return await get_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "list_recipes":
         return await list_recipes(db, user_id=user_id, **arguments)
-    elif tool_name == "save_recipe":
-        return await save_recipe(db, user_id=user_id, **arguments)
-    elif tool_name == "update_recipe":
-        return await update_recipe(db, user_id=user_id, **arguments)
     elif tool_name in ("review_recipe", "review_recipe_narrative"):
         return await review_recipe(db, user_id=user_id, **arguments)
     elif tool_name == "review_recipe_style":

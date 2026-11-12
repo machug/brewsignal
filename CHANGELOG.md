@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Assistant recipes use the BrewSignal v2 format** (tilt_ui-eevz.1) - The assistant now reads recipes as the same v2 document the app exports and saves new ones through the v2 importer, so an assistant save matches importing that file. Edits are sent as a small list of changes (JSON Patch) applied to the server's own copy, so anything the assistant does not mention is kept. Before you are asked, the change is checked; the approval card then shows the changes in plain words and the calculated OG/FG/ABV/IBU/SRM before and after, next to the recipe's targets. A new preview tool lets the assistant adjust a clone until its numbers match the source beer.
+
+### Fixed
+- **Assistant recipe saves lost data** (tilt_ui-eevz.1) - A yeast written as text was silently dropped; every edit wiped other ingredients (finings, salts), water, the fermentation schedule and mash steps; whirlpool hops were saved as boil hops; and reopening a recipe with a yeast crashed. All fixed by the v2 path above.
+- **v2 export could not be re-imported** (tilt_ui-eevz.1) - The export's timestamp was longer than the importer accepts.
+- **Imported colors in EBC or Lovibond were stored as SRM** (tilt_ui-eevz.1) - A grain or beer color given in EBC (what European breweries publish) was taken as SRM, about twice as dark. Imports now convert EBC and Lovibond to SRM.
+- **v2 export left out yeast stored only in the yeast fields** (tilt_ui-eevz.1) - Older and BeerXML recipes keep the yeast there; it is now exported (and visible to the assistant).
+
 ### Added
 - **Assistant can see temperature control** (tilt_ui-y67b) - New read-only `get_temperature_control` tool: heater and cooler state, target and band, wort temperature, any manual override, and the last few heater/cooler switches. Ask "why is the heater on?" and it can answer from the same numbers the batch page shows.
 - **Readable batch and recipe addresses** (tilt_ui-9hg) - Batches and recipes now open at addresses like `/batches/16-american-pale-ale` and `/recipes/25-west-coast-ipa`. The number at the front is what counts, so old links such as `/batches/16` still work, open the right page and switch to the readable form. Renaming a batch or recipe never breaks a link.

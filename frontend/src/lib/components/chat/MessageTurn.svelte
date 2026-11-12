@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { renderMarkdown } from '$lib/markdown';
-	import { segmentParts, type ToolPart } from '$lib/chat/logic';
+	import { APPLY_TOOL, segmentParts, toolName, type ToolPart } from '$lib/chat/logic';
 	import ActivityGroup from './ActivityGroup.svelte';
 	import HopApprovalCard from './HopApprovalCard.svelte';
+	import RecipeApprovalCard from './RecipeApprovalCard.svelte';
 
 	interface Props {
 		message: { id: string; role: string; parts: any[]; metadata?: any };
@@ -43,7 +44,11 @@
 				{@const html = renderMarkdown(seg.part.text)}
 				{#if html}<div class="md" use:enhance={html}>{@html html}</div>{/if}
 			{:else}
-				<HopApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onKeepUnlisted} {onRetry} {retryDisabled} />
+				{#if toolName(seg.part) === APPLY_TOOL}
+					<HopApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onKeepUnlisted} {onRetry} {retryDisabled} />
+				{:else}
+					<RecipeApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onRetry} {retryDisabled} />
+				{/if}
 			{/if}
 		{/each}
 	</div>

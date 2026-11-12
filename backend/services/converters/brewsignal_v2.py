@@ -264,7 +264,7 @@ class RecipeToBrewSignalV2Converter:
         if recipe.notes:
             doc['notes'] = recipe.notes
         if recipe.created_at:
-            doc['created_at'] = recipe.created_at.isoformat()
+            doc['created_at'] = recipe.created_at.isoformat(timespec='seconds')  # importer caps at 30 chars
         return doc
 
     # -- recipe block (BeerJSON shapes) --
@@ -323,6 +323,27 @@ class RecipeToBrewSignalV2Converter:
             ingredients['culture_additions'] = [
                 self._convert_culture(c) for c in cultures
             ]
+        elif recipe.yeast_name:
+            # Older/BeerXML recipes keep the yeast only in the flat yeast_*
+            # columns. Export it so v2 readers (and the assistant) see it and
+            # a re-import keeps it (tilt_ui-eevz.1).
+            yeast: Dict[str, Any] = {'name': recipe.yeast_name}
+            if recipe.yeast_lab:
+                yeast['producer'] = recipe.yeast_lab
+            if recipe.yeast_product_id:
+                yeast['product_id'] = recipe.yeast_product_id
+            if recipe.yeast_attenuation is not None:
+                yeast['attenuation_range'] = {
+                    'minimum': {'value': recipe.yeast_attenuation, 'unit': '%'},
+                    'maximum': {'value': recipe.yeast_attenuation, 'unit': '%'},
+                }
+            if recipe.yeast_temp_min is not None or recipe.yeast_temp_max is not None:
+                yeast['temperature_range'] = {
+                    k: {'value': v, 'unit': 'C'}
+                    for k, v in (('minimum', recipe.yeast_temp_min), ('maximum', recipe.yeast_temp_max))
+                    if v is not None
+                }
+            ingredients['culture_additions'] = [yeast]
         miscs = _require_loaded(recipe, 'miscs')
         if miscs:
             ingredients['miscellaneous_additions'] = [

@@ -107,6 +107,7 @@ class ChatDeps:
     # approval-gated calls that already ran: tool_call_id -> (tool_name, result)
     executed: dict = field(default_factory=dict)
     web_searches: int = 0  # per chat turn, capped (each costs a Tavily credit)
+    opened_fetch_ids: set = field(default_factory=set)  # unapproved page opens made in this request
 
 
 def _bridge(name: str, description: str, schema: dict) -> Tool:
@@ -266,19 +267,21 @@ MAX_WEB_SEARCHES_PER_TURN = 5
 MAX_UNAPPROVED_FETCHES_PER_TURN = 5
 
 
-def _fetches_since_user_message(messages) -> int:
-    """Page opens since the user's last message, counted from the history itself so the
-    budget survives approval round trips, which start a new request (codex)."""
-    count = 0
+def _fetches_since_user_message(messages, opened_ids: set) -> int:
+    """Page opens since the user's last message.
+
+    Counted from the history so the budget survives approval round trips (a new request), plus
+    opens from this request whose results are not in the history yet: a batch of parallel calls
+    only lands in the history after the whole batch (codex).
+    """
+    seen: set = set()
     for message in reversed(messages or []):
         if not isinstance(message, ModelRequest):
             continue
-        for part in message.parts:
-            if isinstance(part, UserPromptPart):
-                return count
-            if isinstance(part, ToolReturnPart) and part.tool_name == "fetch_url":
-                count += 1
-    return count
+        if any(isinstance(p, UserPromptPart) for p in message.parts):
+            break
+        seen |= {p.tool_call_id for p in message.parts if isinstance(p, ToolReturnPart) and p.tool_name == "fetch_url"}
+    return len(seen | opened_ids)
 
 
 async def _only_with_tavily_key(ctx: RunContext[ChatDeps], tool_def):
@@ -326,8 +329,9 @@ async def fetch_url(ctx: RunContext[ChatDeps], url: str, offset: int = 0) -> dic
     if not ctx.tool_call_approved:
         # ponytail: a search-index oracle (attacker pages indexed per token) can still leak a few
         # bits per open; the per-turn cap bounds it. Asking for every open would bury real use.
-        if not is_known(url, ctx.messages) or _fetches_since_user_message(ctx.messages) >= MAX_UNAPPROVED_FETCHES_PER_TURN:
+        if not is_known(url, ctx.messages) or _fetches_since_user_message(ctx.messages, ctx.deps.opened_fetch_ids) >= MAX_UNAPPROVED_FETCHES_PER_TURN:
             raise ApprovalRequired()
+        ctx.deps.opened_fetch_ids.add(ctx.tool_call_id)
     return await fetch_page(url, offset)
 
 

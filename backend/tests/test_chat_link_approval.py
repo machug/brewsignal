@@ -109,3 +109,32 @@ async def test_more_than_five_unapproved_opens_per_turn_ask(client, test_db, cha
     assert r.status_code == 200
     assert len(fake_fetch) == 5
     assert "tool-approval-request" in [e["type"] for e in _events(r)]  # the 7th open asks too
+
+
+
+@pytest.mark.asyncio
+async def test_a_batch_of_opens_in_one_response_is_capped(client, test_db, chat_env, fake_fetch):  # noqa: F811
+    """codex: parallel calls in one response all saw the same history count."""
+    url = "https://byo.com/recipes/pliny-clone"
+    done = {"v": False}
+
+    def calls():
+        return [ToolCallPart("fetch_url", {"url": url}, tool_call_id=f"b{i}") for i in range(7)]
+
+    def fn(messages, info):
+        if not done["v"]:
+            done["v"] = True
+            return ModelResponse(parts=calls())
+        return ModelResponse(parts=[TextPart("done")])
+
+    async def stream(messages, info):
+        if not done["v"]:
+            done["v"] = True
+            yield {i: DeltaToolCall(name="fetch_url", json_args=json.dumps({"url": url}), tool_call_id=f"b{i}") for i in range(7)}
+        else:
+            yield "done"
+
+    chat_env["model"] = FunctionModel(fn, stream_function=stream)
+    r = await _send(client, "l5", _user_msg(f"Read {url}"))
+    assert len(fake_fetch) == 5
+    assert "tool-approval-request" in [e["type"] for e in _events(r)]

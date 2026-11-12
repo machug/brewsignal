@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Assistant web search** (tilt_ui-eevz.3) - The assistant can search the web (Tavily) to research a beer to clone: brewery pages, interviews, reviews and published clone recipes. Add a Tavily API key on the System page (AI section); a basic search costs one Tavily credit. Results are treated as information, never as instructions.
 
 ### Security
+- **The assistant asks before opening a link it made up** (tilt_ui-eevz.10) - A hostile web page or video caption could tell the assistant to open an address with your data glued on, which would send it out without asking. The assistant now opens on its own only links that came from you, from search results or from pages it read; any other link shows a card with the full address first.
 - **The assistant can no longer fetch addresses on your home network** (tilt_ui-eevz.4) - Page reading only reaches public sites. Local and private addresses (the Pi itself, Home Assistant, the router, cloud metadata) are refused, including through redirects.
 - **API keys are no longer sent back in full** (tilt_ui-eevz.3) - `GET /api/config` returned the AI provider key in plain text to anything on the network. Keys now come back as `****` plus the last 4 characters, and saving the settings page without retyping a key keeps the stored one.
 

@@ -103,3 +103,14 @@ describe('recipe approval cards (tilt_ui-eevz.1)', () => {
 		expect(segs.map((s) => s.kind)).toEqual(['activity', 'apply', 'apply']);
 	});
 });
+
+describe('link approval cards (tilt_ui-eevz.10)', () => {
+	it('shows fetch_url as a card only when that call asked for approval', async () => {
+		const { segmentParts } = await import('./logic');
+		const segs = segmentParts([
+			{ type: 'tool-fetch_url', state: 'output-available' },
+			{ type: 'tool-fetch_url', state: 'approval-requested', approval: { id: 'x' } }
+		]);
+		expect(segs.map((s) => s.kind)).toEqual(['activity', 'apply']);
+	});
+});

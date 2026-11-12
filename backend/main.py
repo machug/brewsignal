@@ -206,6 +206,7 @@ async def handle_tilt_reading(reading: TiltReading):
                     # Call synchronous process_reading (no await)
                     ml_outputs = ml_pipeline_manager.process_reading(
                         device_id=reading.id,
+                        batch_id=batch_id,
                         sg=sg_calibrated,
                         temp=temp_calibrated_c,
                         rssi=reading.rssi,
@@ -383,6 +384,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                 try:
                     ml_outputs = ml_pipeline_manager.process_reading(
                         device_id=reading.id,
+                        batch_id=batch_id,
                         sg=sg_calibrated,
                         temp=temp_calibrated_c,
                         rssi=reading.rssi,

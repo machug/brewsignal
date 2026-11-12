@@ -25,7 +25,7 @@ class TiltKalmanFilter:
     def __init__(
         self,
         initial_sg: float = 1.050,
-        initial_temp: float = 68.0,
+        initial_temp: float = 20.0,
         process_noise_sg: float = 1e-8,
         process_noise_temp: float = 0.01,
         measurement_noise_sg: float = 1e-6,
@@ -35,7 +35,8 @@ class TiltKalmanFilter:
 
         Args:
             initial_sg: Starting specific gravity estimate
-            initial_temp: Starting temperature estimate (Fahrenheit)
+            initial_temp: Starting temperature estimate (C); replaced by the first
+                measurement unless reset() seeded the filter explicitly
             process_noise_sg: Process noise for SG (how much natural variation)
             process_noise_temp: Process noise for temperature
             measurement_noise_sg: Base measurement noise for SG
@@ -80,6 +81,9 @@ class TiltKalmanFilter:
 
         # Initial state covariance (uncertainty)
         self.kf.P = np.diag([1e-4, 1e-6, 1.0, 0.01])
+        # Seed from the first reading, not a default (cold start used to show
+        # a 50+ C filtered temperature for hours; tilt_ui-89af).
+        self._seeded = False
 
     def _rssi_to_noise_factor(self, rssi: float) -> float:
         """Convert RSSI to measurement noise standard deviation multiplier.
@@ -139,6 +143,10 @@ class TiltKalmanFilter:
         rssi_factor = self._rssi_to_noise_factor(rssi)
         self.kf.R = self.base_R * (rssi_factor ** 2)
 
+        if not self._seeded:
+            self.kf.x = np.array([sg, 0.0, temp, 0.0], dtype=float)
+            self._seeded = True
+
         # Predict next state
         self.kf.predict()
 
@@ -191,3 +199,4 @@ class TiltKalmanFilter:
         """
         self.kf.x = np.array([sg, 0.0, temp, 0.0], dtype=float)
         self.kf.P = np.diag([1e-4, 1e-6, 1.0, 0.01])
+        self._seeded = True

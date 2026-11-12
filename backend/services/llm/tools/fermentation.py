@@ -308,7 +308,7 @@ async def get_fermentation_status(
             ml_mgr = get_ml_manager()
             if ml_mgr:
                 expected_fg = batch.recipe.fg if batch.recipe and batch.recipe.fg else None
-                state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg)
+                state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, batch_id=batch.id)
                 if state and state.get("predictions"):
                     pred = state["predictions"]
                     predictions = {

@@ -173,6 +173,7 @@ class IngestManager:
                     # Process through ML pipeline (synchronous call)
                     ml_outputs = ml_manager.process_reading(
                         device_id=device.id,
+                        batch_id=batch_id,
                         sg=reading.gravity,
                         temp=reading.temperature,
                         rssi=reading.rssi or -70,  # Default RSSI for HTTP devices

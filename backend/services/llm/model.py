@@ -97,5 +97,14 @@ def model_settings(config: LLMConfig) -> ModelSettings:
             temperature=config.temperature,
             # Bounded so a big budget goes to the reply (a recipe save), not thinking (tilt_ui-s1k4)
             openrouter_reasoning={"max_tokens": min(config.max_tokens // 2, 4000)},
+            # Every step re-sends the whole chat (~120k tokens on a long clone thread):
+            # cache the prefix so steps 2..n and quick follow-ups read it at ~10% price
+            # on Anthropic routes; ignored by providers without explicit caching (tilt_ui-mpad).
+            # ponytail: per-message memory recall lives in the instructions, so a new user message
+            # misses the instruction/message cache (tools still hit); move memories into the
+            # user turn if cross-message savings matter.
+            openrouter_cache_instructions=True,
+            openrouter_cache_tool_definitions=True,
+            openrouter_cache_messages=True,
         )
     return ModelSettings(max_tokens=config.max_tokens, temperature=config.temperature)

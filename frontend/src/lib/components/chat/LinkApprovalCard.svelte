@@ -13,22 +13,24 @@
 	let { part, error = '', onApprove, onCancel }: Props = $props();
 
 	const url = $derived(String(part.input?.url ?? ''));
-	const host = $derived.by(() => {
-		try {
-			return new URL(url).hostname;
-		} catch {
-			return '';
-		}
-	});
+	// The address exactly as written up to the first / ? #, not the browser's URL parser:
+	// parsers disagree on tricks like "byo.com\\@attacker.example" (Gemini).
+	const host = $derived(url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0]);
 	const approvalId = $derived(part.approval?.id ?? '');
+	// A fetch that ran but failed (blocked, timed out, HTTP error) comes back as an {error} output
+	const failure = $derived(
+		error ||
+			(part.state === 'output-error' ? part.errorText || 'The link could not be opened.' : '') ||
+			(part.state === 'output-available' && part.output?.error ? String(part.output.error) : '')
+	);
 	const phase = $derived(
-		error
+		failure
 			? 'failed'
 			: part.state === 'approval-requested'
 				? 'asking'
 				: part.state === 'output-denied'
 					? 'denied'
-					: part.state === 'output-available' || part.state === 'output-error'
+					: part.state === 'output-available'
 						? 'done'
 						: 'opening'
 	);
@@ -41,9 +43,9 @@
 		<span class="badge {phase}" role="status" aria-live="polite">{badge}</span>
 	</header>
 	<p class="why">The assistant made up this address itself; it did not come from you or from a page it read. Opening it sends the whole address to {host || 'that site'}.</p>
-	<p class="url"><span class="host">{host}</span><br /><span class="full">{url}</span></p>
+	<p class="url">{#if host}<span class="host">{host}</span><br />{/if}<span class="full">{url}</span></p>
 	{#if phase === 'failed'}
-		<p class="alert" role="alert">{error}</p>
+		<p class="alert" role="alert">{failure}</p>
 	{:else if phase === 'asking'}
 		<div class="actions">
 			<button type="button" class="primary" onclick={() => onApprove(approvalId)}>Open link</button>
@@ -63,7 +65,7 @@
 	.badge.asking { border-color: var(--accent-rule); color: var(--accent); }
 	.badge.failed { border-color: var(--status-danger); color: var(--status-danger); }
 	.why { margin: 0 0 var(--space-sm); font-size: var(--text-sm); color: var(--ink-secondary); }
-	.url { margin: 0 0 var(--space-sm); padding: var(--space-sm); background: var(--bg-elevated); border: 1px solid var(--rule-hairline); overflow-wrap: anywhere; }
+	.url { margin: 0 0 var(--space-sm); padding: var(--space-sm); max-height: 10rem; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--rule-hairline); overflow-wrap: anywhere; }
 	.host { font-family: var(--font-display); font-weight: 600; color: var(--ink-primary); }
 	.full { font-family: var(--font-num); font-size: var(--text-sm); color: var(--ink-secondary); }
 	.alert { margin: var(--space-xs) 0; padding: var(--space-sm); font-size: var(--text-sm); color: var(--ink-primary); background: var(--error-bg); border: 1px solid color-mix(in oklch, var(--status-danger) 45%, transparent); }

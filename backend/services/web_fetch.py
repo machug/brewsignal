@@ -70,8 +70,8 @@ async def _resolve_public(url: str) -> tuple[str, str, int, list[str]]:
         raise BlockedURL("that is not a valid web address")
     if parts.scheme not in ("http", "https") or not host:
         raise BlockedURL("only http(s) web addresses can be fetched")
-    if parts.username or parts.password:
-        raise BlockedURL("addresses with a user name or password are not fetched")
+    if parts.username is not None or parts.password is not None or "\\" in url:
+        raise BlockedURL("addresses with a user name, password or backslash are not fetched")
     try:
         host = host.encode("idna").decode("ascii")  # münchen.de -> xn--mnchen-3ya.de for DNS, Host and SNI
     except UnicodeError:

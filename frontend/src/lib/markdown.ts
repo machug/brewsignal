@@ -13,6 +13,13 @@ const md = new Marked({
 		html({ text }) {
 			return escapeHtml(text);
 		},
+		// Never load images: an <img> fetches its URL with no click, so injected text could make
+		// the model leak data in an image address (tilt_ui-eevz.10). Show a plain link instead.
+		image({ href, text }) {
+			const label = escapeHtml(`[image: ${text || 'untitled'}]`);
+			if (!/^https?:\/\//i.test(href)) return label;
+			return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer nofollow">${label}</a>`;
+		},
 		link({ href, tokens }) {
 			const label = this.parser.parseInline(tokens);
 			if (!/^(https?:\/\/|\/)/i.test(href)) return label;

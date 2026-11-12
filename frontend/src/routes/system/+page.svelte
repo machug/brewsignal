@@ -408,7 +408,7 @@
 		tavilyApiKey = null;
 		aiBaseUrl = configState.config.ai_base_url ?? '';
 		aiTemperature = configState.config.ai_temperature ?? 0.7;
-		aiMaxTokens = configState.config.ai_max_tokens ?? 16000;
+		aiMaxTokens = configState.config.ai_max_tokens ?? 8000;
 		// MQTT
 		mqttEnabled = configState.config.mqtt_enabled ?? false;
 		mqttHost = configState.config.mqtt_host ?? '';

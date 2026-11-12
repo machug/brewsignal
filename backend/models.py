@@ -1541,7 +1541,7 @@ class ConfigResponse(BaseModel):
     tavily_api_key: str = ""  # "****" + last 4 in responses
     ai_base_url: str = ""
     ai_temperature: float = 0.7
-    ai_max_tokens: int = 16000
+    ai_max_tokens: int = 8000
     ai_memory_auto_extract: bool = True
     ai_lite_enabled: bool = False
     # MQTT settings for Home Assistant

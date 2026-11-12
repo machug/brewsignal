@@ -23,21 +23,32 @@ class MLPipelineManager:
             config: ML configuration (uses defaults if not provided)
         """
         self.pipelines: dict[str, MLPipeline] = {}
+        # Which batch each device pipeline belongs to. A reading for another
+        # batch gets a fresh pipeline so no state leaks across batches (tilt_ui-89af).
+        self.pipeline_batch: dict[str, Optional[int]] = {}
         self.config = config or MLConfig()
         logger.info(f"MLPipelineManager initialized with config: {self.config}")
 
-    def get_or_create_pipeline(self, device_id: str) -> MLPipeline:
-        """Get existing pipeline or create new one for device.
+    def get_or_create_pipeline(self, device_id: str, batch_id: Optional[int] = None) -> MLPipeline:
+        """Get the device's pipeline, or a fresh one if it belongs to another batch.
 
         Args:
             device_id: Unique device identifier
+            batch_id: Batch the reading/reload is for (None = don't check)
 
         Returns:
             MLPipeline instance for this device
         """
-        if device_id not in self.pipelines:
-            logger.info(f"Creating new ML pipeline for device: {device_id}")
+        stale = (
+            batch_id is not None
+            and device_id in self.pipelines
+            and self.pipeline_batch.get(device_id) != batch_id
+        )
+        if device_id not in self.pipelines or stale:
+            logger.info(f"Creating new ML pipeline for device {device_id} (batch {batch_id})")
             self.pipelines[device_id] = MLPipeline(self.config)
+        if batch_id is not None:
+            self.pipeline_batch[device_id] = batch_id
         return self.pipelines[device_id]
 
     def reset_pipeline(
@@ -66,6 +77,7 @@ class MLPipelineManager:
         if device_id in self.pipelines:
             logger.info(f"Removing ML pipeline for device: {device_id}")
             del self.pipelines[device_id]
+            self.pipeline_batch.pop(device_id, None)
 
     def get_pipeline_count(self) -> int:
         """Get count of active pipelines."""
@@ -82,6 +94,7 @@ class MLPipelineManager:
         heater_on: Optional[bool] = None,
         cooler_on: Optional[bool] = None,
         target_temp: Optional[float] = None,
+        batch_id: Optional[int] = None,
     ) -> dict:
         """Process a reading through the device's ML pipeline.
 
@@ -103,7 +116,7 @@ class MLPipelineManager:
             - sg_rate, temp_rate: Derivatives
             - is_anomaly, anomaly_score, anomaly_reasons: Anomaly detection
         """
-        pipeline = self.get_or_create_pipeline(device_id)
+        pipeline = self.get_or_create_pipeline(device_id, batch_id)
         nested_result = pipeline.process_reading(
             sg=sg,
             temp=temp,
@@ -146,6 +159,7 @@ class MLPipelineManager:
         device_id: str,
         expected_fg: Optional[float] = None,
         model: str = "auto",
+        batch_id: Optional[int] = None,
     ) -> Optional[dict]:
         """Get current ML state and predictions for a device.
 
@@ -159,6 +173,8 @@ class MLPipelineManager:
         """
         if device_id not in self.pipelines:
             return None
+        if batch_id is not None and self.pipeline_batch.get(device_id) != batch_id:
+            return None  # pipeline holds another batch's state
 
         pipeline = self.pipelines[device_id]
 
@@ -233,7 +249,7 @@ class MLPipelineManager:
 
         try:
             # Get or create pipeline
-            pipeline = self.get_or_create_pipeline(device_id)
+            pipeline = self.get_or_create_pipeline(device_id, batch_id)
 
             # Query ALL readings for this batch (from any device)
             # This allows ML predictions to continue when switching devices mid-ferment

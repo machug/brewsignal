@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **ML state no longer leaks between batches** (tilt_ui-89af) - When a hydrometer moved to a new batch, its smoothing filter and history carried over from the old batch, so filtered gravity and predictions started from the previous beer. Each device's ML state now belongs to one batch and starts fresh for a new one. The filter also starts from the first real reading instead of a default (it used to show a filtered temperature far too high for hours after a restart). Completed batches show their own predictions instead of the device's live ones.
+
 ## [2.14.0] - 2026-11-12
 
 ### Added

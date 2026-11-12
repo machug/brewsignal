@@ -836,11 +836,12 @@ async def get_batch_predictions(
     # For completed/archived batches without device_id, use a synthetic ID based on batch
     # This allows viewing historical predictions even after device is released
     device_id = batch.device_id
-    if not device_id:
-        if batch.status in ["completed", "archived"]:
-            device_id = f"batch-{batch_id}"  # Synthetic ID for historical batches
-        else:
-            return {"available": False, "error": "No device linked"}
+    if batch.status in ["completed", "archived"]:
+        # Historical batches never share the device's live pipeline, which now
+        # belongs to whatever batch the device is fermenting (tilt_ui-89af).
+        device_id = f"batch-{batch_id}"
+    elif not device_id:
+        return {"available": False, "error": "No device linked"}
 
     # Query ML manager for predictions
     ml_mgr = get_ml_manager()
@@ -851,12 +852,12 @@ async def get_batch_predictions(
     expected_fg = batch.recipe.fg if batch.recipe else None
 
     # Get device state with expected FG for prediction bounds and selected model
-    device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model)
+    device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch_id)
 
     # Auto-reload from database if pipeline is empty or has insufficient history
     if not device_state or device_state.get("history_count", 0) < 10:
         await ml_mgr.reload_from_database(device_id, batch_id, db)
-        device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model)
+        device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch_id)
 
     if not device_state or not device_state.get("predictions"):
         return {"available": False}
@@ -922,13 +923,13 @@ async def reload_batch_predictions(batch_id: int, db: AsyncSession = Depends(get
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # For completed/archived batches without device_id, use a synthetic ID
+    # Completed/archived batches use a synthetic ID so a reload never takes
+    # over the device's live pipeline (tilt_ui-89af)
     device_id = batch.device_id
-    if not device_id:
-        if batch.status in ["completed", "archived"]:
-            device_id = f"batch-{batch_id}"
-        else:
-            raise HTTPException(status_code=400, detail="Batch has no device linked")
+    if batch.status in ["completed", "archived"]:
+        device_id = f"batch-{batch_id}"
+    elif not device_id:
+        raise HTTPException(status_code=400, detail="Batch has no device linked")
 
     # Get ML manager
     ml_mgr = get_ml_manager()

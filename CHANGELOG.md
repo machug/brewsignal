@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Assistant can see temperature control** (tilt_ui-y67b) - New read-only `get_temperature_control` tool: heater and cooler state, target and band, wort temperature, any manual override, and the last few heater/cooler switches. Ask "why is the heater on?" and it can answer from the same numbers the batch page shows.
 - **Readable batch and recipe addresses** (tilt_ui-9hg) - Batches and recipes now open at addresses like `/batches/16-american-pale-ale` and `/recipes/25-west-coast-ipa`. The number at the front is what counts, so old links such as `/batches/16` still work, open the right page and switch to the readable form. Renaming a batch or recipe never breaks a link.
 
 ### Removed

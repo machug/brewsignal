@@ -864,3 +864,42 @@ async def get_yeast_fermentation_advice(
         "advice": advice,
         "batch_specific": batch_specific,
     }
+
+
+async def get_temperature_control(
+    db: AsyncSession,
+    batch_id: int,
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Heater/cooler state, target, band and recent switches for a batch (tilt_ui-y67b).
+
+    Same numbers as the batch page (reuses the control status endpoint), plus
+    the last few switch events so the assistant can explain *why*.
+    """
+    from backend.models import ControlEvent
+    from backend.routers.control import get_batch_status
+
+    stmt = select(Batch.id).where(Batch.id == batch_id, Batch.deleted_at.is_(None))
+    if user_id:
+        stmt = stmt.where(_user_owns_batch_condition(user_id))
+    if (await db.execute(stmt)).scalar_one_or_none() is None:
+        return {"found": False, "error": f"Batch {batch_id} not found"}
+
+    status = (await get_batch_status(batch_id, db)).model_dump(mode="json")
+    events = (await db.execute(
+        select(ControlEvent)
+        .where(ControlEvent.batch_id == batch_id)
+        .order_by(ControlEvent.timestamp.desc())
+        .limit(5)
+    )).scalars().all()
+    status["recent_switches"] = [
+        {
+            "at": e.timestamp.isoformat() if e.timestamp else None,
+            "action": e.action,
+            "wort_temp_c": e.wort_temp,
+            "target_temp_c": e.target_temp,
+        }
+        for e in events
+    ]
+    status["units"] = "Celsius; the heater turns on below target - hysteresis, the cooler above target + hysteresis"
+    return {"found": True, **status}

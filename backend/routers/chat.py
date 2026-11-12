@@ -62,6 +62,7 @@ from backend.services.llm.model import (
 from backend.services.llm.model import FAST_MODELS
 from backend.services.llm.openrouter import resolve_openrouter_model
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
+from backend.services.llm.tools.fermentation import get_temperature_control as _get_temperature_control
 from backend.services.memory import format_memories_for_context, keyword_search_learnings, search_memories_strict
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,16 @@ HOP_INSTRUCTIONS = (
     "and update, then call apply_hop_inventory with the same items, that choice and the preview's "
     "stock_version. The app asks the user to approve before it runs."
 )
+
+
+@agent.tool(sequential=True)
+async def get_temperature_control(ctx: RunContext[ChatDeps], batch_id: int) -> dict:
+    """Read-only temperature control for a batch: whether control is on, heater and
+    cooler state (on/off), target and hysteresis in Celsius, current wort temp, any
+    manual override and its end time, and the last few heater/cooler switches.
+    Use it to answer questions like "why is the heater on?" or "what is the fridge doing?".
+    """
+    return await _get_temperature_control(ctx.deps.db, batch_id, ctx.deps.user_id)
 
 
 @agent.tool(sequential=True)

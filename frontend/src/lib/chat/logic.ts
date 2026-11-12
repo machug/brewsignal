@@ -26,7 +26,14 @@ export const isToolPart = (p: { type: string }) => p.type.startsWith('tool-');
 export const toolName = (p: { type: string }) => p.type.slice(5);
 export const APPLY_TOOL = 'apply_hop_inventory';
 /** Tools that write after the user approves a card (tilt_ui-eevz.1). */
-export const APPROVAL_TOOLS = new Set([APPLY_TOOL, 'save_recipe', 'update_recipe']);
+export const APPROVAL_TOOLS = new Set([APPLY_TOOL, 'save_recipe', 'update_recipe', 'fetch_url']);
+/** Tools that only sometimes ask (fetch_url asks for links the model composed, tilt_ui-eevz.10). */
+const SOMETIMES_ASK = new Set(['fetch_url']);
+/** Show as a card when the tool always asks, or when this call actually asked. */
+export const isApprovalPart = (p: AnyPart) => {
+	const name = toolName(p);
+	return APPROVAL_TOOLS.has(name) && (!SOMETIMES_ASK.has(name) || Boolean((p as any).approval));
+};
 
 /** Body the backend expects (contract): only the newest message, never history. */
 export function buildChatRequest(opts: {
@@ -92,7 +99,7 @@ export function segmentParts(parts: AnyPart[]): Segment[] {
 		} else if (p.type === 'text') {
 			rest.push({ kind: 'text', part: p });
 		} else if (isToolPart(p)) {
-			if (APPROVAL_TOOLS.has(toolName(p))) rest.push({ kind: 'apply', part: p });
+			if (isApprovalPart(p)) rest.push({ kind: 'apply', part: p });
 			else activity.push(p);
 		}
 	}

@@ -10,6 +10,13 @@ from backend.services import web_fetch as wf
 PUBLIC_IP = "93.184.216.34"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    wf._CACHE.clear()
+    yield
+    wf._CACHE.clear()
+
+
 def _resolve(monkeypatch, table):
     """Fake DNS: hostname -> IP (real getaddrinfo tuple shapes)."""
     async def getaddrinfo(host, port, type=0):
@@ -279,3 +286,18 @@ def test_many_unterminated_title_tags_stay_fast():
 def test_unclosed_title_repair_keeps_unicode_offsets():
     out = wf.extract_html("<html><head><TITLE>İstanbul IPA</head><body><p>Recipe</p></body></html>")
     assert out["title"] == "İstanbul IPA" and out["text"] == "Recipe"
+
+
+
+@pytest.mark.asyncio
+async def test_variants_and_next_parts_are_served_from_the_cache(monkeypatch):
+    """Gemini: repeated opens of one known page under www/slash/scheme variants must not reach the site."""
+    _resolve(monkeypatch, {"rr.example": PUBLIC_IP, "www.rr.example": PUBLIC_IP})
+    seen = []
+    body = "<html><body>" + "".join(f"<p>line {i} " + "x" * 90 + "</p>" for i in range(400)) + "</body></html>"
+    _serve(monkeypatch, lambda r: _resp(200, body, {"content-type": "text/html"}), seen)
+    first = await wf.fetch_page("https://rr.example/pliny")
+    for variant in ("https://www.rr.example/pliny", "http://rr.example/pliny/", "https://rr.example/pliny#x"):
+        await wf.fetch_page(variant)
+    await wf.fetch_page("https://rr.example/pliny", offset=first["next_offset"])
+    assert len(seen) == 1

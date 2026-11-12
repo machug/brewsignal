@@ -4,6 +4,7 @@
 	import ActivityGroup from './ActivityGroup.svelte';
 	import HopApprovalCard from './HopApprovalCard.svelte';
 	import RecipeApprovalCard from './RecipeApprovalCard.svelte';
+	import LinkApprovalCard from './LinkApprovalCard.svelte';
 
 	interface Props {
 		message: { id: string; role: string; parts: any[]; metadata?: any };
@@ -46,6 +47,8 @@
 			{:else}
 				{#if toolName(seg.part) === APPLY_TOOL}
 					<HopApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onKeepUnlisted} {onRetry} {retryDisabled} />
+				{:else if toolName(seg.part) === 'fetch_url'}
+					<LinkApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} />
 				{:else}
 					<RecipeApprovalCard part={seg.part as ToolPart} error={approvalError} {onApprove} {onCancel} {onRetry} {retryDisabled} />
 				{/if}

@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import socket
+import time
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -70,8 +71,8 @@ async def _resolve_public(url: str) -> tuple[str, str, int, list[str]]:
         raise BlockedURL("that is not a valid web address")
     if parts.scheme not in ("http", "https") or not host:
         raise BlockedURL("only http(s) web addresses can be fetched")
-    if parts.username or parts.password:
-        raise BlockedURL("addresses with a user name or password are not fetched")
+    if parts.username is not None or parts.password is not None or "\\" in url:
+        raise BlockedURL("addresses with a user name, password or backslash are not fetched")
     try:
         host = host.encode("idna").decode("ascii")  # münchen.de -> xn--mnchen-3ya.de for DNS, Host and SNI
     except UnicodeError:
@@ -136,6 +137,8 @@ class _Extractor(HTMLParser):
         self.meta: dict[str, str] = {}
         self.jsonld: list[str] = []
         self.in_jsonld = False
+        self.links: list[list[str]] = []  # [href, anchor text] from readable parts
+        self.in_link = False
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
@@ -158,6 +161,9 @@ class _Extractor(HTMLParser):
             return
         if self.skip_stack:
             return
+        if tag == "a" and a.get("href") and len(self.links) < 200:
+            self.links.append([a["href"], ""])
+            self.in_link = True
         if tag in _BLOCK and (self.holder_depth == 0 or tag in ("tr", "li")):
             self.parts.append("\n")
         if tag in _HOLDERS:
@@ -183,6 +189,8 @@ class _Extractor(HTMLParser):
             return
         if self.skip_stack:
             return
+        if tag == "a":
+            self.in_link = False
         if tag in _HOLDERS:
             self.holder_depth = max(0, self.holder_depth - 1)
         if tag in _BLOCK and (self.holder_depth == 0 or tag == "tr"):
@@ -197,6 +205,8 @@ class _Extractor(HTMLParser):
                 self.title += data
         elif not self.skip_stack:
             self.parts.append(data)
+            if self.in_link and self.links and len(self.links[-1][1]) < 120:
+                self.links[-1][1] += data
 
     def text(self) -> str:
         raw = "".join(self.parts)
@@ -263,7 +273,29 @@ def extract_html(html: str) -> dict[str, Any]:
         "description": (p.meta.get("description") or p.meta.get("og:description") or p.meta.get("twitter:description", ""))[:1000],
         "structured_data": _structured(p.jsonld),
         "text": p.text(),
+        "links": p.links,
     }
+
+
+MAX_LINKS = 40
+
+
+def _absolute_links(base: str, raw: list[list[str]]) -> list[dict[str, str]]:
+    """http(s) links resolved against the page, de-duplicated and capped (the assistant may follow these)."""
+    out, seen = [], set()
+    for href, text in raw:
+        try:
+            url = urljoin(base, href.strip()).split("#")[0]
+            scheme = urlsplit(url).scheme
+        except ValueError:
+            continue
+        if scheme not in ("http", "https") or url in seen or len(url) > 500:
+            continue
+        seen.add(url)
+        out.append({"text": re.sub(r"\s+", " ", text).strip()[:80], "url": url})
+        if len(out) >= MAX_LINKS:
+            break
+    return out
 
 
 def _decode(body: bytes, header_charset) -> str:
@@ -334,14 +366,26 @@ async def _download(url: str) -> dict[str, Any]:
     return {"error": "too many redirects"}
 
 
-async def fetch_page(url: str, offset: int = 0) -> dict[str, Any]:
-    try:
-        offset = max(0, int(offset or 0))
-    except (TypeError, ValueError):
-        offset = 0
+# Pages read recently, keyed like link_provenance (scheme/www/trailing slash/fragment ignored):
+# reading the next part, or the same page again under a variant address, never reaches the site
+# again, so repeated requests cannot be used as a signal (Gemini). Also faster on the Pi.
+_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CACHE_TTL_S = 600
+_CACHE_MAX = 16
+
+
+async def _read(url: str) -> dict[str, Any]:
+    """Full readable page (all text, metadata) or {error}; cached."""
+    from backend.services.link_provenance import link_key
+
+    key = link_key(url) or url
+    now = time.monotonic()
+    hit = _CACHE.get(key)
+    if hit and now - hit[0] < _CACHE_TTL_S:
+        return hit[1]
     try:
         async with asyncio.timeout(DEADLINE_S):
-            got = await _download((url or "").strip())
+            got = await _download(url)
     except BlockedURL as e:
         return {"error": f"Not fetched: {e}"}
     except (TimeoutError, httpx.TimeoutException):
@@ -353,19 +397,38 @@ async def fetch_page(url: str, offset: int = 0) -> dict[str, Any]:
 
     text = _decode(got["body"], got["charset"])
     content_type = got["content_type"]
-    out: dict[str, Any] = {"url": got["url"], "content_type": content_type or "unknown", "note": UNTRUSTED}
+    page: dict[str, Any] = {"url": got["url"], "content_type": content_type or "unknown", "text": text,
+                            "truncated": got["truncated"], "meta": {}}
     if "html" in content_type or re.search(r"<(!doctype html|html[\s>])", text[:3000], re.I):
-        page = await asyncio.to_thread(extract_html, text)  # up to 3 MB of HTML: keep the event loop free
-        if offset == 0:
-            out.update(title=page["title"], description=page["description"], structured_data=page["structured_data"])
-        text = page["text"]
+        html = await asyncio.to_thread(extract_html, text)  # up to 3 MB of HTML: keep the event loop free
+        page["meta"] = {"title": html["title"], "description": html["description"],
+                        "structured_data": html["structured_data"],
+                        "links": _absolute_links(got["url"], html["links"])}
+        page["text"] = html["text"]
+    if len(_CACHE) >= _CACHE_MAX:
+        _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][0]))
+    _CACHE[key] = (now, page)
+    return page
 
+
+async def fetch_page(url: str, offset: int = 0) -> dict[str, Any]:
+    try:
+        offset = max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    page = await _read((url or "").strip())
+    if "error" in page:
+        return page
+    text = page["text"]
+    out: dict[str, Any] = {"url": page["url"], "content_type": page["content_type"], "note": UNTRUSTED}
+    if offset == 0:
+        out.update(page["meta"])
     chunk = text[offset:offset + PAGE_CHARS]
     out["content"] = chunk
     if offset + PAGE_CHARS < len(text):
         out["next_offset"] = offset + PAGE_CHARS
         out["remaining_chars"] = len(text) - offset - PAGE_CHARS
-    if got["truncated"]:
+    if page["truncated"]:
         out["page_truncated"] = "The page is larger than 3 MB; only the first part was read."
     if not chunk.strip() and offset == 0:
         out["hint"] = "Little readable text: the page may be built by JavaScript. Try the description, structured_data or another source."

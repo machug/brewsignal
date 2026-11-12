@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Assistant reads YouTube captions** (tilt_ui-eevz.9) - Paste a YouTube link (a brewery interview, a brew-day or clone video) and the assistant reads its captions, with a time mark about every minute; long videos are read in parts. It prefers captions written by the uploader, then auto-generated ones. Uses the unofficial youtube-transcript-api library: if YouTube blocks or changes something, the assistant says so and uses other sources.
 - **Assistant reads web pages properly** (tilt_ui-eevz.4) - Pasted links and search results are read as clean text: menus, scripts and footers dropped, headings, lists and tables kept. The page title, description and any embedded recipe data come back separately, and long pages are read in parts instead of being cut at 6,000 characters.
 - **Assistant web search** (tilt_ui-eevz.3) - The assistant can search the web (Tavily) to research a beer to clone: brewery pages, interviews, reviews and published clone recipes. Add a Tavily API key on the System page (AI section); a basic search costs one Tavily credit. Results are treated as information, never as instructions.
 

@@ -521,17 +521,18 @@ class Recipe(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    # Relationships
+    # Relationships. Child lists load in insertion order so exports (and the review
+    # fingerprint) are stable across loads (tilt_ui-de6v).
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
-    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeFermentable.id")
+    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeHop.id")
+    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeCulture.id")
+    miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeMisc.id")
+    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterProfile.id")
+    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterAdjustment.id")
+    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeMashStep.id")
+    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeFermentationStep.id")
 
 
 class Batch(Base):
@@ -680,6 +681,27 @@ class RecipeFermentable(Base):
     def color_lovibond(self) -> Optional[float]:
         """Alias for color_srm for backward compatibility."""
         return self.color_srm
+
+
+class RecipeReview(Base):
+    """A saved AI review of a recipe, so the score can be tracked as the recipe changes (tilt_ui-de6v).
+
+    No relationship on Recipe: delete_recipe removes these explicitly, and the FK
+    cascades on Postgres.
+    """
+    __tablename__ = "recipe_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
+    review: Mapped[str] = mapped_column(Text)
+    score: Mapped[Optional[float]] = mapped_column(nullable=True)  # judge's "Style Fit Score: N/10"
+    stats_score: Mapped[Optional[float]] = mapped_column(nullable=True)  # stats in range, computed, 0-10
+    compliance: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    style_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class RecipeHop(Base):

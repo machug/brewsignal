@@ -3,8 +3,8 @@
 	import { onMount } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/stores';
-	import type { RecipeResponse, RecipeReviewResponse } from '$lib/api';
-	import { fetchRecipe, deleteRecipe, reviewRecipe } from '$lib/api';
+	import type { RecipeResponse, SavedReview, SavedReviewSummary } from '$lib/api';
+	import { fetchRecipe, deleteRecipe, fetchRecipeReview, fetchRecipeReviews, runRecipeReview } from '$lib/api';
 	import FermentablesList from '$lib/components/recipe/FermentablesList.svelte';
 	import HopSchedule from '$lib/components/recipe/HopSchedule.svelte';
 	import OtherIngredients from '$lib/components/recipe/OtherIngredients.svelte';
@@ -84,7 +84,9 @@
 
 	// AI Review state
 	let showReviewModal = $state(false);
-	let reviewResult = $state<RecipeReviewResponse | null>(null);
+	let reviewResult = $state<SavedReview | null>(null);
+	let reviewHistory = $state<SavedReviewSummary[]>([]);
+	let currentFingerprint = $state('');
 	let reviewLoading = $state(false);
 	let reviewError = $state<string | null>(null);
 
@@ -304,124 +306,27 @@
 		goto(`/batches/new?recipe_id=${recipe.id}`);
 	}
 
+	// Saved reviews (tilt_ui-de6v): open the latest one; only run the AI when there is none
+	// or the user asks for a re-review. The backend reads the full stored recipe.
+	async function loadReviewHistory(id: number) {
+		const h = await fetchRecipeReviews(id);
+		reviewHistory = h.reviews;
+		currentFingerprint = h.current_fingerprint;
+	}
+
 	async function handleReview() {
 		if (!recipe) return;
-
-		// BJCP style FK now drives the style label (tilt_ui-tre);
-		// recipe.type is the BeerXML brewery-type column and may be
-		// missing entirely on UI-created recipes. Prefer the linked
-		// style name, fall back to type for legacy recipes.
-		const styleName = recipe.style?.name ?? recipe.type ?? '';
-		if (!styleName.trim()) {
-			reviewError = 'Recipe is missing a beer style — edit the recipe and add one to get an AI review';
-			showReviewModal = true;
-			return;
-		}
-
-		// UI editor saves fermentables under format_extensions; the
-		// recipe.fermentables table rows are only populated by import or
-		// the LLM save_recipe path. Mirror the liveStats precedence.
-		const ext = recipe.format_extensions as
-			| { fermentables?: Array<{ name?: string; amount_kg?: number; color_srm?: number; color_lovibond?: number; type?: string }> }
-			| undefined;
-		const fermentables = Array.isArray(ext?.fermentables)
-			? ext!.fermentables!
-			: recipe.fermentables ?? [];
-		if (fermentables.length === 0) {
-			reviewError = 'Recipe has no fermentables to review';
-			showReviewModal = true;
-			return;
-		}
-
-		reviewLoading = true;
+		const id = recipe.id;
+		showReviewModal = true;
 		reviewError = null;
 		reviewResult = null;
-		showReviewModal = true;
-
+		reviewLoading = true;
 		try {
-			const stats = liveStats;
-			// Review what the card actually shows. The stats card binds
-			// `liveStats?.X ?? recipe.X` (see RecipeStatsPanel props below), so
-			// the review payload must use the SAME precedence — otherwise the
-			// user sees e.g. IBU 36 on the card but "reviewed as 27"
-			// (tilt_ui-gkm). target_* is only the small "src" hint, so it's the
-			// last fallback, never preferred over the displayed value.
-			const og = stats?.og ?? recipe.og ?? recipe.target_og ?? 1.05;
-			const fg = stats?.fg ?? recipe.fg ?? recipe.target_fg ?? 1.01;
-			const abv = stats?.abv ?? recipe.abv ?? recipe.target_abv ?? 5.0;
-			const ibu = stats?.ibu ?? recipe.ibu ?? recipe.target_ibu ?? 30;
-			const colorSrm = stats?.srm ?? recipe.color_srm ?? recipe.target_srm ?? 8;
-
-			reviewResult = await reviewRecipe({
-				name: recipe.name || 'Untitled Recipe',
-				style: styleName,
-				og,
-				fg,
-				abv,
-				ibu,
-				color_srm: colorSrm,
-				fermentables: fermentables.map((f) => ({
-					name: (f as { name?: string }).name ?? '',
-					amount_kg: (f as { amount_kg?: number }).amount_kg ?? 0,
-					// format_extensions.fermentables carries color_lovibond
-					// while recipe.fermentables uses color_srm. Convert
-					// Lovibond → SRM (1.3546*L − 0.76) when only Lovibond
-					// is available.
-					color_srm:
-						(f as { color_srm?: number }).color_srm ??
-						((f as { color_lovibond?: number }).color_lovibond != null
-							? 1.3546 * (f as { color_lovibond: number }).color_lovibond - 0.76
-							: undefined),
-					type: (f as { type?: string }).type
-				})),
-				// displayHops merges format_extensions.hops (UI editor copy
-				// with is_extract + amount_ml) with the recipe_hops table
-				// fallback. Extracts come through with amount_grams=0 and
-				// no alpha, so the IBU side of the review prompt naturally
-				// ignores them while the agent still sees them as part of
-				// the hop bill (so it can comment on aroma additions and
-				// Abstrax usage). The backend review tool already knows
-				// is_extract semantics from phase 1.
-				hops: displayHops.map((h: Record<string, unknown>) => {
-					const timing = (h.timing as Record<string, any>) || {};
-					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
-					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-					const isExtract = Boolean(h.is_extract);
-					// Normalise the use under the same isExtract flag the
-					// payload carries, otherwise extract-only cold-side
-					// uses (add_to_fermentation/add_to_package/keg/brite)
-					// collapse to "boil" and the LLM sees an aroma extract
-					// dosed at boil time.
-					const use = normalizeHopUse(
-						timing.use ?? (h.use as string | undefined),
-						isExtract,
-					);
-					const alpha = h.alpha_acid_percent;
-					const ml = h.amount_ml;
-					return {
-						name: h.name as string,
-						amount_grams: Number(h.amount_grams ?? 0),
-						// Don't expose dry-hop / mash duration as IBU-time
-						// to the LLM — the review prompt would misread a
-						// 4-day dry hop as an absurd boil duration.
-						// Extracts are cold-side only, so always zero.
-						boil_time_minutes:
-							isExtract || use === 'dry_hop' || use === 'mash' ? 0 : Number(minutes),
-						alpha_acid_percent: typeof alpha === 'number' ? alpha : undefined,
-						use,
-						is_extract: isExtract,
-						amount_ml: typeof ml === 'number' ? ml : null
-					};
-				}),
-				yeast: recipe.yeast_name
-					? {
-							name: recipe.yeast_name,
-							producer: recipe.yeast_lab ?? undefined,
-							attenuation: recipe.yeast_attenuation ?? undefined
-						}
-					: undefined
-			});
+			await loadReviewHistory(id);
+			const latest = reviewHistory.length ? await fetchRecipeReview(id, reviewHistory[0].id) : await runRecipeReview(id);
+			if (!showReviewModal || recipe?.id !== id) return; // closed or navigated away meanwhile
+			reviewResult = latest;
+			if (!reviewHistory.length) await loadReviewHistory(id);
 		} catch (err) {
 			reviewError = err instanceof Error ? err.message : 'Failed to get AI review';
 		} finally {
@@ -429,10 +334,37 @@
 		}
 	}
 
+	async function rereview() {
+		if (!recipe) return;
+		const id = recipe.id;
+		reviewError = null;
+		reviewLoading = true;
+		try {
+			reviewResult = await runRecipeReview(id);
+			await loadReviewHistory(id);
+		} catch (err) {
+			reviewError = err instanceof Error ? err.message : 'Failed to get AI review';
+		} finally {
+			reviewLoading = false;
+		}
+	}
+
+	async function selectReview(reviewId: number) {
+		if (!recipe) return;
+		reviewError = null;
+		try {
+			reviewResult = await fetchRecipeReview(recipe.id, reviewId);
+		} catch (err) {
+			reviewError = err instanceof Error ? err.message : 'Failed to load review';
+		}
+	}
+
 	function closeReviewModal() {
 		showReviewModal = false;
 		reviewResult = null;
 		reviewError = null;
+		reviewHistory = [];
+		currentFingerprint = '';
 	}
 </script>
 
@@ -756,6 +688,10 @@
 	error={reviewError}
 	result={reviewResult}
 	styleName={recipe?.style?.name ?? recipe?.type ?? ''}
+	history={reviewHistory}
+	{currentFingerprint}
+	onRereview={rereview}
+	onSelect={selectReview}
 	onClose={closeReviewModal}
 />
 

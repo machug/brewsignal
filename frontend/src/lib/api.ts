@@ -2232,6 +2232,52 @@ export async function reviewRecipe(request: RecipeReviewRequest): Promise<Recipe
 	return response.json();
 }
 
+// Saved reviews of a stored recipe (tilt_ui-de6v)
+export interface StatCheck {
+	value: number | null;
+	min: number | null;
+	max: number | null;
+	unit: string;
+	status: string;
+}
+
+export interface SavedReviewSummary {
+	id: number;
+	created_at: string | null;
+	score: number | null; // the AI judge's Style Fit Score
+	stats_score: number | null; // stats inside the style range, computed (0-10)
+	style_name: string | null;
+	model: string | null;
+	fingerprint: string;
+}
+
+export interface SavedReview extends SavedReviewSummary {
+	review: string;
+	compliance: Record<string, StatCheck> | null;
+}
+
+async function reviewJson<T>(response: Response, what: string): Promise<T> {
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		throw new Error(error.detail || `Failed to ${what}`);
+	}
+	return response.json();
+}
+
+export async function fetchRecipeReviews(
+	recipeId: number
+): Promise<{ current_fingerprint: string; reviews: SavedReviewSummary[] }> {
+	return reviewJson(await authFetch(`${BASE_URL}/recipes/${recipeId}/reviews`), 'load reviews');
+}
+
+export async function fetchRecipeReview(recipeId: number, reviewId: number): Promise<SavedReview> {
+	return reviewJson(await authFetch(`${BASE_URL}/recipes/${recipeId}/reviews/${reviewId}`), 'load review');
+}
+
+export async function runRecipeReview(recipeId: number): Promise<SavedReview> {
+	return reviewJson(await authFetch(`${BASE_URL}/recipes/${recipeId}/reviews`, { method: 'POST' }), 'review recipe');
+}
+
 // ============================================================================
 // BJCP Styles API
 // ============================================================================

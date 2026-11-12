@@ -544,6 +544,18 @@ async def _reconcile_postgres_columns():
             logger.info("Schema reconcile: added %d missing column(s)", added)
 
 
+def _enable_rls_on_app_tables(conn):
+    """Hosted: RLS on every app table, so a table create_all makes before its migration is
+    applied is never open through the Supabase Data API (anon/authenticated). The app
+    connects as the table owner and is unaffected; the frontend never uses the Data API
+    for tables. ENABLE is idempotent (codex on tilt_ui-de6v)."""
+    from sqlalchemy import text
+
+    for table in Base.metadata.sorted_tables:
+        schema = table.schema or "public"
+        conn.execute(text(f'ALTER TABLE "{schema}"."{table.name}" ENABLE ROW LEVEL SECURITY'))
+
+
 async def init_db():
     """Initialize database with migrations.
 
@@ -572,6 +584,7 @@ async def init_db():
         async with engine.begin() as conn:
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_enable_rls_on_app_tables)
             await conn.run_sync(_migrate_legacy_chat_threads)
             await conn.run_sync(_migrate_global_control_config_to_celsius)
         # create_all adds missing TABLES but not missing COLUMNS. Supabase's

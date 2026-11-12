@@ -513,17 +513,14 @@ async def review_recipe(
             "abv": request.abv,
             "ibu": request.ibu,
             "color_srm": request.color_srm,
-            "fermentables_summary": fermentables_summary,
-            "hops_summary": hops_summary,
-            "yeast_info": yeast_info,
+            "recipe_details": (
+                f"## Grain Bill\n{fermentables_summary}\n\n## Hop Schedule\n{hops_summary}\n\n## Yeast\n{yeast_info}"
+            ),
             "style_guidelines": style_guidelines if style_found else "",
         })
 
-        # Call LLM
-        response = await service.chat(
-            messages=rendered,
-            temperature=0.5,  # Lower temperature for more consistent reviews
-        )
+        # Call LLM. Temperature 0 + the prompt's fixed checklist keep the score steady (tilt_ui-de6v)
+        response = await service.chat(messages=rendered, temperature=0)
 
         return RecipeReviewResponse(
             review=response,

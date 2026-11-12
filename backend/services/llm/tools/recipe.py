@@ -846,6 +846,26 @@ def _compute_style_compliance(recipe: Recipe, target_style: Style) -> dict[str, 
     }
 
 
+def _compact(node: Any) -> Any:
+    """Drop nulls and empty containers so the review prompt carries only real recipe data."""
+    if isinstance(node, dict):
+        out = {k: _compact(v) for k, v in node.items()}
+        return {k: v for k, v in out.items() if v not in (None, "", [], {})}
+    if isinstance(node, list):
+        return [x for x in (_compact(v) for v in node) if x not in (None, "", [], {})]
+    return node
+
+
+def _stat_check_text(compliance: dict[str, Any]) -> str:
+    lines = []
+    for key, c in compliance.items():
+        if c.get("status") == "no_guideline":
+            continue
+        unit = c.get("unit") or ""
+        lines.append(f"- {key.upper()}: {c.get('value')}{unit} vs {c.get('min')}-{c.get('max')}{unit}: {c.get('status')}")
+    return "\n".join(lines)
+
+
 async def review_recipe(
     db: AsyncSession,
     recipe_id: int,
@@ -858,20 +878,18 @@ async def review_recipe(
     the user asks for a "review", "critique", "check", or "style review" on a
     recipe. The advanced review_recipe_style tool is rarely needed since the
     compliance block here covers the same numeric data.
+
+    The judge reads the full v2 document (batch size, water, mash, fermentation,
+    whirlpool temperatures...) and every review is saved with its scores so the
+    recipe's history can be tracked (tilt_ui-de6v, tilt_ui-de6v.1).
     """
-    stmt = select(Recipe).options(
-        selectinload(Recipe.style),
-        selectinload(Recipe.fermentables),
-        selectinload(Recipe.hops),
-        selectinload(Recipe.cultures),
-    ).where(Recipe.id == recipe_id)
+    import json
 
-    settings = get_settings()
-    if not settings.is_local and user_id:
-        stmt = stmt.where(Recipe.user_id == user_id)
+    from backend.models import RecipeReview
+    from backend.services import recipe_reviews
+    from backend.services.llm.tools.recipe_v2 import _export, _load
 
-    result = await db.execute(stmt)
-    recipe = result.scalar_one_or_none()
+    recipe = await _load(db, recipe_id, user_id)
     if not recipe:
         return {"error": f"Recipe with ID {recipe_id} not found"}
 
@@ -908,6 +926,7 @@ async def review_recipe(
             "color_srm": recipe.color_srm or 0,
         }
 
+    document = _export(recipe)
     try:
         prompt_path = PROMPTS_DIR / "recipe-review.prompty"
         p = prompty.load(str(prompt_path))
@@ -921,34 +940,50 @@ async def review_recipe(
             "abv": stats["abv"],
             "ibu": stats["ibu"],
             "color_srm": stats["color_srm"],
-            "fermentables_summary": _format_fermentables_for_review(recipe.fermentables),
-            "hops_summary": _format_hops_for_review(recipe.hops),
-            "yeast_info": _format_yeast_for_review(recipe.cultures),
+            "stat_check": _stat_check_text(compliance_block["compliance"]) if compliance_block else "",
+            "recipe_details": json.dumps(_compact(document), separators=(",", ":"), default=str),
             "style_guidelines": style_guidelines if style_found else "",
         })
 
-        review_text = await service.chat(messages=rendered, temperature=0.5)
-
-        response: dict[str, Any] = {
-            "review": review_text,
-            "style_found": style_found,
-            "style_name": style_name if style_found else None,
-            "model": service.config.effective_model,
-        }
-
-        if compliance_block is not None:
-            response.update(compliance_block)
-            response["target_style"] = {
-                "id": recipe.style.id,
-                "name": recipe.style.name,
-                "category": recipe.style.category,
-                "guide": recipe.style.guide,
-            }
-
-        return response
+        # Temperature 0 + the prompt's fixed checklist keep the score steady (tilt_ui-de6v)
+        review_text = await service.chat(messages=rendered, temperature=0)
     except Exception as e:
         logger.exception(f"Recipe review failed for recipe {recipe_id}: {e}")
         return {"error": f"Recipe review failed: {str(e)}"}
+
+    row = RecipeReview(
+        recipe_id=recipe.id,
+        user_id=recipe.user_id,
+        review=review_text,
+        score=recipe_reviews.parse_score(review_text),
+        stats_score=compliance_block["style_fit_score"] if compliance_block else None,
+        compliance=compliance_block["compliance"] if compliance_block else None,
+        style_name=style_name if style_found else (recipe.style.name if recipe.style else None),
+        model=service.config.effective_model,
+        fingerprint=recipe_reviews.fingerprint(document),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+
+    response: dict[str, Any] = {
+        "review": review_text,
+        "style_found": style_found,
+        "style_name": style_name if style_found else None,
+        "model": service.config.effective_model,
+        "saved_review": recipe_reviews.summary(row),
+    }
+
+    if compliance_block is not None:
+        response.update(compliance_block)
+        response["target_style"] = {
+            "id": recipe.style.id,
+            "name": recipe.style.name,
+            "category": recipe.style.category,
+            "guide": recipe.style.guide,
+        }
+
+    return response
 
 
 # Backwards-compatible alias for older callers / tests. New code should use

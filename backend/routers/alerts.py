@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
-def fahrenheit_to_celsius(f: float) -> float:
-    """Convert Fahrenheit to Celsius."""
-    return (f - 32) * 5 / 9
-
-
 def celsius_to_fahrenheit(c: float) -> float:
     """Convert Celsius to Fahrenheit."""
     return c * 9 / 5 + 32
@@ -126,7 +121,7 @@ def generate_alerts(
 @router.get("/config", response_model=AlertsConfigResponse)
 async def get_alerts_config(db: AsyncSession = Depends(get_db)):
     """Get current alerts configuration."""
-    target_temp_f = await get_config_value(db, "temp_target")
+    target_temp_c = await get_config_value(db, "temp_target")  # Celsius (tilt_ui-xrq5.6)
     # Threshold is stored in Celsius
     threshold_c = await get_config_value(db, "alert_temp_threshold") or 3.0
 
@@ -134,7 +129,7 @@ async def get_alerts_config(db: AsyncSession = Depends(get_db)):
         weather_alerts_enabled=await get_config_value(db, "weather_alerts_enabled") or False,
         alert_temp_threshold=threshold_c,
         ha_weather_entity_id=await get_config_value(db, "ha_weather_entity_id") or "",
-        temp_target=fahrenheit_to_celsius(target_temp_f) if target_temp_f else None,
+        temp_target=target_temp_c,
     )
 
 
@@ -191,9 +186,8 @@ async def get_alerts(db: AsyncSession = Depends(get_db)):
     # Generate alerts if enabled
     alerts = []
     if weather_alerts_enabled:
-        # Get target temp (stored in F) and convert to C for comparison
-        target_temp_f = await get_config_value(db, "temp_target")
-        target_temp_c = fahrenheit_to_celsius(target_temp_f) if target_temp_f else None
+        # Target temp is stored in Celsius (tilt_ui-xrq5.6)
+        target_temp_c = await get_config_value(db, "temp_target")
 
         # Get threshold (stored in Celsius)
         threshold_c = await get_config_value(db, "alert_temp_threshold") or 3.0

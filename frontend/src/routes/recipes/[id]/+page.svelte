@@ -208,7 +208,9 @@
 	$effect(() => {
 		if (!recipe) return;
 		const path = recipeUrl(recipe);
-		if ($page.url.pathname !== path) replaceState(path + $page.url.search + $page.url.hash, $page.state);
+		// Compare with the real address: shallow replaceState does not update
+		// $page.url, and reading $page here would re-run this effect in a loop.
+		if (location.pathname !== path) replaceState(path + location.search + location.hash, {});
 	});
 
 	let recipeId = $derived.by(() => {

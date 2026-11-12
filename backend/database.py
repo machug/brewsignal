@@ -101,6 +101,40 @@ def _migrate_add_ml_columns(conn):
     logging.info("ML columns added successfully")
 
 
+def _migrate_global_control_config_to_celsius(conn) -> None:
+    """Convert the global temp_target/temp_hysteresis config to Celsius (tilt_ui-xrq5.6).
+
+    The v1 F->C migration converted batch columns but not these config keys,
+    so /api/control/status returned 66.2. A target >= 50 can only be
+    Fahrenheit; the hysteresis stored alongside it is then a Fahrenheit span.
+    Idempotent: a Celsius target is never >= 50.
+    """
+    import json
+    from sqlalchemy import text
+
+    if not conn.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
+    )).fetchone():
+        return
+    rows = dict(conn.execute(text(
+        "SELECT key, value FROM config WHERE key IN ('temp_target', 'temp_hysteresis')"
+    )).fetchall())
+    try:
+        target = float(json.loads(rows["temp_target"]))
+    except (KeyError, TypeError, ValueError):
+        return
+    if target < 50:
+        return
+    updates = {"temp_target": round((target - 32) * 5 / 9, 1)}
+    try:
+        updates["temp_hysteresis"] = round(float(json.loads(rows["temp_hysteresis"])) / 1.8, 2)
+    except (KeyError, TypeError, ValueError):
+        pass
+    for key, value in updates.items():
+        conn.execute(text("UPDATE config SET value = :v WHERE key = :k"), {"v": json.dumps(value), "k": key})
+    print(f"Migration: global control config F->C {updates}")
+
+
 async def _migrate_temps_fahrenheit_to_celsius(engine):
     """Convert all temperature data from Fahrenheit to Celsius.
 
@@ -609,6 +643,8 @@ async def init_db():
 
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(_migrate_global_control_config_to_celsius)
 
     async with engine.begin() as conn:
         # Step 4: Data migrations

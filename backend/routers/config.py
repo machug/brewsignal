@@ -40,8 +40,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ha_chamber_humidity_entity_id": "",
     # Temperature control
     "temp_control_enabled": False,
-    "temp_target": 68.0,
-    "temp_hysteresis": 1.0,
+    "temp_target": 20.0,    # Celsius
+    "temp_hysteresis": 0.5,  # Celsius
     "ha_heater_entity_id": "",
     # Chamber idle mode (control chamber when no batches active)
     "chamber_idle_enabled": False,

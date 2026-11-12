@@ -77,8 +77,8 @@ const DEFAULT_CONFIG: AppConfig = {
 	ha_chamber_humidity_entity_id: '',
 	// Temperature control
 	temp_control_enabled: false,
-	temp_target: 68.0,
-	temp_hysteresis: 1.0,
+	temp_target: 20.0,
+	temp_hysteresis: 0.5,
 	ha_heater_entity_id: '',
 	// Chamber idle mode
 	chamber_idle_enabled: false,

@@ -128,6 +128,14 @@ export type ApplyOutcome =
 	| { phase: 'denied' }
 	| { phase: 'pending' };
 
+/** A tool call cut off by the reply budget comes back as a raw JSON parse dump; say what happened instead (tilt_ui-s1k4). */
+export function plainToolError(text?: string): string {
+	if (!text) return 'The update could not be applied.';
+	if (/json_invalid|EOF while parsing/.test(text))
+		return 'The reply was cut off before the recipe was complete. The assistant will try again.';
+	return text;
+}
+
 /** Applied only when the tool output says applied === true; any error key or other shape is a failure. */
 export function applyOutcome(t: ToolPart): ApplyOutcome {
 	switch (t.state) {
@@ -139,7 +147,7 @@ export function applyOutcome(t: ToolPart): ApplyOutcome {
 		case 'output-denied':
 			return { phase: 'denied' };
 		case 'output-error':
-			return { phase: 'failed', message: t.errorText || 'The update could not be applied.' };
+			return { phase: 'failed', message: plainToolError(t.errorText) };
 		case 'output-available': {
 			const o = t.output;
 			if (o && typeof o === 'object' && !o.error && o.applied === true) return { phase: 'applied', plan: o };

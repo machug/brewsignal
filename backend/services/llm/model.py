@@ -95,6 +95,7 @@ def model_settings(config: LLMConfig) -> ModelSettings:
         return OpenRouterModelSettings(
             max_tokens=config.max_tokens,
             temperature=config.temperature,
-            openrouter_reasoning={"max_tokens": config.max_tokens // 2},
+            # Bounded so a big budget goes to the reply (a recipe save), not thinking (tilt_ui-s1k4)
+            openrouter_reasoning={"max_tokens": min(config.max_tokens // 2, 4000)},
         )
     return ModelSettings(max_tokens=config.max_tokens, temperature=config.temperature)

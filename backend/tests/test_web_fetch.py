@@ -265,3 +265,12 @@ async def test_falls_back_to_the_next_checked_address(monkeypatch):
 def test_ipv6_literal_host_keeps_brackets():
     req = wf._pinned_request("https://[2606:4700::1]/x", "https", "2606:4700::1", 443, "2606:4700::1")
     assert req.headers["host"] == "[2606:4700::1]"
+
+
+def test_many_unterminated_title_tags_stay_fast():
+    import time
+
+    html = "<title " * 300_000  # ~2 MB of hostile markup
+    t = time.perf_counter()
+    wf._close_unclosed_title(html)
+    assert time.perf_counter() - t < 0.5

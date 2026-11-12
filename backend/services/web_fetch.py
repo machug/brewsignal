@@ -228,11 +228,28 @@ def _structured(blocks: list[str]) -> list[Any]:
     return [{"note": "structured data too large; first 8000 characters as text", "text": text[:8000]}]
 
 
+def _close_unclosed_title(html: str) -> str:
+    """The parser reads everything after an unclosed <title> as title text: close it after its text.
+
+    One bounded pass (find, not regex), so hostile pages cannot make it slow.
+    """
+    low = html.lower()
+    if "</title" in low:
+        return html
+    start = low.find("<title")
+    if start < 0:
+        return html
+    gt = low.find(">", start, start + 500)
+    if gt < 0:
+        return html
+    end = low.find("<", gt + 1, gt + 1 + 1000)
+    end = end if end >= 0 else min(len(html), gt + 1 + 300)
+    return html[:end] + "</title>" + html[end:]
+
+
 def extract_html(html: str) -> dict[str, Any]:
     p = _Extractor()
-    if "</title" not in html.lower():
-        # The parser reads everything after an unclosed <title> as title text: close it after its text
-        html = re.sub(r"(<title[^>]*>[^<]*)", r"\1</title>", html, count=1, flags=re.I)
+    html = _close_unclosed_title(html)
     try:
         p.feed(html)
         p.close()
@@ -335,7 +352,7 @@ async def fetch_page(url: str, offset: int = 0) -> dict[str, Any]:
     content_type = got["content_type"]
     out: dict[str, Any] = {"url": got["url"], "content_type": content_type or "unknown", "note": UNTRUSTED}
     if "html" in content_type or re.search(r"<(!doctype html|html[\s>])", text[:3000], re.I):
-        page = extract_html(text)
+        page = await asyncio.to_thread(extract_html, text)  # up to 3 MB of HTML: keep the event loop free
         if offset == 0:
             out.update(title=page["title"], description=page["description"], structured_data=page["structured_data"])
         text = page["text"]

@@ -357,6 +357,8 @@ def _sections(doc: dict) -> dict[str, list[str]]:
 
 def _leaves(node: Any, prefix: str = "") -> dict[str, Any]:
     """Flatten to {dotted.path: value}; a {"value", "unit"} object stays one leaf."""
+    if isinstance(node, dict) and not node:
+        return {}  # empty container: nothing to show
     if isinstance(node, dict) and not (set(node) <= {"value", "unit"} and "value" in node):
         out: dict[str, Any] = {}
         for k, v in node.items():
@@ -419,6 +421,18 @@ def _result(recipe: Recipe, verb: str) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _undo(savepoint) -> None:
+    """Roll a savepoint back even when a failed flush already marked it inactive.
+
+    An inactive savepoint still needs its rollback before the session works again
+    (PendingRollbackError otherwise). Only an already-closed one is skipped.
+    """
+    try:
+        await savepoint.rollback()
+    except Exception:  # already closed: nothing left to undo
+        pass
+
+
 def _prepare_edit_document(current: dict, operations: list[dict]) -> dict:
     """Apply the patch and drop links the patch made stale."""
     document = apply_patch(current, operations)
@@ -477,8 +491,7 @@ async def preview_recipe_change(
         logger.info("Recipe preview failed: %s", e)
         return {"error": f"Recipe would not import: {e}"}
     finally:
-        if savepoint.is_active:
-            await savepoint.rollback()
+        await _undo(savepoint)
 
 
 async def save_recipe_document(db: AsyncSession, document: dict[str, Any], user_id: Optional[str] = None) -> dict[str, Any]:
@@ -486,14 +499,13 @@ async def save_recipe_document(db: AsyncSession, document: dict[str, Any], user_
     try:
         recipe, errors = await _import(db, document)
         if recipe is None:
-            await savepoint.rollback()
+            await _undo(savepoint)
             return {"error": "Recipe not saved", "details": errors}
         recipe.user_id = user_id
         await db.commit()
     except Exception as e:
         logger.exception("Assistant recipe save failed")
-        if savepoint.is_active:
-            await savepoint.rollback()
+        await _undo(savepoint)
         return {"error": f"Recipe not saved: {e}"}
     return _result(await _load(db, recipe.id, None, check_owner=False), "saved")
 
@@ -513,7 +525,7 @@ async def update_recipe_document(
     try:
         new, errors = await _import(db, document)
         if new is None:
-            await savepoint.rollback()
+            await _undo(savepoint)
             return {"error": "Recipe not updated", "details": errors}
         # Move children off the temp copy first, so deleting it cascades to nothing
         moved = {name: list(getattr(new, name)) for name in CHILDREN}
@@ -530,8 +542,7 @@ async def update_recipe_document(
         await db.commit()
     except Exception as e:
         logger.exception("Assistant recipe update failed")
-        if savepoint.is_active:
-            await savepoint.rollback()
+        await _undo(savepoint)
         return {"error": f"Recipe not updated: {e}"}
     db.expunge(existing)
     return _result(await _load(db, recipe_id, None, check_owner=False), "updated")

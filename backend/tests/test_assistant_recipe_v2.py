@@ -396,3 +396,19 @@ def test_color_units_are_converted_to_srm():
     assert c({"value": 40, "unit": "Lovi"}) == pytest.approx(53.42, abs=0.01)
     assert c({"value": 7, "unit": "SRM"}) == 7
     assert c({"value": True, "unit": "SRM"}) is None
+
+
+@pytest.mark.asyncio
+async def test_db_level_failure_leaves_the_session_usable(test_db):
+    """Codex round 3: a NOT NULL failure at flush marks the savepoint inactive; it must still be rolled back."""
+    from sqlalchemy import func, select
+
+    from backend.models import Recipe
+    from backend.services.llm.tools.recipe_v2 import preview_recipe_change
+
+    bad = json.loads(json.dumps(JASPER))
+    bad["recipe"]["ingredients"]["fermentable_additions"][0]["name"] = None  # NOT NULL, fails at flush
+    assert "error" in await preview_recipe_change(test_db, document=bad)
+    assert "error" in await save_recipe_document(test_db, bad)
+    assert await test_db.scalar(select(func.count(Recipe.id))) == 0
+    assert (await save_recipe_document(test_db, JASPER)).get("applied")

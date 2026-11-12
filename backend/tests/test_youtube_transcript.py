@@ -31,6 +31,7 @@ def test_non_video_links_are_refused(value):
 
 @pytest.mark.asyncio
 async def test_errors_come_back_as_tool_errors(monkeypatch):
+    yt._CACHE.clear()
     monkeypatch.setattr(yt, "_fetch_sync", lambda vid: {"error": "This video has no captions (they are turned off)."})
     assert "no captions" in (await yt.get_transcript(VID))["error"]
 
@@ -43,6 +44,7 @@ async def test_errors_come_back_as_tool_errors(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_long_transcripts_come_in_parts(monkeypatch):
+    yt._CACHE.clear()
     text = "x" * (yt.PAGE_CHARS + 500)
     monkeypatch.setattr(yt, "_fetch_sync", lambda vid: {"language": "English (auto-generated)", "text": text})
     first = await yt.get_transcript(VID)
@@ -52,34 +54,72 @@ async def test_long_transcripts_come_in_parts(monkeypatch):
     assert len(second["content"]) == 500 and "next_offset" not in second
 
 
-def test_timestamps_mark_each_minute(monkeypatch):
-    class Snip:
-        def __init__(self, start, text):
-            self.start, self.text = start, text
+class _Snip:
+    def __init__(self, start, text):
+        self.start, self.text = start, text
 
-    class Transcript:
-        language, is_generated = "English", True
 
-        def fetch(self):
-            return [Snip(0, "Mash at"), Snip(30, "sixty seven"), Snip(61, "Add Citra"), Snip(3700, "Done")]
+class _Track:
+    def __init__(self, code, generated, snips=()):
+        self.language_code, self.is_generated = code, generated
+        self.language = {"en": "English", "de": "German"}.get(code.split("-")[0], code)
+        self._snips = list(snips)
 
-    class Listing:
-        def find_manually_created_transcript(self, langs):
-            from youtube_transcript_api._errors import NoTranscriptFound
-            raise NoTranscriptFound(VID, langs, [])
+    def fetch(self):
+        return self._snips
 
-        def find_generated_transcript(self, langs):
-            return Transcript()
 
+def _fake_api(monkeypatch, tracks):
     class Api:
         def __init__(self, **kw):
             assert kw["http_client"].trust_env is False
 
         def list(self, vid):
-            return Listing()
+            return iter(tracks)
 
     import youtube_transcript_api
     monkeypatch.setattr(youtube_transcript_api, "YouTubeTranscriptApi", Api)
+
+
+def test_timestamps_mark_each_minute(monkeypatch):
+    _fake_api(monkeypatch, [_Track("en", True, [_Snip(0, "Mash at"), _Snip(30, "sixty seven"),
+                                                 _Snip(61, "Add Citra"), _Snip(3700, "Done")])])
     out = yt._fetch_sync(VID)
     assert out["text"] == "[0:00] Mash at sixty seven\n[1:01] Add Citra\n[1:01:40] Done"
     assert out["language"] == "English (auto-generated)"
+
+
+def test_prefers_english_and_uploader_captions(monkeypatch):
+    _fake_api(monkeypatch, [
+        _Track("de", False, [_Snip(0, "deutsch")]),
+        _Track("en-CA", True, [_Snip(0, "auto")]),
+        _Track("en-orig", False, [_Snip(0, "uploader")]),
+    ])
+    assert yt._fetch_sync(VID)["text"] == "[0:00] uploader"
+
+
+@pytest.mark.asyncio
+async def test_reading_parts_asks_youtube_once(monkeypatch):
+    calls = []
+
+    def fetch(vid):
+        calls.append(vid)
+        return {"language": "English", "text": "y" * (yt.PAGE_CHARS + 10)}
+
+    yt._CACHE.clear()
+    monkeypatch.setattr(yt, "_fetch_sync", fetch)
+    first = await yt.get_transcript(VID)
+    await yt.get_transcript(VID, offset=first["next_offset"])
+    assert calls == [VID]
+    yt._CACHE.clear()
+
+
+def test_session_requests_always_have_a_timeout(monkeypatch):
+    seen = {}
+
+    def fake(self, method, url, **kw):
+        seen.update(kw)
+
+    monkeypatch.setattr(yt.requests.Session, "request", fake)
+    yt._TimeoutSession().get("https://www.youtube.com/")
+    assert seen["timeout"] == (5, 15)

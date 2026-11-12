@@ -206,3 +206,62 @@ def test_hostile_json_ld_is_capped():
     deep = "[" * 100_000 + "]" * 100_000
     out = wf.extract_html(f'<script type="application/ld+json">{deep}</script><p>x</p>')
     assert out["structured_data"] == [] and out["text"] == "x"
+
+
+@pytest.mark.asyncio
+async def test_local_nat64_is_refused(monkeypatch):
+    _resolve(monkeypatch, {"n.example": "64:ff9b:1::a00:5"})
+    _serve(monkeypatch, lambda r: _resp(200, "x"))
+    assert "Not fetched" in (await wf.fetch_page("http://n.example/"))["error"]
+
+
+@pytest.mark.asyncio
+async def test_international_domain_uses_punycode_for_host_and_sni(monkeypatch):
+    _resolve(monkeypatch, {"xn--mnchen-3ya.de": PUBLIC_IP})
+    seen = []
+    _serve(monkeypatch, lambda r: _resp(200, "<html><body><p>Bier</p></body></html>", {"content-type": "text/html"}), seen)
+    out = await wf.fetch_page("https://münchen.de/")
+    assert out["content"] == "Bier"
+    assert seen[0].headers["host"] == "xn--mnchen-3ya.de" and seen[0].extensions["sni_hostname"] == "xn--mnchen-3ya.de"
+
+
+def test_binary_charset_names_are_ignored():
+    assert wf._decode(b"<p>Mash 65C</p>", "bz2") == "<p>Mash 65C</p>"
+    assert wf._decode(b"<meta charset='hex'><p>x</p>", None).endswith("<p>x</p>")
+
+
+def test_unclosed_title_does_not_swallow_the_page():
+    out = wf.extract_html("<html><head><title>Beer</head><body><p>Recipe text</p></body></html>")
+    assert "Recipe text" in out["text"]
+
+
+@pytest.mark.asyncio
+async def test_falls_back_to_the_next_checked_address(monkeypatch):
+    async def getaddrinfo(host, port, type=0):
+        return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", port, 0, 0)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.35", port))]
+
+    class Loop:
+        pass
+
+    loop = Loop()
+    loop.getaddrinfo = getaddrinfo
+    monkeypatch.setattr(wf.asyncio, "get_running_loop", lambda: loop)
+    tried = []
+
+    def handler(request):
+        tried.append(request.url.host)
+        if request.url.host == "93.184.216.34":
+            raise httpx.ConnectError("down")
+        return _resp(200, "<html><body><p>up</p></body></html>", {"content-type": "text/html"})
+
+    _serve(monkeypatch, handler)
+    out = await wf.fetch_page("https://dual.example/")
+    assert out["content"] == "up"
+    assert tried == ["93.184.216.34", "93.184.216.35"]  # IPv4 first, dead one skipped
+
+
+def test_ipv6_literal_host_keeps_brackets():
+    req = wf._pinned_request("https://[2606:4700::1]/x", "https", "2606:4700::1", 443, "2606:4700::1")
+    assert req.headers["host"] == "[2606:4700::1]"

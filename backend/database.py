@@ -101,6 +101,43 @@ def _migrate_add_ml_columns(conn):
     logging.info("ML columns added successfully")
 
 
+def _migrate_global_control_config_to_celsius(conn) -> None:
+    """Convert the global temp_target/temp_hysteresis config to Celsius once (tilt_ui-xrq5.6).
+
+    Until this change the System page always saved these two keys in
+    Fahrenheit (the v1 F->C migration converted batch columns, not config),
+    so /api/control/status returned 66.2. Any stored value is Fahrenheit
+    until the marker is set - including targets below 50 F (cold crash).
+    """
+    import json
+    from sqlalchemy import text
+
+    from sqlalchemy import inspect
+
+    marker = "control_config_celsius_v1"
+    if not inspect(conn).has_table("config"):  # SQLite and PostgreSQL
+        return
+    if conn.execute(text("SELECT 1 FROM config WHERE key = :k"), {"k": marker}).fetchone():
+        return
+    rows = dict(conn.execute(text(
+        "SELECT key, value FROM config WHERE key IN ('temp_target', 'temp_hysteresis')"
+    )).fetchall())
+    updates = {}
+    try:
+        updates["temp_target"] = round((float(json.loads(rows["temp_target"])) - 32) * 5 / 9, 1)
+    except (KeyError, TypeError, ValueError):
+        pass
+    try:
+        updates["temp_hysteresis"] = round(float(json.loads(rows["temp_hysteresis"])) / 1.8, 2)
+    except (KeyError, TypeError, ValueError):
+        pass
+    for key, value in updates.items():
+        conn.execute(text("UPDATE config SET value = :v WHERE key = :k"), {"v": json.dumps(value), "k": key})
+    conn.execute(text("INSERT INTO config (key, value) VALUES (:k, 'true')"), {"k": marker})
+    if updates:
+        print(f"Migration: global control config F->C {updates}")
+
+
 async def _migrate_temps_fahrenheit_to_celsius(engine):
     """Convert all temperature data from Fahrenheit to Celsius.
 
@@ -521,6 +558,7 @@ async def init_db():
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_migrate_legacy_chat_threads)
+            await conn.run_sync(_migrate_global_control_config_to_celsius)
         # create_all adds missing TABLES but not missing COLUMNS. Supabase's
         # schema drifts behind the models because its migrations are applied by
         # hand; reconcile additive column drift so full-model SELECTs don't hit
@@ -609,6 +647,8 @@ async def init_db():
 
     # Convert temperatures F→C (runs outside conn.begin() context since it has its own)
     await _migrate_temps_fahrenheit_to_celsius(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(_migrate_global_control_config_to_celsius)
 
     async with engine.begin() as conn:
         # Step 4: Data migrations

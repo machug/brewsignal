@@ -100,8 +100,8 @@
 
 	// Temperature Control state
 	let tempControlEnabled = $state(false);
-	let tempTarget = $state(68.0);
-	let tempHysteresis = $state(1.0);
+	let tempTarget = $state(20.0);
+	let tempHysteresis = $state(0.5);
 	let controlSaving = $state(false);
 	let controlError = $state<string | null>(null);
 	let controlSuccess = $state(false);
@@ -188,22 +188,6 @@
 	// Derived unit helpers
 	let useCelsius = $derived(configState.config.temp_units === 'C');
 	let tempUnitSymbol = $derived(useCelsius ? '°C' : '°F');
-
-	// Convert temperature from display units to Fahrenheit for storage
-	function toFahrenheit(temp: number): number {
-		if (useCelsius) {
-			return celsiusToFahrenheit(temp);
-		}
-		return temp;
-	}
-
-	// Convert temperature from Fahrenheit to display units
-	function fromFahrenheit(tempF: number): number {
-		if (useCelsius) {
-			return fahrenheitToCelsius(tempF);
-		}
-		return tempF;
-	}
 
 	function toggleSection(section: string) {
 		expandedSection = expandedSection === section ? null : section;
@@ -387,13 +371,14 @@
 		haChamberTempEntityId = configState.config.ha_chamber_temp_entity_id;
 		haChamberHumidityEntityId = configState.config.ha_chamber_humidity_entity_id;
 		haWeatherEntityId = configState.config.ha_weather_entity_id;
-		// Temperature Control - convert from Fahrenheit to display units
+		// Temperature Control - stored in Celsius (tilt_ui-xrq5.6), convert to display units
 		tempControlEnabled = configState.config.temp_control_enabled;
-		tempTarget = Math.round(fromFahrenheit(configState.config.temp_target) * 2) / 2; // Round to nearest 0.5
-		// Hysteresis: convert delta (°F delta to °C delta uses same ratio), round to 2 decimal places
-		tempHysteresis = configState.config.temp_units === 'C'
-			? Math.round(configState.config.temp_hysteresis * (5 / 9) * 100) / 100
-			: configState.config.temp_hysteresis;
+		tempTarget = useCelsius
+			? configState.config.temp_target
+			: Math.round(celsiusToFahrenheit(configState.config.temp_target) * 2) / 2;
+		tempHysteresis = useCelsius
+			? configState.config.temp_hysteresis
+			: Math.round(configState.config.temp_hysteresis * (9 / 5) * 100) / 100;
 		// Chamber idle mode - stored in Celsius, convert to display units
 		chamberIdleEnabled = configState.config.chamber_idle_enabled;
 		chamberIdleTarget = useCelsius
@@ -656,10 +641,9 @@
 		controlError = null;
 		controlSuccess = false;
 		try {
-			// Convert from display units back to Fahrenheit for storage
-			const targetF = toFahrenheit(tempTarget);
-			// Hysteresis delta: convert from display units to Fahrenheit
-			const hysteresisF = useCelsius ? tempHysteresis * (9 / 5) : tempHysteresis;
+			// Convert display units back to Celsius for storage (tilt_ui-xrq5.6)
+			const targetC = useCelsius ? tempTarget : fahrenheitToCelsius(tempTarget);
+			const hysteresisC = useCelsius ? tempHysteresis : tempHysteresis * (5 / 9);
 
 			// Chamber idle: convert display units back to Celsius for storage
 			const idleTargetC = useCelsius ? chamberIdleTarget : fahrenheitToCelsius(chamberIdleTarget);
@@ -667,8 +651,8 @@
 
 			const result = await updateConfig({
 				temp_control_enabled: tempControlEnabled,
-				temp_target: targetF,
-				temp_hysteresis: hysteresisF,
+				temp_target: targetC,
+				temp_hysteresis: hysteresisC,
 				chamber_idle_enabled: chamberIdleEnabled,
 				chamber_idle_target: idleTargetC,
 				chamber_idle_hysteresis: idleHysteresisC,

@@ -1225,7 +1225,7 @@ async def temperature_control_loop() -> None:
                     continue
 
                 # Get global control parameters (used as defaults)
-                global_target = await get_config_value(db, "temp_target") or 68.0
+                global_target = await get_config_value(db, "temp_target") or 20.0
                 global_hysteresis = await get_config_value(db, "temp_hysteresis") or 1.0
                 ambient_temp = await get_latest_ambient_temp(db)
 

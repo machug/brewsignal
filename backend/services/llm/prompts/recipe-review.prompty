@@ -50,7 +50,7 @@ You are a friendly but knowledgeable brewing judge reviewing a homebrewer's reci
 
 ## Scoring (be consistent)
 Score the recipe with this fixed checklist so the same recipe always gets the same score. Start at 10 and subtract:
-- 1 point for each calculated stat (OG, FG, ABV, IBU, SRM) outside the style range; 2 points if it is more than 10% of the range's width beyond the limit.
+- 1 point for each calculated stat (OG, FG, ABV, IBU, SRM) outside the style range; 2 points only if it is beyond the limit by more than half the range's width. A stat just over the edge costs 1 point.
 - Up to 2 points if the grain bill clearly works against the style (wrong base or specialty malts, wrong proportions).
 - Up to 2 points if hop varieties, amounts or timing clearly work against the style.
 - 1 point if the yeast is clearly wrong for the style.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activitySummary, applyOutcome, buildChatRequest, formatGrams, newChatId, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
+import { activitySummary, applyOutcome, plainToolError, buildChatRequest, formatGrams, newChatId, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
 
 describe('buildChatRequest', () => {
 	it('sends only id, newest message, trigger and context', () => {
@@ -112,5 +112,20 @@ describe('link approval cards (tilt_ui-eevz.10)', () => {
 			{ type: 'tool-fetch_url', state: 'approval-requested', approval: { id: 'x' } }
 		]);
 		expect(segs.map((s) => s.kind)).toEqual(['activity', 'apply']);
+	});
+});
+
+describe('plainToolError', () => {
+	it('turns a cut-off tool call into a plain message', () => {
+		const raw = '[{"type":"json_invalid","loc":[],"msg":"Invalid JSON: EOF while parsing an object at line 1 column 6153"}]';
+		expect(plainToolError(raw)).toMatch(/cut off/);
+		expect(applyOutcome({ type: 'tool-save_recipe', toolCallId: 'x', state: 'output-error', errorText: raw } as ToolPart)).toEqual({
+			phase: 'failed',
+			message: plainToolError(raw)
+		});
+	});
+	it('keeps other errors and has a fallback', () => {
+		expect(plainToolError('Recipe 9 not found')).toBe('Recipe 9 not found');
+		expect(plainToolError(undefined)).toBe('The update could not be applied.');
 	});
 });

@@ -75,7 +75,7 @@ class LLMConfig(BaseModel):
     api_key: Optional[SecretStr] = None
     base_url: Optional[str] = None  # For Ollama: http://localhost:11434
     temperature: float = 0.7
-    max_tokens: int = 2000
+    max_tokens: int = 16000
     memory_auto_extract: bool = True  # ai_memory_auto_extract: mem0 fact extraction after each chat turn
 
     @field_validator("temperature")
@@ -92,7 +92,7 @@ class LLMConfig(BaseModel):
         """Max tokens must be positive."""
         if v <= 0:
             raise ValueError("Max tokens must be positive")
-        return min(v, 8000)  # Cap at 8000
+        return min(v, 32000)  # Cap at 32000: a full v2 recipe save needs several thousand tokens (tilt_ui-s1k4)
 
     def _provider_str(self) -> str:
         """Get provider as string, handling both enum and string values."""

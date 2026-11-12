@@ -408,7 +408,7 @@
 		tavilyApiKey = null;
 		aiBaseUrl = configState.config.ai_base_url ?? '';
 		aiTemperature = configState.config.ai_temperature ?? 0.7;
-		aiMaxTokens = configState.config.ai_max_tokens ?? 2000;
+		aiMaxTokens = configState.config.ai_max_tokens ?? 16000;
 		// MQTT
 		mqttEnabled = configState.config.mqtt_enabled ?? false;
 		mqttHost = configState.config.mqtt_host ?? '';
@@ -1656,7 +1656,7 @@
 									</div>
 									<div class="form-field">
 										<label for="ai-tokens">Max Tokens</label>
-										<input id="ai-tokens" type="number" bind:value={aiMaxTokens} min="100" max="8000" step="100" />
+										<input id="ai-tokens" type="number" bind:value={aiMaxTokens} min="100" max="32000" step="100" />
 									</div>
 								</div>
 							</details>

@@ -90,3 +90,12 @@ def test_memory_config_ollama_llm_uses_v1_endpoint(monkeypatch):
 def test_memory_config_anthropic_disabled():
     cfg = LLMConfig(enabled=True, provider=LLMProvider.ANTHROPIC, api_key="k")
     assert get_memory_config(cfg) is None
+
+
+def test_reasoning_budget_is_bounded_so_the_reply_keeps_room():
+    """tilt_ui-s1k4: a recipe save was cut off because thinking took half the budget."""
+    from backend.services.llm.model import model_settings
+
+    cfg = LLMConfig(enabled=True, provider=LLMProvider.OPENROUTER, api_key="k", model="m", max_tokens=16000)
+    assert model_settings(cfg)["openrouter_reasoning"] == {"max_tokens": 4000}
+    assert LLMConfig(max_tokens=50000).max_tokens == 32000

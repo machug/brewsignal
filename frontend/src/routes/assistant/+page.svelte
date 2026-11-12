@@ -8,7 +8,7 @@
 	import { getAccessToken } from '$lib/supabase';
 	import { config } from '$lib/config';
 	import { configState } from '$lib/stores/config.svelte';
-	import { APPLY_TOOL, APPROVAL_TOOLS, buildChatRequest, isToolPart, newChatId, toolName, type ToolPart } from '$lib/chat/logic';
+	import { APPLY_TOOL, APPROVAL_TOOLS, buildChatRequest, isToolPart, liveStatus, newChatId, toolName, type ToolPart } from '$lib/chat/logic';
 	import ChatShell from '$lib/components/chat/ChatShell.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import MessageTurn from '$lib/components/chat/MessageTurn.svelte';
@@ -276,6 +276,8 @@
 		{/each}
 		{#if chat?.status === 'submitted'}
 			<p class="quiet working"><span class="dot" aria-hidden="true"></span>Thinking…</p>
+		{:else if chat?.status === 'streaming' && lastAssistant && liveStatus(lastAssistant.parts as any)}
+			<p class="quiet working"><span class="dot" aria-hidden="true"></span>{liveStatus(lastAssistant.parts as any)}</p>
 		{/if}
 	{/if}
 

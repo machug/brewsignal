@@ -86,6 +86,8 @@
 		// Dry hop and fermentation additions use day-based timing
 		if (use === 'dry_hop' || use === 'dry hop' || use === 'add_to_fermentation') {
 			if (value === 0) return 'At packaging';
+			// Imports use -1 as "during fermentation, day not given" (tilt_ui-8vd)
+			if (value < 0) return 'In fermenter';
 			// Editor saves store the dry hop day count as minutes (3 days =
 			// 4320 min); show it in days like imported rows (tilt_ui-5z86)
 			return unit === 'min' ? `${+(value / (24 * 60)).toFixed(2)}\u2009day` : `${value}\u2009${unit}`;

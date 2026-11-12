@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Assistant recipes use the BrewSignal v2 format** (tilt_ui-eevz.1) - The assistant now reads recipes as the same v2 document the app exports and saves new ones through the v2 importer, so an assistant save matches importing that file. Edits are sent as a small list of changes (JSON Patch) applied to the server's own copy, so anything the assistant does not mention is kept. Before you are asked, the change is checked; the approval card then shows the changes in plain words and the calculated OG/FG/ABV/IBU/SRM before and after, next to the recipe's targets. A new preview tool lets the assistant adjust a clone until its numbers match the source beer.
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Assistant recipe saves cut off mid-way** (tilt_ui-s1k4) - A large recipe save could run out of reply room and fail with a raw "EOF while parsing" dump. The reply budget can now go up to 32,000 tokens (default 8,000), thinking is capped at 4,000 so the reply keeps its room, and a cut-off call shows a plain message.
 - **Assistant recipe saves lost data** (tilt_ui-eevz.1) - A yeast written as text was silently dropped; every edit wiped other ingredients (finings, salts), water, the fermentation schedule and mash steps; whirlpool hops were saved as boil hops; and reopening a recipe with a yeast crashed. All fixed by the v2 path above.
@@ -37,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unused MPC temperature controller** (tilt_ui-29im) - `backend/ml/control/mpc.py` was never switched on and, in simulation, held the beer in band less often and switched far more than the hysteresis controller. The code, its config and its tests are gone. Temperature control is unchanged.
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Dry hops show "In fermenter" instead of a negative time** (tilt_ui-8vd) - Imported dry hops with no day set (stored as -1) showed as a negative time in the recipe hop schedule.
 - **Control status shows Celsius** (tilt_ui-xrq5.6) - The global target and hysteresis were still stored in Fahrenheit (66.2 and 1.08 on the Pi), because the old Fahrenheit-to-Celsius migration missed them. They are converted on startup, and the defaults are now 20 C and 0.5 C.
@@ -97,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster startup** (tilt_ui-h0j) - Recipe backfills run after boot instead of blocking it.
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Stall alert no longer fires in the lag phase** (tilt_ui-zbhm) - The old rule alerted whenever gravity was flat and progress was under 90%, which included the first hours of every batch. A stall now means the gravity fell less than 0.6 points/day over the last 12 hours, after it has already dropped at least 4 points from OG, while still more than 4 points above the expected FG. Without a recipe FG the alert is info only. The anomaly detector's old "stuck" and "unusual increase" rules (which flagged most normal readings) are replaced by a step-change rule: six readings in a row more than 1 point off the recent trend, flagged once (dry hop, or hydrometer lifted or moved). It works at any reporting interval up to 1 hour, does not raise a false reverse alert after a shift, and the alert stays until you dismiss it. After a restart the app refills the 12-hour window from saved readings, so the stall check is not blind for 12 hours. Hydrometers that send over HTTP (iSpindel, GravityMon) had the same alert crash that tilt_ui-xrq5.5 fixed for Tilt; both paths now share one alert-context helper.
 - **Fermentation alerts work again** (tilt_ui-xrq5.5) - Alert detection crashed on every check because it read recipe fields that no longer exist (yeast, OG/FG on the batch), so no fermentation alert could fire. It now uses the recipe's yeast culture temperature range and the measured or recipe OG.
@@ -130,6 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.13.0] - 2026-04-25
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Imported recipe stats no longer clobbered on save** (tilt_ui-5no) - PUT `/api/recipes/{id}` recalculation is now opt-in via `?recalculate=true`. Default false preserves brewer-declared OG/FG/ABV/IBU/SRM from imported recipes. Recipe edit form no longer auto-recalculates; a separate explicit action calls the existing `POST /api/recipes/{id}/recalculate` endpoint when refresh is wanted.
 - **Brewfather Whirlpool hops produce real IBU** (tilt_ui-53n, tilt_ui-23u) - Converter now maps Whirlpool to `add_to_whirlpool` instead of collapsing into `add_to_boil` with 0-min duration. New stand-time IBU model in backend, frontend, and LLM-tools calculators uses linear ramp `min(0.05 + 0.005 * stand_min, 0.20)` — 5% utilization at flameout, 20% cap at 30-min stand. Reverse converter and frontend HopUse normalization extended; HopSelector renders a "Stand" input for whirlpool hops and resets duration sensibly on use changes.
@@ -161,6 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.12.0] - 2026-03-02
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Yeast Override Clear Button** - Fixed clear selection button not working on batch edit page
   - The `$effect` that initializes yeast from batch data was re-running on every clear, immediately re-setting the value
@@ -206,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Yeast Auto-Matching** - Batch creation auto-links yeast strain from recipe name
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - ML predictions card no longer stuck on "Loading..." for new batches with insufficient data
 - Removed duplicate chilling banner during brew day (consolidated into phase card)
@@ -259,6 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Useful for looking up brewing resources, recipes, and documentation
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **New Chat Thread Creation** - Fixed bug where starting a new chat reused old thread ID
   - `useAgent.clear()` now properly resets `currentThreadId`
@@ -352,6 +359,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Assistant sidebar collapsed by default for better mobile experience
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **False Positive Stuck Fermentation Alerts** - Added lag phase protection to anomaly detector
   - No stuck fermentation alerts during first 24 hours of fermentation (configurable)
@@ -408,6 +416,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `alcohol_tolerance` field changed from float to string to support descriptive values (e.g., "medium", "high", "9-11%")
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Yeast Library Pagination** - Fixed default limit of 100 preventing display of all strains
 - **Schema Migration Safety** - Added safeguard to clear batch yeast references before dropping yeast_strains table
@@ -440,6 +449,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optimized API calls (eliminated redundant GET on save)
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Race Condition on Device Switching** - Fixed calibration data loading race when switching between devices
   - Form no longer displays stale data from previous device
@@ -472,6 +482,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Graceful degradation on ML errors (falls back to calibrated values)
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Temperature Migration Edge Cases** - Fixed hysteresis conversion bugs
   - Lager temperatures at exactly 50°F now detected correctly (changed `>` to `>=`)
@@ -520,6 +531,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 48/48 ML tests passing (100% coverage)
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Per-Device State Isolation** (Critical) - Fixed global pipeline state causing cross-contamination
   - Created `MLPipelineManager` to maintain separate pipelines per device_id
@@ -626,6 +638,7 @@ result = manager.process_reading(
   - Smoothed values stored in database benefit charts, exports, and Home Assistant integration
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Batch Delete Button** - Fixed delete functionality that was broken due to URL construction error
   - Changed `deleteBatch()` to use relative URL string instead of `new URL()` constructor
@@ -640,6 +653,7 @@ result = manager.process_reading(
 - Enhanced batch filtering with `include_deleted` and `deleted_only` query parameters
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Chart Outlier Spikes** (#55) - Physically impossible readings no longer corrupt charts
   - Added validation for SG range (0.500-1.200) and temperature range (32-212°F)
@@ -688,6 +702,7 @@ result = manager.process_reading(
 - ABV and attenuation display live values during active fermentation
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - Missing aria-label on delete button for accessibility
 - Batch detail page now shows same diagnostic data as dashboard
@@ -700,6 +715,7 @@ result = manager.process_reading(
 ## [2.3.1] - 2025-12-03
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Timezone Display Bug** (#42) - Fixed "Last Seen" times showing incorrect values (e.g., "11h ago" when device is actively transmitting)
   - All datetime fields now serialize with explicit UTC timezone indicator ('Z' suffix) per RFC 3339
@@ -733,6 +749,7 @@ result = manager.process_reading(
 - Users must manually pair devices to resume reading storage
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - Systemd service now points to `.venv` so installs run with the correct virtualenv
 - Installer copies frontend assets alongside backend for local installs and builds the frontend during installation
@@ -828,6 +845,7 @@ result = manager.process_reading(
 ## [1.2.1] - 2025-11-28
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - **Chart Refresh Spam** - Charts no longer refresh constantly with BLE events
 - Added 30-second minimum throttle between automatic data fetches
@@ -854,6 +872,7 @@ result = manager.process_reading(
 - **Chart Timezone Support** - X-axis now respects system timezone setting
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - HA client reinitialization when config changes
 - Immediate heater action on manual override
@@ -866,6 +885,7 @@ result = manager.process_reading(
 - Chart smoothing applies moving average to SG and temperature data
 
 ### Fixed
+- **Assistant cost cut with prompt caching** (tilt_ui-mpad) - Each step of an answer re-sent the whole chat at full price (about US$0.27 per step on a long clone chat). Prompt caching is now on for OpenRouter Anthropic models, so the later steps of an answer read the repeated part at about a tenth of the price.
 - **Assistant looked stuck after a save** (tilt_ui-629t) - After a recipe save the assistant runs a 20-second review, but its status was at the top of the reply, off screen, so only the pulsing stop button showed. A status line ("Reviewing recipe…", "Searching the web…", "Thinking…") now shows at the bottom while it works.
 - Temperature chart axis now uses minimum 10-degree range to reduce visual noise
 - Settings validation and persistence (#8)

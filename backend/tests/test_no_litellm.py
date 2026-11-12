@@ -107,3 +107,12 @@ def test_config_api_accepts_the_larger_budget():
     assert ConfigUpdate(ai_max_tokens=16000).ai_max_tokens == 16000
     with pytest.raises(ValueError):
         ConfigUpdate(ai_max_tokens=40000)
+
+
+def test_openrouter_prompt_caching_is_on():
+    """tilt_ui-mpad: no cache_read_tokens on a 127k-token thread, ~US$0.27 per step."""
+    from backend.services.llm.model import model_settings
+
+    cfg = LLMConfig(enabled=True, provider=LLMProvider.OPENROUTER, api_key="k", model="anthropic/claude-sonnet-5.5")
+    s = model_settings(cfg)
+    assert s["openrouter_cache_instructions"] and s["openrouter_cache_tool_definitions"] and s["openrouter_cache_messages"]

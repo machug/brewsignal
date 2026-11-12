@@ -66,7 +66,7 @@ async def test_review_recipe_without_litellm(test_db):
     ):
         result = await review_recipe(db=test_db, recipe_id=recipe.id, user_id="u")
     assert result["review"] == "Fine brew."
-    assert seen[0][1]["temperature"] == 0.5
+    assert seen[0][1]["temperature"] == 0  # 0 must not fall back to the config default
 
 
 def test_memory_config_without_litellm(monkeypatch):

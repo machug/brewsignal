@@ -682,6 +682,27 @@ class RecipeFermentable(Base):
         return self.color_srm
 
 
+class RecipeReview(Base):
+    """A saved AI review of a recipe, so the score can be tracked as the recipe changes (tilt_ui-de6v).
+
+    No relationship on Recipe: delete_recipe removes these explicitly, and the FK
+    cascades on Postgres.
+    """
+    __tablename__ = "recipe_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(_UserId, nullable=True, index=True)
+    review: Mapped[str] = mapped_column(Text)
+    score: Mapped[Optional[float]] = mapped_column(nullable=True)  # judge's "Style Fit Score: N/10"
+    stats_score: Mapped[Optional[float]] = mapped_column(nullable=True)  # stats in range, computed, 0-10
+    compliance: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    style_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class RecipeHop(Base):
     """Hop additions in a recipe."""
     __tablename__ = "recipe_hops"

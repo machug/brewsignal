@@ -871,6 +871,70 @@ async def assistant_preview(
     )
 
 
+# Saved AI reviews (tilt_ui-de6v)
+
+
+@router.get("/{recipe_id}/reviews")
+async def list_recipe_reviews(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Review history, newest first, plus the recipe's current fingerprint so the UI can tell
+    whether the latest review is out of date."""
+    from ..models import RecipeReview
+    from ..services import recipe_reviews
+    from ..services.llm.tools.recipe_v2 import _export
+
+    recipe = await _load_recipe_for_export(recipe_id, user, db)
+    rows = (await db.execute(
+        select(RecipeReview).where(RecipeReview.recipe_id == recipe_id)
+        .order_by(RecipeReview.created_at.desc(), RecipeReview.id.desc())
+    )).scalars().all()
+    return {
+        "current_fingerprint": recipe_reviews.fingerprint(_export(recipe)),
+        "reviews": [recipe_reviews.summary(r) for r in rows],
+    }
+
+
+@router.get("/{recipe_id}/reviews/{review_id}")
+async def get_recipe_review(
+    recipe_id: int,
+    review_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    from ..models import RecipeReview
+    from ..services import recipe_reviews
+
+    await get_user_recipe(recipe_id, user, db)
+    row = (await db.execute(
+        select(RecipeReview).where(RecipeReview.id == review_id, RecipeReview.recipe_id == recipe_id)
+    )).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return recipe_reviews.detail(row)
+
+
+@router.post("/{recipe_id}/reviews")
+async def create_recipe_review(
+    recipe_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run a new AI review of the saved recipe and store it."""
+    from ..models import RecipeReview
+    from ..services import recipe_reviews
+    from ..services.llm.tools.recipe import review_recipe
+
+    await get_user_recipe(recipe_id, user, db)
+    result = await review_recipe(db, recipe_id, user.user_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    row = await db.get(RecipeReview, result["saved_review"]["id"])
+    return recipe_reviews.detail(row)
+
+
 class RecipeScaleRequest(BaseModel):
     target_batch_size_liters: float = Field(gt=0)
     # Preview mode: compute and return the scaled recipe without persisting,
@@ -959,6 +1023,9 @@ async def delete_recipe(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
+    from ..models import RecipeReview
+
+    await db.execute(delete(RecipeReview).where(RecipeReview.recipe_id == recipe_id))  # SQLite does not enforce the FK cascade
     await db.delete(recipe)
     await db.commit()
     return {"status": "deleted"}

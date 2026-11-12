@@ -1,17 +1,50 @@
 <script lang="ts">
 	import { marked } from 'marked';
-	import type { RecipeReviewResponse } from '$lib/api';
+	import type { SavedReviewSummary, StatCheck } from '$lib/api';
+
+	// A saved review (recipe page) or a one-off draft review (recipe editor).
+	interface ReviewView {
+		review: string;
+		model?: string | null;
+		style_name?: string | null;
+		style_found?: boolean;
+		id?: number;
+		created_at?: string | null;
+		score?: number | null;
+		stats_score?: number | null;
+		fingerprint?: string;
+		compliance?: Record<string, StatCheck> | null;
+	}
 
 	interface Props {
 		open: boolean;
 		loading: boolean;
 		error: string | null;
-		result: RecipeReviewResponse | null;
+		result: ReviewView | null;
 		styleName?: string;
+		history?: SavedReviewSummary[];
+		currentFingerprint?: string;
+		onRereview?: () => void;
+		onSelect?: (reviewId: number) => void;
 		onClose: () => void;
 	}
 
-	let { open, loading, error, result, styleName = '', onClose }: Props = $props();
+	let {
+		open, loading, error, result, styleName = '', history = [], currentFingerprint = '',
+		onRereview, onSelect, onClose
+	}: Props = $props();
+
+	const saved = $derived(result?.id != null);
+	const stale = $derived(
+		saved && !!currentFingerprint && !!result?.fingerprint && result.fingerprint !== currentFingerprint
+	);
+	const checks = $derived(
+		Object.entries(result?.compliance ?? {}).filter(([, c]) => c.status !== 'no_guideline')
+	);
+
+	const fmtScore = (n: number | null | undefined) => (n == null ? '–' : `${Number.isInteger(n) ? n : n.toFixed(1)}/10`);
+	const fmtDate = (iso: string | null | undefined) =>
+		iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
 	// Track where a pointer interaction began. Only treat the overlay as
 	// "clicked outside" when both mousedown AND mouseup land on the
@@ -60,27 +93,86 @@
 				{#if loading}
 					<div class="review-loading">
 						<div class="spinner"></div>
-						<p>Analyzing your recipe against {styleName || 'style guidelines'}...</p>
+						<p>Reviewing your recipe against {styleName || 'style guidelines'}...</p>
 					</div>
 				{:else if error}
 					<div class="review-error">
 						<p>{error}</p>
 					</div>
 				{:else if result}
-					<div class="review-meta">
-						{#if result.style_found}
-							<span class="style-badge found">BJCP Style: {result.style_name}</span>
-						{:else}
-							<span class="style-badge not-found">Style not in BJCP database</span>
+					{#if saved}
+						<div class="scores">
+							<div class="score">
+								<span class="score-label">Judge score</span>
+								<span class="score-value">{fmtScore(result.score)}</span>
+							</div>
+							<div class="score">
+								<span class="score-label">Stats in range</span>
+								<span class="score-value">{fmtScore(result.stats_score)}</span>
+							</div>
+							<div class="score-meta">
+								{fmtDate(result.created_at)}{#if result.model} · {result.model}{/if}
+							</div>
+						</div>
+						{#if checks.length}
+							<ul class="checks" aria-label="Stats against the style range">
+								{#each checks as [key, c] (key)}
+									<li class="check {c.status}">
+										<span class="check-name">{key.toUpperCase()}</span>
+										<span class="check-val">{c.value ?? '–'}{c.unit}</span>
+										<span class="check-range">{c.min}–{c.max}</span>
+									</li>
+								{/each}
+							</ul>
 						{/if}
-						<span class="model-badge">Model: {result.model}</span>
-					</div>
+						{#if stale}
+							<p class="stale">The recipe has changed since this review. Re-review to score the current version.</p>
+						{/if}
+					{:else}
+						<div class="review-meta">
+							{#if result.style_found}
+								<span class="style-badge found">BJCP Style: {result.style_name}</span>
+							{:else}
+								<span class="style-badge not-found">Style not in BJCP database</span>
+							{/if}
+							{#if result.model}<span class="model-badge">Model: {result.model}</span>{/if}
+						</div>
+						<p class="draft-note">Review of the unsaved draft. It is not added to the recipe's review history.</p>
+					{/if}
 					<div class="review-content markdown-body">
 						{@html marked(result.review)}
 					</div>
+					{#if history.length > 1}
+						<div class="history">
+							<h3>Review history</h3>
+							<ol>
+								{#each history as h (h.id)}
+									<li>
+										<button
+											type="button"
+											class="history-item"
+											class:current={h.id === result.id}
+											aria-current={h.id === result.id ? 'true' : undefined}
+											onclick={() => onSelect?.(h.id)}
+										>
+											<span>{fmtDate(h.created_at)}</span>
+											<span class="num">Judge {fmtScore(h.score)}</span>
+											<span class="num">Stats {fmtScore(h.stats_score)}</span>
+											{#if h.fingerprint !== currentFingerprint}<span class="older">older recipe</span>{/if}
+										</button>
+									</li>
+								{/each}
+							</ol>
+						</div>
+					{/if}
 				{/if}
 			</div>
 			<div class="modal-footer">
+				{#if onRereview}
+					<button type="button" class="btn-rereview" class:highlight={stale} onclick={onRereview} disabled={loading}>
+						Re-review
+					</button>
+				{/if}
 				<button type="button" class="btn-close" onclick={onClose}>Close</button>
 			</div>
 		</div>
@@ -297,4 +389,30 @@
 		border-top: 1px solid var(--border-subtle);
 		margin: var(--space-4) 0;
 	}
+
+	.scores { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); margin-bottom: var(--space-3); }
+	.score { display: flex; flex-direction: column; gap: 2px; }
+	.score-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+	.score-value { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 1.5rem; color: var(--text-primary); }
+	.score-meta { margin-left: auto; font-size: 0.8125rem; color: var(--text-secondary); }
+	.checks { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; padding: 0; margin: 0 0 var(--space-3); }
+	.check { display: flex; gap: 6px; align-items: baseline; padding: 4px 8px; border: 1px solid var(--border-default); border-radius: 4px; font-size: 0.8125rem; }
+	.check-name { font-weight: 600; }
+	.check-val, .check-range { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+	.check-range { color: var(--text-secondary); }
+	.check.in_range { border-color: color-mix(in oklch, var(--status-steady) 50%, transparent); }
+	.check.below, .check.above { border-color: color-mix(in oklch, var(--status-danger) 60%, transparent); }
+	.stale, .draft-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--accent); font-size: 0.875rem; color: var(--text-primary); }
+	.draft-note { border-left-color: var(--border-default); color: var(--text-secondary); }
+	.history { margin-top: var(--space-4); border-top: 1px solid var(--border-default); padding-top: var(--space-3); }
+	.history h3 { font-size: 0.875rem; margin: 0 0 var(--space-2); }
+	.history ol { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+	.history-item { display: flex; flex-wrap: wrap; gap: var(--space-3); width: 100%; text-align: left; padding: 6px 8px; background: none; border: 1px solid transparent; border-radius: 4px; color: var(--text-primary); font-size: 0.8125rem; cursor: pointer; }
+	.history-item:hover { border-color: var(--border-default); }
+	.history-item.current { border-color: var(--accent); }
+	.history-item .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+	.older { color: var(--text-secondary); }
+	.btn-rereview { padding: 8px 16px; border-radius: 4px; border: 1px solid var(--border-default); background: none; color: var(--text-primary); cursor: pointer; margin-right: auto; }
+	.btn-rereview.highlight { border-color: var(--accent); color: var(--accent); }
+	.btn-rereview:disabled { opacity: 0.5; cursor: default; }
 </style>

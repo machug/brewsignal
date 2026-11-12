@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Assistant reads YouTube captions** (tilt_ui-eevz.9) - Paste a YouTube link (a brewery interview, a brew-day or clone video) and the assistant reads its captions, with a time mark about every minute; long videos are read in parts. It prefers captions written by the uploader, then auto-generated ones. Uses the unofficial youtube-transcript-api library: if YouTube blocks or changes something, the assistant says so and uses other sources.
 - **Assistant reads web pages properly** (tilt_ui-eevz.4) - Pasted links and search results are read as clean text: menus, scripts and footers dropped, headings, lists and tables kept. The page title, description and any embedded recipe data come back separately, and long pages are read in parts instead of being cut at 6,000 characters.
 - **Assistant web search** (tilt_ui-eevz.3) - The assistant can search the web (Tavily) to research a beer to clone: brewery pages, interviews, reviews and published clone recipes. Add a Tavily API key on the System page (AI section); a basic search costs one Tavily credit. Results are treated as information, never as instructions.
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v2 export left out yeast stored only in the yeast fields** (tilt_ui-eevz.1) - Older and BeerXML recipes keep the yeast there; it is now exported (and visible to the assistant).
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Assistant can see temperature control** (tilt_ui-y67b) - New read-only `get_temperature_control` tool: heater and cooler state, target and band, wort temperature, any manual override, and the last few heater/cooler switches. Ask "why is the heater on?" and it can answer from the same numbers the batch page shows.
 - **Readable batch and recipe addresses** (tilt_ui-9hg) - Batches and recipes now open at addresses like `/batches/16-american-pale-ale` and `/recipes/25-west-coast-ipa`. The number at the front is what counts, so old links such as `/batches/16` still work, open the right page and switch to the readable form. Renaming a batch or recipe never breaks a link.
 
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.14.0] - 2026-11-12
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Memory page** (tilt_ui-or48) - New Memory page (System > AI > Manage memory) lists everything the assistant remembers: your saved learnings and facts it picked up from chats. Delete one item, or delete all. New `GET /api/memory`, `DELETE /api/memory/{id}`, `DELETE /api/memory`. Memory text is sent to OpenAI's embedding model (via OpenRouter) to find related memories.
 - **New logo and app icons** (tilt_ui-nv1r.7) - New "Tilt Meniscus" mark (a tilted hydrometer at the wort surface) in the top bar, favicon, apple-touch icon, 512px icon and web manifest. The old hop-cone icon and logo are gone. The sign-in page now renders without the app chrome.
 - **Automatic recipe scaling** - New `POST /api/recipes/{id}/scale`. Pick a vessel preset (Grainfather, BrewZilla, Braumeister, corny keg) or type a size, and every per-batch amount scales to match: fermentables, hops, miscs, yeast, mash infusions, water volumes and salts (ppm kept constant), boil size and priming sugar. Stats are recalculated. A preview shows current and scaled amounts before you save over the recipe. Large jumps are handed to the AI reviewer.
@@ -152,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Existing DB-level duplicate guard (>50% word overlap) serves as safety net
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Imported brewer-declared stats stored separately** (tilt_ui-ak6) - New `target_og`, `target_fg`, `target_abv`, `target_ibu`, `target_srm` columns on `recipes`. Importers populate both target_* and canonical og/fg/abv/ibu/color_srm; the recalculator only writes the canonical fields, leaving target_* as the imported source-of-truth. Recipe detail UI shows a small "src N" hint under each stat when the imported target meaningfully differs from the calculated value (thresholds: OG/FG 0.002, ABV 0.2%, IBU 3, SRM 1). Migration backfills target_* from existing canonical values on upgrade. Sync to Supabase carries the new columns through.
 - **Native BrewSignal recipe import** (tilt_ui-kew) - `POST /api/recipes/import` now accepts native BrewSignal JSON files (`.brewsignal` extension). Auto-detection routes BrewSignal-shaped payloads through Pydantic validation against `BrewSignalRecipe`, then through a new `BrewSignalToBeerJSONConverter` that funnels into the same serializer + persist path as other formats. Detection fingerprints on `_format` / `brewsignal_version` markers, `recipe` envelope wrapper, BrewSignal-only snake_case keys (`batch_size_liters`, `color_srm`, `boil_time_minutes`, etc.), nested ingredient shape (`amount_kg`, `amount_grams`, `alpha_acid_percent`), and a singular `yeast` dict. Brewfather camelCase markers (`_type`, `batchSize`, `boilTime`, scalar `efficiency` / `carbonation`, ingredient `amount` / `alpha`) keep routing to brewfather. Explicit override available via `?source_format=brewsignal`.
 - **`?recalculate=true` query param** on `PUT /api/recipes/{id}` for explicit stat refresh (see Fixed above).
@@ -198,6 +202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Entity IDs available on hover as tooltips
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Anomaly Details Strip** - New section below chart showing detected anomalies
   - Displays timestamp, gravity value, and reason for each anomaly
   - Toggles visibility with the existing anomaly legend button
@@ -205,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.11.0] - 2026-01-25
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Brew Day Chilling Status** - Real-time chilling progress during brew day phase
   - Progress bars showing current vs target temperature
   - "Ready to Pitch!" indicator when target reached
@@ -241,6 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.10.0] - 2026-01-23
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **MQTT Publishing for Home Assistant** - Publish fermentation data to Home Assistant via MQTT auto-discovery
   - Automatic sensor creation when batches start fermenting
   - Sensors: gravity, temperature, ABV, status, days fermenting
@@ -290,6 +297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.9.0] - 2026-01-17
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Unified Library Page** - Consolidated reference data into single `/library` page
   - Tabbed interface for Yeast, Hops, and Fermentables
   - Search and filter across all ingredient types
@@ -399,6 +407,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.8.0] - 2026-01-16
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Yeast Library** (#82) - Comprehensive yeast strain database with 449+ strains from Beer Maverick
   - New `/yeast` page for browsing and searching yeast strains
   - Filter by producer, type (ale/lager/wild/hybrid), form (dry/liquid), and flocculation
@@ -448,6 +457,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.7.0] - 2025-12-08
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Tilt Calibration Page Migration** (#81) - Migrated from deprecated CalibrationPoint table to modern JSON-based Device.calibration_data API
   - Temperature calibration with independent SG and temperature calibration curves
   - Celsius storage with automatic C/F display conversion based on user preferences
@@ -484,6 +494,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.6.0] - 2025-12-05
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **ML Pipeline Integration** (#66) - Integrated ML pipeline into production reading handler
   - MLPipelineManager now processes all readings through Kalman filter, anomaly detection, and predictions
   - Per-device ML state isolation prevents cross-contamination between Tilts
@@ -525,6 +536,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.5.0] - 2025-12-04
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Machine Learning Pipeline** (#61) - Advanced fermentation monitoring with predictive analytics
   - **Kalman Filtering** - Noise reduction for SG/temperature/RSSI measurements with adaptive process noise scaling
   - **Anomaly Detection** - Automatic detection of stuck fermentation, temperature spikes, and signal drops
@@ -622,6 +634,7 @@ result = manager.process_reading(
 ## [2.4.0] - 2025-12-04
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Cooling Control Support** (#58) - Dual-mode temperature regulation with independent heater and cooler control
   - Per-batch cooler entity configuration (switch or input_boolean)
   - Symmetric hysteresis logic for both heating and cooling
@@ -700,6 +713,7 @@ result = manager.process_reading(
 ## [2.3.2] - 2025-12-03
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - Modular card-based architecture for batch detail page
 - Live readings card with calibrated and raw values
 - Signal strength indicator with quality labels and dBm values
@@ -742,6 +756,7 @@ result = manager.process_reading(
 ## [2.3.0] - 2025-12-02
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - Recipe library UI for BeerXML import and management (#32)
   - Import page with drag-and-drop BeerXML file upload
   - Recipe list with search and filter
@@ -774,6 +789,7 @@ result = manager.process_reading(
 ## [2.2.0] - 2025-12-02
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Per-Batch Heater Control** (#29) - Independent temperature control for multiple simultaneous fermentations
 - Batch-specific heater entity configuration (switch or input_boolean)
 - Batch-specific temperature targets and hysteresis settings
@@ -801,6 +817,7 @@ result = manager.process_reading(
 ## [2.1.0] - Unreleased
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **RSSI Signal Filtering** (#6) - Filter weak Bluetooth signals below configurable threshold to reduce noise
 - **Plato/Brix Gravity Units** (#3) - Display gravity as SG, Plato (°P), or Brix (°Bx) with unit toggle in System settings
 
@@ -836,6 +853,7 @@ result = manager.process_reading(
 ## [1.3.0] - 2025-11-29
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Multi-Hydrometer Support** - Universal ingest layer for multiple device types
 - **iSpindel Support** - HTTP POST endpoint for iSpindel WiFi hydrometers
 - **GravityMon Support** - Extended iSpindel format with pre-filtered readings
@@ -882,6 +900,7 @@ result = manager.process_reading(
 ## [1.1.0] - 2025-11-28
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - **Home Assistant Integration** - Connect to Home Assistant for ambient temperature/humidity display
 - **Temperature Control** - Automatic heater control via HA switch entity with hysteresis
 - **Manual Override** - Force heater on/off for 1 hour, bypassing automatic control
@@ -900,6 +919,7 @@ result = manager.process_reading(
 ## [1.0.1] - 2025-11-28
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - Reading smoothing with configurable sample count (System settings)
 - Chart smoothing applies moving average to SG and temperature data
 
@@ -915,6 +935,7 @@ result = manager.process_reading(
 ## [1.0.0] - 2025-11-28
 
 ### Added
+- **Saved AI recipe reviews with history** (tilt_ui-de6v, tilt_ui-de6v.1) - AI Review on a recipe now opens the last saved review with no new AI call. Re-review runs a new one, and a history list shows each review with its judge score and a computed "stats in range" score, so you can see how changes moved the score. A note shows when the recipe changed since the review. The judge now reads the whole recipe (batch size, water, mash, fermentation, whirlpool temperatures, salts) and scores with a fixed checklist at temperature 0, so the same recipe gets a steady score. Reviews the assistant runs in chat are saved too.
 - Real-time Tilt hydrometer monitoring dashboard
 - BLE scanning using Bleak library for Tilt device detection
 - WebSocket-based live updates to frontend

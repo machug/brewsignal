@@ -69,7 +69,7 @@ class LLMService:
         """(model, pydantic-ai messages, settings) for one request; per-call overrides beat config."""
         config = self.config.model_copy(
             update={
-                "temperature": temperature or self.config.temperature,
+                "temperature": self.config.temperature if temperature is None else temperature,
                 "max_tokens": max_tokens or self.config.max_tokens,
             }
         )
@@ -181,7 +181,7 @@ class LLMService:
                     logger.warning("Hailo chat failed, falling back to /api/generate")
                     return await self._hailo_generate_fallback(
                         messages=messages,
-                        temperature=temperature or self.config.temperature,
+                        temperature=self.config.temperature if temperature is None else temperature,
                         max_tokens=max_tokens or self.config.max_tokens,
                     )
                 except Exception as fallback_error:
@@ -239,7 +239,7 @@ class LLMService:
                     logger.warning("Hailo streaming failed, falling back to /api/generate")
                     text = await self._hailo_generate_fallback(
                         messages=messages,
-                        temperature=temperature or self.config.temperature,
+                        temperature=self.config.temperature if temperature is None else temperature,
                         max_tokens=max_tokens or self.config.max_tokens,
                     )
                     if text:

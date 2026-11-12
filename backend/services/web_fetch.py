@@ -228,12 +228,15 @@ def _structured(blocks: list[str]) -> list[Any]:
     return [{"note": "structured data too large; first 8000 characters as text", "text": text[:8000]}]
 
 
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
 def _close_unclosed_title(html: str) -> str:
     """The parser reads everything after an unclosed <title> as title text: close it after its text.
 
     One bounded pass (find, not regex), so hostile pages cannot make it slow.
     """
-    low = html.lower()
+    low = html.translate(_ASCII_LOWER)  # same length as html (str.lower can grow, e.g. "İ")
     if "</title" in low:
         return html
     start = low.find("<title")

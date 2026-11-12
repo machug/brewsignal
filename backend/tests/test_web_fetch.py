@@ -274,3 +274,8 @@ def test_many_unterminated_title_tags_stay_fast():
     t = time.perf_counter()
     wf._close_unclosed_title(html)
     assert time.perf_counter() - t < 0.5
+
+
+def test_unclosed_title_repair_keeps_unicode_offsets():
+    out = wf.extract_html("<html><head><TITLE>İstanbul IPA</head><body><p>Recipe</p></body></html>")
+    assert out["title"] == "İstanbul IPA" and out["text"] == "Recipe"

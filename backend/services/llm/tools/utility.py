@@ -1,12 +1,10 @@
 """System and utility tools for the AI brewing assistant."""
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-import httpx
-from sqlalchemy import select, or_, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models import AgUiThread, AgUiMessage, ChatHistory
@@ -49,74 +47,6 @@ def get_current_datetime() -> dict[str, Any]:
         "unix_timestamp": int(now_utc.timestamp()),
         "human_readable": now_local.strftime("%A, %B %d, %Y at %I:%M %p"),
     }
-
-
-def strip_html_tags(html: str) -> str:
-    """Strip HTML tags and clean up text content."""
-    # Remove script and style elements entirely
-    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-    html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-    # Remove HTML tags
-    text = re.sub(r'<[^>]+>', ' ', html)
-    # Decode common HTML entities
-    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-    text = text.replace('&quot;', '"').replace('&#39;', "'")
-    # Collapse whitespace
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-
-async def fetch_url(url: str) -> dict[str, Any]:
-    """Fetch and extract text content from a URL."""
-    MAX_CONTENT_LENGTH = 6000  # Limit content to avoid overwhelming LLM
-
-    # Basic URL validation
-    if not url.startswith(('http://', 'https://')):
-        return {"error": "Invalid URL - must start with http:// or https://"}
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-            response = await client.get(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; BrewSignal/1.0; +https://brewsignal.local)"
-                }
-            )
-            response.raise_for_status()
-
-            content_type = response.headers.get("content-type", "")
-
-            # Handle JSON responses directly
-            if "application/json" in content_type:
-                return {
-                    "url": str(response.url),
-                    "content_type": "json",
-                    "content": response.text[:MAX_CONTENT_LENGTH],
-                }
-
-            # For HTML, strip tags
-            if "text/html" in content_type:
-                text = strip_html_tags(response.text)
-            else:
-                text = response.text
-
-            # Truncate if too long
-            if len(text) > MAX_CONTENT_LENGTH:
-                text = text[:MAX_CONTENT_LENGTH] + "\n... [truncated]"
-
-            return {
-                "url": str(response.url),
-                "content_type": content_type.split(";")[0] if content_type else "unknown",
-                "content": text,
-            }
-
-    except httpx.TimeoutException:
-        return {"error": f"Request timed out fetching {url}"}
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP {e.response.status_code} fetching {url}"}
-    except Exception as e:
-        logger.warning(f"Error fetching URL {url}: {e}")
-        return {"error": f"Failed to fetch URL: {str(e)}"}
 
 
 async def rename_chat(

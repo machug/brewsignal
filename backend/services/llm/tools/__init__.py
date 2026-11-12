@@ -44,8 +44,6 @@ from .recipe import (
 )
 from .utility import (
     get_current_datetime,
-    strip_html_tags,
-    fetch_url,
     rename_chat,
     list_recent_threads,
     get_thread_context,
@@ -776,23 +774,6 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "fetch_url",
-            "description": "Fetch content from a URL. Use this to retrieve brewing articles, recipes, or reference material from the web. Returns the text content of the page.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to fetch (e.g., 'https://www.brewersfriend.com/recipe/123')"
-                    }
-                },
-                "required": ["url"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "rename_chat",
             "description": "Rename the current chat thread to better reflect its content. Use this when the conversation has shifted to a new topic and the original title is no longer relevant. Choose a concise, descriptive title (max 60 chars).",
             "parameters": {
@@ -1298,8 +1279,6 @@ async def execute_tool(
     # System / utility tools
     elif tool_name == "get_current_datetime":
         return get_current_datetime()
-    elif tool_name == "fetch_url":
-        return await fetch_url(**arguments)
     elif tool_name == "rename_chat":
         return await rename_chat(db, thread_id, **arguments)
     elif tool_name == "search_threads":

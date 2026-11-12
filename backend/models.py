@@ -521,17 +521,18 @@ class Recipe(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    # Relationships
+    # Relationships. Child lists load in insertion order so exports (and the review
+    # fingerprint) are stable across loads (tilt_ui-de6v).
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
-    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
-    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan")
+    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeFermentable.id")
+    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeHop.id")
+    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeCulture.id")
+    miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeMisc.id")
+    water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterProfile.id")
+    water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterAdjustment.id")
+    mash_steps: Mapped[list["RecipeMashStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeMashStep.id")
+    fermentation_steps: Mapped[list["RecipeFermentationStep"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeFermentationStep.id")
 
 
 class Batch(Base):

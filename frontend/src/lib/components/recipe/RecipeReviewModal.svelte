@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { marked } from 'marked';
+	import { renderMarkdown } from '$lib/markdown';
 	import type { SavedReviewSummary, StatCheck } from '$lib/api';
 
 	// A saved review (recipe page) or a one-off draft review (recipe editor).
@@ -42,6 +42,7 @@
 		Object.entries(result?.compliance ?? {}).filter(([, c]) => c.status !== 'no_guideline')
 	);
 
+	const STATUS: Record<string, string> = { in_range: 'in range', below: 'low', above: 'high', unknown: '?' };
 	const fmtScore = (n: number | null | undefined) => (n == null ? '–' : `${Number.isInteger(n) ? n : n.toFixed(1)}/10`);
 	const fmtDate = (iso: string | null | undefined) =>
 		iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -121,6 +122,7 @@
 										<span class="check-name">{key.toUpperCase()}</span>
 										<span class="check-val">{c.value ?? '–'}{c.unit}</span>
 										<span class="check-range">{c.min}–{c.max}</span>
+										<span class="check-status">{STATUS[c.status] ?? c.status}</span>
 									</li>
 								{/each}
 							</ul>
@@ -140,7 +142,7 @@
 						<p class="draft-note">Review of the unsaved draft. It is not added to the recipe's review history.</p>
 					{/if}
 					<div class="review-content markdown-body">
-						{@html marked(result.review)}
+						{@html renderMarkdown(result.review)}
 					</div>
 					{#if history.length > 1}
 						<div class="history">
@@ -400,6 +402,8 @@
 	.check-name { font-weight: 600; }
 	.check-val, .check-range { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 	.check-range { color: var(--text-secondary); }
+	.check-status { font-size: 0.75rem; }
+	.check.below .check-status, .check.above .check-status { color: var(--status-danger); font-weight: 600; }
 	.check.in_range { border-color: color-mix(in oklch, var(--status-steady) 50%, transparent); }
 	.check.below, .check.above { border-color: color-mix(in oklch, var(--status-danger) 60%, transparent); }
 	.stale, .draft-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--accent); font-size: 0.875rem; color: var(--text-primary); }

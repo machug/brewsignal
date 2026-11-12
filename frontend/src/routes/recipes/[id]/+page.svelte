@@ -319,14 +319,14 @@
 		const id = recipe.id;
 		showReviewModal = true;
 		reviewError = null;
+		reviewResult = null;
 		reviewLoading = true;
 		try {
 			await loadReviewHistory(id);
-			if (reviewHistory.length) reviewResult = await fetchRecipeReview(id, reviewHistory[0].id);
-			else {
-				reviewResult = await runRecipeReview(id);
-				await loadReviewHistory(id);
-			}
+			const latest = reviewHistory.length ? await fetchRecipeReview(id, reviewHistory[0].id) : await runRecipeReview(id);
+			if (!showReviewModal || recipe?.id !== id) return; // closed or navigated away meanwhile
+			reviewResult = latest;
+			if (!reviewHistory.length) await loadReviewHistory(id);
 		} catch (err) {
 			reviewError = err instanceof Error ? err.message : 'Failed to get AI review';
 		} finally {
@@ -351,6 +351,7 @@
 
 	async function selectReview(reviewId: number) {
 		if (!recipe) return;
+		reviewError = null;
 		try {
 			reviewResult = await fetchRecipeReview(recipe.id, reviewId);
 		} catch (err) {
@@ -362,6 +363,8 @@
 		showReviewModal = false;
 		reviewResult = null;
 		reviewError = null;
+		reviewHistory = [];
+		currentFingerprint = '';
 	}
 </script>
 

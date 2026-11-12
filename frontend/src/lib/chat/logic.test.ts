@@ -91,3 +91,15 @@ describe('newChatId', () => {
 		}
 	});
 });
+
+describe('recipe approval cards (tilt_ui-eevz.1)', () => {
+	it('routes save_recipe and update_recipe to approval cards, preview_recipe to activity', async () => {
+		const { segmentParts } = await import('./logic');
+		const segs = segmentParts([
+			{ type: 'tool-preview_recipe', state: 'output-available' },
+			{ type: 'tool-update_recipe', state: 'approval-requested' },
+			{ type: 'tool-save_recipe', state: 'approval-requested' }
+		]);
+		expect(segs.map((s) => s.kind)).toEqual(['activity', 'apply', 'apply']);
+	});
+});

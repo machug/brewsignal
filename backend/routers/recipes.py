@@ -845,6 +845,32 @@ async def recalculate_recipe_stats(
     return result.scalar_one()
 
 
+class AssistantPreviewRequest(BaseModel):
+    """Dry run of an assistant save (document) or edit (recipe_id + operations)."""
+    document: Optional[dict] = None
+    recipe_id: Optional[int] = None
+    operations: Optional[list[dict]] = None
+
+
+@router.post("/assistant-preview")
+async def assistant_preview(
+    request: AssistantPreviewRequest,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """What an assistant save/edit would do; nothing is stored (tilt_ui-eevz.1).
+
+    The chat approval card calls this to show a plain-language diff and the
+    calculated stats before the user approves.
+    """
+    from ..services.llm.tools.recipe_v2 import preview_recipe_change
+
+    return await preview_recipe_change(
+        db, document=request.document, recipe_id=request.recipe_id,
+        operations=request.operations, user_id=user.user_id,
+    )
+
+
 class RecipeScaleRequest(BaseModel):
     target_batch_size_liters: float = Field(gt=0)
     # Preview mode: compute and return the scaled recipe without persisting,

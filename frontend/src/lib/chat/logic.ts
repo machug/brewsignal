@@ -25,6 +25,8 @@ interface AnyPart {
 export const isToolPart = (p: { type: string }) => p.type.startsWith('tool-');
 export const toolName = (p: { type: string }) => p.type.slice(5);
 export const APPLY_TOOL = 'apply_hop_inventory';
+/** Tools that write after the user approves a card (tilt_ui-eevz.1). */
+export const APPROVAL_TOOLS = new Set([APPLY_TOOL, 'save_recipe', 'update_recipe']);
 
 /** Body the backend expects (contract): only the newest message, never history. */
 export function buildChatRequest(opts: {
@@ -44,6 +46,7 @@ export function buildChatRequest(opts: {
 // [running label, done label]
 const LABELS: Record<string, [string, string]> = {
 	get_recipe: ['Loading recipe', 'Loaded recipe'],
+	preview_recipe: ['Checking recipe', 'Checked recipe'],
 	list_recipes: ['Listing recipes', 'Listed recipes'],
 	search_recipes: ['Searching recipes', 'Searched recipes'],
 	search_inventory_hops: ['Checking hop stock', 'Checked hop stock'],
@@ -89,7 +92,7 @@ export function segmentParts(parts: AnyPart[]): Segment[] {
 		} else if (p.type === 'text') {
 			rest.push({ kind: 'text', part: p });
 		} else if (isToolPart(p)) {
-			if (toolName(p) === APPLY_TOOL) rest.push({ kind: 'apply', part: p });
+			if (APPROVAL_TOOLS.has(toolName(p))) rest.push({ kind: 'apply', part: p });
 			else activity.push(p);
 		}
 	}

@@ -8,7 +8,7 @@
 	import { getAccessToken } from '$lib/supabase';
 	import { config } from '$lib/config';
 	import { configState } from '$lib/stores/config.svelte';
-	import { APPLY_TOOL, buildChatRequest, isToolPart, newChatId, toolName, type ToolPart } from '$lib/chat/logic';
+	import { APPLY_TOOL, APPROVAL_TOOLS, buildChatRequest, isToolPart, newChatId, toolName, type ToolPart } from '$lib/chat/logic';
 	import ChatShell from '$lib/components/chat/ChatShell.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import MessageTurn from '$lib/components/chat/MessageTurn.svelte';
@@ -192,7 +192,7 @@
 		return 'The approval was rejected. It may have been used already.';
 	});
 	const awaitingApproval = $derived(
-		!!lastAssistant?.parts.some((p) => isToolPart(p) && toolName(p) === APPLY_TOOL && (p as unknown as ToolPart).state === 'approval-requested')
+		!!lastAssistant?.parts.some((p) => isToolPart(p) && APPROVAL_TOOLS.has(toolName(p)) && (p as unknown as ToolPart).state === 'approval-requested')
 	);
 	const composerOff = $derived(!chat || loadState !== 'ready' || awaitingApproval);
 	const placeholder = $derived(awaitingApproval ? 'Confirm or cancel the update above' : loadState === 'error' ? 'Chat locked: could not load it' : undefined);

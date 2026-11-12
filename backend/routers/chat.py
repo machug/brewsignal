@@ -16,13 +16,14 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Annotated, Any, AsyncIterator, Optional
+from typing import Annotated, Any, AsyncIterator, Literal, Optional
 
 import anyio
 import prompty
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent, DeferredToolRequests, RunContext, Tool, UsageLimits
+from pydantic_ai.exceptions import ApprovalRequired
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -63,6 +64,12 @@ from backend.services.llm.model import FAST_MODELS
 from backend.services.llm.openrouter import resolve_openrouter_model
 from backend.services.llm.tools import TOOL_DEFINITIONS, execute_tool
 from backend.services.llm.tools.fermentation import get_temperature_control as _get_temperature_control
+from backend.services.llm.tools.recipe_v2 import (
+    get_recipe_document,
+    preview_recipe_change,
+    save_recipe_document,
+    update_recipe_document,
+)
 from backend.services.memory import format_memories_for_context, keyword_search_learnings, search_memories_strict
 
 logger = logging.getLogger(__name__)
@@ -122,7 +129,7 @@ def _bridge(name: str, description: str, schema: dict) -> Tool:
 
 
 # update_hop_inventory is the old preview + confirm-card tool; preview/apply below replace it
-_REPLACED = {"update_hop_inventory"}
+_REPLACED = {"update_hop_inventory"}  # recipe get/save/update are native v2 tools below
 _bridged = [
     _bridge(t["function"]["name"], t["function"]["description"], t["function"]["parameters"])
     for t in TOOL_DEFINITIONS
@@ -142,6 +149,110 @@ HOP_INSTRUCTIONS = (
     "and update, then call apply_hop_inventory with the same items, that choice and the preview's "
     "stock_version. The app asks the user to approve before it runs."
 )
+
+
+# =============================================================================
+# Recipes as BrewSignal Recipe Format v2 (tilt_ui-eevz.1)
+# =============================================================================
+
+V2_GUIDE = """BrewSignal Recipe Format v2 = {"brewsignal_version": "2.0", "recipe": {...BeerJSON 1.0 recipe...}, "brewsignal": {...optional extras...}}.
+Units travel with every number: {"value": 4.5, "unit": "kg"}.
+recipe: name, type ("all grain" | "extract" | "partial mash"), batch_size {l}, efficiency.brewhouse {%},
+  style {name: BJCP style name}, original_gravity/final_gravity {sg} (the SOURCE beer's declared numbers, kept as targets),
+  alcohol_by_volume {%}, ibu_estimate {IBUs}, color_estimate {SRM}, boil.boil_time {min}, carbonation {vols}.
+recipe.ingredients:
+  fermentable_additions[]: name, type (grain|sugar|extract|dry extract|adjunct), producer, color {Lovi|SRM|EBC},
+    yield.potential {sg}, amount {kg|g}.
+  hop_additions[]: name, origin, form (pellet|leaf|cryo|...), alpha_acid {%}, amount {g}, timing, and an
+    optional per-hop "brewsignal" object for details BeerJSON lacks:
+    boil = timing {"use": "add_to_boil", "duration": {min}}, brewsignal {"hop_use": "boil"};
+    whirlpool / hop stand = timing {"use": "add_to_boil", "duration": {stand min}},
+      brewsignal {"hop_use": "whirlpool", "temperature": {C}, "stand_time": {min}} (otherwise it counts as boil IBU);
+    dry hop = timing {"use": "add_to_fermentation", "duration": {day}}, brewsignal {"hop_use": "dry_hop"};
+    brewsignal may also hold purpose (bittering|aroma|...), dry_hop_stage, day_offset. A hop's brewsignal
+    object moves with the hop. Extracts: "is_extract": true, "amount_ml": n, amount {ml}.
+  culture_additions[]: name, producer, product_id, type (ale|lager|...), form (dry|liquid), attenuation {%},
+    temperature_range {minimum {C}, maximum {C}}, amount. A yeast is ALWAYS an object here, never a plain string.
+  miscellaneous_additions[]: name, type (fining|water agent|spice|flavor|other|...), amount, timing.
+recipe.mash.mash_steps[]: name, type (infusion|temperature|decoction), step_temperature {C}, step_time {min}.
+recipe.fermentation.fermentation_steps[]: name, start_temperature {C}, step_time {day}.
+brewsignal: water (profiles, adjustments), process, yeast_management, batch_defaults — keep what get_recipe returns.
+OG/FG/ABV/IBU/SRM are calculated from the ingredients on save; you do not need to compute them."""
+
+
+class PatchOp(BaseModel):
+    op: Literal["add", "remove", "replace"]
+    path: str = Field(description='JSON Pointer into the v2 document, e.g. "/recipe/ingredients/hop_additions/1/amount/value"; "-" appends to a list')
+    value: Any = Field(default=None, description="New value for add/replace; omit for remove")
+
+
+@agent.tool(sequential=True)
+async def get_recipe(ctx: RunContext[ChatDeps], recipe_id: int) -> dict:
+    """Load a saved recipe as a BrewSignal v2 document (the format save_recipe and update_recipe use).
+
+    Always call this before update_recipe, and build your JSON Pointer paths from this exact document.
+    """
+    return await get_recipe_document(ctx.deps.db, recipe_id, ctx.deps.user_id)
+
+
+@agent.tool(sequential=True)
+async def preview_recipe(
+    ctx: RunContext[ChatDeps],
+    document: Optional[dict[str, Any]] = None,
+    recipe_id: Optional[int] = None,
+    operations: Optional[list[PatchOp]] = None,
+) -> dict:
+    """Dry run, nothing is saved. Pass a complete v2 document (new recipe) or recipe_id + operations (edit).
+
+    Returns calculated OG/FG/ABV/IBU/SRM, the declared targets, warnings (missing yeast, calculated
+    numbers off the target) and, for an edit, a plain list of changes. When cloning, iterate with this
+    until the calculated numbers match the source beer, then call save_recipe.
+    """
+    return await preview_recipe_change(
+        ctx.deps.db, document=document, recipe_id=recipe_id,
+        operations=[o.model_dump(exclude_unset=True) for o in operations] if operations else None,
+        user_id=ctx.deps.user_id,
+    )
+
+
+@agent.tool(sequential=True)
+async def save_recipe(ctx: RunContext[ChatDeps], document: dict[str, Any], summary: str) -> dict:
+    """Save a NEW recipe (for example a clone) from a complete BrewSignal v2 document.
+
+    summary: one or two plain sentences for the approval card (what it is, based on what source).
+    The document is checked first; if it is invalid you get the error back and nothing is shown to
+    the user. If it is valid, the user approves in the app before anything is saved. After saving,
+    report the calculated numbers against the targets, mention any warnings, and offer review_recipe.
+    """
+    if not ctx.tool_call_approved:
+        check = await preview_recipe_change(ctx.deps.db, document=document, user_id=ctx.deps.user_id)
+        if check.get("error"):
+            return check
+        raise ApprovalRequired()
+    result = await save_recipe_document(ctx.deps.db, document, ctx.deps.user_id)
+    ctx.deps.executed[ctx.tool_call_id] = ("save_recipe", result)
+    return result
+
+
+@agent.tool(sequential=True)
+async def update_recipe(ctx: RunContext[ChatDeps], recipe_id: int, operations: list[PatchOp], summary: str) -> dict:
+    """Change an EXISTING recipe with a JSON Patch on its v2 document. Never use save_recipe for an edit.
+
+    Send only the changes: add / remove / replace operations with paths from get_recipe's document.
+    Everything you do not mention is kept exactly as it was. To change several items of one list
+    (e.g. remove two hops), replace that whole list in one operation; several inserts/removes by index
+    in the same list are refused. Append with "/-". summary: one plain sentence per change for the
+    approval card (e.g. "Citra dry hop 50 g -> 80 g"). The patch is checked before the user is asked.
+    """
+    ops = [o.model_dump(exclude_unset=True) for o in operations]
+    if not ctx.tool_call_approved:
+        check = await preview_recipe_change(ctx.deps.db, recipe_id=recipe_id, operations=ops, user_id=ctx.deps.user_id)
+        if check.get("error"):
+            return check
+        raise ApprovalRequired()
+    result = await update_recipe_document(ctx.deps.db, recipe_id, ops, ctx.deps.user_id)
+    ctx.deps.executed[ctx.tool_call_id] = ("update_recipe", result)
+    return result
 
 
 @agent.tool(sequential=True)
@@ -283,7 +394,7 @@ async def _save_executed(
 
 async def _instructions(db: AsyncSession, config: LLMConfig, user: AuthUser, query: str, context: Optional[dict]) -> str:
     text = await _get_recipe_system_prompt(db, None)
-    text += "\n\n" + HOP_INSTRUCTIONS
+    text += "\n\n" + HOP_INSTRUCTIONS + "\n\n" + V2_GUIDE
     batch_id = (context or {}).get("batch_id")
     if isinstance(batch_id, int):
         text += f"\n\nThe user is currently viewing batch #{batch_id}; questions about 'this batch' mean it."

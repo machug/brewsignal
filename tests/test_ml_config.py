@@ -11,7 +11,6 @@ def test_default_config():
     assert config.enable_kalman_filter is True
     assert config.enable_anomaly_detection is True
     assert config.enable_predictions is True
-    assert config.enable_mpc is False  # Opt-in, requires HA setup
     assert config.enable_slm is False  # Opt-in, requires model download
 
 

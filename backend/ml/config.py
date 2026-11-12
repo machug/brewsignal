@@ -10,7 +10,6 @@ class MLConfig(BaseSettings):
     enable_kalman_filter: bool = True
     enable_anomaly_detection: bool = True
     enable_predictions: bool = True
-    enable_mpc: bool = False  # Requires Home Assistant heater setup
     enable_slm: bool = False  # Requires model download (~1GB)
 
     # Kalman filter parameters
@@ -23,10 +22,6 @@ class MLConfig(BaseSettings):
     prediction_min_readings: int = 10
     prediction_completion_threshold: float = 0.002  # SG/day
 
-    # MPC parameters
-    mpc_horizon_hours: float = 4.0
-    mpc_max_temp_rate: float = 1.0  # Max F/hour change
-    mpc_dt_hours: float = 0.25  # 15-minute steps
 
     # SLM parameters
     slm_model_path: str = "~/.cache/llm/ministral-3b-instruct-q4_k_m.gguf"  # Mistral Ministral 3B

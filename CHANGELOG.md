@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Unused MPC temperature controller** (tilt_ui-29im) - `backend/ml/control/mpc.py` was never switched on and, in simulation, held the beer in band less often and switched far more than the hysteresis controller. The code, its config and its tests are gone. Temperature control is unchanged.
+
 ### Fixed
 - **Control status shows Celsius** (tilt_ui-xrq5.6) - The global target and hysteresis were still stored in Fahrenheit (66.2 and 1.08 on the Pi), because the old Fahrenheit-to-Celsius migration missed them. They are converted on startup, and the defaults are now 20 C and 0.5 C.
 - **Predictions no longer vanish near the end of a batch** (tilt_ui-fod1) - The FG prediction was limited to 0.003 below the recipe FG, and its starting guess was the latest reading. When a beer fermented drier than the recipe (most do), the guess fell outside the limit and the fit failed, so predictions disappeared just when they mattered. The limit is now 0.015 below the recipe FG (floor 0.990) and the guess is kept inside it.

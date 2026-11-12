@@ -1,14 +1,14 @@
 """ML pipeline orchestrator.
 
-Coordinates all ML components (Kalman filtering, anomaly detection,
-predictions, and MPC control) to provide a unified interface for
-processing fermentation readings.
+Coordinates the ML components (Kalman filtering, anomaly detection,
+predictions) to provide a unified interface for processing fermentation
+readings. Temperature control is the hysteresis controller in
+backend/temp_controller.py; the MPC experiment was removed (tilt_ui-29im).
 
 The pipeline:
 1. Filters raw readings through Kalman filter
 2. Checks for anomalies
 3. Fits fermentation curve and predicts completion (if enough history)
-4. Computes optimal temperature control action (if MPC enabled)
 """
 
 from typing import Optional
@@ -16,7 +16,6 @@ from backend.ml.config import MLConfig
 from backend.ml.sensor_fusion.kalman import TiltKalmanFilter
 from backend.ml.anomaly.detector import FermentationAnomalyDetector
 from backend.ml.predictions.curve_fitter import FermentationCurveFitter
-from backend.ml.control.mpc import MPCTemperatureController
 
 
 class MLPipeline:
@@ -26,7 +25,6 @@ class MLPipeline:
     - Sensor fusion (Kalman filtering)
     - Anomaly detection
     - Fermentation predictions (curve fitting)
-    - Temperature control (MPC)
 
     Each component can be individually enabled/disabled via MLConfig.
     """
@@ -63,22 +61,10 @@ class MLPipeline:
         else:
             self.curve_fitter = None
 
-        if self.config.enable_mpc:
-            self.mpc_controller = MPCTemperatureController(
-                horizon_hours=self.config.mpc_horizon_hours,
-                max_temp_rate=self.config.mpc_max_temp_rate,
-                dt_hours=self.config.mpc_dt_hours,
-            )
-        else:
-            self.mpc_controller = None
-
-        # History for predictions and MPC
+        # History for predictions
         self.sg_history: list[float] = []
         self.temp_history: list[float] = []
         self.time_history: list[float] = []
-        self.heater_history: list[bool] = []
-        self.cooler_history: list[bool] = []
-        self.ambient_history: list[float] = []
 
     def process_reading(
         self,
@@ -86,10 +72,6 @@ class MLPipeline:
         temp: float,
         rssi: float,
         time_hours: float,
-        ambient_temp: Optional[float] = None,
-        heater_on: Optional[bool] = None,
-        cooler_on: Optional[bool] = None,
-        target_temp: Optional[float] = None,
     ) -> dict:
         """Process a fermentation reading through the ML pipeline.
 
@@ -98,17 +80,12 @@ class MLPipeline:
             temp: Raw temperature reading (°C)
             rssi: Bluetooth signal strength (dBm)
             time_hours: Time since fermentation start (hours)
-            ambient_temp: Ambient/room temperature (°C)
-            heater_on: Current heater state (for MPC learning)
-            cooler_on: Current cooler state (for MPC learning)
-            target_temp: Target temperature (°C, for MPC control)
 
         Returns:
             Dictionary with results from each component:
             - kalman: Filtered readings and rates
             - anomaly: Anomaly detection results
             - predictions: Fermentation predictions (if enough history)
-            - mpc: Temperature control action (if MPC enabled)
         """
         result = {}
 
@@ -154,15 +131,6 @@ class MLPipeline:
         self.temp_history.append(filtered_temp)
         self.time_history.append(time_hours)
 
-        if heater_on is not None:
-            self.heater_history.append(heater_on)
-
-        if cooler_on is not None:
-            self.cooler_history.append(cooler_on)
-
-        if ambient_temp is not None:
-            self.ambient_history.append(ambient_temp)
-
         # Stage 3: Predictions (curve fitting)
         if self.curve_fitter and len(self.sg_history) >= self.config.prediction_min_readings:
             prediction_result = self.curve_fitter.fit(
@@ -172,41 +140,6 @@ class MLPipeline:
             result["predictions"] = prediction_result
         else:
             result["predictions"] = None
-
-        # Stage 4: MPC temperature control
-        if self.mpc_controller and target_temp is not None and ambient_temp is not None:
-            # Learn thermal model if we have enough history
-            # CRITICAL: All histories must be same length for MPC learning
-            min_history_len = min(
-                len(self.temp_history),
-                len(self.heater_history),
-                len(self.ambient_history),
-            )
-            if min_history_len >= 3:
-                # Pass cooler_history only if we have sufficient cooler data
-                cooler_hist = None
-                if self.cooler_history and len(self.cooler_history) >= min_history_len:
-                    cooler_hist = self.cooler_history[-min_history_len:]
-
-                self.mpc_controller.learn_thermal_model(
-                    temp_history=self.temp_history[-min_history_len:],
-                    time_history=self.time_history[-min_history_len:],
-                    heater_history=self.heater_history[-min_history_len:],
-                    ambient_history=self.ambient_history[-min_history_len:],
-                    cooler_history=cooler_hist,
-                )
-
-            # Compute control action
-            mpc_result = self.mpc_controller.compute_action(
-                current_temp=filtered_temp,
-                target_temp=target_temp,
-                ambient_temp=ambient_temp,
-                heater_currently_on=heater_on,
-                cooler_currently_on=cooler_on,
-            )
-            result["mpc"] = mpc_result
-        else:
-            result["mpc"] = None
 
         return result
 
@@ -229,21 +162,14 @@ class MLPipeline:
         self.sg_history = []
         self.temp_history = []
         self.time_history = []
-        self.heater_history = []
-        self.cooler_history = []
-        self.ambient_history = []
 
-        # Note: curve_fitter and mpc_controller don't maintain state,
-        # so no reset needed
+        # Note: curve_fitter doesn't maintain state, so no reset needed
 
     def load_history(
         self,
         sgs: list[float],
         temps: list[float],
         times: list[float],
-        heaters: Optional[list[bool]] = None,
-        coolers: Optional[list[bool]] = None,
-        ambients: Optional[list[float]] = None,
     ) -> None:
         """Load historical data into the pipeline for predictions.
 
@@ -254,9 +180,6 @@ class MLPipeline:
             sgs: Specific gravity readings (filtered/calibrated)
             temps: Temperature readings (filtered/calibrated, °C)
             times: Time points (hours since fermentation start)
-            heaters: Optional heater states
-            coolers: Optional cooler states
-            ambients: Optional ambient temperatures (°C)
         """
         if len(sgs) != len(temps) or len(sgs) != len(times):
             raise ValueError("sgs, temps, and times must have same length")
@@ -265,11 +188,6 @@ class MLPipeline:
         self.sg_history = list(sgs)
         self.temp_history = list(temps)
         self.time_history = list(times)
-
-        # Store optional histories
-        self.heater_history = list(heaters) if heaters else []
-        self.cooler_history = list(coolers) if coolers else []
-        self.ambient_history = list(ambients) if ambients else []
 
         # Reset Kalman filter to last reading state
         if self.kalman_filter and len(sgs) > 0:

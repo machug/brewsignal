@@ -121,7 +121,7 @@ SECRET_KEYS = ("ai_api_key", "tavily_api_key")
 def mask_secret(value) -> str:
     if not value or not isinstance(value, str):
         return ""
-    return "****" + value[-4:]
+    return "****" + value[-4:] if len(value) >= 12 else "****"  # short values: show nothing
 
 
 @router.patch("", response_model=ConfigResponse)
@@ -139,8 +139,10 @@ async def update_config(
 
     # Update each provided field
     for key, value in update_data.items():
-        if key in SECRET_KEYS and isinstance(value, str) and value.startswith("****"):
-            continue  # the masked placeholder came back unchanged
+        if key in SECRET_KEYS and isinstance(value, str):
+            if value.startswith("****"):
+                continue  # the masked placeholder came back unchanged
+            value = value.strip()  # a pasted newline/space breaks the Authorization header
         await set_config_value(db, key, value)
 
     await db.commit()

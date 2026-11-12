@@ -64,3 +64,21 @@ async def test_api_keys_are_masked_and_the_mask_does_not_overwrite(client, test_
     # Clearing still works
     await client.patch("/api/config", json={"tavily_api_key": ""})
     assert await get_config_value(test_db, "tavily_api_key") == ""
+
+
+@pytest.mark.asyncio
+async def test_get_config_masks_and_short_or_padded_keys_are_safe(client, test_db):
+    await client.patch("/api/config", json={"tavily_api_key": "  tvly-abcdef1234\n", "ai_api_key": "abc"})
+    assert await get_config_value(test_db, "tavily_api_key") == "tvly-abcdef1234"  # stripped on save
+    got = (await client.get("/api/config")).json()
+    assert got["tavily_api_key"] == "****1234"
+    assert got["ai_api_key"] == "****"  # short value: nothing revealed
+
+
+@pytest.mark.asyncio
+async def test_domains_given_as_urls_are_reduced_to_hosts(monkeypatch):
+    seen = {}
+    _fake_tavily(monkeypatch, payload={"results": []}, seen=seen)
+    await ws.web_search("tvly-k", "clone", max_results="lots", include_domains=["https://www.homebrewtalk.com/forums", "", 5])
+    body = json.loads(seen["body"])
+    assert body["include_domains"] == ["www.homebrewtalk.com"] and body["max_results"] == 5

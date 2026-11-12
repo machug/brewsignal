@@ -17,9 +17,13 @@
 	let mode = $state<'saved' | 'editing' | 'removed'>('saved');
 	let typed = $state('');
 
-	// After a save the parent resets value to null: show the (new) saved key again
+	// After a save the parent resets value to null. While removing or with text typed,
+	// value can only be null if the parent reset it: show the (new) saved key again.
 	$effect(() => {
-		if (value === null && mode === 'removed') mode = 'saved';
+		if (value === null && (mode === 'removed' || typed.trim() !== '')) {
+			typed = '';
+			mode = 'saved';
+		}
 	});
 
 	function startReplace() {

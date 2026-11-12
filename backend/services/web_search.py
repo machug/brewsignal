@@ -26,7 +26,10 @@ def _domain(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
         return ""
     v = value.strip()
-    host = urlparse(v if "://" in v else f"https://{v}").hostname or ""
+    try:
+        host = urlparse(v if "://" in v else f"https://{v}").hostname or ""
+    except ValueError:  # e.g. "https://[example.com"
+        return ""
     return host.lower()
 
 

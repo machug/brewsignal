@@ -82,3 +82,7 @@ async def test_domains_given_as_urls_are_reduced_to_hosts(monkeypatch):
     await ws.web_search("tvly-k", "clone", max_results="lots", include_domains=["https://www.homebrewtalk.com/forums", "", 5])
     body = json.loads(seen["body"])
     assert body["include_domains"] == ["www.homebrewtalk.com"] and body["max_results"] == 5
+
+
+def test_malformed_domain_is_dropped_not_raised():
+    assert ws._domain("https://[example.com") == ""

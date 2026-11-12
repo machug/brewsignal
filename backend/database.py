@@ -32,6 +32,21 @@ if DATABASE_URL.startswith("postgresql"):
     }
 
 engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+
+if DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _record):
+        # Rollback-journal mode let a reader or a big chat-history write lock out the
+        # scanner's commit, dropping Tilt readings ("database is locked"). WAL lets
+        # readers and one writer run together; busy_timeout makes writers wait, not fail
+        # (tilt_ui-en7s).
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 

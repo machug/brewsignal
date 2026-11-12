@@ -112,10 +112,10 @@ def _migrate_global_control_config_to_celsius(conn) -> None:
     import json
     from sqlalchemy import text
 
+    from sqlalchemy import inspect
+
     marker = "control_config_celsius_v1"
-    if not conn.execute(text(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
-    )).fetchone():
+    if not inspect(conn).has_table("config"):  # SQLite and PostgreSQL
         return
     if conn.execute(text("SELECT 1 FROM config WHERE key = :k"), {"k": marker}).fetchone():
         return
@@ -558,6 +558,7 @@ async def init_db():
             # Create any tables that might be missing from Supabase schema
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_migrate_legacy_chat_threads)
+            await conn.run_sync(_migrate_global_control_config_to_celsius)
         # create_all adds missing TABLES but not missing COLUMNS. Supabase's
         # schema drifts behind the models because its migrations are applied by
         # hand; reconcile additive column drift so full-model SELECTs don't hit

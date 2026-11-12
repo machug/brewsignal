@@ -99,3 +99,11 @@ def test_reasoning_budget_is_bounded_so_the_reply_keeps_room():
     cfg = LLMConfig(enabled=True, provider=LLMProvider.OPENROUTER, api_key="k", model="m", max_tokens=16000)
     assert model_settings(cfg)["openrouter_reasoning"] == {"max_tokens": 4000}
     assert LLMConfig(max_tokens=50000).max_tokens == 32000
+
+
+def test_config_api_accepts_the_larger_budget():
+    from backend.models import ConfigUpdate
+
+    assert ConfigUpdate(ai_max_tokens=16000).ai_max_tokens == 16000
+    with pytest.raises(ValueError):
+        ConfigUpdate(ai_max_tokens=40000)

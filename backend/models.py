@@ -1478,8 +1478,8 @@ class ConfigUpdate(BaseModel):
     @field_validator("ai_max_tokens")
     @classmethod
     def validate_ai_max_tokens(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and (v < 100 or v > 8000):
-            raise ValueError("ai_max_tokens must be between 100 and 8000")
+        if v is not None and (v < 100 or v > 32000):
+            raise ValueError("ai_max_tokens must be between 100 and 32000")
         return v
 
     @field_validator("mqtt_port")
@@ -1541,7 +1541,7 @@ class ConfigResponse(BaseModel):
     tavily_api_key: str = ""  # "****" + last 4 in responses
     ai_base_url: str = ""
     ai_temperature: float = 0.7
-    ai_max_tokens: int = 2000
+    ai_max_tokens: int = 16000
     ai_memory_auto_extract: bool = True
     ai_lite_enabled: bool = False
     # MQTT settings for Home Assistant

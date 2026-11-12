@@ -102,37 +102,40 @@ def _migrate_add_ml_columns(conn):
 
 
 def _migrate_global_control_config_to_celsius(conn) -> None:
-    """Convert the global temp_target/temp_hysteresis config to Celsius (tilt_ui-xrq5.6).
+    """Convert the global temp_target/temp_hysteresis config to Celsius once (tilt_ui-xrq5.6).
 
-    The v1 F->C migration converted batch columns but not these config keys,
-    so /api/control/status returned 66.2. A target >= 50 can only be
-    Fahrenheit; the hysteresis stored alongside it is then a Fahrenheit span.
-    Idempotent: a Celsius target is never >= 50.
+    Until this change the System page always saved these two keys in
+    Fahrenheit (the v1 F->C migration converted batch columns, not config),
+    so /api/control/status returned 66.2. Any stored value is Fahrenheit
+    until the marker is set - including targets below 50 F (cold crash).
     """
     import json
     from sqlalchemy import text
 
+    marker = "control_config_celsius_v1"
     if not conn.execute(text(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
     )).fetchone():
         return
+    if conn.execute(text("SELECT 1 FROM config WHERE key = :k"), {"k": marker}).fetchone():
+        return
     rows = dict(conn.execute(text(
         "SELECT key, value FROM config WHERE key IN ('temp_target', 'temp_hysteresis')"
     )).fetchall())
+    updates = {}
     try:
-        target = float(json.loads(rows["temp_target"]))
+        updates["temp_target"] = round((float(json.loads(rows["temp_target"])) - 32) * 5 / 9, 1)
     except (KeyError, TypeError, ValueError):
-        return
-    if target < 50:
-        return
-    updates = {"temp_target": round((target - 32) * 5 / 9, 1)}
+        pass
     try:
         updates["temp_hysteresis"] = round(float(json.loads(rows["temp_hysteresis"])) / 1.8, 2)
     except (KeyError, TypeError, ValueError):
         pass
     for key, value in updates.items():
         conn.execute(text("UPDATE config SET value = :v WHERE key = :k"), {"v": json.dumps(value), "k": key})
-    print(f"Migration: global control config F->C {updates}")
+    conn.execute(text("INSERT INTO config (key, value) VALUES (:k, 'true')"), {"k": marker})
+    if updates:
+        print(f"Migration: global control config F->C {updates}")
 
 
 async def _migrate_temps_fahrenheit_to_celsius(engine):

@@ -195,7 +195,7 @@
 		!!lastAssistant?.parts.some((p) => isToolPart(p) && APPROVAL_TOOLS.has(toolName(p)) && (p as unknown as ToolPart).state === 'approval-requested')
 	);
 	const composerOff = $derived(!chat || loadState !== 'ready' || awaitingApproval);
-	const placeholder = $derived(awaitingApproval ? 'Confirm or cancel the update above' : loadState === 'error' ? 'Chat locked: could not load it' : undefined);
+	const placeholder = $derived(awaitingApproval ? 'Approve or cancel the proposal above' : loadState === 'error' ? 'Chat locked: could not load it' : undefined);
 
 	function send() {
 		const text = input.trim();

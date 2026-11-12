@@ -292,3 +292,107 @@ async def test_removing_a_hop_keeps_whirlpool_details_on_the_right_hop(test_db):
     hops = (await get_recipe_document(test_db, rid))["document"]["recipe"]["ingredients"]["hop_additions"]
     assert [h["brewsignal"]["hop_use"] for h in hops] == ["whirlpool", "dry_hop"]
     assert hops[0]["brewsignal"]["temperature"]["value"] == 79.0
+
+
+# --- Second review round (codex + Gemini) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patching_og_keeps_the_other_targets(test_db):
+    out = await _save(test_db)
+    rid, targets = out["recipe_id"], out["targets"]
+    assert all(v is not None for v in targets.values())
+    out = await update_recipe_document(test_db, rid, [
+        {"op": "replace", "path": "/recipe/original_gravity/value", "value": 1.070},
+    ])
+    assert out["targets"]["og"] == pytest.approx(1.070)
+    for k in ("fg", "abv", "ibu", "srm"):
+        assert out["targets"][k] == pytest.approx(targets[k]), k
+
+
+@pytest.mark.asyncio
+async def test_style_patch_re_resolves_the_style(test_db):
+    from backend.models import Recipe, Style
+
+    for sid, name in (("s-apa-v2", "Test American Pale Ale"), ("s-ipa-v2", "Test American IPA")):
+        test_db.add(Style(id=sid, guide="BJCP 2021", category_number="21", style_letter="A", name=name,
+                          category="IPA", type="Ale"))
+    await test_db.commit()
+    rid = (await _save(test_db, _minimal(style="Test American Pale Ale")))["recipe_id"]
+    assert (await test_db.get(Recipe, rid)).style_id == "s-apa-v2"
+
+    await update_recipe_document(test_db, rid, [{"op": "replace", "path": "/recipe/style/name", "value": "Test American IPA"}])
+    test_db.expire_all()
+    assert (await test_db.get(Recipe, rid)).style_id == "s-ipa-v2"
+
+    await update_recipe_document(test_db, rid, [{"op": "replace", "path": "/recipe/style/name", "value": "No Such Style"}])
+    test_db.expire_all()
+    assert (await test_db.get(Recipe, rid)).style_id is None
+
+
+@pytest.mark.asyncio
+async def test_cloud_mode_owner_only(test_db, monkeypatch):
+    from backend.services.llm.tools import recipe as recipe_tools
+    from backend.services.llm.tools.recipe_v2 import preview_recipe_change
+
+    rid = (await save_recipe_document(test_db, JASPER, user_id="owner-a"))["recipe_id"]
+
+    class Cloud:
+        is_local = False
+
+    monkeypatch.setattr(recipe_tools, "get_settings", lambda: Cloud())
+    op = [{"op": "replace", "path": "/recipe/name", "value": "stolen"}]
+    assert "error" in await get_recipe_document(test_db, rid, user_id="owner-b")
+    assert "error" in await preview_recipe_change(test_db, recipe_id=rid, operations=op, user_id="owner-b")
+    assert "error" in await update_recipe_document(test_db, rid, op, user_id="owner-b")
+    assert "error" in await get_recipe_document(test_db, rid, user_id=None)
+    assert (await get_recipe_document(test_db, rid, user_id="owner-a"))["document"]["recipe"]["name"] != "stolen"
+
+
+@pytest.mark.asyncio
+async def test_malformed_model_output_returns_errors_and_leaves_the_session_usable(test_db):
+    from sqlalchemy import func, select
+
+    from backend.models import Recipe
+    from backend.services.llm.tools.recipe_v2 import preview_recipe_change
+
+    bad_docs = [
+        {"brewsignal_version": "2.0", "recipe": {"name": "x", "ingredients": {"hop_additions": ["Citra"]}}},
+        {"brewsignal_version": "2.0", "recipe": {"name": "x", "ingredients": {"culture_additions": ["US-05"]}}},
+        {"brewsignal_version": "2.0", "recipe": {"name": "x"}, "brewsignal": "none"},
+    ]
+    for doc in bad_docs:
+        out = await preview_recipe_change(test_db, document=doc)
+        assert "error" in out or out.get("valid"), out  # never an exception
+    assert await test_db.scalar(select(func.count(Recipe.id))) == 0  # session still works, nothing stored
+
+
+@pytest.mark.asyncio
+async def test_diff_shows_whirlpool_temperature_notes_and_boil_time(test_db):
+    from backend.services.llm.tools.recipe_v2 import preview_recipe_change
+
+    rid = (await _save(test_db))["recipe_id"]
+    out = await preview_recipe_change(test_db, recipe_id=rid, operations=[
+        {"op": "replace", "path": "/recipe/ingredients/hop_additions/1/brewsignal/temperature/value", "value": 75},
+        {"op": "add", "path": "/recipe/notes", "value": "Pitch cool."},
+    ])
+    text = "\n".join(out["changes"])
+    assert "whirlpool 75 C" in text and "whirlpool 79 C" in text, text
+    assert "Pitch cool." in text, text
+
+
+@pytest.mark.asyncio
+async def test_null_value_is_refused(test_db):
+    rid = (await _save(test_db))["recipe_id"]
+    out = await update_recipe_document(test_db, rid, [{"op": "replace", "path": "/recipe/name", "value": None}])
+    assert "error" in out
+
+
+def test_color_units_are_converted_to_srm():
+    from backend.services.serializers.recipe_serializer import RecipeSerializer
+
+    c = RecipeSerializer()._extract_color
+    assert c({"value": 20, "unit": "EBC"}) == pytest.approx(10.15, abs=0.01)
+    assert c({"value": 40, "unit": "Lovi"}) == pytest.approx(53.42, abs=0.01)
+    assert c({"value": 7, "unit": "SRM"}) == 7
+    assert c({"value": True, "unit": "SRM"}) is None

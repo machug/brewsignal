@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Assistant recipe saves lost data** (tilt_ui-eevz.1) - A yeast written as text was silently dropped; every edit wiped other ingredients (finings, salts), water, the fermentation schedule and mash steps; whirlpool hops were saved as boil hops; and reopening a recipe with a yeast crashed. All fixed by the v2 path above.
 - **v2 export could not be re-imported** (tilt_ui-eevz.1) - The export's timestamp was longer than the importer accepts.
+- **Imported colors in EBC or Lovibond were stored as SRM** (tilt_ui-eevz.1) - A grain or beer color given in EBC (what European breweries publish) was taken as SRM, about twice as dark. Imports now convert EBC and Lovibond to SRM.
 - **v2 export left out yeast stored only in the yeast fields** (tilt_ui-eevz.1) - Older and BeerXML recipes keep the yeast there; it is now exported (and visible to the assistant).
 
 ### Added

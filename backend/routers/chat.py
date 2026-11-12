@@ -157,9 +157,12 @@ HOP_INSTRUCTIONS = (
 
 V2_GUIDE = """BrewSignal Recipe Format v2 = {"brewsignal_version": "2.0", "recipe": {...BeerJSON 1.0 recipe...}, "brewsignal": {...optional extras...}}.
 Units travel with every number: {"value": 4.5, "unit": "kg"}.
+Shorthand below: "batch_size {l}" means "batch_size": {"value": 20, "unit": "l"}. Use exactly these unit strings:
+kg, g, l, ml, min, day, C, %, sg, IBUs, SRM, Lovi, EBC, vols.
 recipe: name, type ("all grain" | "extract" | "partial mash"), batch_size {l}, efficiency.brewhouse {%},
-  style {name: BJCP style name}, original_gravity/final_gravity {sg} (the SOURCE beer's declared numbers, kept as targets),
-  alcohol_by_volume {%}, ibu_estimate {IBUs}, color_estimate {SRM}, boil.boil_time {min}, carbonation {vols}.
+  style {name: BJCP style name}, original_gravity/final_gravity {sg}, alcohol_by_volume {%}, ibu_estimate {IBUs},
+  color_estimate {SRM} - these five are the SOURCE beer's declared numbers (the recipe's targets), not your
+  calculation - boil.boil_time {min}, carbonation {vols}, notes (text).
 recipe.ingredients:
   fermentable_additions[]: name, type (grain|sugar|extract|dry extract|adjunct), producer, color {Lovi|SRM|EBC},
     yield.potential {sg}, amount {kg|g}.
@@ -171,9 +174,11 @@ recipe.ingredients:
     dry hop = timing {"use": "add_to_fermentation", "duration": {day}}, brewsignal {"hop_use": "dry_hop"};
     brewsignal may also hold purpose (bittering|aroma|...), dry_hop_stage, day_offset. A hop's brewsignal
     object moves with the hop. Extracts: "is_extract": true, "amount_ml": n, amount {ml}.
-  culture_additions[]: name, producer, product_id, type (ale|lager|...), form (dry|liquid), attenuation {%},
-    temperature_range {minimum {C}, maximum {C}}, amount. A yeast is ALWAYS an object here, never a plain string.
-  miscellaneous_additions[]: name, type (fining|water agent|spice|flavor|other|...), amount, timing.
+  culture_additions[]: name, producer, product_id, type (ale|lager|...), form (dry|liquid),
+    attenuation_range {minimum {%}, maximum {%}}, temperature_range {minimum {C}, maximum {C}}, amount.
+    A yeast is ALWAYS an object here, never a plain string.
+  miscellaneous_additions[]: name, type (fining|water agent|spice|flavor|other|...), amount {g|kg|ml|l|each},
+    timing {"use": "add_to_boil"|"add_to_mash"|"add_to_fermentation", "duration": {min|day}}.
 recipe.mash.mash_steps[]: name, type (infusion|temperature|decoction), step_temperature {C}, step_time {min}.
 recipe.fermentation.fermentation_steps[]: name, start_temperature {C}, step_time {day}.
 brewsignal: water (profiles, adjustments), process, yeast_management, batch_defaults — keep what get_recipe returns.
@@ -183,7 +188,7 @@ OG/FG/ABV/IBU/SRM are calculated from the ingredients on save; you do not need t
 class PatchOp(BaseModel):
     op: Literal["add", "remove", "replace"]
     path: str = Field(description='JSON Pointer into the v2 document, e.g. "/recipe/ingredients/hop_additions/1/amount/value"; "-" appends to a list')
-    value: Any = Field(default=None, description="New value for add/replace; omit for remove")
+    value: Any = Field(default=None, description="New value for add/replace (never null); omit for remove")
 
 
 @agent.tool(sequential=True)

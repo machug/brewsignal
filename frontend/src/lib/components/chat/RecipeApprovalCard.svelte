@@ -23,8 +23,11 @@
 	let preview = $state<any>(null);
 	let previewState = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
 	let previewKey = '';
+	let seq = 0;
 
 	async function loadPreview() {
+		const mine = ++seq; // a slower earlier request must not overwrite a newer one
+		preview = null; // never show an old preview's Approve button for new input
 		previewState = 'loading';
 		const input = part.input ?? {};
 		const body = isEdit ? { recipe_id: input.recipe_id, operations: input.operations } : { document: input.document };
@@ -35,10 +38,12 @@
 				body: JSON.stringify(body)
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			preview = await res.json();
+			const data = await res.json();
+			if (mine !== seq) return;
+			preview = data;
 			previewState = 'ready';
 		} catch {
-			previewState = 'error';
+			if (mine === seq) previewState = 'error';
 		}
 	}
 
@@ -61,6 +66,10 @@
 
 	// Once applied, show the tool's real result; before that, the dry run.
 	const shown = $derived(outcome.phase === 'applied' ? outcome.plan : preview);
+	// The saved result has no diff; keep showing what was approved.
+	const before = $derived(shown?.before ?? preview?.before);
+	const changes = $derived(shown?.changes ?? preview?.changes);
+	const sections = $derived(shown?.sections ?? preview?.sections);
 	const name = $derived(shown?.name ?? part.input?.document?.recipe?.name ?? '');
 	const titles = $derived({
 		proposed: isEdit ? 'Proposed recipe change' : 'Proposed new recipe',
@@ -75,10 +84,10 @@
 	);
 </script>
 
-<section class="card" class:applied={outcome.phase === 'applied'} aria-label={titles[outcome.phase]} aria-live="polite">
+<section class="card" class:applied={outcome.phase === 'applied'} aria-label={titles[outcome.phase]}>
 	<header>
 		<h3>{titles[outcome.phase]}{name ? `: ${name}` : ''}</h3>
-		<span class="badge {outcome.phase}">{badge}</span>
+		<span class="badge {outcome.phase}" role="status" aria-live="polite">{badge}</span>
 	</header>
 
 	{#if part.input?.summary && outcome.phase !== 'applied'}
@@ -95,28 +104,30 @@
 		<p class="alert" role="alert">{shown.error}{shown.details ? `: ${shown.details.join('; ')}` : ''}</p>
 		<div class="actions"><button type="button" onclick={() => onCancel(approvalId)}>Cancel</button></div>
 	{:else if shown}
-		<table class="stats">
-			<thead>
-				<tr><th scope="col"></th>{#each STATS as [, label]}<th scope="col">{label}</th>{/each}</tr>
-			</thead>
-			<tbody>
-				{#if isEdit && shown.before}
-					<tr><th scope="row">Before</th>{#each STATS as [k, , f]}<td>{fmt(f, shown.before.calculated?.[k])}</td>{/each}</tr>
-				{/if}
-				<tr><th scope="row">{isEdit && shown.before ? 'After' : 'Calculated'}</th>{#each STATS as [k, , f]}<td>{fmt(f, shown.calculated?.[k])}</td>{/each}</tr>
-				{#if STATS.some(([k]) => typeof shown.targets?.[k] === 'number')}
-					<tr class="target"><th scope="row">Target</th>{#each STATS as [k, , f]}<td>{fmt(f, shown.targets?.[k])}</td>{/each}</tr>
-				{/if}
-			</tbody>
-		</table>
+		<div class="table-wrap">
+			<table class="stats">
+				<thead>
+					<tr><td></td>{#each STATS as [, label]}<th scope="col">{label}</th>{/each}</tr>
+				</thead>
+				<tbody>
+					{#if isEdit && before}
+						<tr><th scope="row">Before</th>{#each STATS as [k, , f]}<td>{fmt(f, before.calculated?.[k])}</td>{/each}</tr>
+					{/if}
+					<tr><th scope="row">{isEdit && before ? 'After' : 'Calculated'}</th>{#each STATS as [k, , f]}<td>{fmt(f, shown.calculated?.[k])}</td>{/each}</tr>
+					{#if STATS.some(([k]) => typeof shown.targets?.[k] === 'number')}
+						<tr class="target"><th scope="row">Target</th>{#each STATS as [k, , f]}<td>{fmt(f, shown.targets?.[k])}</td>{/each}</tr>
+					{/if}
+				</tbody>
+			</table>
+		</div>
 
-		{#if isEdit && shown.changes?.length}
+		{#if isEdit && changes?.length}
 			<ul class="changes">
-				{#each shown.changes as line, i (i)}<li>{line}</li>{/each}
+				{#each changes as line, i (i)}<li>{line}</li>{/each}
 			</ul>
-		{:else if !isEdit && shown.sections}
+		{:else if !isEdit && sections}
 			<dl class="sections">
-				{#each Object.entries(shown.sections) as [section, items] (section)}
+				{#each Object.entries(sections) as [section, items] (section)}
 					{#if (items as string[]).length}
 						<dt>{section}</dt>
 						{#each items as string[] as item, i (i)}<dd>{item}</dd>{/each}
@@ -187,7 +198,8 @@
 		background: var(--error-bg);
 		border: 1px solid color-mix(in oklch, var(--status-danger) 45%, transparent);
 	}
-	.stats { width: 100%; margin: var(--space-xs) 0 var(--space-sm); border-collapse: collapse; font-size: var(--text-sm); }
+	.table-wrap { overflow-x: auto; margin: var(--space-xs) 0 var(--space-sm); }
+	.stats { width: 100%; min-width: 22rem; border-collapse: collapse; font-size: var(--text-sm); }
 	.stats th, .stats td { padding: 4px 6px; border-bottom: 1px solid var(--rule-hairline); text-align: right; }
 	.stats th[scope='row'] { text-align: left; font-weight: 500; color: var(--ink-secondary); }
 	.stats thead th { font-family: var(--font-display); font-weight: 600; color: var(--ink-secondary); }
@@ -195,7 +207,7 @@
 	.stats tr.target td { color: var(--ink-secondary); }
 	.changes, .warnings { margin: var(--space-xs) 0; padding-left: 1.2em; font-size: var(--text-sm); }
 	.changes li { color: var(--ink-primary); margin: 2px 0; }
-	.warnings li { color: var(--accent); margin: 2px 0; }
+	.warnings li { color: var(--status-warn); margin: 2px 0; }
 	.sections { margin: var(--space-xs) 0; font-size: var(--text-sm); }
 	.sections dt { margin-top: var(--space-xs); font-family: var(--font-display); font-weight: 600; color: var(--ink-secondary); }
 	.sections dd { margin: 0 0 0 var(--space-sm); color: var(--ink-primary); }

@@ -152,11 +152,16 @@ class FermentationCurveFitter:
         if sg_drop < 0.005:
             return self._failure_result("insufficient_fermentation_progress")
 
-        # Calculate FG lower bound
+        # FG lower bound. Real batches often finish well below recipe FG, so a
+        # tight bound (recipe FG - 0.003) put the last reading - the initial FG
+        # guess - outside the bounds and the fit failed near the end of every
+        # such batch (tilt_ui-fod1). Dry beers can finish below 1.000.
         if expected_fg is not None:
-            fg_lower = max(1.000, expected_fg - 0.003)
+            fg_lower = max(0.990, expected_fg - 0.015)
         else:
-            fg_lower = 1.000
+            fg_lower = 0.990
+        # scipy rejects an initial guess outside the bounds; keep it inside.
+        fg_guess = float(np.clip(fg_guess, fg_lower + 1e-4, 1.100 - 1e-4))
 
         # Normalize model string
         model = model.lower() if model else "auto"

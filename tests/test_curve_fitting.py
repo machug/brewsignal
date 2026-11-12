@@ -302,7 +302,7 @@ class TestMultiModelPredictions:
 
             if result["fitted"]:
                 # Predicted FG should respect the constraint (with margin)
-                assert result["predicted_fg"] >= expected_fg - 0.003
+                assert result["predicted_fg"] >= expected_fg - 0.015
 
 
 class TestBlendedPredictions:
@@ -418,3 +418,19 @@ class TestBlendedPredictions:
         assert result["hours_to_target_linear"] is not None
         # Linear ETA should be positive (still fermenting)
         assert result["hours_to_target_linear"] > 0
+
+
+class TestFinishesBelowRecipeFG:
+    """tilt_ui-fod1: 6/7 real batches finished below recipe FG - 0.003 and lost predictions."""
+
+    def test_prediction_available_when_beer_finishes_below_recipe_fg(self):
+        import numpy as np
+
+        hours = np.arange(0, 240, 1.0)
+        sgs = 1.004 + (1.050 - 1.004) * np.exp(-0.03 * hours)  # real FG 1.004, recipe says 1.011
+        for model in ("exponential", "gompertz", "logistic", "auto"):
+            result = FermentationCurveFitter(min_readings=10).fit(
+                hours.tolist(), sgs.tolist(), expected_fg=1.011, model=model
+            )
+            assert result["fitted"], (model, result)
+            assert abs(result["predicted_fg"] - 1.004) < 0.002, (model, result["predicted_fg"])

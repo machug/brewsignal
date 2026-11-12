@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activitySummary, applyOutcome, plainToolError, buildChatRequest, formatGrams, newChatId, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
+import { activitySummary, applyOutcome, liveStatus, plainToolError, buildChatRequest, formatGrams, newChatId, segmentParts, summarizeInput, toolLabel, type ToolPart } from './logic';
 
 describe('buildChatRequest', () => {
 	it('sends only id, newest message, trigger and context', () => {
@@ -127,5 +127,17 @@ describe('plainToolError', () => {
 	it('keeps other errors and has a fallback', () => {
 		expect(plainToolError('Recipe 9 not found')).toBe('Recipe 9 not found');
 		expect(plainToolError(undefined)).toBe('The update could not be applied.');
+	});
+});
+
+describe('liveStatus', () => {
+	const card = { type: 'tool-update_recipe', toolCallId: 'u', state: 'output-available', output: { applied: true } };
+	it('names the step running after a save card', () => {
+		const review = { type: 'tool-review_recipe', toolCallId: 'r', state: 'input-available', input: {} };
+		expect(liveStatus([card, { type: 'step-start' }, review] as any)).toBe('Reviewing recipe…');
+	});
+	it('says Thinking while waiting for the model, nothing while text streams', () => {
+		expect(liveStatus([card, { type: 'step-start' }] as any)).toBe('Thinking…');
+		expect(liveStatus([card, { type: 'text', text: 'The fixes', state: 'streaming' }] as any)).toBeNull();
 	});
 });

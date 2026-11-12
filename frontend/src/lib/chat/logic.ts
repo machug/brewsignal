@@ -63,7 +63,11 @@ const LABELS: Record<string, [string, string]> = {
 	list_batches: ['Listing batches', 'Listed batches'],
 	get_equipment: ['Loading equipment', 'Loaded equipment'],
 	list_yeast_inventory: ['Checking yeast stock', 'Checked yeast stock'],
-	list_fermentables_inventory: ['Checking grain stock', 'Checked grain stock']
+	list_fermentables_inventory: ['Checking grain stock', 'Checked grain stock'],
+	review_recipe: ['Reviewing recipe', 'Reviewed recipe'],
+	web_search: ['Searching the web', 'Searched the web'],
+	fetch_url: ['Reading page', 'Read page'],
+	youtube_transcript: ['Reading video captions', 'Read video captions']
 };
 
 const humanize = (n: string) => {
@@ -104,6 +108,18 @@ export function segmentParts(parts: AnyPart[]): Segment[] {
 		}
 	}
 	return activity.length ? [{ kind: 'activity', parts: activity }, ...rest] : rest;
+}
+
+/**
+ * Bottom-of-turn status while a reply streams. The activity group sits at the top of the
+ * turn, so after a long card a running step was off screen (tilt_ui-629t). Null while text
+ * is visibly streaming.
+ */
+export function liveStatus(parts: AnyPart[]): string | null {
+	const last = parts.findLast((p) => p.type !== 'step-start');
+	if (last?.type === 'text' && last.state === 'streaming') return null;
+	const live = (parts.filter(isToolPart) as unknown as ToolPart[]).findLast(isRunning);
+	return live ? `${toolLabel(toolName(live), live.state)}…` : 'Thinking…';
 }
 
 /** Collapsed-row summary, e.g. "Checked hop stock, Loaded recipe". */

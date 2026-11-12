@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SecretKeyField from '$lib/components/SecretKeyField.svelte';
 	import { onMount, tick } from 'svelte';
 	import { configState, updateConfig, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 	import { config, onConfigLoaded, configStores } from '$lib/config';
@@ -135,7 +136,9 @@
 	let aiLiteEnabled = $state(false); // Use Hailo for lightweight tasks (summaries)
 	let aiProvider = $state('local');
 	let aiModel = $state('');
-	let aiApiKey = $state('');
+	// null = keep the saved key; see SecretKeyField (tilt_ui-eevz.3)
+	let aiApiKey = $state<string | null>(null);
+	let tavilyApiKey = $state<string | null>(null);
 	let aiBaseUrl = $state('');
 	let aiTemperature = $state(0.7);
 	let aiMaxTokens = $state(2000);
@@ -401,7 +404,8 @@
 		aiMemoryAutoExtract = configState.config.ai_memory_auto_extract ?? true;
 		aiProvider = configState.config.ai_provider ?? 'local';
 		aiModel = configState.config.ai_model ?? '';
-		aiApiKey = configState.config.ai_api_key ?? '';
+		aiApiKey = null;
+		tavilyApiKey = null;
 		aiBaseUrl = configState.config.ai_base_url ?? '';
 		aiTemperature = configState.config.ai_temperature ?? 0.7;
 		aiMaxTokens = configState.config.ai_max_tokens ?? 2000;
@@ -482,12 +486,15 @@
 				ai_memory_auto_extract: aiMemoryAutoExtract,
 				ai_provider: aiProvider,
 				ai_model: aiModel,
-				ai_api_key: aiApiKey,
+				...(aiApiKey !== null ? { ai_api_key: aiApiKey } : {}),
+				...(tavilyApiKey !== null ? { tavily_api_key: tavilyApiKey } : {}),
 				ai_base_url: aiBaseUrl,
 				ai_temperature: aiTemperature,
 				ai_max_tokens: aiMaxTokens
 			});
 			aiSuccess = true;
+			aiApiKey = null;
+			tavilyApiKey = null;
 			setTimeout(() => (aiSuccess = false), 3000);
 		} catch (e) {
 			aiError = e instanceof Error ? e.message : 'Failed to save AI settings';
@@ -506,7 +513,7 @@
 				ai_enabled: aiEnabled,
 				ai_provider: aiProvider,
 				ai_model: aiModel,
-				ai_api_key: aiApiKey,
+				...(aiApiKey !== null ? { ai_api_key: aiApiKey } : {}),
 				ai_base_url: aiBaseUrl,
 				ai_temperature: aiTemperature,
 				ai_max_tokens: aiMaxTokens
@@ -1620,14 +1627,24 @@
 									<input id="ai-url" type="text" bind:value={aiBaseUrl} placeholder="http://localhost:11434" />
 								</div>
 							{:else if aiProviders.find(p => p.id === aiProvider)?.requires_api_key}
-								<div class="form-field full">
-									<label for="ai-key">API Key</label>
-									<input id="ai-key" type="password" bind:value={aiApiKey} placeholder={aiHasEnvKey ? '(using environment variable)' : 'sk-...'} />
-									{#if aiHasEnvKey && !aiApiKey}
-										<span class="field-hint success">API key detected from environment</span>
-									{/if}
-								</div>
+								<SecretKeyField
+									id="ai-key"
+									label="API Key"
+									saved={configState.config.ai_api_key ?? ''}
+									bind:value={aiApiKey}
+									placeholder={aiHasEnvKey ? '(using environment variable)' : 'sk-...'}
+									hint={aiHasEnvKey && !configState.config.ai_api_key ? 'API key detected from environment' : ''}
+								/>
 							{/if}
+
+							<SecretKeyField
+								id="tavily-key"
+								label="Web search API key (Tavily)"
+								saved={configState.config.tavily_api_key ?? ''}
+								bind:value={tavilyApiKey}
+								placeholder="tvly-..."
+								hint="Lets the assistant search the web to research beers to clone. Get a free key at tavily.com."
+							/>
 
 							<details class="advanced-settings">
 								<summary>Advanced Settings</summary>
@@ -2584,9 +2601,6 @@
 	.field-hint {
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
-	}
-	.field-hint.success {
-		color: var(--status-steady);
 	}
 
 	/* Subsections */

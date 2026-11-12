@@ -40,6 +40,7 @@ export interface AppConfig {
 	ai_provider: string;
 	ai_model: string;
 	ai_api_key: string;
+	tavily_api_key: string;
 	ai_base_url: string;
 	ai_temperature: number;
 	ai_max_tokens: number;
@@ -95,6 +96,7 @@ const DEFAULT_CONFIG: AppConfig = {
 	ai_provider: 'local',
 	ai_model: '',
 	ai_api_key: '',
+	tavily_api_key: '',
 	ai_base_url: '',
 	ai_temperature: 0.7,
 	ai_max_tokens: 2000,

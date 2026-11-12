@@ -1382,7 +1382,8 @@ class ConfigUpdate(BaseModel):
     ai_enabled: Optional[bool] = None
     ai_provider: Optional[str] = None  # local, openai, anthropic, google, groq, deepseek
     ai_model: Optional[str] = None  # Model name (e.g., gpt-4o, claude-3-5-sonnet)
-    ai_api_key: Optional[str] = None  # API key (encrypted at rest)
+    ai_api_key: Optional[str] = None  # API key (masked in GET /api/config)
+    tavily_api_key: Optional[str] = None  # web search key (masked in GET /api/config)
     ai_base_url: Optional[str] = None  # For Ollama: http://localhost:11434
     ai_temperature: Optional[float] = None
     ai_max_tokens: Optional[int] = None
@@ -1536,7 +1537,8 @@ class ConfigResponse(BaseModel):
     ai_enabled: bool = False
     ai_provider: str = "local"
     ai_model: str = ""
-    ai_api_key: str = ""  # Masked in responses, stored encrypted
+    ai_api_key: str = ""  # "****" + last 4 in responses
+    tavily_api_key: str = ""  # "****" + last 4 in responses
     ai_base_url: str = ""
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000

@@ -107,6 +107,7 @@ class ChatDeps:
     # approval-gated calls that already ran: tool_call_id -> (tool_name, result)
     executed: dict = field(default_factory=dict)
     web_searches: int = 0  # per chat turn, capped (each costs a Tavily credit)
+    unapproved_fetches: int = 0  # per chat turn; beyond the cap every page open asks
 
 
 def _bridge(name: str, description: str, schema: dict) -> Tool:
@@ -263,6 +264,7 @@ async def update_recipe(ctx: RunContext[ChatDeps], recipe_id: int, operations: l
 
 
 MAX_WEB_SEARCHES_PER_TURN = 5
+MAX_UNAPPROVED_FETCHES_PER_TURN = 5
 
 
 async def _only_with_tavily_key(ctx: RunContext[ChatDeps], tool_def):
@@ -305,8 +307,14 @@ async def fetch_url(ctx: RunContext[ChatDeps], url: str, offset: int = 0) -> dic
 
     # Prompt-injection defence (tilt_ui-eevz.10): opening a link sends data out, so a link the
     # model composed itself (e.g. with data glued on) needs the user's approval.
-    if not ctx.tool_call_approved and not is_known(url, ctx.messages):
-        raise ApprovalRequired()
+    if not isinstance(url, str) or url != url.strip() or any(c.isspace() or ord(c) < 32 for c in url):
+        return {"error": "Not fetched: the address contains spaces or control characters."}
+    if not ctx.tool_call_approved:
+        # ponytail: a search-index oracle (attacker pages indexed per token) can still leak a few
+        # bits per open; the per-turn cap bounds it. Asking for every open would bury real use.
+        if not is_known(url, ctx.messages) or ctx.deps.unapproved_fetches >= MAX_UNAPPROVED_FETCHES_PER_TURN:
+            raise ApprovalRequired()
+        ctx.deps.unapproved_fetches += 1
     return await fetch_page(url, offset)
 
 

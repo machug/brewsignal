@@ -66,3 +66,36 @@ async def test_composed_link_waits_for_approval(client, test_db, chat_env, fake_
     r = await _send(client, "l2", approve)
     assert r.status_code == 200
     assert fake_fetch == []  # denied: still not opened
+
+
+
+@pytest.mark.asyncio
+async def test_padded_or_spaced_addresses_are_refused(client, test_db, chat_env, fake_fetch):  # noqa: F811
+    chat_env["model"] = _model("\u00a0" * 50 + "https://byo.com/recipes/pliny-clone")
+    r = await _send(client, "l3", _user_msg("Clone this one: https://byo.com/recipes/pliny-clone"))
+    assert "tool-approval-request" not in [e["type"] for e in _events(r)]
+    assert fake_fetch == [] and "spaces or control characters" in r.text
+
+
+@pytest.mark.asyncio
+async def test_more_than_five_unapproved_opens_per_turn_ask(client, test_db, chat_env, fake_fetch):  # noqa: F811
+    url = "https://byo.com/recipes/pliny-clone"
+    n = {"calls": 0}
+
+    def fn(messages, info):
+        if n["calls"] < 7:
+            n["calls"] += 1
+            return ModelResponse(parts=[ToolCallPart("fetch_url", {"url": url}, tool_call_id=f"c{n['calls']}")])
+        return ModelResponse(parts=[TextPart("done")])
+
+    async def stream(messages, info):
+        if n["calls"] < 7:
+            n["calls"] += 1
+            yield {0: DeltaToolCall(name="fetch_url", json_args=json.dumps({"url": url}), tool_call_id=f"c{n['calls']}")}
+        else:
+            yield "done"
+
+    chat_env["model"] = FunctionModel(fn, stream_function=stream)
+    r = await _send(client, "l4", _user_msg(f"Read {url}"))
+    assert len(fake_fetch) == 5
+    assert "tool-approval-request" in [e["type"] for e in _events(r)]

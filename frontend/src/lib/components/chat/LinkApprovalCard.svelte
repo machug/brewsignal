@@ -12,7 +12,7 @@
 	}
 	let { part, error = '', onApprove, onCancel }: Props = $props();
 
-	const url = $derived(String(part.input?.url ?? ''));
+	const url = $derived(String(part.input?.url ?? '').trim()); // never let padding hide the address
 	// The address exactly as written up to the first / ? #, not the browser's URL parser:
 	// parsers disagree on tricks like "byo.com\\@attacker.example" (Gemini).
 	const host = $derived(url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0]);

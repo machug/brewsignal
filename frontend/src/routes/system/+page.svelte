@@ -136,6 +136,7 @@
 	let aiProvider = $state('local');
 	let aiModel = $state('');
 	let aiApiKey = $state('');
+	let tavilyApiKey = $state('');
 	let aiBaseUrl = $state('');
 	let aiTemperature = $state(0.7);
 	let aiMaxTokens = $state(2000);
@@ -402,6 +403,7 @@
 		aiProvider = configState.config.ai_provider ?? 'local';
 		aiModel = configState.config.ai_model ?? '';
 		aiApiKey = configState.config.ai_api_key ?? '';
+		tavilyApiKey = configState.config.tavily_api_key ?? '';
 		aiBaseUrl = configState.config.ai_base_url ?? '';
 		aiTemperature = configState.config.ai_temperature ?? 0.7;
 		aiMaxTokens = configState.config.ai_max_tokens ?? 2000;
@@ -483,6 +485,7 @@
 				ai_provider: aiProvider,
 				ai_model: aiModel,
 				ai_api_key: aiApiKey,
+				tavily_api_key: tavilyApiKey,
 				ai_base_url: aiBaseUrl,
 				ai_temperature: aiTemperature,
 				ai_max_tokens: aiMaxTokens
@@ -1628,6 +1631,12 @@
 									{/if}
 								</div>
 							{/if}
+
+							<div class="form-field full">
+								<label for="tavily-key">Web search API key (Tavily)</label>
+								<input id="tavily-key" type="password" autocomplete="off" bind:value={tavilyApiKey} placeholder="tvly-..." />
+								<span class="field-hint">Lets the assistant search the web to research beers to clone. Get a free key at tavily.com.</span>
+							</div>
 
 							<details class="advanced-settings">
 								<summary>Advanced Settings</summary>

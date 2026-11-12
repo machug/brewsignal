@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Assistant web search** (tilt_ui-eevz.3) - The assistant can search the web (Tavily) to research a beer to clone: brewery pages, interviews, reviews and published clone recipes. Add a Tavily API key on the System page (AI section); a basic search costs one Tavily credit. Results are treated as information, never as instructions.
+
+### Security
+- **API keys are no longer sent back in full** (tilt_ui-eevz.3) - `GET /api/config` returned the AI provider key in plain text to anything on the network. Keys now come back as `****` plus the last 4 characters, and saving the settings page without retyping a key keeps the stored one.
+
 ### Changed
 - **Assistant recipes use the BrewSignal v2 format** (tilt_ui-eevz.1) - The assistant now reads recipes as the same v2 document the app exports and saves new ones through the v2 importer, so an assistant save matches importing that file. Edits are sent as a small list of changes (JSON Patch) applied to the server's own copy, so anything the assistant does not mention is kept. Before you are asked, the change is checked; the approval card then shows the changes in plain words and the calculated OG/FG/ABV/IBU/SRM before and after, next to the recipe's targets. A new preview tool lets the assistant adjust a clone until its numbers match the source beer.
 

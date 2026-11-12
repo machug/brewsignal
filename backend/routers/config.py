@@ -57,6 +57,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ai_provider": "local",
     "ai_model": "",
     "ai_api_key": "",
+    "tavily_api_key": "",  # web search for the assistant (tilt_ui-eevz.3)
     "ai_base_url": "",
     "ai_temperature": 0.7,
     "ai_max_tokens": 2000,
@@ -107,7 +108,20 @@ async def get_config(db: AsyncSession = Depends(get_db)):
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON for config key %s", config.key)
 
+    for key in SECRET_KEYS:
+        config_dict[key] = mask_secret(config_dict.get(key))
     return ConfigResponse(**config_dict)
+
+
+# API keys are never sent back in full: GET returns "****" + last 4 characters,
+# and a PATCH that echoes that placeholder leaves the stored key alone.
+SECRET_KEYS = ("ai_api_key", "tavily_api_key")
+
+
+def mask_secret(value) -> str:
+    if not value or not isinstance(value, str):
+        return ""
+    return "****" + value[-4:]
 
 
 @router.patch("", response_model=ConfigResponse)
@@ -125,6 +139,8 @@ async def update_config(
 
     # Update each provided field
     for key, value in update_data.items():
+        if key in SECRET_KEYS and isinstance(value, str) and value.startswith("****"):
+            continue  # the masked placeholder came back unchanged
         await set_config_value(db, key, value)
 
     await db.commit()

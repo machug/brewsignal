@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recipeUrl } from '$lib/urls';
 	import { goto } from '$app/navigation';
 	import type { RecipeCreate } from '$lib/api';
 	import { createRecipe } from '$lib/api';
@@ -83,7 +84,7 @@
 			};
 
 			const recipe = await createRecipe(recipeCreate);
-			goto(`/recipes/${recipe.id}`);
+			goto(recipeUrl(recipe));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to create recipe';
 			submitting = false;

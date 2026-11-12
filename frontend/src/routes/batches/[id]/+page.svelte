@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { batchUrl, recipeUrl } from '$lib/urls';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
 	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent } from '$lib/api';
 	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchReflections, fetchTastingNotes } from '$lib/api';
 	import { configState } from '$lib/stores/config.svelte';
@@ -113,6 +114,14 @@
 			}
 		}
 		return null;
+	});
+
+	// Show the readable URL (/batches/16-american-pale-ale) without a reload,
+	// also after a rename; the leading id is what the page reads (tilt_ui-9hg).
+	$effect(() => {
+		if (!batch) return;
+		const path = batchUrl(batch);
+		if ($page.url.pathname !== path) replaceState(path + $page.url.search + $page.url.hash, $page.state);
 	});
 
 	async function loadBatch() {
@@ -474,7 +483,7 @@
 					</span>{#if batch.recipe?.style?.name}<span class="style-part"><span class="sep" aria-hidden="true">&middot;</span> <span class="style-name">{batch.recipe.style.name}</span></span>{/if}</div>
 					<h1 class="batch-name">{batch.name || batch.recipe?.name || 'Unnamed Batch'}</h1>
 					{#if batch.recipe}
-						<a href="/recipes/{batch.recipe.id}" class="recipe-link">
+						<a href={recipeUrl(batch.recipe)} class="recipe-link">
 							{batch.recipe.name}
 							{#if batch.recipe.type}
 								<span class="recipe-type">({batch.recipe.type})</span>

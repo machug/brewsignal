@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { BatchResponse, BatchProgressResponse } from '$lib/api';
@@ -117,8 +118,8 @@
 		}
 	}
 
-	function handleViewDetails(batchId: number) {
-		goto(`/batches/${batchId}`);
+	function handleViewDetails(batch: BatchResponse) {
+		goto(batchUrl(batch));
 	}
 
 	async function handleDelete(batchId: number, batchName: string) {
@@ -265,7 +266,7 @@
 							{batch}
 							progress={liveProgressMap.get(batch.id)}
 							liveReading={batch.device_id ? tiltsState.tilts.get(batch.device_id) : null}
-							onViewDetails={() => handleViewDetails(batch.id)}
+							onViewDetails={() => handleViewDetails(batch)}
 						/>
 						{#if batch.deleted_at}
 							<div class="deleted-row">

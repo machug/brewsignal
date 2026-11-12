@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recipeUrl } from '$lib/urls';
 	import { goto } from '$app/navigation';
 	import { importRecipe } from '$lib/api';
 
@@ -30,7 +31,7 @@
 			const recipes = await importRecipe(file);
 			// Redirect to first imported recipe or back to list
 			if (recipes.length === 1) {
-				goto(`/recipes/${recipes[0].id}`);
+				goto(recipeUrl(recipes[0]));
 			} else {
 				goto('/recipes');
 			}

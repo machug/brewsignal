@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recipeUrl } from '$lib/urls';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { RecipeResponse } from '$lib/api';
@@ -30,11 +31,11 @@
 		}
 	});
 
-	function handleRecipeClick(e: MouseEvent, recipeId: number) {
+	function handleRecipeClick(e: MouseEvent, recipe: { id: number; name?: string | null }) {
 		// Let modified clicks (new tab/window) fall through to the anchor.
 		if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
 		e.preventDefault();
-		goto(`/recipes/${recipeId}`);
+		goto(recipeUrl(recipe));
 	}
 </script>
 
@@ -111,8 +112,8 @@
 				<a
 					class="row item"
 					role="row"
-					href="/recipes/{recipe.id}"
-					onclick={(e) => handleRecipeClick(e, recipe.id)}
+					href={recipeUrl(recipe)}
+					onclick={(e) => handleRecipeClick(e, recipe)}
 					aria-label="View {recipe.name} details"
 				>
 					<span class="c-name" role="cell">

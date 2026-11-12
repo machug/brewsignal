@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Readable batch and recipe addresses** (tilt_ui-9hg) - Batches and recipes now open at addresses like `/batches/16-american-pale-ale` and `/recipes/25-west-coast-ipa`. The number at the front is what counts, so old links such as `/batches/16` still work, open the right page and switch to the readable form. Renaming a batch or recipe never breaks a link.
+
 ### Removed
 - **Unused MPC temperature controller** (tilt_ui-29im) - `backend/ml/control/mpc.py` was never switched on and, in simulation, held the beer in band less often and switched far more than the hysteresis controller. The code, its config and its tests are gone. Temperature control is unchanged.
 

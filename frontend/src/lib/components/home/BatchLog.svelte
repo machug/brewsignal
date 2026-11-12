@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { batchUrl } from '$lib/urls';
 	import type { BatchResponse } from '$lib/api';
 
 	interface Props {
@@ -48,7 +49,7 @@
 		<ul class="ledger">
 			{#each rows as b (b.id)}
 				<li>
-					<a class="row" href="/batches/{b.id}">
+					<a class="row" href={batchUrl(b)}>
 						<span class="n num">#{b.batch_number ?? b.id}</span>
 						<span class="name">{b.name || b.recipe?.name || `Batch #${b.batch_number}`}</span>
 						<span class="badge" class:planning={b.status === 'planning'}>{b.status}</span>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recipeUrl } from '$lib/urls';
 	import type { BatchResponse } from '$lib/api';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 
@@ -45,7 +46,7 @@
 				{#if batch.recipe.style?.name}
 					<p class="recipe-style">{batch.recipe.style.name}</p>
 				{/if}
-				<a href="/recipes/{batch.recipe.id}" class="view-recipe-link">
+				<a href={recipeUrl(batch.recipe)} class="view-recipe-link">
 					View Full Recipe &rarr;
 				</a>
 			</div>

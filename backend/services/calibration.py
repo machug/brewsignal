@@ -13,6 +13,8 @@ Calibration types:
 The calibration_points table is legacy and is no longer read or written.
 """
 
+import logging
+import math
 from typing import Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import select
@@ -22,6 +24,8 @@ from ..models import Device
 
 if TYPE_CHECKING:
     from ..ingest.base import HydrometerReading
+
+logger = logging.getLogger(__name__)
 
 
 def linear_interpolate(x: float, points: list[tuple[float, float]]) -> float:
@@ -42,11 +46,16 @@ def linear_interpolate(x: float, points: list[tuple[float, float]]) -> float:
         - 2+ points: find the two closest points bracketing x (or the two
           closest on one side for extrapolation) and interpolate linearly
     """
+    # Points that share a raw value are one point (their mean). Two points at the
+    # same raw value give no slope: without this, every reading beyond them came
+    # back as one constant gravity.
+    by_raw: dict[float, list[float]] = {}
+    for raw, actual in points:
+        by_raw.setdefault(raw, []).append(actual)
+    points = sorted((raw, sum(vals) / len(vals)) for raw, vals in by_raw.items())
+
     if len(points) < 2:
         return x
-
-    # Sort points by raw value
-    points = sorted(points, key=lambda p: p[0])
 
     # Find bracketing points for interpolation
     # or edge points for extrapolation
@@ -135,6 +144,37 @@ def apply_polynomial(angle: float, coefficients: list[float]) -> float:
     return result
 
 
+_bad_calibration_logged: set[str] = set()
+
+
+def _calibrate_or_raw(device: Device, gravity, temperature, angle=None):
+    """calibrate_values for a device, falling back to the raw values if the stored
+    calibration is unusable (corrupt JSON, null numbers, malformed points).
+
+    A reading must never be lost to bad calibration data: a missing reading looks
+    like a dead sensor to the temperature controller, which then switches the
+    heater and cooler off. The problem is logged once per device.
+    """
+    try:
+        cal_sg, cal_temp = calibrate_values(
+            device.calibration_type, device.calibration_data, gravity, temperature, angle,
+        )
+        for raw, cal in ((gravity, cal_sg), (temperature, cal_temp)):
+            # A number in must give a finite number out (null or duplicate points can give None/NaN)
+            if raw is not None and not (isinstance(cal, (int, float)) and math.isfinite(cal)):
+                raise ValueError(f"calibration produced {cal!r}")
+        return cal_sg, cal_temp
+    except Exception as e:
+        if device.id not in _bad_calibration_logged:
+            _bad_calibration_logged.add(device.id)
+            logger.error(
+                "Device %s: stored calibration cannot be applied (%s: %s); using raw values. "
+                "Save the calibration again on the Calibration page.",
+                device.id, type(e).__name__, e,
+            )
+        return gravity, temperature
+
+
 class CalibrationService:
     """Service for calibrating hydrometer readings."""
 
@@ -150,7 +190,7 @@ class CalibrationService:
         device = await db.get(Device, device_id)
         if device is None:
             return raw_sg, raw_temp
-        return calibrate_values(device.calibration_type, device.calibration_data, raw_sg, raw_temp)
+        return _calibrate_or_raw(device, raw_sg, raw_temp)
 
     def convert_units(self, reading: "HydrometerReading") -> "HydrometerReading":
         """Convert raw values to standard units (SG, Celsius).
@@ -198,9 +238,8 @@ class CalibrationService:
         reading: "HydrometerReading",
     ) -> "HydrometerReading":
         """Apply the device's calibration to a reading (already unit-converted)."""
-        reading.gravity, reading.temperature = calibrate_values(
-            device.calibration_type, device.calibration_data,
-            reading.gravity, reading.temperature, reading.angle,
+        reading.gravity, reading.temperature = _calibrate_or_raw(
+            device, reading.gravity, reading.temperature, reading.angle,
         )
         return reading
 

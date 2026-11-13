@@ -48,6 +48,50 @@ async def test_service_reads_the_device_settings(test_db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cal_type,raw_json", [
+    ("linear", '{"points": [[1.0], [1.02, 1.018]]}'),      # malformed point
+    ("linear", '{"points": [[1.0, 1.0], [1.0, null]]}'),   # null number
+    ("offset", '{"sg_offset": null, "temp_offset": 0}'),
+    ("linear", '[]'),                                       # not an object
+    ("linear", '{not json'),                                # corrupt text
+])
+async def test_unusable_calibration_falls_back_to_raw(test_db, cal_type, raw_json):
+    """Bad stored calibration must not lose the reading: the controller would see a dead sensor."""
+    d = Device(id="BLUE", device_type="tilt", name="BLUE", calibration_type=cal_type)
+    d._calibration_data = raw_json
+    test_db.add(d)
+    await test_db.commit()
+    assert await calibration_service.calibrate_reading(test_db, "BLUE", 1.015, 18.0) == (1.015, 18.0)
+
+
+def test_points_with_the_same_raw_value_do_not_pin_gravity():
+    """Two points at one raw value used to return a constant for every reading beyond them."""
+    dup = {"points": [[1.000, 1.000], [1.000, 1.002]]}
+    assert calibrate_values("linear", dup, 1.045, None)[0] == 1.045          # one distinct point: not applied
+    three = {"points": [[1.000, 1.000], [1.000, 1.002], [1.020, 1.021]]}
+    assert calibrate_values("linear", three, 1.040, None)[0] == pytest.approx(1.041)
+    assert calibrate_values("linear", three, 1.010, None)[0] == pytest.approx(1.011)
+
+
+@pytest.mark.asyncio
+async def test_api_rejects_points_with_the_same_raw_value(client, test_db):
+    test_db.add(Device(id="BLUE", device_type="tilt", name="BLUE"))
+    await test_db.commit()
+    r = await client.put("/api/devices/BLUE/calibration", json={
+        "calibration_type": "linear", "calibration_data": {"points": [[1.000, 1.000], [1.000, 1.002]]}})
+    assert r.status_code == 422
+    r = await client.put("/api/devices/BLUE/calibration", json={
+        "calibration_type": "linear", "calibration_data": {"points": [[1.000, 1.000], [1.020, 1.018]]}})
+    assert r.status_code == 200, r.text
+
+
+def test_linear_temperature_points():
+    data = {"points": [], "temp_points": [[10.0, 11.0], [20.0, 20.0]]}
+    sg, temp = calibrate_values("linear", data, 1.015, 15.0)
+    assert sg == 1.015 and temp == pytest.approx(15.5)
+
+
+@pytest.mark.asyncio
 async def test_tilt_broadcast_is_calibrated_end_to_end(test_db, monkeypatch):
     """The BLE Tilt handler: live value and stored reading both carry the calibrated gravity."""
     monkeypatch.setattr(main, "async_session_factory", async_sessionmaker(test_db.bind, expire_on_commit=False))

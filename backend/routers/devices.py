@@ -254,6 +254,8 @@ class CalibrationRequest(BaseModel):
                     # Validate SG ranges (0.990-1.200)
                     if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
                         raise ValueError("SG calibration points must be between 0.990 and 1.200")
+                if len({point[0] for point in points}) != len(points):
+                    raise ValueError("two SG calibration points have the same raw value")
 
             # Validate temp_points if present and not null
             if has_temp_points:

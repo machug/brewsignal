@@ -779,6 +779,18 @@ export interface BatchProgressResponse {
 	};
 }
 
+/** Automatic diacetyl rest rule, as the temperature controller sees it. Celsius. */
+export interface RestRuleStatus {
+	state: 'waiting' | 'holding' | 'started' | 'blocked' | 'inactive';
+	trigger_percent: number;
+	trigger_sg: number | null;
+	rest_temp: number;
+	will_raise: boolean;
+	hold_hours: number;
+	below_since: string | null;
+	fired_at: string | null;
+}
+
 export interface BatchControlStatus {
 	batch_id: number;
 	enabled: boolean;
@@ -792,6 +804,7 @@ export interface BatchControlStatus {
 	target_temp?: number;
 	hysteresis?: number;
 	wort_temp?: number;
+	rest?: RestRuleStatus | null;
 }
 
 /**

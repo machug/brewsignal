@@ -768,6 +768,65 @@ def _rest_unchanged(batch) -> list:
     return conds
 
 
+async def _rest_gravities(db, batch) -> tuple[Optional[float], Optional[float]]:
+    """OG (measured, else recipe) and the recipe's expected FG for the rest rule."""
+    og, fg = batch.measured_og, None
+    if batch.recipe_id is not None:
+        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
+        if row:
+            og, fg = og or row[0], row[1]
+    return og, fg
+
+
+async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optional[dict]:
+    """Read-only view of the rest rule for the batch page (tilt_ui-og8s). None when
+    the rule is off. Uses the same inputs, in the same order, as apply_rest_rule,
+    so the page shows what the controller will act on.
+
+    state: started | inactive (the controller does not run the rule now: control
+    switched off, batch not fermenting or not driven, or cold crashing) | blocked
+    (no OG/FG) | holding (gravity at or below the trigger, hold running) | waiting
+    """
+    if batch.rest_trigger_percent is None or batch.rest_temp_target is None:
+        return None
+    og, fg = await _rest_gravities(db, batch)
+    trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+    driven = bool(batch.device_id and (batch.heater_entity_id or batch.cooler_entity_id))
+    if driven and batch.rest_fired_at is None:
+        # A batch in an equipment conflict is not driven, and the rule is not run for it.
+        from .models import FermentationAlert
+        driven = (await db.execute(
+            select(FermentationAlert.id).where(
+                FermentationAlert.batch_id == batch.id,
+                FermentationAlert.alert_type == AlertType.EQUIPMENT_CONFLICT,
+                FermentationAlert.cleared_at.is_(None),
+            ).limit(1)
+        )).first() is None
+    if batch.rest_fired_at is not None:
+        state = "started"
+    elif not controller_on or not driven or batch.status != "fermenting" or batch.temp_target is None:
+        state = "inactive"
+    elif trigger is None:
+        state = "blocked"
+    elif batch.temp_target < REST_MIN_ACTIVE_TARGET_C:
+        state = "inactive"
+    elif batch.rest_below_since is not None:
+        state = "holding"
+    else:
+        state = "waiting"
+    return {
+        "state": state,
+        "trigger_percent": batch.rest_trigger_percent,
+        "trigger_sg": trigger,
+        "rest_temp": batch.rest_temp_target,
+        # The rule only raises: a target already at or above the rest temperature is left alone
+        "will_raise": batch.temp_target is not None and batch.temp_target < batch.rest_temp_target,
+        "hold_hours": batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT,
+        "below_since": serialize_datetime_to_utc(batch.rest_below_since) if state == "holding" else None,
+        "fired_at": serialize_datetime_to_utc(batch.rest_fired_at),
+    }
+
+
 async def _save_rest_hold(
     db, batch, since: Optional[datetime], confirmed: Optional[datetime], trigger: Optional[float],
 ) -> bool:
@@ -828,11 +887,7 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         if sg is not None and sg < REST_MIN_PLAUSIBLE_SG:
             sg = None  # hydrometer in air, in sanitiser or not calibrated
 
-    og, fg = batch.measured_og, None
-    if batch.recipe_id is not None:
-        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
-        if row:
-            og, fg = og or row[0], row[1]
+    og, fg = await _rest_gravities(db, batch)
     trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
     if trigger is None:
         # Do not fail silently: the brewer expects a rest that will never start.

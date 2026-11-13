@@ -14,6 +14,7 @@ from ..models import Batch, ControlEvent, ControlEventResponse
 from ..temp_controller import (
     get_control_status,
     get_batch_control_status,
+    get_rest_rule_status,
     set_manual_override,
     get_device_temp,
     sync_cached_state,
@@ -41,6 +42,18 @@ class ControlStatusResponse(BaseModel):
     heater_entity: Optional[str]
 
 
+class RestRuleStatus(BaseModel):
+    """Automatic diacetyl rest rule, as the controller sees it. Temperatures in Celsius."""
+    state: str  # waiting | holding | started | blocked | inactive
+    trigger_percent: float
+    trigger_sg: Optional[float]
+    rest_temp: float
+    will_raise: bool  # False: the target is already at or above rest_temp and will be left alone
+    hold_hours: float
+    below_since: Optional[str]
+    fired_at: Optional[str]
+
+
 class BatchControlStatusResponse(BaseModel):
     batch_id: int
     enabled: bool
@@ -55,6 +68,7 @@ class BatchControlStatusResponse(BaseModel):
     hysteresis: Optional[float]
     wort_temp: Optional[float]
     state_available: bool  # True if runtime state exists, False if cleaned up (batch completed/archived)
+    rest: Optional[RestRuleStatus] = None  # automatic diacetyl rest; None when the rule is off
 
 
 class ChamberIdleStatusResponse(BaseModel):
@@ -233,6 +247,10 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
         hysteresis=batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis,
         wort_temp=wort_temp,
         state_available=batch_status["state_available"],
+        # The control loop only runs (and so only runs the rest rule) with both switched on
+        rest=await get_rest_rule_status(
+            db, batch, controller_on=bool(temp_control_enabled and await get_config_value(db, "ha_enabled")),
+        ),
     )
 
 

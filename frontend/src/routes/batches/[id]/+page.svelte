@@ -364,6 +364,9 @@
 							controlStatus = { ...controlStatus, cooler_state: 'on' };
 						} else if (data.action === 'cool_off') {
 							controlStatus = { ...controlStatus, cooler_state: 'off' };
+						} else if (data.action === 'rest_start') {
+							// Diacetyl rest started: target and rule state changed
+							controlStatus = await fetchBatchControlStatus(batchId);
 						}
 					}
 				}
@@ -420,8 +423,24 @@
 		});
 	});
 
+	// The diacetyl rest rule changes state on the controller's clock (hold starts,
+	// resets, pauses) with no WebSocket message, so refresh it while it is live.
+	let restPoll: ReturnType<typeof setInterval> | null = null;
+	onMount(() => {
+		restPoll = setInterval(async () => {
+			const state = controlStatus?.rest?.state;
+			if (!batch || !state || state === 'started' || document.hidden) return;
+			try {
+				controlStatus = await fetchBatchControlStatus(batch.id);
+			} catch {
+				// keep the last known status; the next tick tries again
+			}
+		}, 60_000);
+	});
+
 	onDestroy(() => {
 		disconnectControlWebSocket();
+		if (restPoll) clearInterval(restPoll);
 	});
 </script>
 

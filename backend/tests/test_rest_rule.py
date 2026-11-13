@@ -467,3 +467,69 @@ def test_migration_adds_columns_once():
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
     assert {"rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
             "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at"} <= cols
+
+
+# ------------------------------------------------------------------ status for the batch page (tilt_ui-og8s)
+
+async def control_on(client):
+    r = await client.patch("/api/config", json={"ha_enabled": True, "temp_control_enabled": True})
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_status_endpoint_reports_rule_state(client, test_db, clock):
+    await control_on(client)
+    off = await make_batch(test_db, name="off", device_id="RED", heater_entity_id=None, cooler_entity_id=None,
+                           rest_trigger_percent=None)
+    r = await client.get(f"/api/control/batch/{off.id}/status")
+    assert r.status_code == 200 and r.json()["rest"] is None
+
+    b = await make_batch(test_db)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "waiting" and rest["trigger_sg"] == pytest.approx(TRIGGER)
+    assert rest["rest_temp"] == 21.0 and rest["will_raise"] is True and rest["hold_hours"] == 3.0 and rest["below_since"] is None
+
+    await run_hours(test_db, clock, b.id, 1, 1.019)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "holding" and rest["below_since"].endswith("Z")
+
+    await run_hours(test_db, clock, b.id, 2.5, 1.019)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "started" and rest["fired_at"].endswith("Z") and rest["below_since"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kw,state", [
+    ({"recipe_id": None}, "blocked"),
+    ({"status": "conditioning"}, "inactive"),
+    ({"temp_target": 2.0}, "inactive"),
+    ({"recipe_id": None, "status": "planning"}, "inactive"),   # not run yet: paused, not a warning
+    ({"heater_entity_id": None, "cooler_entity_id": None}, "inactive"),  # the loop does not drive it
+])
+async def test_status_endpoint_other_states(client, test_db, kw, state):
+    await control_on(client)
+    b = await make_batch(test_db, **kw)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == state
+
+
+@pytest.mark.asyncio
+async def test_status_is_inactive_when_temperature_control_is_off(client, test_db, clock):
+    """The control loop does not run the rule then, so the page must not say 'armed' or 'holding'."""
+    b = await make_batch(test_db)
+    await run_hours(test_db, clock, b.id, 1, 1.019)  # a hold was running before control was switched off
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "inactive" and rest["below_since"] is None
+
+
+@pytest.mark.asyncio
+async def test_status_reports_no_raise_and_equipment_conflict(client, test_db):
+    await control_on(client)
+    warm = await make_batch(test_db, temp_target=25.0)
+    rest = (await client.get(f"/api/control/batch/{warm.id}/status")).json()["rest"]
+    assert rest["state"] == "waiting" and rest["will_raise"] is False
+
+    # A conflicted batch is not driven by the control loop, so its rule cannot run.
+    await tc._raise_alert(test_db, warm, "equipment_conflict", "shared heater")
+    rest = (await client.get(f"/api/control/batch/{warm.id}/status")).json()["rest"]
+    assert rest["state"] == "inactive"

@@ -152,6 +152,17 @@ async def ensure_equipment_free(
             )
 
 
+def _require_target_with_equipment(heater: Optional[str], cooler: Optional[str], target: Optional[float]) -> None:
+    """The temperature controller only drives batches that have their own
+    temp_target. Without one, a heater or cooler would be assigned but never
+    switched, with no warning (tilt_ui-okkc)."""
+    if (heater or cooler) and target is None:
+        raise HTTPException(
+            status_code=422,
+            detail="temp_target is required when a heater or cooler is set",
+        )
+
+
 def _require_complete_rest_rule(batch: Batch) -> None:
     """The rule needs a rest temperature, and a batch target: the controller only
     drives batches that have their own temp_target."""
@@ -281,6 +292,7 @@ async def create_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new batch."""
+    _require_target_with_equipment(batch.heater_entity_id, batch.cooler_entity_id, batch.temp_target)
     # One set of equipment per controlled batch (409 if heater/cooler/Tilt is taken)
     await ensure_equipment_free(
         db, user,
@@ -396,6 +408,13 @@ async def update_batch(
         or new_cooler != batch.cooler_entity_id
         or new_device_id != batch.device_id
     )
+    if entering_controlled or new_heater != batch.heater_entity_id or new_cooler != batch.cooler_entity_id:
+        # Not on other edits (notes, a new Tilt): a legacy batch that already has
+        # equipment and no target must stay editable.
+        _require_target_with_equipment(
+            new_heater, new_cooler,
+            update.temp_target if update.temp_target is not None else batch.temp_target,
+        )
     if entering_controlled or equipment_changed:
         await ensure_equipment_free(
             db, user,

@@ -1,14 +1,16 @@
 """Calibration service for applying SG and temperature corrections.
 
-Uses linear interpolation between calibration points. With a single point,
-applies a simple offset. With multiple points, interpolates or extrapolates
-linearly based on the closest points.
+A device's calibration lives on the device (devices.calibration_type and
+calibration_data), which is what the Calibration page saves. Every ingest path
+applies it through calibrate_values().
 
-Supports multiple calibration types:
-- offset: Simple additive offset (sg_offset, temp_offset)
-- polynomial: Polynomial calibration from angle (iSpindel style)
-- linear: Linear interpolation between multiple points (legacy Tilt)
-- none: No calibration applied
+Calibration types:
+- none: no calibration
+- offset: additive offset (sg_offset, temp_offset)
+- linear: linear interpolation between two or more points
+- polynomial: polynomial from tilt angle (iSpindel style)
+
+The calibration_points table is legacy and is no longer read or written.
 """
 
 from typing import Any, Optional, TYPE_CHECKING
@@ -16,7 +18,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CalibrationPoint, Device
+from ..models import Device
 
 if TYPE_CHECKING:
     from ..ingest.base import HydrometerReading
@@ -79,92 +81,76 @@ def linear_interpolate(x: float, points: list[tuple[float, float]]) -> float:
     return y1 + (x - x1) * slope
 
 
+def calibrate_values(
+    calibration_type: Optional[str],
+    calibration_data: Optional[dict],
+    gravity: Optional[float],
+    temperature: Optional[float],
+    angle: Optional[float] = None,
+) -> tuple[Optional[float], Optional[float]]:
+    """Apply a device's calibration (devices.calibration_type / calibration_data)
+    to one gravity and temperature value. The single implementation used by every
+    ingest path: BLE (Tilt, RAPT), gateway and HTTP.
+
+    The Calibration page saves to these device fields. Until tilt_ui-9ywh the BLE
+    and gateway paths read the legacy calibration_points table instead, so a
+    calibration saved on the page was never applied to a Tilt.
+    """
+    calibration_type = calibration_type or "none"
+    data = calibration_data or {}
+
+    if gravity is not None:
+        if calibration_type == "offset":
+            gravity = gravity + data.get("sg_offset", 0.0)
+        elif calibration_type == "polynomial":
+            # iSpindel-style polynomial from angle
+            coefficients = data.get("coefficients", [])
+            if angle is not None and coefficients:
+                gravity = apply_polynomial(angle, coefficients)
+        elif calibration_type == "linear":
+            # The API stores "points"; "sg_points" is the legacy key
+            sg_points = data.get("points") or data.get("sg_points", [])
+            if sg_points:
+                gravity = linear_interpolate(gravity, [(p[0], p[1]) for p in sg_points])
+
+    if temperature is not None:
+        if calibration_type in ("offset", "polynomial"):
+            temperature = temperature + data.get("temp_offset", 0.0)
+        elif calibration_type == "linear":
+            temp_points = data.get("temp_points", [])
+            if temp_points:
+                temperature = linear_interpolate(temperature, [(p[0], p[1]) for p in temp_points])
+
+    return gravity, temperature
+
+
+def apply_polynomial(angle: float, coefficients: list[float]) -> float:
+    """Polynomial calibration: SG = a*x^n + b*x^(n-1) + ... + c, coefficients highest degree first."""
+    if not coefficients:
+        return 0.0
+    result = 0.0
+    degree = len(coefficients) - 1
+    for i, coef in enumerate(coefficients):
+        result += coef * (angle ** (degree - i))
+    return result
+
+
 class CalibrationService:
-    """Service for calibrating Tilt readings."""
-
-    def __init__(self):
-        # Cache calibration points per tilt_id
-        # Format: {tilt_id: {"sg": [(raw, actual), ...], "temp": [(raw, actual), ...]}}
-        self._cache: dict[str, dict[str, list[tuple[float, float]]]] = {}
-
-    async def load_calibration(self, db: AsyncSession, tilt_id: str) -> None:
-        """Load calibration points for a Tilt from the database into cache."""
-        result = await db.execute(
-            select(CalibrationPoint).where(CalibrationPoint.device_id == tilt_id)
-        )
-        points = result.scalars().all()
-
-        self._cache[tilt_id] = {"sg": [], "temp": []}
-        for point in points:
-            self._cache[tilt_id][point.type].append((point.raw_value, point.actual_value))
-
-    def invalidate_cache(self, tilt_id: Optional[str] = None) -> None:
-        """Invalidate cached calibration points.
-
-        Args:
-            tilt_id: If provided, only invalidate that Tilt's cache.
-                    If None, clear entire cache.
-        """
-        if tilt_id:
-            self._cache.pop(tilt_id, None)
-        else:
-            self._cache.clear()
-
-    async def calibrate_sg(
-        self, db: AsyncSession, tilt_id: str, raw_sg: float
-    ) -> float:
-        """Apply SG calibration to a raw reading.
-
-        Args:
-            db: Database session
-            tilt_id: The Tilt identifier
-            raw_sg: Raw specific gravity reading
-
-        Returns:
-            Calibrated specific gravity
-        """
-        if tilt_id not in self._cache:
-            await self.load_calibration(db, tilt_id)
-
-        points = self._cache.get(tilt_id, {}).get("sg", [])
-        return linear_interpolate(raw_sg, points)
-
-    async def calibrate_temp(
-        self, db: AsyncSession, tilt_id: str, raw_temp: float
-    ) -> float:
-        """Apply temperature calibration to a raw reading.
-
-        Args:
-            db: Database session
-            tilt_id: The Tilt identifier
-            raw_temp: Raw temperature reading (in Celsius)
-
-        Returns:
-            Calibrated temperature (in Celsius)
-        """
-        if tilt_id not in self._cache:
-            await self.load_calibration(db, tilt_id)
-
-        points = self._cache.get(tilt_id, {}).get("temp", [])
-        return linear_interpolate(raw_temp, points)
+    """Service for calibrating hydrometer readings."""
 
     async def calibrate_reading(
-        self, db: AsyncSession, tilt_id: str, raw_sg: float, raw_temp: float
+        self, db: AsyncSession, device_id: str, raw_sg: float, raw_temp: float
     ) -> tuple[float, float]:
-        """Calibrate both SG and temperature for a reading.
+        """Calibrate SG and temperature (Celsius) for a device, from the device's
+        own calibration settings. Returns the raw values for an unknown device.
 
-        Args:
-            db: Database session
-            tilt_id: The Tilt identifier
-            raw_sg: Raw specific gravity
-            raw_temp: Raw temperature (Celsius)
-
-        Returns:
-            Tuple of (calibrated_sg, calibrated_temp) both in Celsius
+        The callers load the Device in the same session just before, so db.get is
+        served from the session and costs no query.
         """
-        cal_sg = await self.calibrate_sg(db, tilt_id, raw_sg)
-        cal_temp = await self.calibrate_temp(db, tilt_id, raw_temp)
-        return cal_sg, cal_temp
+        device = await db.get(Device, device_id)
+        if device is None:
+            return raw_sg, raw_temp
+        return calibrate_values(device.calibration_type, device.calibration_data, raw_sg, raw_temp)
 
     def convert_units(self, reading: "HydrometerReading") -> "HydrometerReading":
         """Convert raw values to standard units (SG, Celsius).
@@ -202,25 +188,8 @@ class CalibrationService:
         return reading
 
     def apply_polynomial(self, angle: float, coefficients: list[float]) -> float:
-        """Apply polynomial calibration: SG = a*x^n + b*x^(n-1) + ... + c
-
-        Args:
-            angle: Tilt angle in degrees
-            coefficients: Polynomial coefficients [a, b, c, ...] highest degree first
-
-        Returns:
-            Calculated specific gravity
-        """
-        if not coefficients:
-            return 0.0
-
-        result = 0.0
-        degree = len(coefficients) - 1
-        for i, coef in enumerate(coefficients):
-            power = degree - i
-            result += coef * (angle ** power)
-
-        return result
+        """See module-level apply_polynomial."""
+        return apply_polynomial(angle, coefficients)
 
     async def calibrate_device_reading(
         self,
@@ -228,55 +197,11 @@ class CalibrationService:
         device: Device,
         reading: "HydrometerReading",
     ) -> "HydrometerReading":
-        """Apply device-specific calibration to a reading.
-
-        This is the universal calibration entry point that handles all device types
-        and calibration methods.
-
-        Args:
-            db: Database session
-            device: Device model with calibration_type and calibration_data
-            reading: HydrometerReading with raw values (already unit-converted)
-
-        Returns:
-            Reading with calibrated gravity and temperature values
-        """
-        calibration_type = device.calibration_type or "none"
-        calibration_data = device.calibration_data or {}
-
-        # Apply gravity calibration based on type
-        if reading.gravity is not None:
-            if calibration_type == "offset":
-                sg_offset = calibration_data.get("sg_offset", 0.0)
-                reading.gravity = reading.gravity + sg_offset
-
-            elif calibration_type == "polynomial":
-                # iSpindel-style polynomial from angle
-                if reading.angle is not None:
-                    coefficients = calibration_data.get("coefficients", [])
-                    if coefficients:
-                        reading.gravity = self.apply_polynomial(reading.angle, coefficients)
-
-            elif calibration_type == "linear":
-                # Linear interpolation between points
-                # API stores as "points", also support legacy "sg_points"
-                sg_points = calibration_data.get("points") or calibration_data.get("sg_points", [])
-                if sg_points:
-                    points = [(p[0], p[1]) for p in sg_points]
-                    reading.gravity = linear_interpolate(reading.gravity, points)
-
-        # Apply temperature calibration (offset or linear for all types)
-        if reading.temperature is not None:
-            if calibration_type in ("offset", "polynomial"):
-                temp_offset = calibration_data.get("temp_offset", 0.0)
-                reading.temperature = reading.temperature + temp_offset
-
-            elif calibration_type == "linear":
-                temp_points = calibration_data.get("temp_points", [])
-                if temp_points:
-                    points = [(p[0], p[1]) for p in temp_points]
-                    reading.temperature = linear_interpolate(reading.temperature, points)
-
+        """Apply the device's calibration to a reading (already unit-converted)."""
+        reading.gravity, reading.temperature = calibrate_values(
+            device.calibration_type, device.calibration_data,
+            reading.gravity, reading.temperature, reading.angle,
+        )
         return reading
 
     async def get_or_create_device(

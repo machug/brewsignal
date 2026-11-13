@@ -12,13 +12,11 @@
 	} from '$lib/stores/config.svelte';
 	import {
 		updateBatch,
-		fetchBatchControlEvents,
 		fetchBatchControlStatus,
 		fetchRecipe,
 		type BatchResponse,
 		type BatchProgressResponse,
 		type BatchControlStatus,
-		type ControlEvent,
 		type HopResponse
 	} from '$lib/api';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
@@ -148,13 +146,9 @@
 
 	// Chart is mounted on first expand, then kept (CSS hide) so it is not destroyed
 	let chartMounted = $state(false);
-	let controlEvents = $state<ControlEvent[]>([]);
 	$effect(() => {
 		if (expanded && !chartMounted) {
 			chartMounted = true;
-			fetchBatchControlEvents(batch.id, 168)
-				.then((e) => (controlEvents = e))
-				.catch(() => (controlEvents = []));
 		}
 	});
 
@@ -344,7 +338,7 @@
 		<div class="telemetry">
 			{#if chartMounted}
 				{#key batch.id}
-					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} {controlEvents} showStats={false} showTrend />
+					<FermentationChart batchId={batch.id} {deviceColor} originalGravity={batch.measured_og} showStats={false} showTrend />
 				{/key}
 			{/if}
 		</div>

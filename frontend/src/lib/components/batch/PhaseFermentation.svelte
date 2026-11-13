@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { BatchResponse, BatchProgressResponse, BatchControlStatus, ControlEvent } from '$lib/api';
+	import type { BatchResponse, BatchProgressResponse, BatchControlStatus } from '$lib/api';
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatTemp, getTempUnit, formatGravity, getGravityUnit, configState } from '$lib/stores/config.svelte';
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
@@ -14,7 +14,6 @@
 		progress: BatchProgressResponse | null;
 		liveReading: TiltReading | null;
 		controlStatus: BatchControlStatus | null;
-		controlEvents: ControlEvent[];
 		hasTempControl: boolean;
 		heaterLoading: boolean;
 		tempControlCollapsed: boolean;
@@ -28,7 +27,6 @@
 		progress,
 		liveReading,
 		controlStatus,
-		controlEvents,
 		hasTempControl,
 		heaterLoading,
 		tempControlCollapsed,
@@ -291,7 +289,6 @@
 			batchId={batch.id}
 			deviceColor={batch.device_id}
 			originalGravity={batch.measured_og}
-			{controlEvents}
 			restStartedAt={rest?.fired_at ?? batch.rest_fired_at}
 		/>
 	</div>

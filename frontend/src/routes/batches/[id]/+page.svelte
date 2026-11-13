@@ -3,7 +3,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto, replaceState } from '$app/navigation';
-	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus, ControlEvent } from '$lib/api';
+	import type { BatchResponse, BatchProgressResponse, BatchUpdate, BatchStatus, BatchControlStatus } from '$lib/api';
 	import { fetchBatch, fetchBatchProgress, updateBatch, deleteBatch, fetchBatchControlStatus, setBatchHeaterOverride, fetchBatchReflections, fetchTastingNotes } from '$lib/api';
 	import { configState } from '$lib/stores/config.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
@@ -27,7 +27,6 @@
 	let batch = $state<BatchResponse | null>(null);
 	let progress = $state<BatchProgressResponse | null>(null);
 	let controlStatus = $state<BatchControlStatus | null>(null);
-	let controlEvents = $state<ControlEvent[]>([]);
 	let reflections = $state<BatchReflection[]>([]);
 	let tastingNotes = $state<TastingNote[]>([]);
 	let loading = $state(true);
@@ -637,7 +636,6 @@
 					{progress}
 					{liveReading}
 					{controlStatus}
-					{controlEvents}
 					{hasTempControl}
 					{heaterLoading}
 					{tempControlCollapsed}
@@ -651,7 +649,6 @@
 					{progress}
 					{liveReading}
 					{controlStatus}
-					{controlEvents}
 					{hasTempControl}
 					{heaterLoading}
 					{tempControlCollapsed}

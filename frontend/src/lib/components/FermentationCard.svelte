@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { batchUrl } from '$lib/urls';
 	import { configState, formatTemp, getTempUnit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
-	import { updateBatch, fetchBatchControlEvents, type BatchResponse, type BatchProgressResponse, type ControlEvent } from '$lib/api';
+	import { updateBatch, type BatchResponse, type BatchProgressResponse } from '$lib/api';
 	import FermentationChart from './FermentationChart.svelte';
 	import { tiltsState } from '$lib/stores/tilts.svelte';
 
@@ -44,23 +44,10 @@
 
 	// Track if chart has ever been shown (to avoid mounting until first expand)
 	let chartMounted = $state(false);
-	let controlEvents = $state<ControlEvent[]>([]);
-	let controlEventsLoaded = $state(false);
 
 	$effect(() => {
 		if (expanded && !chartMounted) {
 			chartMounted = true;
-			// Fetch control events when chart first mounts
-			if (!controlEventsLoaded) {
-				fetchBatchControlEvents(batch.id, 168).then(events => {
-					controlEvents = events;
-					controlEventsLoaded = true;
-				}).catch(err => {
-					console.error('Failed to fetch control events:', err);
-					controlEvents = [];
-					controlEventsLoaded = true;
-				});
-			}
 		}
 	});
 
@@ -346,7 +333,6 @@
 						batchId={batch.id}
 						deviceColor={deviceColor}
 						originalGravity={batch.measured_og}
-						controlEvents={controlEvents}
 					/>
 				{/key}
 			</div>

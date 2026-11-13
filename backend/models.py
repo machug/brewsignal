@@ -251,7 +251,7 @@ class FermentationAlert(Base):
     device_id: Mapped[Optional[str]] = mapped_column(String(100), ForeignKey("devices.id"))
 
     # Alert classification
-    alert_type: Mapped[str] = mapped_column(String(30), nullable=False)  # stall, temperature_high, temperature_low, anomaly
+    alert_type: Mapped[str] = mapped_column(String(30), nullable=False)  # see alert_service.AlertType
     severity: Mapped[str] = mapped_column(String(20), default="warning")  # info, warning, critical
 
     # Alert message and context

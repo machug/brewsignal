@@ -1365,7 +1365,19 @@ export async function fetchBatchControlEvents(
 // ============================================================================
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
-export type AlertType = 'stall' | 'temperature_high' | 'temperature_low' | 'anomaly';
+export type AlertType =
+	| 'stall'
+	| 'temperature_high'
+	| 'temperature_low'
+	| 'anomaly'
+	| 'sensor_stale'
+	| 'max_on_exceeded'
+	| 'equipment_conflict'
+	| 'rest_started'
+	| 'rest_blocked'
+	| 'sensor_offline'
+	| 'battery_low'
+	| 'temp_runaway';
 
 export interface FermentationAlert {
 	id: number;

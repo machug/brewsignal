@@ -63,6 +63,8 @@ class FermentationAnomalyDetector:
 
         Returns:
             is_anomaly, reason ("normal" / "step_change_up" / "step_change_down"),
+            score (0.0-1.0 step strength, above 0.5 = past the step threshold;
+            None until there is enough history),
             sg_slope_12h (SG/hour, None until the window is covered).
         """
         self.time_history.append(time_hours)
@@ -70,10 +72,11 @@ class FermentationAnomalyDetector:
         self.raw_history.append(sg if raw_sg is None else raw_sg)
         self._trim()
 
-        reason = self._check_step()
+        reason, score = self._check_step()
         return {
             "is_anomaly": reason != "normal",
             "reason": reason,
+            "score": score,
             "sg_slope_12h": self._slope_12h(),
         }
 
@@ -102,10 +105,13 @@ class FermentationAnomalyDetector:
             return None
         return float(np.polyfit(wt, np.array(self.sg_history)[window], 1)[0])
 
-    def _check_step(self) -> str:
+    def _check_step(self) -> tuple[str, Optional[float]]:
+        """Return (reason, score). Score = how far the last N readings ALL sit
+        off the baseline on the same side, as a share of twice the threshold
+        (so 0.5 is the flag threshold). 0.0 when they straddle the baseline."""
         n = self.step_count
         if len(self.raw_history) < n + self.min_baseline_readings:
-            return "normal"
+            return "normal", None
         t = np.array(self.time_history)
         z = np.array(self.raw_history)
         recent_t, recent_z = t[-n:], z[-n:]
@@ -121,9 +127,13 @@ class FermentationAnomalyDetector:
         take = max(in_window, self.min_baseline_readings)
         base_t, base_z = base_t[-take:], base_z[-take:]
         if len(base_t) < self.min_baseline_readings or base_t[-1] - base_t[0] <= 0:
-            return "normal"
+            return "normal", None
         slope, intercept = np.polyfit(base_t, base_z, 1)
         resid = recent_z - (slope * recent_t + intercept)
+
+        same_side = np.all(resid > 0) or np.all(resid < 0)
+        offset = float(np.min(np.abs(resid))) if same_side else 0.0
+        score = min(1.0, offset / (2 * self.step_threshold))
 
         if np.all(resid > self.step_threshold):
             direction = "step_change_up"
@@ -131,9 +141,9 @@ class FermentationAnomalyDetector:
             direction = "step_change_down"
         else:
             self._step_active = False
-            return "normal"
+            return "normal", score
         if self._step_active:
-            return "normal"  # already flagged this event
+            return "normal", score  # already flagged this event
         self._step_active = True
         self._rebase_t = recent_t[0]
-        return direction
+        return direction, score

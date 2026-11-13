@@ -29,7 +29,7 @@ from .mqtt_manager import start_mqtt_manager, stop_mqtt_manager, publish_batch_r
 from .scanner import RAPTPillReading, TiltReading, TiltScanner  # noqa: E402
 from .services.calibration import calibration_service  # noqa: E402
 from .services.batch_linker import link_reading_to_batch  # noqa: E402
-from .services.alert_service import detect_and_persist_alerts, get_alert_context  # noqa: E402
+from .services.alert_service import detect_and_persist_alerts, get_alert_context, offline_watch_loop  # noqa: E402
 from .state import latest_readings, update_reading, load_readings_cache  # noqa: E402
 from .websocket import manager  # noqa: E402
 from .ml.pipeline_manager import MLPipelineManager  # noqa: E402
@@ -48,6 +48,7 @@ backfill_task: Optional[asyncio.Task] = None
 retitle_task: Optional[asyncio.Task] = None
 memory_task: Optional[asyncio.Task] = None
 warm_task: Optional[asyncio.Task] = None
+offline_task: Optional[asyncio.Task] = None
 
 # Global ML pipeline manager
 ml_pipeline_manager: Optional[MLPipelineManager] = None
@@ -271,6 +272,7 @@ async def handle_tilt_reading(reading: TiltReading):
                     progress_percent=alert_context.get("progress_percent"),
                     og=alert_context.get("og"),
                     fg=alert_context.get("fg"),
+                    temp_target=alert_context.get("temp_target"),
                 )
             except Exception as e:
                 logging.warning("Alert detection failed: %s", e)
@@ -425,6 +427,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                     "is_anomaly": ml_outputs.get("is_anomaly", False),
                     "anomaly_score": ml_outputs.get("anomaly_score"),
                     "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
+                    "battery_percent": reading.battery_percent,
                 }
                 alert_context = await get_alert_context(session, batch_id, sg_calibrated)
                 await detect_and_persist_alerts(
@@ -438,6 +441,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                     progress_percent=alert_context.get("progress_percent"),
                     og=alert_context.get("og"),
                     fg=alert_context.get("fg"),
+                    temp_target=alert_context.get("temp_target"),
                 )
             except Exception as e:
                 logging.warning("Alert detection failed: %s", e)
@@ -490,7 +494,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scanner, scanner_task, ml_pipeline_manager, backfill_task, retitle_task, memory_task, warm_task
+    global scanner, scanner_task, ml_pipeline_manager, backfill_task, retitle_task, memory_task, warm_task, offline_task
 
     settings = Settings()
 
@@ -514,6 +518,8 @@ async def lifespan(app: FastAPI):
     logging.info("ML Pipeline Manager initialized")
     # Refill in-memory ML windows from saved readings, off the critical path (tilt_ui-zbhm)
     warm_task = asyncio.create_task(ml_pipeline_manager.warm_active_batches(async_session_factory))
+    # Sensor-offline alerts need a timer: no reading means no ingest call (tilt_ui-lgtu)
+    offline_task = asyncio.create_task(offline_watch_loop(async_session_factory))
 
     # Scanner: BLE Tilt scanning (local only, cloud uses gateway)
     if settings.is_enabled("scanner"):
@@ -560,6 +566,12 @@ async def lifespan(app: FastAPI):
         scanner_task.cancel()
         try:
             await scanner_task
+        except asyncio.CancelledError:
+            pass
+    if offline_task and not offline_task.done():
+        offline_task.cancel()
+        try:
+            await offline_task
         except asyncio.CancelledError:
             pass
     if backfill_task and not backfill_task.done():

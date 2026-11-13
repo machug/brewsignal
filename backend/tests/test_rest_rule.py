@@ -10,7 +10,7 @@ from backend import temp_controller as tc
 from backend.models import Batch, ControlEvent, FermentationAlert, Reading, Recipe
 from backend.state import latest_readings
 from backend.tests.test_temp_controller_safety import (  # noqa: F401
-    COOLER, HEATER, FakeRouter, active_alerts, clean_state, clock,
+    COOLER, HEATER, T0, FakeRouter, active_alerts, clean_state, clock,
 )
 
 OG, FG = 1.050, 1.010
@@ -192,6 +192,32 @@ async def test_repeated_cached_reading_adds_no_hold_time(test_db, clock):
     set_sg(clock, 1.019)  # a new low reading, 14 min after the first
     b = await cycle(test_db, b.id)
     assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+async def test_slow_device_hold_is_stable_with_a_real_clock(test_db, monkeypatch):
+    """A device that reports every 20 min is seen ~20 times per reading. With a clock that
+    moves between calls, the same reading must still give the same timestamp each cycle."""
+    t = {"now": T0}
+
+    def ticking():
+        t["now"] += timedelta(milliseconds=7)  # every call sees a later time, as in production
+        return t["now"]
+    monkeypatch.setattr(tc, "_now", ticking)
+
+    b = await make_batch(test_db, rest_hold_hours=0.5)
+    first = T0
+    for n in range(3):  # readings at 0, 20 and 40 min
+        seen = first + timedelta(minutes=20 * n)
+        latest_readings["BLUE"] = {"sg": 1.019, "temp": 18.0, "last_seen": seen.isoformat(), "device_type": "rapt"}
+        for _ in range(20):
+            t["now"] += timedelta(minutes=1)
+            b = await cycle(test_db, b.id)
+            if n < 2:
+                assert tc._utc(b.rest_below_since) == first and tc._utc(b.rest_confirmed_at) == seen
+        if n == 1:
+            assert b.rest_fired_at is None  # 20 min of readings: under the 30 min hold
+    assert b.temp_target == 21.0  # the 40 min reading completed the hold
 
 
 @pytest.mark.asyncio

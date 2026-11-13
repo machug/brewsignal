@@ -536,13 +536,8 @@ async def _clear_batch_alert(db, batch_id: int, alert_type: str) -> None:
             pass
 
 
-def get_device_reading_age(device_id: str) -> Optional[timedelta]:
-    """Age of the cached reading for a device, or None if it cannot be trusted.
-
-    None (= treat as stale) when the reading or its timestamp is missing or
-    unparseable, or is more than 5 min in the FUTURE (a Pi that booted with a
-    wrong clock would otherwise see an old cached reading as fresh).
-    """
+def get_device_reading_time(device_id: str) -> Optional[datetime]:
+    """Timestamp of the cached reading for a device, or None if missing or unparseable."""
     from .state import latest_readings
 
     reading = latest_readings.get(device_id) if device_id else None
@@ -552,8 +547,20 @@ def get_device_reading_age(device_id: str) -> Optional[timedelta]:
     if not ts:
         return None
     try:
-        seen = _utc(datetime.fromisoformat(str(ts).replace("Z", "+00:00")))
+        return _utc(datetime.fromisoformat(str(ts).replace("Z", "+00:00")))
     except (ValueError, TypeError):
+        return None
+
+
+def get_device_reading_age(device_id: str) -> Optional[timedelta]:
+    """Age of the cached reading for a device, or None if it cannot be trusted.
+
+    None (= treat as stale) when the reading or its timestamp is missing or
+    unparseable, or is more than 5 min in the FUTURE (a Pi that booted with a
+    wrong clock would otherwise see an old cached reading as fresh).
+    """
+    seen = get_device_reading_time(device_id)
+    if seen is None:
         return None
     age = _now() - seen
     if age < timedelta(minutes=-5):
@@ -867,8 +874,10 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
     # The hold is timed in reading timestamps, not wall clock: a cached reading
     # that is seen again on later cycles adds no hold time, so the rule needs a
     # reading taken at least hold_hours after the first low one.
+    # The timestamp is read from the cache, not rebuilt from the age: a rebuilt
+    # value would differ by clock jitter on each cycle for the same reading.
     now = _now()
-    seen = now - age
+    seen = get_device_reading_time(device_id)
     since, confirmed = _utc(batch.rest_below_since), _utc(batch.rest_confirmed_at)
     if (
         since is None or confirmed is None

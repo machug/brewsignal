@@ -94,6 +94,16 @@ async def test_runaway_needs_hot_and_rising(test_db):
 
 
 @pytest.mark.asyncio
+async def test_runaway_clears_when_target_removed(test_db):
+    batch = await _batch(test_db)
+    await _feed(test_db, batch, T0, temp=21.0, temp_target=19.0)
+    await _feed(test_db, batch, T0 + timedelta(minutes=30), temp=22.5, temp_target=19.0)
+    assert AlertType.TEMP_RUNAWAY in await _active(test_db, batch)
+    await _feed(test_db, batch, T0 + timedelta(minutes=35), temp=22.5)
+    assert await _active(test_db, batch) == {}
+
+
+@pytest.mark.asyncio
 async def test_cold_crash_is_not_a_runaway(test_db):
     batch = await _batch(test_db)
     await _feed(test_db, batch, T0, temp=18.0, temp_target=2.0)
@@ -124,6 +134,18 @@ async def test_offline_alert_raised_and_cleared_by_next_reading(test_db):
     assert await check_offline_sensors(test_db, now=last + timedelta(minutes=31)) == 1
     assert list(await _active(test_db, batch)) == [AlertType.SENSOR_OFFLINE]
     await _feed(test_db, batch, last + timedelta(minutes=40))
+    assert await _active(test_db, batch) == {}
+
+
+@pytest.mark.asyncio
+async def test_offline_alert_cleared_when_batch_finishes(test_db):
+    batch = await _batch(test_db)
+    test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.040, timestamp=T0))
+    await test_db.flush()
+    assert await check_offline_sensors(test_db, now=T0 + timedelta(hours=2)) == 1
+    batch.status = "completed"
+    await test_db.flush()
+    assert await check_offline_sensors(test_db, now=T0 + timedelta(hours=3)) == 0
     assert await _active(test_db, batch) == {}
 
 

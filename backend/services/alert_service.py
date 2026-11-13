@@ -229,7 +229,10 @@ async def detect_and_persist_alerts(
     # Well above target AND still climbing fast. Needs no yeast range. The
     # "climbing" test keeps a cold crash quiet (far above target, but falling).
     # Once raised it stays until the wort is back near target.
-    if current_temp is not None and temp_target is not None:
+    if temp_target is None:
+        # Target removed: nothing to judge against, so do not leave one stuck.
+        await _clear_alert(db, batch_id, AlertType.TEMP_RUNAWAY, now)
+    elif current_temp is not None:
         if current_temp <= temp_target + RUNAWAY_MARGIN_C:
             await _clear_alert(db, batch_id, AlertType.TEMP_RUNAWAY, now)
         else:
@@ -239,8 +242,8 @@ async def detect_and_persist_alerts(
                 .where(
                     Reading.batch_id == batch_id,
                     Reading.temp_calibrated.is_not(None),
-                    Reading.timestamp <= ref - RUNAWAY_WINDOW,
-                    Reading.timestamp >= ref - 2 * RUNAWAY_WINDOW,
+                    Reading.timestamp <= now - RUNAWAY_WINDOW,
+                    Reading.timestamp >= now - 2 * RUNAWAY_WINDOW,
                 )
                 .order_by(Reading.timestamp.desc())
                 .limit(1)
@@ -453,6 +456,16 @@ async def check_offline_sensors(db: AsyncSession, now: Optional[datetime] = None
             Batch.device_id.is_not(None),
         )
     )).all()
+    # A batch that finished or lost its device must not keep the alert forever.
+    watched = [b.id for b in batches]
+    for orphan in (await db.execute(
+        select(FermentationAlert).where(
+            FermentationAlert.alert_type == AlertType.SENSOR_OFFLINE,
+            FermentationAlert.cleared_at.is_(None),
+            FermentationAlert.batch_id.not_in(watched),
+        )
+    )).scalars().all():
+        orphan.cleared_at = now
     offline = 0
     for batch_id, device_id in batches:
         stamps = [_naive_utc(t) for t in (await db.execute(

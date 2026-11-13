@@ -471,8 +471,14 @@ def test_migration_adds_columns_once():
 
 # ------------------------------------------------------------------ status for the batch page (tilt_ui-og8s)
 
+async def control_on(client):
+    r = await client.patch("/api/config", json={"ha_enabled": True, "temp_control_enabled": True})
+    assert r.status_code == 200, r.text
+
+
 @pytest.mark.asyncio
 async def test_status_endpoint_reports_rule_state(client, test_db, clock):
+    await control_on(client)
     off = await make_batch(test_db, name="off", device_id="RED", heater_entity_id=None, cooler_entity_id=None,
                            rest_trigger_percent=None)
     r = await client.get(f"/api/control/batch/{off.id}/status")
@@ -497,8 +503,20 @@ async def test_status_endpoint_reports_rule_state(client, test_db, clock):
     ({"recipe_id": None}, "blocked"),
     ({"status": "conditioning"}, "inactive"),
     ({"temp_target": 2.0}, "inactive"),
+    ({"recipe_id": None, "status": "planning"}, "inactive"),   # not run yet: paused, not a warning
+    ({"heater_entity_id": None, "cooler_entity_id": None}, "inactive"),  # the loop does not drive it
 ])
 async def test_status_endpoint_other_states(client, test_db, kw, state):
+    await control_on(client)
     b = await make_batch(test_db, **kw)
     rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
     assert rest["state"] == state
+
+
+@pytest.mark.asyncio
+async def test_status_is_inactive_when_temperature_control_is_off(client, test_db, clock):
+    """The control loop does not run the rule then, so the page must not say 'armed' or 'holding'."""
+    b = await make_batch(test_db)
+    await run_hours(test_db, clock, b.id, 1, 1.019)  # a hold was running before control was switched off
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "inactive" and rest["below_since"] is None

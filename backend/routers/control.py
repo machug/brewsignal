@@ -246,7 +246,10 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
         hysteresis=batch.temp_hysteresis if batch.temp_hysteresis is not None else global_hysteresis,
         wort_temp=wort_temp,
         state_available=batch_status["state_available"],
-        rest=await get_rest_rule_status(db, batch),
+        # The control loop only runs (and so only runs the rest rule) with both switched on
+        rest=await get_rest_rule_status(
+            db, batch, controller_on=bool(temp_control_enabled and await get_config_value(db, "ha_enabled")),
+        ),
     )
 
 

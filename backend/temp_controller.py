@@ -778,23 +778,27 @@ async def _rest_gravities(db, batch) -> tuple[Optional[float], Optional[float]]:
     return og, fg
 
 
-async def get_rest_rule_status(db, batch) -> Optional[dict]:
+async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optional[dict]:
     """Read-only view of the rest rule for the batch page (tilt_ui-og8s). None when
-    the rule is off. Uses the same inputs as apply_rest_rule, so the page shows
-    the trigger the controller will act on.
+    the rule is off. Uses the same inputs, in the same order, as apply_rest_rule,
+    so the page shows what the controller will act on.
 
-    state: started | blocked (no OG/FG) | inactive (not fermenting, or cold
-    crashing) | holding (gravity at or below the trigger, hold running) | waiting
+    state: started | inactive (the controller does not run the rule now: control
+    switched off, batch not fermenting or not driven, or cold crashing) | blocked
+    (no OG/FG) | holding (gravity at or below the trigger, hold running) | waiting
     """
     if batch.rest_trigger_percent is None or batch.rest_temp_target is None:
         return None
     og, fg = await _rest_gravities(db, batch)
     trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+    driven = bool(batch.device_id and (batch.heater_entity_id or batch.cooler_entity_id))
     if batch.rest_fired_at is not None:
         state = "started"
+    elif not controller_on or not driven or batch.status != "fermenting" or batch.temp_target is None:
+        state = "inactive"
     elif trigger is None:
         state = "blocked"
-    elif batch.status != "fermenting" or batch.temp_target is None or batch.temp_target < REST_MIN_ACTIVE_TARGET_C:
+    elif batch.temp_target < REST_MIN_ACTIVE_TARGET_C:
         state = "inactive"
     elif batch.rest_below_since is not None:
         state = "holding"

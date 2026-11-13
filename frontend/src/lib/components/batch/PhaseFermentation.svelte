@@ -121,7 +121,12 @@
 							<span class="status-badge idle num">Target {formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span>
 						{/if}
 						{#if rest}
-							<span class="status-badge rest" class:warn={rest.state === 'blocked'}>{restBadge[rest.state]}</span>
+							<span
+								class="status-badge"
+								class:rest={rest.state === 'waiting' || rest.state === 'holding'}
+								class:idle={rest.state === 'started' || rest.state === 'inactive'}
+								class:warn={rest.state === 'blocked'}
+							>{restBadge[rest.state]}</span>
 						{/if}
 						<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -161,18 +166,19 @@
 					</div>
 
 					{#if rest}
-						<div class="rest-status" class:warn={rest.state === 'blocked'}>
+						<div class="rest-status" class:warn={rest.state === 'blocked'} class:quiet={rest.state === 'started' || rest.state === 'inactive'}>
 							<span class="detail-label">Automatic diacetyl rest</span>
 							<p class="rest-text">
 								{#if rest.state === 'started'}
-									Started {formatWhen(rest.fired_at)}. The rule is finished.
+									Started <span class="num">{formatWhen(rest.fired_at)}</span>. The rule is finished.
 								{:else if rest.state === 'blocked'}
 									Cannot start. The batch needs an OG and a recipe with an expected FG.
 								{:else if rest.state === 'inactive'}
-									On, but paused. It works only while the batch is fermenting and the target is 5&thinsp;°C or more.
+									On, but paused. It works only while temperature control is on, the batch is fermenting,
+									and the target is <span class="num">{formatTempValue(5)}&thinsp;{tempUnit}</span> or more.
 								{:else if rest.state === 'holding'}
 									Gravity is at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
-									since {formatWhen(rest.below_since)}. After <span class="num">{rest.hold_hours}&thinsp;h</span> there,
+									since <span class="num">{formatWhen(rest.below_since)}</span>. After <span class="num">{rest.hold_hours}&thinsp;h</span> there,
 									the target goes to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
 								{:else}
 									On. When gravity stays at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
@@ -381,7 +387,7 @@
 		border-color: var(--accent-rule);
 		color: var(--accent);
 	}
-	.status-badge.rest.warn {
+	.status-badge.warn {
 		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
 		color: var(--status-warn);
 	}
@@ -395,6 +401,9 @@
 	}
 	.rest-status.warn {
 		border-left-color: var(--status-warn);
+	}
+	.rest-status.quiet {
+		border-left-color: var(--rule-strong);
 	}
 	.rest-text {
 		margin: 0;

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { BatchResponse, BatchProgressResponse, BatchControlStatus, ControlEvent } from '$lib/api';
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
-	import { formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
+	import { formatTemp, getTempUnit, formatGravity, getGravityUnit, configState } from '$lib/stores/config.svelte';
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 	import BatchAlertsCard from './BatchAlertsCard.svelte';
@@ -42,6 +42,20 @@
 	function formatTempValue(value?: number | null): string {
 		if (value === undefined || value === null) return '--';
 		return formatTemp(value);
+	}
+
+	// Automatic diacetyl rest (tilt_ui-og8s). The controller decides; this only reports.
+	let rest = $derived(controlStatus?.rest ?? null);
+	const restBadge: Record<string, string> = {
+		waiting: 'Rest armed',
+		holding: 'Rest soon',
+		started: 'Rest started',
+		blocked: 'Rest blocked',
+		inactive: 'Rest paused'
+	};
+	function formatWhen(iso: string | null): string {
+		if (!iso) return '--';
+		return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 	}
 </script>
 
@@ -106,6 +120,9 @@
 						{:else if tempControlCollapsed && controlStatus}
 							<span class="status-badge idle num">Target {formatTempValue(controlStatus.target_temp)}&thinsp;{tempUnit}</span>
 						{/if}
+						{#if rest}
+							<span class="status-badge rest" class:warn={rest.state === 'blocked'}>{restBadge[rest.state]}</span>
+						{/if}
 						<svg class="chevron" class:rotated={!tempControlCollapsed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
@@ -142,6 +159,29 @@
 							<span class="detail-value">&plusmn;{controlStatus.hysteresis?.toFixed(1) || '--'}&thinsp;{tempUnit}</span>
 						</div>
 					</div>
+
+					{#if rest}
+						<div class="rest-status" class:warn={rest.state === 'blocked'}>
+							<span class="detail-label">Automatic diacetyl rest</span>
+							<p class="rest-text">
+								{#if rest.state === 'started'}
+									Started {formatWhen(rest.fired_at)}. The rule is finished.
+								{:else if rest.state === 'blocked'}
+									Cannot start. The batch needs an OG and a recipe with an expected FG.
+								{:else if rest.state === 'inactive'}
+									On, but paused. It works only while the batch is fermenting and the target is 5&thinsp;°C or more.
+								{:else if rest.state === 'holding'}
+									Gravity is at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
+									since {formatWhen(rest.below_since)}. After <span class="num">{rest.hold_hours}&thinsp;h</span> there,
+									the target goes to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
+								{:else}
+									On. When gravity stays at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
+									(<span class="num">{rest.trigger_percent}%</span> of the way to FG) for <span class="num">{rest.hold_hours}&thinsp;h</span>,
+									the target goes to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
+								{/if}
+							</p>
+						</div>
+					{/if}
 
 					{#if controlStatus.override_active}
 						<div class="override-banner">
@@ -237,6 +277,7 @@
 			deviceColor={batch.device_id}
 			originalGravity={batch.measured_og}
 			{controlEvents}
+			restStartedAt={rest?.fired_at ?? batch.rest_fired_at}
 		/>
 	</div>
 {/if}
@@ -335,6 +376,35 @@
 	.status-badge.heater {
 		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
 		color: var(--status-warn);
+	}
+	.status-badge.rest {
+		border-color: var(--accent-rule);
+		color: var(--accent);
+	}
+	.status-badge.rest.warn {
+		border-color: color-mix(in oklch, var(--status-warn) 55%, transparent);
+		color: var(--status-warn);
+	}
+	.rest-status {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2xs);
+		margin-bottom: var(--space-sm);
+		padding: var(--space-xs) var(--space-sm);
+		border-left: 2px solid var(--accent-rule);
+	}
+	.rest-status.warn {
+		border-left-color: var(--status-warn);
+	}
+	.rest-text {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
+	.rest-text .num {
+		font-family: var(--font-num);
+		font-variant-numeric: tabular-nums lining-nums;
+		color: var(--ink-primary);
 	}
 	.status-badge.cooler {
 		border-color: color-mix(in oklch, var(--temp-trace) 55%, transparent);

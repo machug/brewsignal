@@ -302,6 +302,7 @@
 			deviceColor={batch.device_id}
 			originalGravity={batch.measured_og}
 			{controlEvents}
+			restStartedAt={batch.rest_fired_at}
 		/>
 	</div>
 {/if}

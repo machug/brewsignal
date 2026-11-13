@@ -39,13 +39,15 @@
 		deviceColor?: string;
 		originalGravity?: number | null;
 		controlEvents?: ControlEvent[];
+		/** When the automatic diacetyl rest started (ISO, UTC). Draws a marker. */
+		restStartedAt?: string | null;
 		/** Show the stats block under the chart (off on Home, where readouts sit above). */
 		showStats?: boolean;
 		/** Compact single-row trend strip (rate, ETA, stable-for, OG est.) under the chart. */
 		showTrend?: boolean;
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], showStats = true, showTrend = false }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], restStartedAt = null, showStats = true, showTrend = false }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -87,7 +89,8 @@
 		filtered: '',
 		filteredTemp: '',
 		heatingBand: '',
-		coolingBand: ''
+		coolingBand: '',
+		rest: ''
 	});
 
 
@@ -123,7 +126,8 @@
 			filtered: getCssVar('--chart-filtered'),
 			filteredTemp: getCssVar('--chart-filtered-temp'),
 			heatingBand: getCssVar('--chart-heating-band'),
-			coolingBand: getCssVar('--chart-cooling-band')
+			coolingBand: getCssVar('--chart-cooling-band'),
+			rest: getCssVar('--accent')
 		};
 	}
 
@@ -388,6 +392,33 @@
 								period.type === 'heating' ? chartColors.heatingBand : chartColors.coolingBand;
 							ctx.fillRect(x0, top, x1 - x0, height);
 						}
+						ctx.restore();
+					}
+				],
+				draw: [
+					// Diacetyl rest marker: a dashed line with a label where the rest started
+					(u: uPlot) => {
+						if (!restStartedAt) return;
+						const { ctx } = u;
+						const { left, top, width, height } = u.bbox;
+						const x = u.valToPos(parseUtcTimestamp(restStartedAt), 'x', true);
+						if (x < left || x > left + width) return;
+						const dpr = devicePixelRatio || 1;
+						ctx.save();
+						ctx.strokeStyle = chartColors.rest;
+						ctx.fillStyle = chartColors.rest;
+						ctx.lineWidth = dpr;
+						ctx.setLineDash([4 * dpr, 3 * dpr]);
+						ctx.beginPath();
+						ctx.moveTo(x, top);
+						ctx.lineTo(x, top + height);
+						ctx.stroke();
+						ctx.font = `600 ${10 * dpr}px "Archivo", sans-serif`;
+						ctx.textBaseline = 'top';
+						const label = 'D-REST';
+						const flip = x + ctx.measureText(label).width + 8 * dpr > left + width;
+						ctx.textAlign = flip ? 'right' : 'left';
+						ctx.fillText(label, x + (flip ? -4 : 4) * dpr, top + 4 * dpr);
 						ctx.restore();
 					}
 				],
@@ -1088,6 +1119,12 @@ onMount(async () => {
 			controlPeriods = [];
 		}
 		// Bands are painted in the drawClear hook, which only runs on redraw
+		chart?.redraw();
+	});
+
+	// The rest marker is painted in the draw hook: redraw when it appears
+	$effect(() => {
+		restStartedAt;
 		chart?.redraw();
 	});
 

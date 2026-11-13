@@ -768,6 +768,49 @@ def _rest_unchanged(batch) -> list:
     return conds
 
 
+async def _rest_gravities(db, batch) -> tuple[Optional[float], Optional[float]]:
+    """OG (measured, else recipe) and the recipe's expected FG for the rest rule."""
+    og, fg = batch.measured_og, None
+    if batch.recipe_id is not None:
+        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
+        if row:
+            og, fg = og or row[0], row[1]
+    return og, fg
+
+
+async def get_rest_rule_status(db, batch) -> Optional[dict]:
+    """Read-only view of the rest rule for the batch page (tilt_ui-og8s). None when
+    the rule is off. Uses the same inputs as apply_rest_rule, so the page shows
+    the trigger the controller will act on.
+
+    state: started | blocked (no OG/FG) | inactive (not fermenting, or cold
+    crashing) | holding (gravity at or below the trigger, hold running) | waiting
+    """
+    if batch.rest_trigger_percent is None or batch.rest_temp_target is None:
+        return None
+    og, fg = await _rest_gravities(db, batch)
+    trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+    if batch.rest_fired_at is not None:
+        state = "started"
+    elif trigger is None:
+        state = "blocked"
+    elif batch.status != "fermenting" or batch.temp_target is None or batch.temp_target < REST_MIN_ACTIVE_TARGET_C:
+        state = "inactive"
+    elif batch.rest_below_since is not None:
+        state = "holding"
+    else:
+        state = "waiting"
+    return {
+        "state": state,
+        "trigger_percent": batch.rest_trigger_percent,
+        "trigger_sg": trigger,
+        "rest_temp": batch.rest_temp_target,
+        "hold_hours": batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT,
+        "below_since": serialize_datetime_to_utc(batch.rest_below_since) if state == "holding" else None,
+        "fired_at": serialize_datetime_to_utc(batch.rest_fired_at),
+    }
+
+
 async def _save_rest_hold(
     db, batch, since: Optional[datetime], confirmed: Optional[datetime], trigger: Optional[float],
 ) -> bool:
@@ -828,11 +871,7 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         if sg is not None and sg < REST_MIN_PLAUSIBLE_SG:
             sg = None  # hydrometer in air, in sanitiser or not calibrated
 
-    og, fg = batch.measured_og, None
-    if batch.recipe_id is not None:
-        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
-        if row:
-            og, fg = og or row[0], row[1]
+    og, fg = await _rest_gravities(db, batch)
     trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
     if trigger is None:
         # Do not fail silently: the brewer expects a rest that will never start.

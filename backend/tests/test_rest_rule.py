@@ -467,3 +467,38 @@ def test_migration_adds_columns_once():
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
     assert {"rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
             "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at"} <= cols
+
+
+# ------------------------------------------------------------------ status for the batch page (tilt_ui-og8s)
+
+@pytest.mark.asyncio
+async def test_status_endpoint_reports_rule_state(client, test_db, clock):
+    off = await make_batch(test_db, name="off", device_id="RED", heater_entity_id=None, cooler_entity_id=None,
+                           rest_trigger_percent=None)
+    r = await client.get(f"/api/control/batch/{off.id}/status")
+    assert r.status_code == 200 and r.json()["rest"] is None
+
+    b = await make_batch(test_db)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "waiting" and rest["trigger_sg"] == pytest.approx(TRIGGER)
+    assert rest["rest_temp"] == 21.0 and rest["hold_hours"] == 3.0 and rest["below_since"] is None
+
+    await run_hours(test_db, clock, b.id, 1, 1.019)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "holding" and rest["below_since"].endswith("Z")
+
+    await run_hours(test_db, clock, b.id, 2.5, 1.019)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == "started" and rest["fired_at"].endswith("Z") and rest["below_since"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kw,state", [
+    ({"recipe_id": None}, "blocked"),
+    ({"status": "conditioning"}, "inactive"),
+    ({"temp_target": 2.0}, "inactive"),
+])
+async def test_status_endpoint_other_states(client, test_db, kw, state):
+    b = await make_batch(test_db, **kw)
+    rest = (await client.get(f"/api/control/batch/{b.id}/status")).json()["rest"]
+    assert rest["state"] == state

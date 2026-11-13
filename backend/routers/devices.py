@@ -270,6 +270,8 @@ class CalibrationRequest(BaseModel):
                     # Validate temperature ranges (in Celsius: -10 to 50)
                     if not (-10 <= point[0] <= 50 and -10 <= point[1] <= 50):
                         raise ValueError("Temperature calibration points must be between -10°C and 50°C")
+                if len({point[0] for point in temp_points}) != len(temp_points):
+                    raise ValueError("two temperature calibration points have the same raw value")
 
         elif cal_type == "polynomial":
             # Polynomial requires coefficients array
@@ -509,7 +511,6 @@ async def unpair_device(
     return DeviceResponse.from_orm_with_calibration(device)
 
 
-# CalibrationPoint Endpoints (table-based calibration for Tilt devices)
 @router.get("/{device_id}/readings", response_model=list[ReadingResponse])
 async def get_device_readings(
     device_id: str,

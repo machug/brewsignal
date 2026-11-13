@@ -807,8 +807,12 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
 
     from .state import latest_readings
 
+    # Gravity, its flags, its timestamp and its age are all taken here, with no
+    # await in between, so they belong to one broadcast. A broadcast that
+    # arrives during the database calls below is judged on the next cycle.
     device_id = batch.device_id
     reading = latest_readings.get(device_id) if device_id else None
+    seen = get_device_reading_time(device_id) if device_id else None
     age = get_device_reading_age(device_id) if device_id else None
     sg = None
     if (
@@ -874,10 +878,9 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
     # The hold is timed in reading timestamps, not wall clock: a cached reading
     # that is seen again on later cycles adds no hold time, so the rule needs a
     # reading taken at least hold_hours after the first low one.
-    # The timestamp is read from the cache, not rebuilt from the age: a rebuilt
+    # `seen` is the cache timestamp itself, not rebuilt from the age: a rebuilt
     # value would differ by clock jitter on each cycle for the same reading.
     now = _now()
-    seen = get_device_reading_time(device_id)
     since, confirmed = _utc(batch.rest_below_since), _utc(batch.rest_confirmed_at)
     if (
         since is None or confirmed is None

@@ -650,6 +650,7 @@ async def init_db():
         await conn.run_sync(_migrate_extend_tasting_notes)  # Extend tasting notes with context/AI fields
         await conn.run_sync(_migrate_add_bjcp_scoring)  # Add BJCP 50-point subcategory scoring columns
         await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
+        await conn.run_sync(_migrate_add_rest_rule_columns)  # Automatic diacetyl rest rule (tilt_ui-ml8e)
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -1222,6 +1223,21 @@ def _migrate_active_equipment_unique_indexes(conn) -> list[str]:
             logger.error(f"Migration: could not create {index_name}: {e}")
             print(f"Migration: Skipping {index_name} - {e}")
     return conflicted
+
+
+def _migrate_add_rest_rule_columns(conn) -> None:
+    """Add the automatic diacetyl rest rule columns to batches (tilt_ui-ml8e)."""
+    from sqlalchemy import text
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
+    if not columns:
+        return  # table missing: create_all makes it with the columns
+    for name, ddl in (
+        ("rest_trigger_percent", "FLOAT"), ("rest_temp_target", "FLOAT"), ("rest_hold_hours", "FLOAT"),
+        ("rest_below_since", "DATETIME"), ("rest_fired_at", "DATETIME"),
+    ):
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} {ddl}"))
+            print(f"Migration: Added {name} column to batches")
 
 
 def _migrate_add_control_progress_columns(conn) -> None:

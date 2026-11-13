@@ -30,6 +30,8 @@ class AlertType:
     SENSOR_STALE = "sensor_stale"
     MAX_ON_EXCEEDED = "max_on_exceeded"
     EQUIPMENT_CONFLICT = "equipment_conflict"
+    # Informational: the automatic diacetyl rest rule changed the target (tilt_ui-ml8e)
+    REST_STARTED = "rest_started"
 
 
 # Stall rule thresholds (tilt_ui-zbhm; tuned on synthetic curves, re-tune on real batches)

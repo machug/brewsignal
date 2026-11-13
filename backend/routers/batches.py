@@ -152,6 +152,20 @@ async def ensure_equipment_free(
             )
 
 
+def _require_complete_rest_rule(batch: Batch) -> None:
+    if batch.rest_trigger_percent is not None and batch.rest_temp_target is None:
+        raise HTTPException(status_code=422, detail="rest_temp_target is required when rest_trigger_percent is set")
+
+
+def _rest_rule_changed(old: tuple, new: tuple) -> bool:
+    """True when trigger percent or rest temperature really changed. The tolerance
+    absorbs the float noise of a Fahrenheit round trip in the batch form."""
+    return any(
+        (a is None) != (b is None) or (a is not None and abs(a - b) > 0.05)
+        for a, b in zip(old, new)
+    )
+
+
 @router.get("", response_model=list[BatchResponse])
 async def list_batches(
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -309,7 +323,11 @@ async def create_batch(
         cooler_entity_id=batch.cooler_entity_id,
         temp_target=batch.temp_target,
         temp_hysteresis=batch.temp_hysteresis,
+        rest_trigger_percent=batch.rest_trigger_percent,
+        rest_temp_target=batch.rest_temp_target,
+        rest_hold_hours=batch.rest_hold_hours,
     )
+    _require_complete_rest_rule(db_batch)
 
     # Auto-set start_time if status is fermenting
     if batch.status == "fermenting":
@@ -491,6 +509,22 @@ async def update_batch(
         batch.temp_target = update.temp_target
     if update.temp_hysteresis is not None:
         batch.temp_hysteresis = update.temp_hysteresis
+    # Automatic diacetyl rest rule (tilt_ui-ml8e). Unlike the fields above, an
+    # explicit null is meaningful here: it switches the rule off (percent) or
+    # returns to the default hold time.
+    old_rule = (batch.rest_trigger_percent, batch.rest_temp_target)
+    if "rest_trigger_percent" in update.model_fields_set:
+        batch.rest_trigger_percent = update.rest_trigger_percent
+    if update.rest_temp_target is not None:
+        batch.rest_temp_target = update.rest_temp_target
+    if "rest_hold_hours" in update.model_fields_set:
+        batch.rest_hold_hours = update.rest_hold_hours
+    _require_complete_rest_rule(batch)
+    if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
+        # A changed rule is a new rule: re-arm it. An unchanged rule that already
+        # fired stays fired, so re-saving the batch cannot undo a later cold crash.
+        batch.rest_below_since = None
+        batch.rest_fired_at = None
     # Reading control
     if update.readings_paused is not None:
         batch.readings_paused = update.readings_paused

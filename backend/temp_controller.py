@@ -13,10 +13,10 @@ from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .database import async_session_factory
-from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, serialize_datetime_to_utc
+from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, Recipe, serialize_datetime_to_utc
 from .routers.config import get_config_value
 from .services.alert_service import AlertSeverity, AlertType, _clear_alert, _upsert_alert
 from .services.device_control import (
@@ -60,6 +60,12 @@ COOLER_MIN_PROGRESS_C = _env_float("BREWSIGNAL_COOLER_MIN_PROGRESS_C", 0.5)
 MAX_ON_LOCKOUT_MINUTES = _env_float("BREWSIGNAL_MAX_ON_LOCKOUT_MINUTES", 30)
 # After a failed 'on' command, wait this long before trying 'on' again.
 FAILURE_BACKOFF_MINUTES = _env_float("BREWSIGNAL_FAILURE_BACKOFF_MINUTES", 5)
+
+
+# Automatic diacetyl rest (tilt_ui-ml8e): gravity must stay at or below the trigger
+# for this long before the rule fires, unless the batch sets its own hold time.
+# Krausen and CO2 bubbles make single hydrometer readings unreliable.
+REST_HOLD_HOURS_DEFAULT = _env_float("BREWSIGNAL_REST_HOLD_HOURS", 3)
 
 
 def _now() -> datetime:
@@ -492,11 +498,13 @@ async def set_cooler_state_for_batch(
 # Safety helpers (tilt_ui-f50x, tilt_ui-8d49)
 # ---------------------------------------------------------------------------
 
-async def _raise_alert(db, batch: Batch, alert_type: str, message: str) -> None:
-    """Persist (upsert) a critical alert on the batch. Never raises."""
+async def _raise_alert(
+    db, batch: Batch, alert_type: str, message: str, severity: str = AlertSeverity.CRITICAL,
+) -> None:
+    """Persist (upsert) an alert on the batch (critical unless stated). Never raises."""
     try:
         await _upsert_alert(
-            db, batch.id, batch.device_id, alert_type, AlertSeverity.CRITICAL,
+            db, batch.id, batch.device_id, alert_type, severity,
             message, None, None, _now(),
         )
         await db.commit()
@@ -713,7 +721,100 @@ async def _handle_conflicted_batch(
 _BATCH_FIELDS = (
     "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
     "temp_target", "temp_hysteresis",
+    "recipe_id", "measured_og", "readings_paused",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_below_since", "rest_fired_at",
 )
+
+
+def rest_trigger_sg(og: Optional[float], fg: Optional[float], percent: Optional[float]) -> Optional[float]:
+    """Gravity at which the diacetyl rest starts: `percent` of the way from OG down to expected FG."""
+    if not og or not fg or percent is None or og <= fg:
+        return None
+    return og - (og - fg) * percent / 100.0
+
+
+async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> None:
+    """Automatic diacetyl rest (tilt_ui-ml8e). Deterministic and one-shot.
+
+    When a fermenting batch's gravity has stayed at or below the trigger for the
+    hold time, set the batch target to rest_temp_target, exactly once. Any cycle
+    without a trustworthy reading at or below the trigger restarts the hold
+    timer, so the rule can fire late but not early. After it fires, the rule is
+    finished: the brewer owns temp_target again (e.g. for a cold crash).
+    """
+    if (
+        batch.rest_trigger_percent is None
+        or batch.rest_temp_target is None
+        or batch.rest_fired_at is not None
+        or batch.status != "fermenting"
+    ):
+        return
+
+    from .state import latest_readings
+
+    device_id = batch.device_id
+    reading = latest_readings.get(device_id) if device_id else None
+    age = get_device_reading_age(device_id) if device_id else None
+    sg = None
+    if (
+        reading
+        and not batch.readings_paused  # hydrometer may be out of the beer
+        and not reading.get("is_anomaly")
+        and age is not None
+        and age <= _stale_limit(device_id)
+    ):
+        sg = reading.get("sg")
+
+    og, fg = batch.measured_og, None
+    if batch.recipe_id is not None:
+        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
+        if row:
+            og, fg = og or row[0], row[1]
+    trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+
+    now = _now()
+    since = _utc(batch.rest_below_since)
+    if sg is None or trigger is None or sg > trigger:
+        if since is not None:
+            await db.execute(update(Batch).where(Batch.id == batch.id).values(rest_below_since=None))
+            await db.commit()
+            batch.rest_below_since = None
+        return
+
+    if since is None:
+        since = now
+        await db.execute(update(Batch).where(Batch.id == batch.id).values(rest_below_since=now))
+        await db.commit()
+        batch.rest_below_since = now
+
+    hold_hours = batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT
+    if now - since < timedelta(hours=hold_hours):
+        return
+
+    # Fire. The WHERE clause makes this a no-op if the rule was switched off or
+    # already fired through the API since this cycle read the batch.
+    result = await db.execute(
+        update(Batch)
+        .where(Batch.id == batch.id, Batch.rest_fired_at.is_(None), Batch.rest_trigger_percent.isnot(None))
+        .values(temp_target=batch.rest_temp_target, rest_fired_at=now)
+    )
+    await db.commit()
+    if result.rowcount != 1:
+        return
+    old_target = batch.temp_target
+    batch.temp_target = batch.rest_temp_target
+    batch.rest_fired_at = now
+
+    await log_control_event(
+        db, "rest_start", get_device_temp(device_id), ambient_temp, batch.temp_target, device_id, batch.id,
+    )
+    await _raise_alert(
+        db, batch, AlertType.REST_STARTED,
+        f"Diacetyl rest started: gravity {sg:.3f} stayed at or below {trigger:.3f} "
+        f"({batch.rest_trigger_percent:.0f}% of the way from {og:.3f} to {fg:.3f}) for {hold_hours:g} h. "
+        f"Target changed from {old_target:.1f} °C to {batch.temp_target:.1f} °C.",
+        AlertSeverity.INFO,
+    )
 
 
 async def run_control_cycle(
@@ -744,6 +845,11 @@ async def run_control_cycle(
                 await _handle_conflicted_batch(router, db, batch, conflicts[batch.id], driven)
             else:
                 await _clear_batch_alert(db, batch.id, AlertType.EQUIPMENT_CONFLICT)
+                try:
+                    await apply_rest_rule(db, batch, ambient_temp)
+                except Exception as e:  # a rule failure must not stop temperature control
+                    logger.error(f"Batch {batch.id}: rest rule error: {e}", exc_info=True)
+                    await db.rollback()
                 await control_batch_temperature(
                     router, batch, db, global_target, global_hysteresis, ambient_temp
                 )

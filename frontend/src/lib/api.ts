@@ -667,6 +667,12 @@ export interface BatchResponse {
 	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
+	// Automatic diacetyl rest rule (temperatures in Celsius)
+	rest_trigger_percent?: number | null;
+	rest_temp_target?: number | null;
+	rest_hold_hours?: number | null;
+	rest_below_since?: string | null;
+	rest_fired_at?: string | null;
 	// Soft delete
 	deleted_at?: string;
 	// Reading control
@@ -692,6 +698,10 @@ export interface BatchCreate {
 	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
+	// Automatic diacetyl rest rule. rest_trigger_percent: null switches the rule off.
+	rest_trigger_percent?: number | null;
+	rest_temp_target?: number;
+	rest_hold_hours?: number | null;
 }
 
 export interface BatchUpdate {
@@ -728,6 +738,10 @@ export interface BatchUpdate {
 	cooler_entity_id?: string;
 	temp_target?: number;
 	temp_hysteresis?: number;
+	// Automatic diacetyl rest rule. rest_trigger_percent: null switches the rule off.
+	rest_trigger_percent?: number | null;
+	rest_temp_target?: number;
+	rest_hold_hours?: number | null;
 	// Reading control
 	readings_paused?: boolean;
 	// Timer state

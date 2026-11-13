@@ -1233,7 +1233,7 @@ def _migrate_add_rest_rule_columns(conn) -> None:
         return  # table missing: create_all makes it with the columns
     for name, ddl in (
         ("rest_trigger_percent", "FLOAT"), ("rest_temp_target", "FLOAT"), ("rest_hold_hours", "FLOAT"),
-        ("rest_below_since", "DATETIME"), ("rest_fired_at", "DATETIME"),
+        ("rest_fired_at", "DATETIME"),
     ):
         if name not in columns:
             conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} {ddl}"))

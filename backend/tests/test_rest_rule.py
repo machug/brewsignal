@@ -1,6 +1,7 @@
 """Automatic diacetyl rest rule (tilt_ui-ml8e): gravity-triggered, debounced, one-shot."""
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -11,6 +12,13 @@ from backend.state import latest_readings
 from backend.tests.test_temp_controller_safety import (  # noqa: F401
     COOLER, HEATER, FakeRouter, active_alerts, clean_state, clock,
 )
+
+
+@pytest.fixture(autouse=True)
+def clean_holds():
+    tc._rest_holds.clear()
+    yield
+    tc._rest_holds.clear()
 
 OG, FG = 1.050, 1.010
 TRIGGER = 1.020  # 75% of the way from 1.050 to 1.010
@@ -67,14 +75,14 @@ def test_trigger_sg():
 async def test_does_not_fire_above_trigger(test_db, clock):
     b = await make_batch(test_db)
     b = await run_hours(test_db, clock, b.id, 6, 1.021)
-    assert b.temp_target == 18.0 and b.rest_fired_at is None and b.rest_below_since is None
+    assert b.temp_target == 18.0 and b.rest_fired_at is None and b.id not in tc._rest_holds
 
 
 @pytest.mark.asyncio
 async def test_fires_once_after_hold_and_never_reverts(test_db, clock):
     b = await make_batch(test_db)
     b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
-    assert b.temp_target == 18.0 and b.rest_below_since is not None  # still holding
+    assert b.temp_target == 18.0 and b.id in tc._rest_holds  # still holding
 
     b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
     assert b.temp_target == 21.0 and b.rest_fired_at is not None
@@ -99,7 +107,7 @@ async def test_noise_spike_restarts_the_hold(test_db, clock):
     b = await make_batch(test_db)
     await run_hours(test_db, clock, b.id, 2.5, 1.019)
     b = await run_hours(test_db, clock, b.id, 0.25, 1.024)  # one reading above the trigger
-    assert b.rest_below_since is None
+    assert b.id not in tc._rest_holds
     b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
     assert b.temp_target == 18.0  # 2.75 h of the new hold, not 5.5 h in total
     b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
@@ -122,16 +130,55 @@ async def test_untrustworthy_reading_restarts_the_hold(test_db, clock, bad):
         (await test_db.get(Batch, b.id)).readings_paused = True
         await test_db.commit()
     b = await cycle(test_db, b.id)
-    assert b.rest_below_since is None and b.rest_fired_at is None and b.temp_target == 18.0
+    assert b.id not in tc._rest_holds and b.rest_fired_at is None and b.temp_target == 18.0
 
 
 @pytest.mark.asyncio
-async def test_hold_survives_restart(test_db, clock):
+async def test_restart_restarts_the_hold(test_db, clock):
     b = await make_batch(test_db)
     await run_hours(test_db, clock, b.id, 2.75, 1.019)
-    tc._entity_state.clear()  # service restart: the hold start is in the database
+    tc._rest_holds.clear()  # service restart
+    b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
+    assert b.temp_target == 18.0
     b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
     assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("jump", [{"hours": 3, "minutes": 5}, {"hours": -2}])
+async def test_gap_or_clock_step_does_not_count_as_hold(test_db, clock, jump):
+    """Two low readings either side of an unchecked gap (outage, clock step) must not fire."""
+    b = await make_batch(test_db)
+    set_sg(clock, 1.019)
+    await cycle(test_db, b.id)
+    clock.advance(**jump)
+    set_sg(clock, 1.019)
+    b = await cycle(test_db, b.id)
+    assert b.temp_target == 18.0 and b.rest_fired_at is None
+    clock.advance(minutes=1)
+    b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
+    assert b.temp_target == 18.0  # the hold began again after the gap
+    b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
+    assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+async def test_never_lowers_a_warmer_target(test_db, clock):
+    b = await make_batch(test_db, temp_target=25.0, rest_hold_hours=0.0)  # saison, rest temp 21
+    set_sg(clock, 1.019, temp=25.0)
+    b = await cycle(test_db, b.id)
+    assert b.temp_target == 25.0 and b.rest_fired_at is not None  # finished, target untouched
+    alert = (await test_db.execute(
+        select(FermentationAlert).where(FermentationAlert.alert_type == "rest_started"))).scalars().one()
+    assert "left at 25.0" in alert.message
+    assert (await test_db.execute(select(ControlEvent).where(ControlEvent.action == "rest_start"))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_does_not_heat_a_cold_crash(test_db, clock):
+    b = await make_batch(test_db, temp_target=2.0)  # cold crashing, status still fermenting
+    b = await run_hours(test_db, clock, b.id, 6, 1.012, )
+    assert b.temp_target == 2.0 and b.rest_fired_at is None and b.id not in tc._rest_holds
 
 
 @pytest.mark.asyncio
@@ -144,6 +191,60 @@ async def test_rule_inactive(test_db, clock, kw):
     b = await make_batch(test_db, **kw)
     b = await run_hours(test_db, clock, b.id, 6, 1.012)
     assert b.temp_target == 18.0 and b.rest_fired_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("edit", [
+    {"rest_temp_target": 23.0},        # API edited the rule
+    {"rest_trigger_percent": 90.0},
+    {"rest_trigger_percent": None},    # API switched the rule off
+    {"status": "conditioning"},
+    {"temp_target": 2.0},              # brewer started a cold crash
+    {"temp_target": 19.0},
+])
+async def test_stale_snapshot_does_not_fire_after_api_edit(test_db, clock, edit):
+    """The API changes the batch after the controller read it: the old rule must not fire."""
+    bid = (await make_batch(test_db)).id
+    await run_hours(test_db, clock, bid, 2.75, 1.019)
+    clock.advance(minutes=30)
+    set_sg(clock, 1.019)
+    test_db.expire_all()
+    fresh = await test_db.get(Batch, bid)
+    snapshot = SimpleNamespace(**{f: getattr(fresh, f) for f in tc._BATCH_FIELDS})
+    for k, v in edit.items():
+        setattr(fresh, k, v)
+    await test_db.commit()
+
+    await tc.apply_rest_rule(test_db, snapshot)
+
+    test_db.expire_all()
+    b = await test_db.get(Batch, bid)
+    assert b.temp_target == edit.get("temp_target", 18.0) and b.rest_fired_at is None
+
+
+@pytest.mark.asyncio
+async def test_missing_fg_warns_then_clears(test_db, clock):
+    b = await make_batch(test_db, recipe_id=None)
+    set_sg(clock, 1.012)
+    await cycle(test_db, b.id)
+    assert "rest_blocked" in await active_alerts(test_db, b.id)
+    alert = (await test_db.execute(
+        select(FermentationAlert).where(FermentationAlert.alert_type == "rest_blocked"))).scalars().one()
+    assert alert.severity == "warning"
+
+    # Switching the rule off clears the warning.
+    (await test_db.get(Batch, b.id)).rest_trigger_percent = None
+    await test_db.commit()
+    await cycle(test_db, b.id)
+    assert "rest_blocked" not in await active_alerts(test_db, b.id)
+
+
+@pytest.mark.asyncio
+async def test_no_warning_when_rule_can_work(test_db, clock):
+    b = await make_batch(test_db)
+    set_sg(clock, 1.040)
+    await cycle(test_db, b.id)
+    assert await active_alerts(test_db, b.id) == []
 
 
 @pytest.mark.asyncio
@@ -194,17 +295,22 @@ async def test_api_set_rearm_and_disable(client, test_db):
     assert r.status_code == 422  # needs a rest temperature
 
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": 75, "rest_temp_target": 21})
+    assert r.status_code == 422  # needs a batch target: the controller skips batches without one
+
+    r = await client.put(f"/api/batches/{bid}", json={
+        "temp_target": 18, "rest_trigger_percent": 75, "rest_temp_target": 21})
     assert r.status_code == 200, r.text
     assert r.json()["rest_trigger_percent"] == 75 and r.json()["rest_hold_hours"] is None
 
     # Pretend the rule fired.
     b = await test_db.get(Batch, bid)
-    b.rest_fired_at = b.rest_below_since = b.created_at
+    b.rest_fired_at = b.created_at
     await test_db.commit()
 
-    # Re-saving the same rule (with Fahrenheit round-trip noise) and other fields keeps it fired.
+    # Re-saving the same rule and other fields keeps it fired. The form shows Fahrenheit
+    # to 1 decimal, so an untouched value comes back up to 0.05 F (0.028 C) off.
     r = await client.put(f"/api/batches/{bid}", json={
-        "name": "B", "rest_trigger_percent": 75, "rest_temp_target": 21.0000004, "rest_hold_hours": 4})
+        "name": "B", "rest_trigger_percent": 75, "rest_temp_target": 21.028, "rest_hold_hours": 4})
     assert r.json()["rest_fired_at"] is not None and r.json()["rest_hold_hours"] == 4
 
     # An unrelated update that does not mention the rule leaves it alone.
@@ -213,7 +319,7 @@ async def test_api_set_rearm_and_disable(client, test_db):
 
     # A changed rule is re-armed.
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": 80})
-    assert r.json()["rest_fired_at"] is None and r.json()["rest_below_since"] is None
+    assert r.json()["rest_fired_at"] is None
 
     # Explicit null switches it off.
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": None})
@@ -228,6 +334,30 @@ async def test_api_set_rearm_and_disable(client, test_db):
     {"rest_trigger_percent": 75, "rest_temp_target": 21, "rest_hold_hours": 100},
 ])
 async def test_api_rejects_out_of_range(client, body):
-    r = await client.post("/api/batches", json={"name": "A", "status": "planning"})
+    r = await client.post("/api/batches", json={"name": "A", "status": "planning", "temp_target": 18})
     r = await client.put(f"/api/batches/{r.json()['id']}", json=body)
     assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_api_create_with_rule(client):
+    base = {"name": "A", "status": "planning", "rest_trigger_percent": 75}
+    assert (await client.post("/api/batches", json=base)).status_code == 422
+    assert (await client.post("/api/batches", json={**base, "rest_temp_target": 21})).status_code == 422
+    r = await client.post("/api/batches", json={**base, "rest_temp_target": 21, "temp_target": 18})
+    assert r.status_code == 201, r.text
+    assert r.json()["rest_trigger_percent"] == 75 and r.json()["rest_fired_at"] is None
+
+
+def test_migration_adds_columns_once():
+    from sqlalchemy import create_engine, text
+    from backend.database import _migrate_add_rest_rule_columns
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        _migrate_add_rest_rule_columns(conn)  # no table yet: nothing to do
+        conn.execute(text("CREATE TABLE batches (id INTEGER PRIMARY KEY, temp_target FLOAT)"))
+        _migrate_add_rest_rule_columns(conn)
+        _migrate_add_rest_rule_columns(conn)  # second run is a no-op
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
+    assert {"rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at"} <= cols

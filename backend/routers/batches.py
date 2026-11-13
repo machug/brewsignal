@@ -153,8 +153,14 @@ async def ensure_equipment_free(
 
 
 def _require_complete_rest_rule(batch: Batch) -> None:
-    if batch.rest_trigger_percent is not None and batch.rest_temp_target is None:
+    """The rule needs a rest temperature, and a batch target: the controller only
+    drives batches that have their own temp_target."""
+    if batch.rest_trigger_percent is None:
+        return
+    if batch.rest_temp_target is None:
         raise HTTPException(status_code=422, detail="rest_temp_target is required when rest_trigger_percent is set")
+    if batch.temp_target is None:
+        raise HTTPException(status_code=422, detail="temp_target is required when rest_trigger_percent is set")
 
 
 def _rest_rule_changed(old: tuple, new: tuple) -> bool:
@@ -523,7 +529,6 @@ async def update_batch(
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already
         # fired stays fired, so re-saving the batch cannot undo a later cold crash.
-        batch.rest_below_since = None
         batch.rest_fired_at = None
     # Reading control
     if update.readings_paused is not None:

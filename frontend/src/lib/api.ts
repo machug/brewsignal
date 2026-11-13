@@ -671,7 +671,6 @@ export interface BatchResponse {
 	rest_trigger_percent?: number | null;
 	rest_temp_target?: number | null;
 	rest_hold_hours?: number | null;
-	rest_below_since?: string | null;
 	rest_fired_at?: string | null;
 	// Soft delete
 	deleted_at?: string;

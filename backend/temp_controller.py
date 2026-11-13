@@ -66,6 +66,9 @@ FAILURE_BACKOFF_MINUTES = _env_float("BREWSIGNAL_FAILURE_BACKOFF_MINUTES", 5)
 # for this long before the rule fires, unless the batch sets its own hold time.
 # Krausen and CO2 bubbles make single hydrometer readings unreliable.
 REST_HOLD_HOURS_DEFAULT = _env_float("BREWSIGNAL_REST_HOLD_HOURS", 3)
+# Below this batch target the brewer is cold crashing, not fermenting (lagers
+# ferment at 7 C and up). The rest rule must never heat a cold crash.
+REST_MIN_ACTIVE_TARGET_C = 5.0
 
 
 def _now() -> datetime:
@@ -83,6 +86,11 @@ _batch_heater_states: dict[int, dict] = {}
 
 # Track per-batch cooler states (same structure as heater states)
 _batch_cooler_states: dict[int, dict] = {}
+
+# Rest rule hold timers: {batch_id: (below_since, last_confirmed)}. In memory on
+# purpose: a restart, or any gap between confirmed readings, restarts the hold,
+# so an outage can never count as "gravity stayed below the trigger".
+_rest_holds: dict[int, tuple[datetime, datetime]] = {}
 
 # Track per-batch manual overrides
 # Keys are batch_id, values are {"state": "on"/"off", "until": datetime or None}
@@ -110,6 +118,7 @@ def cleanup_batch_state(batch_id: int) -> None:
     if batch_id in _batch_overrides:
         logger.debug(f"Cleaning up override for batch {batch_id}")
         del _batch_overrides[batch_id]
+    _rest_holds.pop(batch_id, None)
 _last_ha_url: Optional[str] = None
 _last_ha_token: Optional[str] = None
 
@@ -722,7 +731,7 @@ _BATCH_FIELDS = (
     "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
     "temp_target", "temp_hysteresis",
     "recipe_id", "measured_og", "readings_paused",
-    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_below_since", "rest_fired_at",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at",
 )
 
 
@@ -737,17 +746,21 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
     """Automatic diacetyl rest (tilt_ui-ml8e). Deterministic and one-shot.
 
     When a fermenting batch's gravity has stayed at or below the trigger for the
-    hold time, set the batch target to rest_temp_target, exactly once. Any cycle
-    without a trustworthy reading at or below the trigger restarts the hold
-    timer, so the rule can fire late but not early. After it fires, the rule is
-    finished: the brewer owns temp_target again (e.g. for a cold crash).
+    hold time, raise the batch target to rest_temp_target, exactly once. The
+    rule can fire late but not early: any cycle without a trustworthy reading at
+    or below the trigger, a service restart, or a gap between checks restarts
+    the hold. It never lowers a target and never acts on a cold-crash target.
+    After it fires, the rule is finished: the brewer owns temp_target again.
     """
     if (
         batch.rest_trigger_percent is None
         or batch.rest_temp_target is None
         or batch.rest_fired_at is not None
         or batch.status != "fermenting"
+        or batch.temp_target is None  # the API requires a batch target with the rule
     ):
+        _rest_holds.pop(batch.id, None)
+        await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
         return
 
     from .state import latest_readings
@@ -771,50 +784,78 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         if row:
             og, fg = og or row[0], row[1]
     trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+    if trigger is None:
+        # Do not fail silently: the brewer expects a rest that will never start.
+        await _raise_alert(
+            db, batch, AlertType.REST_BLOCKED,
+            "Automatic diacetyl rest cannot start: it needs an original gravity and the recipe's expected "
+            f"final gravity (OG {og or 'missing'}, FG {fg or 'missing'}). Link a recipe with OG and FG, "
+            "or switch the rule off and raise the target by hand.",
+            AlertSeverity.WARNING,
+        )
+    else:
+        await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
 
-    now = _now()
-    since = _utc(batch.rest_below_since)
-    if sg is None or trigger is None or sg > trigger:
-        if since is not None:
-            await db.execute(update(Batch).where(Batch.id == batch.id).values(rest_below_since=None))
-            await db.commit()
-            batch.rest_below_since = None
+    if (
+        sg is None or trigger is None or sg > trigger
+        or batch.temp_target < REST_MIN_ACTIVE_TARGET_C  # brewer is cold crashing: do not heat
+    ):
+        _rest_holds.pop(batch.id, None)
         return
 
-    if since is None:
-        since = now
-        await db.execute(update(Batch).where(Batch.id == batch.id).values(rest_below_since=now))
-        await db.commit()
-        batch.rest_below_since = now
+    now = _now()
+    since, last_confirmed = _rest_holds.get(batch.id, (now, now))
+    if not timedelta(0) <= now - last_confirmed <= _stale_limit(device_id):
+        since = now  # clock step or a gap in checks: gravity in between was not confirmed
+    _rest_holds[batch.id] = (since, now)
 
     hold_hours = batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT
     if now - since < timedelta(hours=hold_hours):
         return
+    _rest_holds.pop(batch.id, None)
 
-    # Fire. The WHERE clause makes this a no-op if the rule was switched off or
-    # already fired through the API since this cycle read the batch.
+    # A rest is a temperature increase. If the batch is already as warm, the rule
+    # finishes without touching the target (and cannot lower it later).
+    old_target = batch.temp_target
+    raise_target = batch.rest_temp_target > old_target
+    new_target = batch.rest_temp_target if raise_target else old_target
+
+    # Fire. The WHERE clause makes this a no-op if the batch changed through the
+    # API since this cycle read it (rule switched off or edited, target changed,
+    # no longer fermenting). The next cycle then evaluates the new state.
     result = await db.execute(
         update(Batch)
-        .where(Batch.id == batch.id, Batch.rest_fired_at.is_(None), Batch.rest_trigger_percent.isnot(None))
-        .values(temp_target=batch.rest_temp_target, rest_fired_at=now)
+        .where(
+            Batch.id == batch.id,
+            Batch.status == "fermenting",
+            Batch.rest_fired_at.is_(None),
+            Batch.rest_trigger_percent == batch.rest_trigger_percent,
+            Batch.rest_temp_target == batch.rest_temp_target,
+            Batch.temp_target == old_target,
+        )
+        .values(temp_target=new_target, rest_fired_at=now)
     )
     await db.commit()
     if result.rowcount != 1:
         return
-    old_target = batch.temp_target
-    batch.temp_target = batch.rest_temp_target
+    batch.temp_target = new_target
     batch.rest_fired_at = now
 
-    await log_control_event(
-        db, "rest_start", get_device_temp(device_id), ambient_temp, batch.temp_target, device_id, batch.id,
+    reached = (
+        f"gravity {sg:.3f} stayed at or below {trigger:.3f} "
+        f"({batch.rest_trigger_percent:.0f}% of the way from {og:.3f} to {fg:.3f}) for {hold_hours:g} h"
     )
-    await _raise_alert(
-        db, batch, AlertType.REST_STARTED,
-        f"Diacetyl rest started: gravity {sg:.3f} stayed at or below {trigger:.3f} "
-        f"({batch.rest_trigger_percent:.0f}% of the way from {og:.3f} to {fg:.3f}) for {hold_hours:g} h. "
-        f"Target changed from {old_target:.1f} °C to {batch.temp_target:.1f} °C.",
-        AlertSeverity.INFO,
-    )
+    if raise_target:
+        await log_control_event(
+            db, "rest_start", get_device_temp(device_id), ambient_temp, new_target, device_id, batch.id,
+        )
+        message = f"Diacetyl rest started: {reached}. Target changed from {old_target:.1f} °C to {new_target:.1f} °C."
+    else:
+        message = (
+            f"Diacetyl rest point reached: {reached}. Target left at {old_target:.1f} °C because it is "
+            f"already at or above the rest temperature ({batch.rest_temp_target:.1f} °C)."
+        )
+    await _raise_alert(db, batch, AlertType.REST_STARTED, message, AlertSeverity.INFO)
 
 
 async def run_control_cycle(

@@ -89,7 +89,7 @@
 		const og = parseFloat(measuredOg) || recipe?.og;
 		const fg = recipe?.fg;
 		const pct = parseFloat(restPercent);
-		if (!og || !fg || isNaN(pct) || og <= fg) return null;
+		if (!og || !fg || isNaN(pct) || og <= fg || og > 1.2) return null;
 		return og - ((og - fg) * pct) / 100;
 	});
 
@@ -218,19 +218,25 @@
 				temp_hysteresis: displayToTempDeltaC(tempHysteresis)
 			};
 
-			// Diacetyl rest rule: null switches it off. Needs a heater or cooler to act.
-			if (restEnabled && (heaterEntityId || coolerEntityId)) {
-				const pct = parseFloat(restPercent);
-				const restC = displayToTempC(restTemp);
-				const hold = parseFloat(restHoldHours);
-				if (isNaN(pct) || restC === undefined) {
-					throw new Error('Diacetyl rest needs a trigger percent and a rest temperature');
+			// Diacetyl rest rule: null switches it off. The fields only show with a heater
+			// or cooler, so without one the stored rule is left as it is.
+			if (heaterEntityId || coolerEntityId) {
+				if (restEnabled) {
+					const pct = parseFloat(restPercent);
+					const restC = displayToTempC(restTemp);
+					const hold = parseFloat(restHoldHours);
+					if (isNaN(pct) || restC === undefined) {
+						throw new Error('Diacetyl rest needs a start percent and a rest temperature');
+					}
+					if (data.temp_target === undefined) {
+						throw new Error('Diacetyl rest needs a target temperature for this batch');
+					}
+					data.rest_trigger_percent = pct;
+					data.rest_temp_target = restC;
+					data.rest_hold_hours = isNaN(hold) ? null : hold;
+				} else if (isEditMode) {
+					data.rest_trigger_percent = null;
 				}
-				data.rest_trigger_percent = pct;
-				data.rest_temp_target = restC;
-				data.rest_hold_hours = isNaN(hold) ? null : hold;
-			} else if (isEditMode) {
-				data.rest_trigger_percent = null;
 			}
 
 			// Set recipe_id for both create and update
@@ -550,7 +556,7 @@
 						Automatic diacetyl rest
 					</label>
 					<span class="form-hint">
-						Changes the target temperature one time, when gravity gets near final gravity. Works while the batch is fermenting.
+						Raises the target temperature one time, when gravity gets near final gravity. Works while the batch is fermenting.
 					</span>
 				</div>
 
@@ -562,7 +568,7 @@
 						</div>
 						<div class="form-group">
 							<label class="form-label" for="restTemp">Rest Temperature ({tempUnit})</label>
-							<input type="number" id="restTemp" class="form-input" bind:value={restTemp} step="0.5" min={tempTargetMin} max={tempTargetMax} />
+							<input type="number" id="restTemp" class="form-input" bind:value={restTemp} step="0.1" min={tempTargetMin} max={tempTargetMax} />
 						</div>
 					</div>
 					<div class="form-group">
@@ -572,7 +578,7 @@
 							{#if batch?.rest_fired_at}
 								Rest started {new Date(batch.rest_fired_at).toLocaleString()}. The rule is finished. Change the percent or rest temperature to arm it again.
 							{:else if restTriggerSg !== null}
-								Starts when gravity stays at or below {formatGravity(restTriggerSg)} {getGravityUnit()} for this long. A noisy reading restarts the wait.
+								Starts when gravity stays at or below {formatGravity(restTriggerSg)} {getGravityUnit()} for this long. A noisy reading or a restart of BrewSignal restarts the wait. The rule only raises the target, and it waits while the target is below 5 °C.
 							{:else}
 								Needs a recipe with OG and FG. Without them the rule does not start.
 							{/if}

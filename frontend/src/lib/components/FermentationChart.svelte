@@ -4,6 +4,7 @@
 	import {
 		fetchBatchReadings,
 		fetchBatchPredictions,
+		fetchBatchControlEvents,
 		fetchAmbientHistory,
 		fetchChamberHistory,
 		fetchBatch,
@@ -39,7 +40,6 @@
 		batchId: number;
 		deviceColor?: string;
 		originalGravity?: number | null;
-		controlEvents?: ControlEvent[];
 		/** When the automatic diacetyl rest started (ISO, UTC). Draws a marker. */
 		restStartedAt?: string | null;
 		/** Show the stats block under the chart (off on Home, where readouts sit above). */
@@ -48,7 +48,7 @@
 		showTrend?: boolean;
 	}
 
-	let { batchId, deviceColor = 'BLACK', originalGravity = null, controlEvents = [], restStartedAt = null, showStats = true, showTrend = false }: Props = $props();
+	let { batchId, deviceColor = 'BLACK', originalGravity = null, restStartedAt = null, showStats = true, showTrend = false }: Props = $props();
 
 	// Reactive check for display units
 	let useCelsius = $derived(configState.config.temp_units === 'C');
@@ -67,6 +67,9 @@
 	// number the Predictions panel and the assistant show (tilt_ui-3kbr). The
 	// chart's own line-to-1.010 estimate is gone.
 	let etaDays = $state<number | null>(null);
+	// Heater/cooler events for the bands. The chart loads its own, for the
+	// selected range, so no page can forget to pass them (tilt_ui-glha).
+	let controlEvents = $state<ControlEvent[]>([]);
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 	let isHistoricalBatch = $state(false); // Track if batch is completed/conditioning
 
@@ -927,14 +930,16 @@ async function loadData(userTriggered = false) {
 		// This allows viewing historical data even after switching devices mid-ferment
 		// Pass hours=undefined when selectedRange is 0 (All) to get all data
 		const hoursParam = selectedRange > 0 ? selectedRange : undefined;
-		const [batchData, ambientData, chamberData, prediction] = await Promise.all([
+		const [batchData, ambientData, chamberData, prediction, events] = await Promise.all([
 			fetchBatchReadings(batchId, hoursParam),
 			// For ambient/chamber, use 720 hours (30 days) as max when "All" is selected
 			fetchAmbientHistory(hoursParam ?? 720).catch(() => []), // Don't fail if ambient unavailable
 			fetchChamberHistory(hoursParam ?? 720).catch(() => []), // Don't fail if chamber unavailable
 			// No ETA for a batch that is no longer fermenting
-			isHistoricalBatch ? null : fetchBatchPredictions(batchId).catch(() => null)
+			isHistoricalBatch ? null : fetchBatchPredictions(batchId).catch(() => null),
+			fetchBatchControlEvents(batchId, hoursParam ?? 720).catch(() => [])
 		]);
+		controlEvents = events;
 		const hours = prediction?.available ? prediction.hours_to_completion : null;
 		etaDays = hours != null && hours > 0 ? hours / 24 : null;
 		readings = batchData;

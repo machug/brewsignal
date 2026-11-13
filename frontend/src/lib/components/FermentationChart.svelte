@@ -3,6 +3,7 @@
 	import uPlot from 'uplot';
 	import {
 		fetchBatchReadings,
+		fetchBatchPredictions,
 		fetchAmbientHistory,
 		fetchChamberHistory,
 		fetchBatch,
@@ -62,6 +63,10 @@
 	let ambientReadings = $state<AmbientHistoricalReading[]>([]);
 	let chamberReadings = $state<ChamberHistoricalReading[]>([]);
 	let currentTrend = $state<TrendResult | null>(null);
+	// Days until fermentation completes, from the backend prediction: the same
+	// number the Predictions panel and the assistant show (tilt_ui-3kbr). The
+	// chart's own line-to-1.010 estimate is gone.
+	let etaDays = $state<number | null>(null);
 	let deviceId = $state<string | null>(null); // Store device_id from batch
 	let isHistoricalBatch = $state(false); // Track if batch is completed/conditioning
 
@@ -181,14 +186,11 @@
 		slope: number;        // SG change per second
 		intercept: number;    // Y-intercept
 		r2: number;           // Coefficient of determination (0-1)
-		predictedFg: number | null;  // Extrapolated final gravity
-		daysToFg: number | null;     // Estimated days until FG reached
 	}
 
 	function calculateLinearRegression(
 		timestamps: number[],
-		sgValues: (number | null)[],
-		targetFg: number = 1.010  // Default target FG for prediction
+		sgValues: (number | null)[]
 	): TrendResult | null {
 		// Filter out null values and pair with timestamps
 		const validPairs: [number, number][] = [];
@@ -227,32 +229,7 @@
 		}
 		const r2 = ssTot > 0 ? 1 - (ssRes / ssTot) : 0;
 
-		// Only show trend if slope is negative (gravity dropping) and decent fit
-		// Allow positive slope too but with lower confidence display
-		let predictedFg: number | null = null;
-		let daysToFg: number | null = null;
-
-		if (slope < 0 && r2 > 0.3) {
-			// Calculate when we'll hit target FG
-			// targetFg = slope * t + intercept
-			// t = (targetFg - intercept) / slope
-			const lastTimestamp = timestamps[timestamps.length - 1];
-			const timeToFg = (targetFg - intercept) / slope;
-
-			if (timeToFg > lastTimestamp) {
-				const secondsToFg = timeToFg - lastTimestamp;
-				daysToFg = secondsToFg / (24 * 60 * 60);
-
-				// Only predict if within reasonable range (< 60 days)
-				if (daysToFg > 0 && daysToFg < 60) {
-					predictedFg = targetFg;
-				} else {
-					daysToFg = null;
-				}
-			}
-		}
-
-		return { slope, intercept, r2, predictedFg, daysToFg };
+		return { slope, intercept, r2 };
 	}
 
 	function processControlEvents(events: ControlEvent[]): ControlPeriod[] {
@@ -950,12 +927,16 @@ async function loadData(userTriggered = false) {
 		// This allows viewing historical data even after switching devices mid-ferment
 		// Pass hours=undefined when selectedRange is 0 (All) to get all data
 		const hoursParam = selectedRange > 0 ? selectedRange : undefined;
-		const [batchData, ambientData, chamberData] = await Promise.all([
+		const [batchData, ambientData, chamberData, prediction] = await Promise.all([
 			fetchBatchReadings(batchId, hoursParam),
 			// For ambient/chamber, use 720 hours (30 days) as max when "All" is selected
 			fetchAmbientHistory(hoursParam ?? 720).catch(() => []), // Don't fail if ambient unavailable
-			fetchChamberHistory(hoursParam ?? 720).catch(() => []) // Don't fail if chamber unavailable
+			fetchChamberHistory(hoursParam ?? 720).catch(() => []), // Don't fail if chamber unavailable
+			// No ETA for a batch that is no longer fermenting
+			isHistoricalBatch ? null : fetchBatchPredictions(batchId).catch(() => null)
 		]);
+		const hours = prediction?.available ? prediction.hours_to_completion : null;
+		etaDays = hours != null && hours > 0 ? hours / 24 : null;
 		readings = batchData;
 		ambientReadings = ambientData;
 		chamberReadings = chamberData;
@@ -1398,10 +1379,10 @@ onMount(async () => {
 				<dt>Rate</dt>
 				<dd>{formatRate(trendStats.fermRate)}<span class="trend-unit">&thinsp;SG/day</span></dd>
 			</div>
-			{#if currentTrend?.daysToFg != null}
-				<div class="trend-item" title="Estimated time until target FG (R&sup2;={currentTrend.r2.toFixed(2)})">
+			{#if etaDays != null}
+				<div class="trend-item" title="Estimated time until fermentation completes (same prediction as the Predictions panel)">
 					<dt>ETA to FG</dt>
-					<dd>{formatDuration(currentTrend.daysToFg)}</dd>
+					<dd>{formatDuration(etaDays)}</dd>
 				</div>
 			{/if}
 			<div class="trend-item">
@@ -1440,7 +1421,7 @@ onMount(async () => {
 		<FermentationStats
 			{readings}
 			{originalGravity}
-			trend={currentTrend ? { predictedFg: currentTrend.predictedFg, daysToFg: currentTrend.daysToFg, r2: currentTrend.r2 } : null}
+			{etaDays}
 		/>
 	{/if}
 </div>

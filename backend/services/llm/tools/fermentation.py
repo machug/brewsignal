@@ -307,16 +307,11 @@ async def get_fermentation_status(
             from backend.main import get_ml_manager
             ml_mgr = get_ml_manager()
             if ml_mgr:
-                expected_fg = batch.recipe.fg if batch.recipe and batch.recipe.fg else None
-                state = ml_mgr.get_device_state(batch.device_id, expected_fg=expected_fg, batch_id=batch.id)
-                if state and state.get("predictions"):
-                    pred = state["predictions"]
-                    predictions = {
-                        "available": True,
-                        "predicted_fg": pred.get("predicted_fg"),
-                        "hours_to_completion": pred.get("hours_to_completion"),
-                        "confidence": pred.get("confidence"),
-                    }
+                # Same numbers as the API and the chart (tilt_ui-3kbr)
+                pred = await ml_mgr.predict_batch(db, batch)
+                keep = ("available", "reason", "predicted_fg", "hours_to_completion",
+                        "estimated_completion", "confidence")
+                predictions = {k: pred[k] for k in keep if k in pred}
         except Exception as e:
             logger.warning(f"Failed to get ML predictions: {e}")
 

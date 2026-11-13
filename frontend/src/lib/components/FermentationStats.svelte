@@ -1,21 +1,12 @@
 <script module lang="ts">
 	import type { HistoricalReading } from '$lib/api';
+	import { analyseSg, percentile } from '$lib/chart/sgStats';
 
 	// Valid ranges for outlier filtering (matches backend)
-	const SG_MIN = 0.5;
-	const SG_MAX = 1.2;
 	const TEMP_MIN_C = 0; // Celsius (API returns Celsius since PR #66)
 	const TEMP_MAX_C = 100;
 
-	// Percentile helper - filters out noise spikes from High/Low stats
-	export function percentile(arr: number[], p: number): number {
-		const sorted = [...arr].sort((a, b) => a - b);
-		const idx = (p / 100) * (sorted.length - 1);
-		const lower = Math.floor(idx);
-		const upper = Math.ceil(idx);
-		if (lower === upper) return sorted[lower];
-		return sorted[lower] + (sorted[upper] - sorted[lower]) * (idx - lower);
-	}
+	export { analyseSg, percentile };
 
 	export function formatRate(rate: number): string {
 		const sign = rate >= 0 ? '+' : '';
@@ -29,76 +20,20 @@
 		}
 		return `${days.toFixed(1)}d`;
 	}
-
-	/** Gravity-derived stats shared by the full stats panel and Home's trend strip. */
-	export function analyseSg(readings: HistoricalReading[], originalGravity: number | null) {
-		// Filter out invalid readings (flagged by backend) first
-		const validReadings = readings.filter((r) => r.status !== 'invalid');
-		if (validReadings.length === 0) return null;
-
-		// Readings come newest first, so sort for chronological order
-		const sorted = [...validReadings].sort(
-			(a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-		);
-		const firstReading = sorted[0];
-		const lastReading = sorted[sorted.length - 1];
-
-		// SG values (prefer calibrated, filter outliers for historical data)
-		const sgValues = sorted
-			.map((r) => r.sg_calibrated ?? r.sg_raw)
-			.filter((v): v is number => v !== null && v >= SG_MIN && v <= SG_MAX);
-		if (sgValues.length === 0) return null;
-
-		const currentSg = sgValues[sgValues.length - 1];
-		const firstSg = sgValues[0];
-		// Use percentiles to filter noise spikes (Tilt can report bad values when bumped)
-		const highSg = percentile(sgValues, 95);
-		const lowSg = percentile(sgValues, 5);
-
-		const firstTime = new Date(firstReading.timestamp).getTime();
-		const lastTime = new Date(lastReading.timestamp).getTime();
-		const durationDays = (lastTime - firstTime) / (1000 * 60 * 60 * 24);
-
-		// Fermentation rate (SG drop per day)
-		const fermRate = durationDays > 0 ? (currentSg - firstSg) / durationDays : 0;
-
-		// Days at current SG (find when SG last changed by >0.001)
-		let daysAtCurrentSg = 0;
-		const SG_CHANGE_THRESHOLD = 0.001;
-		for (let i = sgValues.length - 2; i >= 0; i--) {
-			if (Math.abs(sgValues[i] - currentSg) > SG_CHANGE_THRESHOLD) {
-				const changeTime = new Date(sorted[i + 1].timestamp).getTime();
-				daysAtCurrentSg = (lastTime - changeTime) / (1000 * 60 * 60 * 24);
-				break;
-			}
-		}
-
-		// Use explicit OG if set, otherwise estimate from highSg (95th percentile)
-		const og = originalGravity ?? highSg;
-		const ogIsEstimated = originalGravity === null;
-
-		return { sorted, currentSg, firstSg, highSg, lowSg, fermRate, durationDays, daysAtCurrentSg, og, ogIsEstimated };
-	}
 </script>
 
 <script lang="ts">
 	import { configState, formatTemp, getTempUnit, fahrenheitToCelsius, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 
-	// Trend prediction data from TiltChart
-	interface TrendPrediction {
-		predictedFg: number | null;
-		daysToFg: number | null;
-		r2: number;
-	}
-
 	interface Props {
 		readings: HistoricalReading[];
 		originalGravity: number | null;
 		onOgChange?: (og: number | null) => void;
-		trend?: TrendPrediction | null;
+		/** Days until fermentation completes, from the backend prediction. */
+		etaDays?: number | null;
 	}
 
-	let { readings, originalGravity, onOgChange, trend = null }: Props = $props();
+	let { readings, originalGravity, onOgChange, etaDays = null }: Props = $props();
 
 	// OG editing state
 	let isEditingOg = $state(false);
@@ -317,10 +252,10 @@
 				<span class="stat-label">ABV</span>
 				<span class="stat-value">{formatPercent(stats.abv)}</span>
 			</div>
-			{#if trend?.daysToFg !== null && trend?.daysToFg !== undefined}
-				<div class="stat-pill prediction-pill" title="Estimated time until target FG (R²={trend.r2.toFixed(2)})">
+			{#if etaDays != null}
+				<div class="stat-pill prediction-pill" title="Estimated time until fermentation completes (same prediction as the Predictions panel)">
 					<span class="stat-label">ETA</span>
-					<span class="stat-value prediction">{formatDuration(trend.daysToFg)}</span>
+					<span class="stat-value prediction">{formatDuration(etaDays)}</span>
 					<span class="prediction-badge">pred</span>
 				</div>
 			{/if}

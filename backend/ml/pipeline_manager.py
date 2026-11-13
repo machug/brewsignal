@@ -186,6 +186,59 @@ class MLPipelineManager:
             "history_count": len(pipeline.sg_history)
         }
 
+    async def predict_batch(self, db_session, batch, model: str = "auto") -> dict:
+        """The one prediction for a batch: API, assistant and chart all use it (tilt_ui-3kbr).
+
+        ``batch`` needs ``recipe`` loaded. ``hours_to_completion`` is the
+        blended estimate (curve + linear, weighted by confidence); the
+        curve-only value runs 35-70 h short early on, so it is never the headline.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        device_id = batch.device_id
+        if batch.status in ("completed", "archived"):
+            # Historical batches never share the device's live pipeline, which now
+            # belongs to whatever batch the device is fermenting (tilt_ui-89af).
+            device_id = f"batch-{batch.id}"
+        elif not device_id:
+            return {"available": False, "error": "No device linked"}
+
+        expected_fg = batch.recipe.fg if batch.recipe else None
+        state = self.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch.id)
+        # Reload from the database if the pipeline is empty or short on history
+        if not state or state.get("history_count", 0) < 10:
+            await self.reload_from_database(device_id, batch.id, db_session)
+            state = self.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch.id)
+
+        if not state or not state.get("predictions"):
+            return {"available": False}
+        predictions = state["predictions"]
+        # A dict with fitted=False means the fit failed or was refused
+        if not predictions.get("fitted"):
+            return {"available": False, "reason": predictions.get("reason", "unknown")}
+
+        curve_hours = predictions.get("hours_to_completion")
+        blended_hours = predictions.get("blended_hours_to_completion")
+        hours = blended_hours if blended_hours is not None else curve_hours
+        # Hours are from NOW, not from batch start
+        completion = None
+        if hours is not None and hours > 0:
+            completion = datetime.now(timezone.utc) + timedelta(hours=hours)
+
+        return {
+            "available": True,
+            "predicted_fg": predictions.get("predicted_fg"),
+            "predicted_og": predictions.get("predicted_og"),
+            "estimated_completion": completion.isoformat() if completion else None,
+            "hours_to_completion": hours,
+            "hours_to_target_linear": predictions.get("hours_to_target_linear"),
+            "curve_hours_to_completion": curve_hours,
+            "confidence": predictions.get("confidence"),
+            "model_type": predictions.get("model_type"),
+            "r_squared": predictions.get("r_squared"),
+            "num_readings": state.get("history_count", 0),
+        }
+
     async def warm_active_batches(self, session_factory) -> int:
         """Reload history for every active batch with a device (startup).
 

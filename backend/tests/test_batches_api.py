@@ -331,7 +331,7 @@ async def test_equipment_needs_a_batch_target(client, test_db):
     legacy = Batch(name="L", status="completed", heater_entity_id="switch.okkc_old")
     test_db.add(legacy)
     await test_db.commit()
-    r = await client.put(f"/api/batches/{legacy.id}", json={"notes": "x"})
+    r = await client.put(f"/api/batches/{legacy.id}", json={"notes": "x", "device_id": "okkc-tilt"})
     assert r.status_code == 200, r.text
     # ...but it cannot enter a controlled status without a target.
     r = await client.put(f"/api/batches/{legacy.id}", json={"status": "fermenting"})

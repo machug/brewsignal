@@ -75,6 +75,9 @@
 	}
 
 	let tempTarget = $state(tempToDisplay(batch?.temp_target));
+	// An old batch saved with a heater or cooler and no target. The API still accepts
+	// unrelated edits to it, so the form must not block them.
+	const legacyNoTarget = !!batch && !!(batch.heater_entity_id || batch.cooler_entity_id) && batch.temp_target == null;
 	let tempHysteresis = $state(tempDeltaToDisplay(batch?.temp_hysteresis));
 
 	// Automatic diacetyl rest rule (tilt_ui-ml8e). The controller runs it; this form only sets it.
@@ -239,7 +242,7 @@
 					data.rest_temp_target = restC;
 				}
 			}
-			if ((heaterEntityId || coolerEntityId) && data.temp_target === undefined) {
+			if ((heaterEntityId || coolerEntityId) && data.temp_target === undefined && (!legacyNoTarget || restEnabled)) {
 				throw new Error('Set a target temperature. Without one the heater and cooler are not controlled.');
 			}
 
@@ -535,7 +538,7 @@
 							step="0.5"
 							min={tempTargetMin}
 							max={tempTargetMax}
-							required
+							required={!legacyNoTarget}
 						/>
 						<span class="form-hint">Needed. Without a target the heater and cooler are not controlled.</span>
 					</div>

@@ -408,13 +408,14 @@ async def update_batch(
         or new_cooler != batch.cooler_entity_id
         or new_device_id != batch.device_id
     )
-    if entering_controlled or equipment_changed:
-        # Same scope as the equipment check: an unrelated edit to a legacy batch
-        # (equipment, no target) is not blocked.
+    if entering_controlled or new_heater != batch.heater_entity_id or new_cooler != batch.cooler_entity_id:
+        # Not on other edits (notes, a new Tilt): a legacy batch that already has
+        # equipment and no target must stay editable.
         _require_target_with_equipment(
             new_heater, new_cooler,
             update.temp_target if update.temp_target is not None else batch.temp_target,
         )
+    if entering_controlled or equipment_changed:
         await ensure_equipment_free(
             db, user,
             status=new_status,

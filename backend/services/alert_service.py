@@ -236,14 +236,17 @@ async def detect_and_persist_alerts(
         if current_temp <= temp_target + RUNAWAY_MARGIN_C:
             await _clear_alert(db, batch_id, AlertType.TEMP_RUNAWAY, now)
         else:
-            ref = _naive_utc(now)
+            # Anchor on the reading's own time: a late upload must be compared
+            # with the readings around it, not with the wall clock.
+            at = reading.timestamp or now
+            ref = _naive_utc(at)
             past = (await db.execute(
                 select(Reading.temp_calibrated, Reading.timestamp)
                 .where(
                     Reading.batch_id == batch_id,
                     Reading.temp_calibrated.is_not(None),
-                    Reading.timestamp <= now - RUNAWAY_WINDOW,
-                    Reading.timestamp >= now - 2 * RUNAWAY_WINDOW,
+                    Reading.timestamp <= at - RUNAWAY_WINDOW,
+                    Reading.timestamp >= at - 2 * RUNAWAY_WINDOW,
                 )
                 .order_by(Reading.timestamp.desc())
                 .limit(1)
@@ -444,8 +447,10 @@ async def check_offline_sensors(db: AsyncSession, now: Optional[datetime] = None
 
     Offline = no stored reading for max(OFFLINE_MIN, OFFLINE_INTERVALS x the
     device's median report interval). Must run on a timer: the ingest path
-    cannot notice a reading that never came. A batch with no readings at all
-    gets no judgement. Returns how many batches are offline.
+    cannot notice a reading that never came. A batch with fewer than 3
+    readings gets no judgement (its report interval is not known yet, and an
+    hourly reporter would trip the 30 min floor). Returns how many batches
+    are offline.
     """
     now = now or datetime.now(timezone.utc)
     ref = _naive_utc(now)
@@ -474,12 +479,11 @@ async def check_offline_sensors(db: AsyncSession, now: Optional[datetime] = None
             .order_by(Reading.timestamp.desc())
             .limit(21)
         )).scalars().all()]
-        if not stamps:
+        if len(stamps) < 3:
+            await _clear_alert(db, batch_id, AlertType.SENSOR_OFFLINE, now)
             continue
-        limit = OFFLINE_MIN
-        if len(stamps) >= 3:
-            gaps = [a - b for a, b in zip(stamps, stamps[1:])]
-            limit = max(limit, OFFLINE_INTERVALS * statistics.median(gaps))
+        gaps = [a - b for a, b in zip(stamps, stamps[1:])]
+        limit = max(OFFLINE_MIN, OFFLINE_INTERVALS * statistics.median(gaps))
         age = ref - stamps[0]
         # The temperature controller already raises a critical sensor_stale
         # alert for batches it controls; do not double up.

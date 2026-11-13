@@ -140,7 +140,9 @@ async def test_offline_alert_raised_and_cleared_by_next_reading(test_db):
 @pytest.mark.asyncio
 async def test_offline_alert_cleared_when_batch_finishes(test_db):
     batch = await _batch(test_db)
-    test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.040, timestamp=T0))
+    for i in range(3):
+        test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.040,
+                            timestamp=T0 - timedelta(minutes=5 * i)))
     await test_db.flush()
     assert await check_offline_sensors(test_db, now=T0 + timedelta(hours=2)) == 1
     batch.status = "completed"
@@ -164,7 +166,9 @@ async def test_offline_limit_scales_for_slow_reporters(test_db):
 @pytest.mark.asyncio
 async def test_offline_defers_to_controller_stale_alert(test_db):
     batch = await _batch(test_db)
-    test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.040, timestamp=T0))
+    for i in range(3):
+        test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.040,
+                            timestamp=T0 - timedelta(minutes=5 * i)))
     test_db.add(FermentationAlert(batch_id=batch.id, alert_type=AlertType.SENSOR_STALE,
                                   severity="critical", message="stale"))
     await test_db.flush()

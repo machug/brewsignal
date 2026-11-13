@@ -64,8 +64,10 @@ FAILURE_BACKOFF_MINUTES = _env_float("BREWSIGNAL_FAILURE_BACKOFF_MINUTES", 5)
 
 # Automatic diacetyl rest (tilt_ui-ml8e): gravity must stay at or below the trigger
 # for this long before the rule fires, unless the batch sets its own hold time.
-# Krausen and CO2 bubbles make single hydrometer readings unreliable.
-REST_HOLD_HOURS_DEFAULT = _env_float("BREWSIGNAL_REST_HOLD_HOURS", 3)
+# Krausen and CO2 bubbles make single hydrometer readings unreliable. Not an
+# environment setting on purpose: the batch form shows and saves this same
+# default, so the two cannot disagree. The per-batch field is the knob.
+REST_HOLD_HOURS_DEFAULT = 3.0
 # Below this batch target the brewer is cold crashing, not fermenting (lagers
 # ferment at 7 C and up). The rest rule must never heat a cold crash.
 REST_MIN_ACTIVE_TARGET_C = 5.0

@@ -48,6 +48,7 @@ class RestRuleStatus(BaseModel):
     trigger_percent: float
     trigger_sg: Optional[float]
     rest_temp: float
+    will_raise: bool  # False: the target is already at or above rest_temp and will be left alone
     hold_hours: float
     below_since: Optional[str]
     fired_at: Optional[str]

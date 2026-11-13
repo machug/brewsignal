@@ -59,6 +59,15 @@
 	}
 </script>
 
+{#snippet restOutcome()}
+	{#if rest?.will_raise}
+		the target goes up to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
+	{:else if rest}
+		the rule finishes and the target stays as it is. It is already at or above the rest temperature
+		(<span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>).
+	{/if}
+{/snippet}
+
 <div class="content-grid">
 	<!-- Left column -->
 	<div class="stats-section">
@@ -179,11 +188,11 @@
 								{:else if rest.state === 'holding'}
 									Gravity is at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
 									since <span class="num">{formatWhen(rest.below_since)}</span>. After <span class="num">{rest.hold_hours}&thinsp;h</span> there,
-									the target goes to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
+									{@render restOutcome()}
 								{:else}
 									On. When gravity stays at or below <span class="num">{formatGravity(rest.trigger_sg ?? 0)}&thinsp;{getGravityUnit()}</span>
 									(<span class="num">{rest.trigger_percent}%</span> of the way to FG) for <span class="num">{rest.hold_hours}&thinsp;h</span>,
-									the target goes to <span class="num">{formatTempValue(rest.rest_temp)}&thinsp;{tempUnit}</span>.
+									{@render restOutcome()}
 								{/if}
 							</p>
 						</div>

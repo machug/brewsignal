@@ -792,6 +792,16 @@ async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optiona
     og, fg = await _rest_gravities(db, batch)
     trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
     driven = bool(batch.device_id and (batch.heater_entity_id or batch.cooler_entity_id))
+    if driven and batch.rest_fired_at is None:
+        # A batch in an equipment conflict is not driven, and the rule is not run for it.
+        from .models import FermentationAlert
+        driven = (await db.execute(
+            select(FermentationAlert.id).where(
+                FermentationAlert.batch_id == batch.id,
+                FermentationAlert.alert_type == AlertType.EQUIPMENT_CONFLICT,
+                FermentationAlert.cleared_at.is_(None),
+            ).limit(1)
+        )).first() is None
     if batch.rest_fired_at is not None:
         state = "started"
     elif not controller_on or not driven or batch.status != "fermenting" or batch.temp_target is None:
@@ -809,6 +819,8 @@ async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optiona
         "trigger_percent": batch.rest_trigger_percent,
         "trigger_sg": trigger,
         "rest_temp": batch.rest_temp_target,
+        # The rule only raises: a target already at or above the rest temperature is left alone
+        "will_raise": batch.temp_target is not None and batch.temp_target < batch.rest_temp_target,
         "hold_hours": batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT,
         "below_since": serialize_datetime_to_utc(batch.rest_below_since) if state == "holding" else None,
         "fired_at": serialize_datetime_to_utc(batch.rest_fired_at),

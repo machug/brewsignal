@@ -785,6 +785,7 @@ export interface RestRuleStatus {
 	trigger_percent: number;
 	trigger_sg: number | null;
 	rest_temp: number;
+	will_raise: boolean;
 	hold_hours: number;
 	below_since: string | null;
 	fired_at: string | null;

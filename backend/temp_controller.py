@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy import select, update
 
 from .database import async_session_factory
-from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, Recipe, serialize_datetime_to_utc
+from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, Reading, Recipe, serialize_datetime_to_utc
 from .routers.config import get_config_value
 from .services.alert_service import AlertSeverity, AlertType, _clear_alert, _upsert_alert
 from .services.device_control import (
@@ -71,6 +71,9 @@ REST_HOLD_HOURS_DEFAULT = _env_float("BREWSIGNAL_REST_HOLD_HOURS", 3)
 REST_MIN_ACTIVE_TARGET_C = 5.0
 # Finished beer does not go below about 0.990. A lower reading is not beer.
 REST_MIN_PLAUSIBLE_SG = 0.980
+# How long a stored (anomaly-checked) reading can veto the live gravity. Longer
+# than the default 15 min storage interval, so there is always one in the window.
+REST_STORED_READING_WINDOW = timedelta(minutes=45)
 
 
 def _now() -> datetime:
@@ -829,6 +832,29 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         )
     else:
         await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
+
+    if sg is not None and trigger is not None and sg <= trigger:
+        # The live cache only carries the anomaly flag for the one broadcast that
+        # was stored (a Tilt broadcasts every few seconds, storage runs every 15
+        # min by default). The stored reading keeps its checks, so use it too:
+        # a recent stored reading that is an anomaly, invalid, or above the
+        # trigger means the live value is not trusted this cycle.
+        last = (await db.execute(
+            select(Reading.timestamp, Reading.is_anomaly, Reading.status, Reading.sg_calibrated)
+            .where(Reading.batch_id == batch.id)
+            .order_by(Reading.timestamp.desc())
+            .limit(1)
+        )).first()
+        if (
+            last is not None
+            and timedelta(0) <= _now() - _utc(last.timestamp) <= REST_STORED_READING_WINDOW
+            and (
+                last.is_anomaly
+                or last.status != "valid"
+                or (last.sg_calibrated is not None and last.sg_calibrated > trigger)
+            )
+        ):
+            sg = None
 
     if (
         sg is None or trigger is None or sg > trigger

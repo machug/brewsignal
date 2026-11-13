@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from backend import temp_controller as tc
-from backend.models import Batch, ControlEvent, FermentationAlert, Recipe
+from backend.models import Batch, ControlEvent, FermentationAlert, Reading, Recipe
 from backend.state import latest_readings
 from backend.tests.test_temp_controller_safety import (  # noqa: F401
     COOLER, HEATER, FakeRouter, active_alerts, clean_state, clock,
@@ -203,6 +203,26 @@ async def test_api_clears_blocked_warning_when_batch_leaves_fermenting(client, t
     r = await client.put(f"/api/batches/{b.id}", json={"status": "conditioning"})
     assert r.status_code == 200, r.text
     assert "rest_blocked" not in await active_alerts(test_db, b.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored,blocks", [
+    ({"is_anomaly": True, "sg_calibrated": 1.019}, True),
+    ({"status": "invalid", "sg_calibrated": 1.019}, True),
+    ({"sg_calibrated": 1.030}, True),           # stored sample is above the trigger
+    ({"sg_calibrated": 1.019}, False),          # clean stored sample
+    ({"is_anomaly": True, "sg_calibrated": 1.019, "age_h": 2}, False),  # too old to matter
+])
+async def test_recent_stored_reading_vetoes_live_gravity(test_db, clock, stored, blocks):
+    """The live cache drops the anomaly flag on the next broadcast; the stored reading keeps it."""
+    b = await make_batch(test_db, rest_hold_hours=0.0)
+    stored = dict(stored)
+    ts = clock() - timedelta(hours=stored.pop("age_h", 0), minutes=5)
+    test_db.add(Reading(batch_id=b.id, device_id=None, timestamp=ts, **stored))
+    await test_db.commit()
+    set_sg(clock, 1.019)  # live broadcast: low, and not flagged
+    b = await cycle(test_db, b.id)
+    assert (b.rest_fired_at is None) == blocks
 
 
 @pytest.mark.asyncio

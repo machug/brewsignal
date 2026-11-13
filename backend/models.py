@@ -600,6 +600,10 @@ class Batch(Base):
     rest_trigger_percent: Mapped[Optional[float]] = mapped_column()  # % of the way from OG to expected FG; None = rule off
     rest_temp_target: Mapped[Optional[float]] = mapped_column()  # Celsius
     rest_hold_hours: Mapped[Optional[float]] = mapped_column()  # None = controller default
+    # Hold timer: when gravity first went to/below the trigger, and the last cycle that confirmed it
+    rest_below_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rest_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rest_hold_trigger_sg: Mapped[Optional[float]] = mapped_column()  # trigger gravity the hold was timed against
     rest_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # set once; rule never fires again
 
     # Notes

@@ -13,13 +13,6 @@ from backend.tests.test_temp_controller_safety import (  # noqa: F401
     COOLER, HEATER, FakeRouter, active_alerts, clean_state, clock,
 )
 
-
-@pytest.fixture(autouse=True)
-def clean_holds():
-    tc._rest_holds.clear()
-    yield
-    tc._rest_holds.clear()
-
 OG, FG = 1.050, 1.010
 TRIGGER = 1.020  # 75% of the way from 1.050 to 1.010
 
@@ -75,14 +68,14 @@ def test_trigger_sg():
 async def test_does_not_fire_above_trigger(test_db, clock):
     b = await make_batch(test_db)
     b = await run_hours(test_db, clock, b.id, 6, 1.021)
-    assert b.temp_target == 18.0 and b.rest_fired_at is None and b.id not in tc._rest_holds
+    assert b.temp_target == 18.0 and b.rest_fired_at is None and b.rest_below_since is None
 
 
 @pytest.mark.asyncio
 async def test_fires_once_after_hold_and_never_reverts(test_db, clock):
     b = await make_batch(test_db)
     b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
-    assert b.temp_target == 18.0 and b.id in tc._rest_holds  # still holding
+    assert b.temp_target == 18.0 and b.rest_below_since is not None  # still holding
 
     b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
     assert b.temp_target == 21.0 and b.rest_fired_at is not None
@@ -107,7 +100,7 @@ async def test_noise_spike_restarts_the_hold(test_db, clock):
     b = await make_batch(test_db)
     await run_hours(test_db, clock, b.id, 2.5, 1.019)
     b = await run_hours(test_db, clock, b.id, 0.25, 1.024)  # one reading above the trigger
-    assert b.id not in tc._rest_holds
+    assert b.rest_below_since is None
     b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
     assert b.temp_target == 18.0  # 2.75 h of the new hold, not 5.5 h in total
     b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
@@ -130,18 +123,26 @@ async def test_untrustworthy_reading_restarts_the_hold(test_db, clock, bad):
         (await test_db.get(Batch, b.id)).readings_paused = True
         await test_db.commit()
     b = await cycle(test_db, b.id)
-    assert b.id not in tc._rest_holds and b.rest_fired_at is None and b.temp_target == 18.0
+    assert b.rest_below_since is None and b.rest_fired_at is None and b.temp_target == 18.0
 
 
 @pytest.mark.asyncio
-async def test_restart_restarts_the_hold(test_db, clock):
+async def test_short_restart_keeps_the_hold(test_db, clock):
+    """A deploy restarts the service for under a minute: the hold is on the batch, so it goes on."""
     b = await make_batch(test_db)
-    await run_hours(test_db, clock, b.id, 2.75, 1.019)
-    tc._rest_holds.clear()  # service restart
-    b = await run_hours(test_db, clock, b.id, 2.75, 1.019)
-    assert b.temp_target == 18.0
-    b = await run_hours(test_db, clock, b.id, 0.5, 1.019)
+    await run_hours(test_db, clock, b.id, 2.75, 1.019, step_min=1)
+    tc._entity_state.clear()  # service restart: all in-memory controller state is gone
+    clock.advance(minutes=10)
+    b = await run_hours(test_db, clock, b.id, 0.25, 1.019, step_min=1)
     assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+async def test_hold_bookkeeping_does_not_touch_updated_at(test_db, clock):
+    b = await make_batch(test_db)
+    before = b.updated_at
+    b = await run_hours(test_db, clock, b.id, 1, 1.019)
+    assert b.rest_confirmed_at is not None and b.updated_at == before
 
 
 @pytest.mark.asyncio
@@ -163,6 +164,21 @@ async def test_gap_or_clock_step_does_not_count_as_hold(test_db, clock, jump):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"rest_trigger_percent": 90.0}, {"measured_og": 1.042}])
+async def test_changed_threshold_restarts_the_hold(test_db, clock, change):
+    """Time held under the old threshold does not count towards the new one."""
+    b = await make_batch(test_db)
+    await run_hours(test_db, clock, b.id, 2.9, 1.012, step_min=6)
+    for k, v in change.items():  # direct edit: the hold columns are not cleared for us
+        setattr(await test_db.get(Batch, b.id), k, v)
+    await test_db.commit()
+    b = await run_hours(test_db, clock, b.id, 2.9, 1.012, step_min=6)
+    assert b.temp_target == 18.0 and b.rest_fired_at is None
+    b = await run_hours(test_db, clock, b.id, 0.3, 1.012, step_min=6)
+    assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
 async def test_never_lowers_a_warmer_target(test_db, clock):
     b = await make_batch(test_db, temp_target=25.0, rest_hold_hours=0.0)  # saison, rest temp 21
     set_sg(clock, 1.019, temp=25.0)
@@ -178,7 +194,7 @@ async def test_never_lowers_a_warmer_target(test_db, clock):
 async def test_does_not_heat_a_cold_crash(test_db, clock):
     b = await make_batch(test_db, temp_target=2.0)  # cold crashing, status still fermenting
     b = await run_hours(test_db, clock, b.id, 6, 1.012, )
-    assert b.temp_target == 2.0 and b.rest_fired_at is None and b.id not in tc._rest_holds
+    assert b.temp_target == 2.0 and b.rest_fired_at is None and b.rest_below_since is None
 
 
 @pytest.mark.asyncio
@@ -195,12 +211,15 @@ async def test_rule_inactive(test_db, clock, kw):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("edit", [
-    {"rest_temp_target": 23.0},        # API edited the rule
-    {"rest_trigger_percent": 90.0},
+    {"rest_temp_target": 23.0, "rest_below_since": None, "rest_confirmed_at": None},  # API edited (re-armed) the rule
+    {"rest_trigger_percent": 90.0, "rest_below_since": None, "rest_confirmed_at": None},
     {"rest_trigger_percent": None},    # API switched the rule off
     {"status": "conditioning"},
     {"temp_target": 2.0},              # brewer started a cold crash
     {"temp_target": 19.0},
+    {"rest_hold_hours": 12.0},         # brewer asked for a longer hold
+    {"readings_paused": True},         # brewer is taking the hydrometer out
+    {"measured_og": 1.070},            # trigger gravity changed
 ])
 async def test_stale_snapshot_does_not_fire_after_api_edit(test_db, clock, edit):
     """The API changes the batch after the controller read it: the old rule must not fire."""
@@ -220,6 +239,8 @@ async def test_stale_snapshot_does_not_fire_after_api_edit(test_db, clock, edit)
     test_db.expire_all()
     b = await test_db.get(Batch, bid)
     assert b.temp_target == edit.get("temp_target", 18.0) and b.rest_fired_at is None
+    if "rest_below_since" in edit:
+        assert b.rest_below_since is None  # the stale cycle did not write the old hold back
 
 
 @pytest.mark.asyncio
@@ -304,7 +325,7 @@ async def test_api_set_rearm_and_disable(client, test_db):
 
     # Pretend the rule fired.
     b = await test_db.get(Batch, bid)
-    b.rest_fired_at = b.created_at
+    b.rest_fired_at = b.rest_below_since = b.rest_confirmed_at = b.created_at
     await test_db.commit()
 
     # Re-saving the same rule and other fields keeps it fired. The form shows Fahrenheit
@@ -320,6 +341,9 @@ async def test_api_set_rearm_and_disable(client, test_db):
     # A changed rule is re-armed.
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": 80})
     assert r.json()["rest_fired_at"] is None
+    test_db.expire_all()
+    b = await test_db.get(Batch, bid)
+    assert b.rest_below_since is None and b.rest_confirmed_at is None
 
     # Explicit null switches it off.
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": None})
@@ -360,4 +384,5 @@ def test_migration_adds_columns_once():
         _migrate_add_rest_rule_columns(conn)
         _migrate_add_rest_rule_columns(conn)  # second run is a no-op
         cols = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
-    assert {"rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at"} <= cols
+    assert {"rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
+            "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at"} <= cols

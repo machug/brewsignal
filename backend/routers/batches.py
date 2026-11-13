@@ -529,7 +529,7 @@ async def update_batch(
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already
         # fired stays fired, so re-saving the batch cannot undo a later cold crash.
-        batch.rest_fired_at = None
+        batch.rest_fired_at = batch.rest_below_since = batch.rest_confirmed_at = batch.rest_hold_trigger_sg = None
     # Reading control
     if update.readings_paused is not None:
         batch.readings_paused = update.readings_paused

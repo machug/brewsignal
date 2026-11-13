@@ -578,7 +578,7 @@
 							{#if batch?.rest_fired_at}
 								Rest started {new Date(batch.rest_fired_at).toLocaleString()}. The rule is finished. Change the percent or rest temperature to arm it again.
 							{:else if restTriggerSg !== null}
-								Starts when gravity stays at or below {formatGravity(restTriggerSg)} {getGravityUnit()} for this long. A noisy reading or a restart of BrewSignal restarts the wait. The rule only raises the target, and it waits while the target is below 5 °C.
+								Starts when gravity stays at or below {formatGravity(restTriggerSg)} {getGravityUnit()} for this long. A noisy reading or an outage restarts the wait. The rule only raises the target, and it waits while the target is below 5 °C.
 							{:else}
 								Needs a recipe with OG and FG. Without them the rule does not start.
 							{/if}

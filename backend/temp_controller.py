@@ -87,11 +87,6 @@ _batch_heater_states: dict[int, dict] = {}
 # Track per-batch cooler states (same structure as heater states)
 _batch_cooler_states: dict[int, dict] = {}
 
-# Rest rule hold timers: {batch_id: (below_since, last_confirmed)}. In memory on
-# purpose: a restart, or any gap between confirmed readings, restarts the hold,
-# so an outage can never count as "gravity stayed below the trigger".
-_rest_holds: dict[int, tuple[datetime, datetime]] = {}
-
 # Track per-batch manual overrides
 # Keys are batch_id, values are {"state": "on"/"off", "until": datetime or None}
 _batch_overrides: dict[int, dict] = {}
@@ -118,7 +113,6 @@ def cleanup_batch_state(batch_id: int) -> None:
     if batch_id in _batch_overrides:
         logger.debug(f"Cleaning up override for batch {batch_id}")
         del _batch_overrides[batch_id]
-    _rest_holds.pop(batch_id, None)
 _last_ha_url: Optional[str] = None
 _last_ha_token: Optional[str] = None
 
@@ -731,7 +725,8 @@ _BATCH_FIELDS = (
     "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
     "temp_target", "temp_hysteresis",
     "recipe_id", "measured_og", "readings_paused",
-    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
+    "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at",
 )
 
 
@@ -742,14 +737,50 @@ def rest_trigger_sg(og: Optional[float], fg: Optional[float], percent: Optional[
     return og - (og - fg) * percent / 100.0
 
 
+# Everything the rest rule's decision reads from the batch row. Each write the
+# rule makes is conditional on these still holding the values this cycle read,
+# so an edit through the API always wins and is evaluated on the next cycle.
+_REST_DECISION_FIELDS = (
+    "status", "device_id", "recipe_id", "measured_og", "readings_paused", "temp_target",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at",
+)
+
+
+def _rest_unchanged(batch) -> list:
+    conds = [Batch.id == batch.id]
+    for name in _REST_DECISION_FIELDS:
+        value, col = getattr(batch, name), getattr(Batch, name)
+        conds.append(col.is_(None) if value is None else col == value)
+    return conds
+
+
+async def _save_rest_hold(
+    db, batch, since: Optional[datetime], confirmed: Optional[datetime], trigger: Optional[float],
+) -> bool:
+    """Persist the rest rule's hold timer. False when the batch was edited through
+    the API since this cycle read it: the caller must then stop."""
+    result = await db.execute(
+        update(Batch).where(*_rest_unchanged(batch)).values(
+            rest_below_since=since, rest_confirmed_at=confirmed, rest_hold_trigger_sg=trigger,
+            updated_at=Batch.updated_at,  # bookkeeping, not an edit: updated_at orders lists and drives sync
+        )
+    )
+    await db.commit()
+    batch.rest_below_since, batch.rest_confirmed_at, batch.rest_hold_trigger_sg = since, confirmed, trigger
+    return result.rowcount == 1
+
+
 async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> None:
     """Automatic diacetyl rest (tilt_ui-ml8e). Deterministic and one-shot.
 
     When a fermenting batch's gravity has stayed at or below the trigger for the
     hold time, raise the batch target to rest_temp_target, exactly once. The
     rule can fire late but not early: any cycle without a trustworthy reading at
-    or below the trigger, a service restart, or a gap between checks restarts
-    the hold. It never lowers a target and never acts on a cold-crash target.
+    or below the trigger restarts the hold, and so does a gap between confirmed
+    checks longer than the sensor stale limit (outage, clock step). A short
+    restart (a deploy) keeps the hold, because the hold start and the last
+    confirmed check are stored on the batch. The rule never lowers a target and
+    never acts on a cold-crash target.
     After it fires, the rule is finished: the brewer owns temp_target again.
     """
     if (
@@ -759,7 +790,6 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         or batch.status != "fermenting"
         or batch.temp_target is None  # the API requires a batch target with the rule
     ):
-        _rest_holds.pop(batch.id, None)
         await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
         return
 
@@ -800,19 +830,25 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         sg is None or trigger is None or sg > trigger
         or batch.temp_target < REST_MIN_ACTIVE_TARGET_C  # brewer is cold crashing: do not heat
     ):
-        _rest_holds.pop(batch.id, None)
+        if batch.rest_below_since is not None:
+            await _save_rest_hold(db, batch, None, None, None)
         return
 
     now = _now()
-    since, last_confirmed = _rest_holds.get(batch.id, (now, now))
-    if not timedelta(0) <= now - last_confirmed <= _stale_limit(device_id):
-        since = now  # clock step or a gap in checks: gravity in between was not confirmed
-    _rest_holds[batch.id] = (since, now)
+    since, confirmed = _utc(batch.rest_below_since), _utc(batch.rest_confirmed_at)
+    if (
+        since is None or confirmed is None
+        or not timedelta(0) <= now - confirmed <= _stale_limit(device_id)  # outage or clock step
+        or batch.rest_hold_trigger_sg is None
+        or abs(batch.rest_hold_trigger_sg - trigger) > 1e-6  # percent, OG or FG changed: new threshold
+    ):
+        since = now
+    if not await _save_rest_hold(db, batch, since, now, trigger):
+        return
 
     hold_hours = batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT
     if now - since < timedelta(hours=hold_hours):
         return
-    _rest_holds.pop(batch.id, None)
 
     # A rest is a temperature increase. If the batch is already as warm, the rule
     # finishes without touching the target (and cannot lower it later).
@@ -820,20 +856,14 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
     raise_target = batch.rest_temp_target > old_target
     new_target = batch.rest_temp_target if raise_target else old_target
 
-    # Fire. The WHERE clause makes this a no-op if the batch changed through the
-    # API since this cycle read it (rule switched off or edited, target changed,
-    # no longer fermenting). The next cycle then evaluates the new state.
+    # Fire. A no-op if the batch changed through the API since this cycle read
+    # it (rule edited or switched off, target changed, readings paused, no longer
+    # fermenting). The next cycle then evaluates the new state.
     result = await db.execute(
-        update(Batch)
-        .where(
-            Batch.id == batch.id,
-            Batch.status == "fermenting",
-            Batch.rest_fired_at.is_(None),
-            Batch.rest_trigger_percent == batch.rest_trigger_percent,
-            Batch.rest_temp_target == batch.rest_temp_target,
-            Batch.temp_target == old_target,
+        update(Batch).where(*_rest_unchanged(batch)).values(
+            temp_target=new_target, rest_fired_at=now,
+            rest_below_since=None, rest_confirmed_at=None, rest_hold_trigger_sg=None,
         )
-        .values(temp_target=new_target, rest_fired_at=now)
     )
     await db.commit()
     if result.rowcount != 1:

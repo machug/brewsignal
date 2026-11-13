@@ -212,6 +212,7 @@ class IngestManager:
                     "is_anomaly": ml_outputs.get("is_anomaly", False),
                     "anomaly_score": ml_outputs.get("anomaly_score"),
                     "anomaly_reasons": ml_outputs.get("anomaly_reasons"),
+                    "battery_percent": reading.battery_percent,
                 }
 
                 # Get alert context (yeast temp range, progress)
@@ -231,6 +232,7 @@ class IngestManager:
                     progress_percent=alert_context.get("progress_percent"),
                     og=alert_context.get("og"),
                     fg=alert_context.get("fg"),
+                    temp_target=alert_context.get("temp_target"),
                 )
             except Exception as e:
                 logger.warning("Alert detection failed: %s", e)

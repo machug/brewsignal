@@ -13,10 +13,10 @@ from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .database import async_session_factory
-from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, serialize_datetime_to_utc
+from .models import Batch, ControlEntityState, ControlEvent, AmbientReading, Reading, Recipe, serialize_datetime_to_utc
 from .routers.config import get_config_value
 from .services.alert_service import AlertSeverity, AlertType, _clear_alert, _upsert_alert
 from .services.device_control import (
@@ -60,6 +60,22 @@ COOLER_MIN_PROGRESS_C = _env_float("BREWSIGNAL_COOLER_MIN_PROGRESS_C", 0.5)
 MAX_ON_LOCKOUT_MINUTES = _env_float("BREWSIGNAL_MAX_ON_LOCKOUT_MINUTES", 30)
 # After a failed 'on' command, wait this long before trying 'on' again.
 FAILURE_BACKOFF_MINUTES = _env_float("BREWSIGNAL_FAILURE_BACKOFF_MINUTES", 5)
+
+
+# Automatic diacetyl rest (tilt_ui-ml8e): gravity must stay at or below the trigger
+# for this long before the rule fires, unless the batch sets its own hold time.
+# Krausen and CO2 bubbles make single hydrometer readings unreliable. Not an
+# environment setting on purpose: the batch form shows and saves this same
+# default, so the two cannot disagree. The per-batch field is the knob.
+REST_HOLD_HOURS_DEFAULT = 3.0
+# Below this batch target the brewer is cold crashing, not fermenting (lagers
+# ferment at 7 C and up). The rest rule must never heat a cold crash.
+REST_MIN_ACTIVE_TARGET_C = 5.0
+# Finished beer does not go below about 0.990. A lower reading is not beer.
+REST_MIN_PLAUSIBLE_SG = 0.980
+# How long a stored (anomaly-checked) reading can veto the live gravity. Longer
+# than the default 15 min storage interval, so there is always one in the window.
+REST_STORED_READING_WINDOW = timedelta(minutes=45)
 
 
 def _now() -> datetime:
@@ -492,11 +508,13 @@ async def set_cooler_state_for_batch(
 # Safety helpers (tilt_ui-f50x, tilt_ui-8d49)
 # ---------------------------------------------------------------------------
 
-async def _raise_alert(db, batch: Batch, alert_type: str, message: str) -> None:
-    """Persist (upsert) a critical alert on the batch. Never raises."""
+async def _raise_alert(
+    db, batch: Batch, alert_type: str, message: str, severity: str = AlertSeverity.CRITICAL,
+) -> None:
+    """Persist (upsert) an alert on the batch (critical unless stated). Never raises."""
     try:
         await _upsert_alert(
-            db, batch.id, batch.device_id, alert_type, AlertSeverity.CRITICAL,
+            db, batch.id, batch.device_id, alert_type, severity,
             message, None, None, _now(),
         )
         await db.commit()
@@ -520,13 +538,8 @@ async def _clear_batch_alert(db, batch_id: int, alert_type: str) -> None:
             pass
 
 
-def get_device_reading_age(device_id: str) -> Optional[timedelta]:
-    """Age of the cached reading for a device, or None if it cannot be trusted.
-
-    None (= treat as stale) when the reading or its timestamp is missing or
-    unparseable, or is more than 5 min in the FUTURE (a Pi that booted with a
-    wrong clock would otherwise see an old cached reading as fresh).
-    """
+def get_device_reading_time(device_id: str) -> Optional[datetime]:
+    """Timestamp of the cached reading for a device, or None if missing or unparseable."""
     from .state import latest_readings
 
     reading = latest_readings.get(device_id) if device_id else None
@@ -536,8 +549,20 @@ def get_device_reading_age(device_id: str) -> Optional[timedelta]:
     if not ts:
         return None
     try:
-        seen = _utc(datetime.fromisoformat(str(ts).replace("Z", "+00:00")))
+        return _utc(datetime.fromisoformat(str(ts).replace("Z", "+00:00")))
     except (ValueError, TypeError):
+        return None
+
+
+def get_device_reading_age(device_id: str) -> Optional[timedelta]:
+    """Age of the cached reading for a device, or None if it cannot be trusted.
+
+    None (= treat as stale) when the reading or its timestamp is missing or
+    unparseable, or is more than 5 min in the FUTURE (a Pi that booted with a
+    wrong clock would otherwise see an old cached reading as fresh).
+    """
+    seen = get_device_reading_time(device_id)
+    if seen is None:
         return None
     age = _now() - seen
     if age < timedelta(minutes=-5):
@@ -713,7 +738,203 @@ async def _handle_conflicted_batch(
 _BATCH_FIELDS = (
     "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
     "temp_target", "temp_hysteresis",
+    "recipe_id", "measured_og", "readings_paused",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
+    "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at",
 )
+
+
+def rest_trigger_sg(og: Optional[float], fg: Optional[float], percent: Optional[float]) -> Optional[float]:
+    """Gravity at which the diacetyl rest starts: `percent` of the way from OG down to expected FG."""
+    if not og or not fg or percent is None or og <= fg:
+        return None
+    return og - (og - fg) * percent / 100.0
+
+
+# Everything the rest rule's decision reads from the batch row. Each write the
+# rule makes is conditional on these still holding the values this cycle read,
+# so an edit through the API always wins and is evaluated on the next cycle.
+_REST_DECISION_FIELDS = (
+    "status", "device_id", "recipe_id", "measured_og", "readings_paused", "temp_target",
+    "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at",
+)
+
+
+def _rest_unchanged(batch) -> list:
+    conds = [Batch.id == batch.id]
+    for name in _REST_DECISION_FIELDS:
+        value, col = getattr(batch, name), getattr(Batch, name)
+        conds.append(col.is_(None) if value is None else col == value)
+    return conds
+
+
+async def _save_rest_hold(
+    db, batch, since: Optional[datetime], confirmed: Optional[datetime], trigger: Optional[float],
+) -> bool:
+    """Persist the rest rule's hold timer. False when the batch was edited through
+    the API since this cycle read it: the caller must then stop."""
+    result = await db.execute(
+        update(Batch).where(*_rest_unchanged(batch)).values(
+            rest_below_since=since, rest_confirmed_at=confirmed, rest_hold_trigger_sg=trigger,
+            updated_at=Batch.updated_at,  # bookkeeping, not an edit: updated_at orders lists and drives sync
+        )
+    )
+    await db.commit()
+    batch.rest_below_since, batch.rest_confirmed_at, batch.rest_hold_trigger_sg = since, confirmed, trigger
+    return result.rowcount == 1
+
+
+async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> None:
+    """Automatic diacetyl rest (tilt_ui-ml8e). Deterministic and one-shot.
+
+    When a fermenting batch's gravity has stayed at or below the trigger for the
+    hold time, raise the batch target to rest_temp_target, exactly once. The
+    rule can fire late but not early: any cycle without a trustworthy reading at
+    or below the trigger restarts the hold, and so does a gap between confirmed
+    checks longer than the sensor stale limit (outage, clock step). A short
+    restart (a deploy) keeps the hold, because the hold start and the last
+    confirmed check are stored on the batch. The rule never lowers a target and
+    never acts on a cold-crash target.
+    After it fires, the rule is finished: the brewer owns temp_target again.
+    """
+    if (
+        batch.rest_trigger_percent is None
+        or batch.rest_temp_target is None
+        or batch.rest_fired_at is not None
+        or batch.status != "fermenting"
+        or batch.temp_target is None  # the API requires a batch target with the rule
+    ):
+        await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
+        return
+
+    from .state import latest_readings
+
+    # Gravity, its flags, its timestamp and its age are all taken here, with no
+    # await in between, so they belong to one broadcast. A broadcast that
+    # arrives during the database calls below is judged on the next cycle.
+    device_id = batch.device_id
+    reading = latest_readings.get(device_id) if device_id else None
+    seen = get_device_reading_time(device_id) if device_id else None
+    age = get_device_reading_age(device_id) if device_id else None
+    sg = None
+    if (
+        reading
+        and not batch.readings_paused  # hydrometer may be out of the beer
+        and not reading.get("is_anomaly")
+        and age is not None
+        and age <= _stale_limit(device_id)
+    ):
+        sg = reading.get("sg")
+        if sg is not None and sg < REST_MIN_PLAUSIBLE_SG:
+            sg = None  # hydrometer in air, in sanitiser or not calibrated
+
+    og, fg = batch.measured_og, None
+    if batch.recipe_id is not None:
+        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
+        if row:
+            og, fg = og or row[0], row[1]
+    trigger = rest_trigger_sg(og, fg, batch.rest_trigger_percent)
+    if trigger is None:
+        # Do not fail silently: the brewer expects a rest that will never start.
+        await _raise_alert(
+            db, batch, AlertType.REST_BLOCKED,
+            "Automatic diacetyl rest cannot start: it needs an original gravity and the recipe's expected "
+            f"final gravity (OG {og or 'missing'}, FG {fg or 'missing'}). Link a recipe with OG and FG, "
+            "or switch the rule off and raise the target by hand.",
+            AlertSeverity.WARNING,
+        )
+    else:
+        await _clear_batch_alert(db, batch.id, AlertType.REST_BLOCKED)
+
+    if sg is not None and trigger is not None and sg <= trigger:
+        # The live cache only carries the anomaly flag for the one broadcast that
+        # was stored (a Tilt broadcasts every few seconds, storage runs every 15
+        # min by default). The stored reading keeps its checks, so use it too:
+        # a recent stored reading that is an anomaly, invalid, or above the
+        # trigger means the live value is not trusted this cycle.
+        last = (await db.execute(
+            select(Reading.timestamp, Reading.is_anomaly, Reading.status, Reading.sg_calibrated)
+            .where(Reading.batch_id == batch.id)
+            .order_by(Reading.timestamp.desc())
+            .limit(1)
+        )).first()
+        if (
+            last is not None
+            and timedelta(0) <= _now() - _utc(last.timestamp) <= REST_STORED_READING_WINDOW
+            and (
+                last.is_anomaly
+                or last.status != "valid"
+                or (last.sg_calibrated is not None and last.sg_calibrated > trigger)
+            )
+        ):
+            sg = None
+
+    if (
+        sg is None or trigger is None or sg > trigger
+        or batch.temp_target < REST_MIN_ACTIVE_TARGET_C  # brewer is cold crashing: do not heat
+    ):
+        if batch.rest_below_since is not None:
+            await _save_rest_hold(db, batch, None, None, None)
+        return
+
+    # The hold is timed in reading timestamps, not wall clock: a cached reading
+    # that is seen again on later cycles adds no hold time, so the rule needs a
+    # reading taken at least hold_hours after the first low one.
+    # `seen` is the cache timestamp itself, not rebuilt from the age: a rebuilt
+    # value would differ by clock jitter on each cycle for the same reading.
+    now = _now()
+    since, confirmed = _utc(batch.rest_below_since), _utc(batch.rest_confirmed_at)
+    if (
+        since is None or confirmed is None
+        or not timedelta(0) <= seen - confirmed <= _stale_limit(device_id)  # outage or clock step
+        or batch.rest_hold_trigger_sg is None
+        or abs(batch.rest_hold_trigger_sg - trigger) > 1e-6  # percent, OG or FG changed: new threshold
+    ):
+        since = seen
+    if seen != confirmed or since != _utc(batch.rest_below_since):
+        if not await _save_rest_hold(db, batch, since, seen, trigger):
+            return
+
+    hold_hours = batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT
+    if seen - since < timedelta(hours=hold_hours):
+        return
+
+    # A rest is a temperature increase. If the batch is already as warm, the rule
+    # finishes without touching the target (and cannot lower it later).
+    old_target = batch.temp_target
+    raise_target = batch.rest_temp_target > old_target
+    new_target = batch.rest_temp_target if raise_target else old_target
+
+    # Fire. A no-op if the batch changed through the API since this cycle read
+    # it (rule edited or switched off, target changed, readings paused, no longer
+    # fermenting). The next cycle then evaluates the new state.
+    result = await db.execute(
+        update(Batch).where(*_rest_unchanged(batch)).values(
+            temp_target=new_target, rest_fired_at=now,
+            rest_below_since=None, rest_confirmed_at=None, rest_hold_trigger_sg=None,
+        )
+    )
+    await db.commit()
+    if result.rowcount != 1:
+        return
+    batch.temp_target = new_target
+    batch.rest_fired_at = now
+
+    reached = (
+        f"gravity {sg:.3f} stayed at or below {trigger:.3f} "
+        f"({batch.rest_trigger_percent:.0f}% of the way from {og:.3f} to {fg:.3f}) for {hold_hours:g} h"
+    )
+    if raise_target:
+        await log_control_event(
+            db, "rest_start", get_device_temp(device_id), ambient_temp, new_target, device_id, batch.id,
+        )
+        message = f"Diacetyl rest started: {reached}. Target changed from {old_target:.1f} °C to {new_target:.1f} °C."
+    else:
+        message = (
+            f"Diacetyl rest point reached: {reached}. Target left at {old_target:.1f} °C because it is "
+            f"already at or above the rest temperature ({batch.rest_temp_target:.1f} °C)."
+        )
+    await _raise_alert(db, batch, AlertType.REST_STARTED, message, AlertSeverity.INFO)
 
 
 async def run_control_cycle(
@@ -744,6 +965,11 @@ async def run_control_cycle(
                 await _handle_conflicted_batch(router, db, batch, conflicts[batch.id], driven)
             else:
                 await _clear_batch_alert(db, batch.id, AlertType.EQUIPMENT_CONFLICT)
+                try:
+                    await apply_rest_rule(db, batch, ambient_temp)
+                except Exception as e:  # a rule failure must not stop temperature control
+                    logger.error(f"Batch {batch.id}: rest rule error: {e}", exc_info=True)
+                    await db.rollback()
                 await control_batch_temperature(
                     router, batch, db, global_target, global_hysteresis, ambient_temp
                 )

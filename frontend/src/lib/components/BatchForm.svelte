@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { BatchResponse, BatchCreate, BatchUpdate, RecipeResponse, BatchStatus, HeaterEntity, YeastStrainResponse } from '$lib/api';
 	import { fetchRecipes, fetchHeaterEntities, fetchCoolerEntities } from '$lib/api';
-	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
+	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import { fetchAllDevices, type DeviceResponse } from '$lib/api/devices';
 	import RecipeSelector from './RecipeSelector.svelte';
 	import YeastSelector from './batch/YeastSelector.svelte';
@@ -76,6 +76,26 @@
 
 	let tempTarget = $state(tempToDisplay(batch?.temp_target));
 	let tempHysteresis = $state(tempDeltaToDisplay(batch?.temp_hysteresis));
+
+	// Automatic diacetyl rest rule (tilt_ui-ml8e). The controller runs it; this form only sets it.
+	let restEnabled = $state(batch?.rest_trigger_percent != null);
+	let restPercent = $state((batch?.rest_trigger_percent ?? 75).toString());
+	let restTemp = $state(tempToDisplay(batch?.rest_temp_target ?? 21));
+	let restHoldHours = $state((batch?.rest_hold_hours ?? 3).toString());
+	// What the form showed at open. An untouched rule is not sent back, so display
+	// rounding (Fahrenheit, 1 decimal) cannot change it or arm a finished rule again.
+	const restShownAtOpen = batch?.rest_trigger_percent != null ? `${restPercent}|${restTemp}` : null;
+	let restTempMin = $derived(configState.config.temp_units === 'C' ? 5.5 : 42);
+
+	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
+	let restTriggerSg = $derived.by(() => {
+		const recipe = selectedRecipe ?? batch?.recipe;
+		const og = parseFloat(measuredOg) || recipe?.og;
+		const fg = recipe?.fg;
+		const pct = parseFloat(restPercent);
+		if (!og || !fg || isNaN(pct) || og <= fg || og > 1.2) return null;
+		return og - ((og - fg) * pct) / 100;
+	});
 
 	let recipes = $state<RecipeResponse[]>([]);
 	let heaterEntities = $state<HeaterEntity[]>([]);
@@ -201,6 +221,27 @@
 				temp_target: displayToTempC(tempTarget),
 				temp_hysteresis: displayToTempDeltaC(tempHysteresis)
 			};
+
+			// Diacetyl rest rule: null switches it off. The fields only show with a heater
+			// or cooler, so without one the stored rule is left as it is.
+			if (!restEnabled) {
+				if (isEditMode) data.rest_trigger_percent = null;
+			} else if (heaterEntityId || coolerEntityId) {
+				const hold = parseFloat(restHoldHours);
+				data.rest_hold_hours = isNaN(hold) ? null : hold;
+				if (`${restPercent}|${restTemp}` !== restShownAtOpen) {
+					const pct = parseFloat(restPercent);
+					const restC = displayToTempC(restTemp);
+					if (isNaN(pct) || restC === undefined) {
+						throw new Error('Diacetyl rest needs a start percent and a rest temperature');
+					}
+					data.rest_trigger_percent = pct;
+					data.rest_temp_target = restC;
+				}
+				if (data.temp_target === undefined) {
+					throw new Error('Diacetyl rest needs a target temperature for this batch');
+				}
+			}
 
 			// Set recipe_id for both create and update
 			if (!isEditMode) {
@@ -512,6 +553,42 @@
 						<span class="form-hint">Leave empty to use global setting</span>
 					</div>
 				</div>
+
+				<div class="form-group">
+					<label class="rest-toggle" for="restEnabled">
+						<input type="checkbox" id="restEnabled" bind:checked={restEnabled} />
+						Automatic diacetyl rest
+					</label>
+					<span class="form-hint">
+						Raises the target temperature one time, when gravity gets near final gravity. Works while the batch is fermenting.
+					</span>
+				</div>
+
+				{#if restEnabled}
+					<div class="form-row">
+						<div class="form-group">
+							<label class="form-label" for="restPercent">Start at (% of the way to FG)</label>
+							<input type="number" id="restPercent" class="form-input" bind:value={restPercent} step="1" min="10" max="95" />
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="restTemp">Rest Temperature ({tempUnit})</label>
+							<input type="number" id="restTemp" class="form-input" bind:value={restTemp} step="0.1" min={restTempMin} max={tempTargetMax} />
+						</div>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="restHoldHours">Gravity must hold for (hours)</label>
+						<input type="number" id="restHoldHours" class="form-input" bind:value={restHoldHours} step="0.5" min="0" max="48" />
+						<span class="form-hint">
+							{#if batch?.rest_fired_at}
+								Rest started {new Date(batch.rest_fired_at).toLocaleString()}. The rule is finished. Change the percent or rest temperature to arm it again.
+							{:else if restTriggerSg !== null}
+								Starts when gravity stays at or below {formatGravity(restTriggerSg)} {getGravityUnit()} for this long. A noisy reading or an outage restarts the wait. The rule only raises the target, and it waits while the target is below 5 °C.
+							{:else}
+								Needs a recipe with OG and FG. Without them the rule does not start.
+							{/if}
+						</span>
+					</div>
+				{/if}
 			{/if}
 		{/if}
 
@@ -594,6 +671,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-xs);
+	}
+	.rest-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		font-size: var(--text-sm);
+		color: var(--ink-primary);
+		cursor: pointer;
 	}
 	.form-row {
 		display: grid;

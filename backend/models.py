@@ -594,6 +594,18 @@ class Batch(Base):
     temp_target: Mapped[Optional[float]] = mapped_column()  # Override target temp for this batch
     temp_hysteresis: Mapped[Optional[float]] = mapped_column()  # Override hysteresis for this batch
 
+    # Automatic diacetyl rest (tilt_ui-ml8e): a one-shot rule run by the temperature
+    # controller. When gravity has stayed at or below the trigger for rest_hold_hours,
+    # the controller raises temp_target to rest_temp_target and records rest_fired_at.
+    rest_trigger_percent: Mapped[Optional[float]] = mapped_column()  # % of the way from OG to expected FG; None = rule off
+    rest_temp_target: Mapped[Optional[float]] = mapped_column()  # Celsius
+    rest_hold_hours: Mapped[Optional[float]] = mapped_column()  # None = controller default
+    # Hold timer: when gravity first went to/below the trigger, and the last cycle that confirmed it
+    rest_below_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rest_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rest_hold_trigger_sg: Mapped[Optional[float]] = mapped_column()  # trigger gravity the hold was timed against
+    rest_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # set once; rule never fires again
+
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -2128,7 +2140,37 @@ class RecipeDetailResponse(BaseModel):
         return serialize_datetime_to_utc(dt)
 
 
-class BatchCreate(BaseModel):
+class _RestRuleFields(BaseModel):
+    """Automatic diacetyl rest rule inputs (tilt_ui-ml8e). Temperatures in Celsius."""
+    rest_trigger_percent: Optional[float] = None
+    rest_temp_target: Optional[float] = None
+    rest_hold_hours: Optional[float] = None
+
+    @field_validator("rest_trigger_percent")
+    @classmethod
+    def validate_rest_trigger_percent(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not 10.0 <= v <= 95.0:
+            raise ValueError("rest_trigger_percent must be between 10 and 95")
+        return v
+
+    @field_validator("rest_temp_target")
+    @classmethod
+    def validate_rest_temp_target(cls, v: Optional[float]) -> Optional[float]:
+        # The rule only raises a target, and waits while the target is below 5 C,
+        # so a rest temperature of 5 C or less could never take effect.
+        if v is not None and not 5.0 < v <= 40.0:
+            raise ValueError("rest_temp_target must be above 5°C and at most 40°C (41-104°F)")
+        return v
+
+    @field_validator("rest_hold_hours")
+    @classmethod
+    def validate_rest_hold_hours(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not 0.0 <= v <= 48.0:
+            raise ValueError("rest_hold_hours must be between 0 and 48")
+        return v
+
+
+class BatchCreate(_RestRuleFields):
     recipe_id: Optional[int] = None
     device_id: Optional[str] = None
     yeast_strain_id: Optional[int] = None  # Override recipe yeast with specific strain
@@ -2175,7 +2217,7 @@ class BatchCreate(BaseModel):
         return v
 
 
-class BatchUpdate(BaseModel):
+class BatchUpdate(_RestRuleFields):
     recipe_id: Optional[int] = None
     name: Optional[str] = None
     status: Optional[str] = None
@@ -2312,6 +2354,11 @@ class BatchResponse(BaseModel):
     cooler_entity_id: Optional[str] = None
     temp_target: Optional[float] = None
     temp_hysteresis: Optional[float] = None
+    # Automatic diacetyl rest rule
+    rest_trigger_percent: Optional[float] = None
+    rest_temp_target: Optional[float] = None
+    rest_hold_hours: Optional[float] = None
+    rest_fired_at: Optional[datetime] = None
     # Reading control
     readings_paused: bool = False
     # Timer state
@@ -2320,7 +2367,7 @@ class BatchResponse(BaseModel):
     timer_duration_seconds: Optional[int] = None
     timer_paused_at: Optional[datetime] = None
 
-    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at', 'packaged_at', 'timer_started_at', 'timer_paused_at')
+    @field_serializer('brew_date', 'start_time', 'end_time', 'brewing_started_at', 'fermenting_started_at', 'conditioning_started_at', 'completed_at', 'created_at', 'deleted_at', 'packaged_at', 'timer_started_at', 'timer_paused_at', 'rest_fired_at')
     def serialize_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return serialize_datetime_to_utc(dt)
 

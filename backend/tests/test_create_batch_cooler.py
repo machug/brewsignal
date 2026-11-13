@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_create_batch_saves_cooler_entity(client):
     r = await client.post("/api/batches", json={
-        "name": "Cooler Test", "heater_entity_id": "switch.h", "cooler_entity_id": "switch.c",
+        "name": "Cooler Test", "temp_target": 19.0, "heater_entity_id": "switch.h", "cooler_entity_id": "switch.c",
     })
     assert r.status_code == 201
     assert r.json()["cooler_entity_id"] == "switch.c"

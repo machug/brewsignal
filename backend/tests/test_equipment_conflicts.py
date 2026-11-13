@@ -187,7 +187,7 @@ async def _active(client, name, status, **fields):
     r = await client.post("/api/batches", json={"name": name})
     assert r.status_code == 201
     bid = r.json()["id"]
-    r = await client.put(f"/api/batches/{bid}", json={"status": status, **fields})
+    r = await client.put(f"/api/batches/{bid}", json={"status": status, "temp_target": 19.0, **fields})
     return bid, r
 
 
@@ -198,11 +198,11 @@ async def test_api_409_equipment_shared_with_conditioning_batch(client):
 
     # new batch moving to fermenting on the same heater / cooler / device -> 409 naming the other batch
     b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
-    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "heater_entity_id": "switch.h"})
+    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "temp_target": 19.0, "heater_entity_id": "switch.h"})
     assert r.status_code == 409
     assert "switch.h" in r.json()["detail"] and f"ID: {a}" in r.json()["detail"]
 
-    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "cooler_entity_id": "switch.c"})
+    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "temp_target": 19.0, "cooler_entity_id": "switch.c"})
     assert r.status_code == 409
     assert "Cooler" in r.json()["detail"]
 
@@ -215,7 +215,7 @@ async def test_api_409_on_status_change_when_equipment_already_assigned(client):
     a, _ = await _active(client, "A", "fermenting", heater_entity_id="switch.h", cooler_entity_id="switch.c", device_id="BLUE")
     # B is set up in planning with the same equipment (allowed), then cannot start
     b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
-    r = await client.put(f"/api/batches/{b}", json={"heater_entity_id": "switch.h", "cooler_entity_id": "switch.c", "device_id": "BLUE"})
+    r = await client.put(f"/api/batches/{b}", json={"temp_target": 19.0, "heater_entity_id": "switch.h", "cooler_entity_id": "switch.c", "device_id": "BLUE"})
     assert r.status_code == 200
     r = await client.put(f"/api/batches/{b}", json={"status": "conditioning"})
     assert r.status_code == 409
@@ -227,7 +227,7 @@ async def test_api_409_on_status_change_when_equipment_already_assigned(client):
 async def test_api_heater_used_as_cooler_elsewhere_is_409(client):
     await _active(client, "A", "fermenting", heater_entity_id="switch.x")
     b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
-    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "cooler_entity_id": "switch.x"})
+    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "temp_target": 19.0, "cooler_entity_id": "switch.x"})
     assert r.status_code == 409
 
 
@@ -244,14 +244,14 @@ async def test_api_allows_distinct_equipment_and_reuse_after_completion(client):
 @pytest.mark.asyncio
 async def test_api_create_conflict_is_409(client):
     await _active(client, "A", "conditioning", heater_entity_id="switch.h")
-    r = await client.post("/api/batches", json={"name": "B", "status": "fermenting", "heater_entity_id": "switch.h"})
+    r = await client.post("/api/batches", json={"name": "B", "status": "fermenting", "temp_target": 19.0, "heater_entity_id": "switch.h"})
     assert r.status_code == 409
 
 
 @pytest.mark.asyncio
 async def test_api_rejects_same_switch_as_heater_and_cooler(client):
     b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
-    r = await client.put(f"/api/batches/{b}", json={"heater_entity_id": "switch.x", "cooler_entity_id": "switch.x"})
+    r = await client.put(f"/api/batches/{b}", json={"temp_target": 19.0, "heater_entity_id": "switch.x", "cooler_entity_id": "switch.x"})
     assert r.status_code == 409
 
 
@@ -267,7 +267,7 @@ async def test_unique_index_violation_is_409_not_500(client, monkeypatch):
     monkeypatch.setattr(batches_router, "ensure_equipment_free", no_check)
 
     b = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
-    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "heater_entity_id": "switch.h"})
+    r = await client.put(f"/api/batches/{b}", json={"status": "fermenting", "temp_target": 19.0, "heater_entity_id": "switch.h"})
     assert r.status_code == 409
-    r = await client.post("/api/batches", json={"name": "C", "status": "fermenting", "heater_entity_id": "switch.h"})
+    r = await client.post("/api/batches", json={"name": "C", "status": "fermenting", "temp_target": 19.0, "heater_entity_id": "switch.h"})
     assert r.status_code == 409

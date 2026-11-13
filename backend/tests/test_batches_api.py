@@ -216,7 +216,7 @@ async def test_batch_control_status_state_available_for_completed_batch(client):
     batch_response = await client.post("/api/batches", json={
         "name": "Completed Batch",
         "status": "fermenting",
-        "heater_entity_id": "switch.heater_2",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_2",
     })
     batch_id = batch_response.json()["id"]
 
@@ -239,7 +239,7 @@ async def test_heater_entity_conflict_on_create(client):
     batch1_data = {
         "status": "fermenting",
         "name": "Batch 1",
-        "heater_entity_id": "switch.heater_1",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_1",
     }
     response = await client.post("/api/batches", json=batch1_data)
     assert response.status_code == 201
@@ -248,7 +248,7 @@ async def test_heater_entity_conflict_on_create(client):
     batch2_data = {
         "status": "fermenting",
         "name": "Batch 2",
-        "heater_entity_id": "switch.heater_1",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_1",
     }
     response = await client.post("/api/batches", json=batch2_data)
 
@@ -264,7 +264,7 @@ async def test_heater_entity_no_conflict_different_status(client):
     batch1_data = {
         "status": "completed",
         "name": "Batch 1",
-        "heater_entity_id": "switch.heater_1",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_1",
     }
     response = await client.post("/api/batches", json=batch1_data)
     assert response.status_code == 201
@@ -273,7 +273,7 @@ async def test_heater_entity_no_conflict_different_status(client):
     batch2_data = {
         "status": "fermenting",
         "name": "Batch 2",
-        "heater_entity_id": "switch.heater_1",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_1",
     }
     response = await client.post("/api/batches", json=batch2_data)
 
@@ -287,7 +287,7 @@ async def test_heater_entity_conflict_on_update(client):
     batch1_data = {
         "status": "fermenting",
         "name": "Batch 1",
-        "heater_entity_id": "switch.heater_1",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_1",
     }
     response1 = await client.post("/api/batches", json=batch1_data)
     assert response1.status_code == 201
@@ -296,16 +296,43 @@ async def test_heater_entity_conflict_on_update(client):
     batch2_data = {
         "status": "fermenting",
         "name": "Batch 2",
-        "heater_entity_id": "switch.heater_2",
+        "temp_target": 19.0, "heater_entity_id": "switch.heater_2",
     }
     response2 = await client.post("/api/batches", json=batch2_data)
     assert response2.status_code == 201
     batch2_id = response2.json()["id"]
 
     # Try to update batch 2 to use heater_1 (already in use by batch 1)
-    update_data = {"heater_entity_id": "switch.heater_1"}
+    update_data = {"temp_target": 19.0, "heater_entity_id": "switch.heater_1"}
     response = await client.put(f"/api/batches/{batch2_id}", json=update_data)
 
     assert response.status_code == 409
     assert "already in use" in response.json()["detail"]
     assert "switch.heater_1" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_equipment_needs_a_batch_target(client, test_db):
+    """The controller only drives batches with their own target (tilt_ui-okkc)."""
+    from backend.models import Batch
+
+    r = await client.post("/api/batches", json={"name": "A", "heater_entity_id": "switch.okkc_h"})
+    assert r.status_code == 422 and "temp_target" in r.text
+    r = await client.post("/api/batches", json={"name": "A", "cooler_entity_id": "switch.okkc_c", "temp_target": 18})
+    assert r.status_code == 201, r.text
+
+    bid = (await client.post("/api/batches", json={"name": "B"})).json()["id"]
+    r = await client.put(f"/api/batches/{bid}", json={"heater_entity_id": "switch.okkc_h"})
+    assert r.status_code == 422
+    r = await client.put(f"/api/batches/{bid}", json={"heater_entity_id": "switch.okkc_h", "temp_target": 18})
+    assert r.status_code == 200, r.text
+
+    # A legacy batch (equipment, no target) can still take unrelated edits.
+    legacy = Batch(name="L", status="completed", heater_entity_id="switch.okkc_old")
+    test_db.add(legacy)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{legacy.id}", json={"notes": "x"})
+    assert r.status_code == 200, r.text
+    # ...but it cannot enter a controlled status without a target.
+    r = await client.put(f"/api/batches/{legacy.id}", json={"status": "fermenting"})
+    assert r.status_code == 422

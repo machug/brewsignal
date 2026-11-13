@@ -238,9 +238,9 @@
 					data.rest_trigger_percent = pct;
 					data.rest_temp_target = restC;
 				}
-				if (data.temp_target === undefined) {
-					throw new Error('Diacetyl rest needs a target temperature for this batch');
-				}
+			}
+			if ((heaterEntityId || coolerEntityId) && data.temp_target === undefined) {
+				throw new Error('Set a target temperature. Without one the heater and cooler are not controlled.');
 			}
 
 			// Set recipe_id for both create and update
@@ -535,8 +535,9 @@
 							step="0.5"
 							min={tempTargetMin}
 							max={tempTargetMax}
+							required
 						/>
-						<span class="form-hint">Leave empty to use global setting</span>
+						<span class="form-hint">Needed. Without a target the heater and cooler are not controlled.</span>
 					</div>
 					<div class="form-group">
 						<label class="form-label" for="tempHysteresis">Hysteresis ({tempUnit})</label>

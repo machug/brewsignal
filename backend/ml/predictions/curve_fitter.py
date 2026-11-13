@@ -715,23 +715,3 @@ class FermentationCurveFitter:
 
         # If not found within 30 days, return large estimate
         return 720.0
-
-    def predict(self, future_times: list[float]) -> list[float]:
-        """Predict SG at future time points.
-
-        Args:
-            future_times: List of time points (hours) to predict SG
-
-        Returns:
-            List of predicted SG values
-        """
-        if self.og is None or self.fg is None or self.k is None:
-            msg = "Must call fit() before predict()"
-            raise ValueError(msg)
-
-        predictions = []
-        for t in future_times:
-            sg = self.fg + (self.og - self.fg) * np.exp(-self.k * t)
-            predictions.append(float(sg))
-
-        return predictions

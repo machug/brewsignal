@@ -899,70 +899,10 @@ async def get_batch_predictions(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # For completed/archived batches without device_id, use a synthetic ID based on batch
-    # This allows viewing historical predictions even after device is released
-    device_id = batch.device_id
-    if batch.status in ["completed", "archived"]:
-        # Historical batches never share the device's live pipeline, which now
-        # belongs to whatever batch the device is fermenting (tilt_ui-89af).
-        device_id = f"batch-{batch_id}"
-    elif not device_id:
-        return {"available": False, "error": "No device linked"}
-
-    # Query ML manager for predictions
     ml_mgr = get_ml_manager()
     if not ml_mgr:
         return {"available": False}
-
-    # Get expected FG from recipe to constrain predictions
-    expected_fg = batch.recipe.fg if batch.recipe else None
-
-    # Get device state with expected FG for prediction bounds and selected model
-    device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch_id)
-
-    # Auto-reload from database if pipeline is empty or has insufficient history
-    if not device_state or device_state.get("history_count", 0) < 10:
-        await ml_mgr.reload_from_database(device_id, batch_id, db)
-        device_state = ml_mgr.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch_id)
-
-    if not device_state or not device_state.get("predictions"):
-        return {"available": False}
-
-    predictions = device_state["predictions"]
-
-    # predictions can be None (insufficient history) or dict with fitted=False (fit failed)
-    if not predictions.get("fitted"):
-        return {"available": False, "reason": predictions.get("reason", "unknown")}
-
-    # Use blended prediction (linear/curve blend based on confidence)
-    # Fall back to curve-only hours_to_completion if blended not available
-    blended_hours = predictions.get("blended_hours_to_completion")
-    curve_hours = predictions.get("hours_to_completion")
-    linear_hours = predictions.get("hours_to_target_linear")
-    confidence = predictions.get("confidence")
-
-    # Primary estimate uses blended prediction
-    hours_to_completion = blended_hours if blended_hours is not None else curve_hours
-
-    # Calculate completion date from blended hours
-    # Note: hours_to_completion is relative to NOW, not batch start time
-    completion_date = None
-    if hours_to_completion is not None and hours_to_completion > 0:
-        completion_date = datetime.now(timezone.utc) + timedelta(hours=hours_to_completion)
-
-    return {
-        "available": True,
-        "predicted_fg": predictions.get("predicted_fg"),
-        "predicted_og": predictions.get("predicted_og"),
-        "estimated_completion": completion_date.isoformat() if completion_date else None,
-        "hours_to_completion": hours_to_completion,
-        "hours_to_target_linear": linear_hours,
-        "curve_hours_to_completion": curve_hours,
-        "confidence": confidence,
-        "model_type": predictions.get("model_type"),
-        "r_squared": predictions.get("r_squared"),
-        "num_readings": device_state.get("history_count", 0)
-    }
+    return await ml_mgr.predict_batch(db, batch, model)
 
 
 @router.post("/{batch_id}/reload-predictions")

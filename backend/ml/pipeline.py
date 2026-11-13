@@ -126,9 +126,11 @@ class MLPipeline:
         else:
             result["anomaly"] = None
 
-        # Add to history
-        self.sg_history.append(filtered_sg)
-        self.temp_history.append(filtered_temp)
+        # History for curve fitting holds the measurement (calibrated), not the
+        # Kalman output: the same values reload_from_database loads, so a fit
+        # does not change after a restart (tilt_ui-3kbr).
+        self.sg_history.append(sg)
+        self.temp_history.append(temp)
         self.time_history.append(time_hours)
 
         # Stage 3: Predictions (curve fitting)

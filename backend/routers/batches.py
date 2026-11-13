@@ -164,10 +164,11 @@ def _require_complete_rest_rule(batch: Batch) -> None:
 
 
 def _rest_rule_changed(old: tuple, new: tuple) -> bool:
-    """True when trigger percent or rest temperature really changed. The tolerance
-    absorbs the float noise of a Fahrenheit round trip in the batch form."""
+    """True when trigger percent or rest temperature really changed. The batch form
+    shows Fahrenheit to 1 decimal, so an untouched value comes back up to 0.05 F
+    (0.028 C) off, while the smallest real edit (0.1 F) is 0.056 C."""
     return any(
-        (a is None) != (b is None) or (a is not None and abs(a - b) > 0.05)
+        (a is None) != (b is None) or (a is not None and abs(a - b) > 0.03)
         for a, b in zip(old, new)
     )
 
@@ -576,6 +577,13 @@ async def update_batch(
         batch.packaging_notes = update.packaging_notes
 
     await commit_or_409(db)
+    if batch.rest_trigger_percent is None or batch.status != "fermenting":
+        # The controller only clears this warning for batches it still drives.
+        # After the commit above: a query here would flush early and turn an
+        # equipment conflict into a 500.
+        from ..services.alert_service import AlertType, _clear_alert
+        if await _clear_alert(db, batch_id, AlertType.REST_BLOCKED, datetime.now(timezone.utc)):
+            await db.commit()
     await db.refresh(batch)
 
     # Always reload batch with eager loading to avoid MissingGreenlet errors

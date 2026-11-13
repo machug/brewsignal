@@ -2156,8 +2156,10 @@ class _RestRuleFields(BaseModel):
     @field_validator("rest_temp_target")
     @classmethod
     def validate_rest_temp_target(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and not 0.0 <= v <= 40.0:
-            raise ValueError("rest_temp_target must be between 0-40°C (32-104°F)")
+        # The rule only raises a target, and waits while the target is below 5 C,
+        # so a rest temperature of 5 C or less could never take effect.
+        if v is not None and not 5.0 < v <= 40.0:
+            raise ValueError("rest_temp_target must be above 5°C and at most 40°C (41-104°F)")
         return v
 
     @field_validator("rest_hold_hours")

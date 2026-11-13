@@ -69,6 +69,8 @@ REST_HOLD_HOURS_DEFAULT = _env_float("BREWSIGNAL_REST_HOLD_HOURS", 3)
 # Below this batch target the brewer is cold crashing, not fermenting (lagers
 # ferment at 7 C and up). The rest rule must never heat a cold crash.
 REST_MIN_ACTIVE_TARGET_C = 5.0
+# Finished beer does not go below about 0.990. A lower reading is not beer.
+REST_MIN_PLAUSIBLE_SG = 0.980
 
 
 def _now() -> datetime:
@@ -807,6 +809,8 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
         and age <= _stale_limit(device_id)
     ):
         sg = reading.get("sg")
+        if sg is not None and sg < REST_MIN_PLAUSIBLE_SG:
+            sg = None  # hydrometer in air, in sanitiser or not calibrated
 
     og, fg = batch.measured_og, None
     if batch.recipe_id is not None:
@@ -834,20 +838,25 @@ async def apply_rest_rule(db, batch, ambient_temp: Optional[float] = None) -> No
             await _save_rest_hold(db, batch, None, None, None)
         return
 
+    # The hold is timed in reading timestamps, not wall clock: a cached reading
+    # that is seen again on later cycles adds no hold time, so the rule needs a
+    # reading taken at least hold_hours after the first low one.
     now = _now()
+    seen = now - age
     since, confirmed = _utc(batch.rest_below_since), _utc(batch.rest_confirmed_at)
     if (
         since is None or confirmed is None
-        or not timedelta(0) <= now - confirmed <= _stale_limit(device_id)  # outage or clock step
+        or not timedelta(0) <= seen - confirmed <= _stale_limit(device_id)  # outage or clock step
         or batch.rest_hold_trigger_sg is None
         or abs(batch.rest_hold_trigger_sg - trigger) > 1e-6  # percent, OG or FG changed: new threshold
     ):
-        since = now
-    if not await _save_rest_hold(db, batch, since, now, trigger):
-        return
+        since = seen
+    if seen != confirmed or since != _utc(batch.rest_below_since):
+        if not await _save_rest_hold(db, batch, since, seen, trigger):
+            return
 
     hold_hours = batch.rest_hold_hours if batch.rest_hold_hours is not None else REST_HOLD_HOURS_DEFAULT
-    if now - since < timedelta(hours=hold_hours):
+    if seen - since < timedelta(hours=hold_hours):
         return
 
     # A rest is a temperature increase. If the batch is already as warm, the rule

@@ -82,6 +82,10 @@
 	let restPercent = $state((batch?.rest_trigger_percent ?? 75).toString());
 	let restTemp = $state(tempToDisplay(batch?.rest_temp_target ?? 21));
 	let restHoldHours = $state((batch?.rest_hold_hours ?? 3).toString());
+	// What the form showed at open. An untouched rule is not sent back, so display
+	// rounding (Fahrenheit, 1 decimal) cannot change it or arm a finished rule again.
+	const restShownAtOpen = batch?.rest_trigger_percent != null ? `${restPercent}|${restTemp}` : null;
+	let restTempMin = $derived(configState.config.temp_units === 'C' ? 5.5 : 42);
 
 	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
 	let restTriggerSg = $derived.by(() => {
@@ -220,22 +224,22 @@
 
 			// Diacetyl rest rule: null switches it off. The fields only show with a heater
 			// or cooler, so without one the stored rule is left as it is.
-			if (heaterEntityId || coolerEntityId) {
-				if (restEnabled) {
+			if (!restEnabled) {
+				if (isEditMode) data.rest_trigger_percent = null;
+			} else if (heaterEntityId || coolerEntityId) {
+				const hold = parseFloat(restHoldHours);
+				data.rest_hold_hours = isNaN(hold) ? null : hold;
+				if (`${restPercent}|${restTemp}` !== restShownAtOpen) {
 					const pct = parseFloat(restPercent);
 					const restC = displayToTempC(restTemp);
-					const hold = parseFloat(restHoldHours);
 					if (isNaN(pct) || restC === undefined) {
 						throw new Error('Diacetyl rest needs a start percent and a rest temperature');
 					}
-					if (data.temp_target === undefined) {
-						throw new Error('Diacetyl rest needs a target temperature for this batch');
-					}
 					data.rest_trigger_percent = pct;
 					data.rest_temp_target = restC;
-					data.rest_hold_hours = isNaN(hold) ? null : hold;
-				} else if (isEditMode) {
-					data.rest_trigger_percent = null;
+				}
+				if (data.temp_target === undefined) {
+					throw new Error('Diacetyl rest needs a target temperature for this batch');
 				}
 			}
 
@@ -568,7 +572,7 @@
 						</div>
 						<div class="form-group">
 							<label class="form-label" for="restTemp">Rest Temperature ({tempUnit})</label>
-							<input type="number" id="restTemp" class="form-input" bind:value={restTemp} step="0.1" min={tempTargetMin} max={tempTargetMax} />
+							<input type="number" id="restTemp" class="form-input" bind:value={restTemp} step="0.1" min={restTempMin} max={tempTargetMax} />
 						</div>
 					</div>
 					<div class="form-group">

@@ -108,7 +108,7 @@ async def test_noise_spike_restarts_the_hold(test_db, clock):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("bad", ["stale", "anomaly", "paused", "no_sg"])
+@pytest.mark.parametrize("bad", ["stale", "anomaly", "paused", "no_sg", "implausible"])
 async def test_untrustworthy_reading_restarts_the_hold(test_db, clock, bad):
     b = await make_batch(test_db)
     await run_hours(test_db, clock, b.id, 2.5, 1.019)
@@ -118,6 +118,8 @@ async def test_untrustworthy_reading_restarts_the_hold(test_db, clock, bad):
         set_sg(clock, 1.000, is_anomaly=True)
     elif bad == "no_sg":
         set_sg(clock, None)
+    elif bad == "implausible":
+        set_sg(clock, 0.0)
     else:
         set_sg(clock, 1.000)
         (await test_db.get(Batch, b.id)).readings_paused = True
@@ -176,6 +178,31 @@ async def test_changed_threshold_restarts_the_hold(test_db, clock, change):
     assert b.temp_target == 18.0 and b.rest_fired_at is None
     b = await run_hours(test_db, clock, b.id, 0.3, 1.012, step_min=6)
     assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+async def test_repeated_cached_reading_adds_no_hold_time(test_db, clock):
+    """One low reading, then the hydrometer goes quiet: seeing the cached reading again must not count."""
+    b = await make_batch(test_db, rest_hold_hours=0.2)  # 12 min, under the 15 min stale limit
+    set_sg(clock, 1.019)
+    for _ in range(14):
+        b = await cycle(test_db, b.id)
+        clock.advance(minutes=1)  # the cached reading gets older, no new one arrives
+    assert b.temp_target == 18.0 and b.rest_fired_at is None
+    set_sg(clock, 1.019)  # a new low reading, 14 min after the first
+    b = await cycle(test_db, b.id)
+    assert b.temp_target == 21.0
+
+
+@pytest.mark.asyncio
+async def test_api_clears_blocked_warning_when_batch_leaves_fermenting(client, test_db, clock):
+    b = await make_batch(test_db, recipe_id=None)
+    set_sg(clock, 1.012)
+    await cycle(test_db, b.id)
+    assert "rest_blocked" in await active_alerts(test_db, b.id)
+    r = await client.put(f"/api/batches/{b.id}", json={"status": "conditioning"})
+    assert r.status_code == 200, r.text
+    assert "rest_blocked" not in await active_alerts(test_db, b.id)
 
 
 @pytest.mark.asyncio
@@ -338,6 +365,13 @@ async def test_api_set_rearm_and_disable(client, test_db):
     r = await client.put(f"/api/batches/{bid}", json={"notes": "x"})
     assert r.json()["rest_trigger_percent"] == 75 and r.json()["rest_fired_at"] is not None
 
+    # The smallest real edit in the form (0.1 F = 0.056 C) re-arms the rule.
+    r = await client.put(f"/api/batches/{bid}", json={"rest_temp_target": 21.084})
+    assert r.json()["rest_fired_at"] is None
+    b = await test_db.get(Batch, bid)
+    b.rest_fired_at = b.created_at
+    await test_db.commit()
+
     # A changed rule is re-armed.
     r = await client.put(f"/api/batches/{bid}", json={"rest_trigger_percent": 80})
     assert r.json()["rest_fired_at"] is None
@@ -355,6 +389,7 @@ async def test_api_set_rearm_and_disable(client, test_db):
     {"rest_trigger_percent": 5, "rest_temp_target": 21},
     {"rest_trigger_percent": 99, "rest_temp_target": 21},
     {"rest_trigger_percent": 75, "rest_temp_target": 45},
+    {"rest_trigger_percent": 75, "rest_temp_target": 5},   # could never take effect
     {"rest_trigger_percent": 75, "rest_temp_target": 21, "rest_hold_hours": 100},
 ])
 async def test_api_rejects_out_of_range(client, body):

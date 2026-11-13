@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
-from sqlalchemy import or_, select, delete, desc
+from sqlalchemy import or_, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,10 +14,7 @@ from ..config import get_settings
 from ..database import get_db
 from ..models import (
     Device,
-    CalibrationPoint,
     Reading,
-    CalibrationPointCreate,
-    CalibrationPointResponse,
     ReadingResponse,
     serialize_datetime_to_utc,
 )
@@ -257,6 +254,8 @@ class CalibrationRequest(BaseModel):
                     # Validate SG ranges (0.990-1.200)
                     if not (0.990 <= point[0] <= 1.200 and 0.990 <= point[1] <= 1.200):
                         raise ValueError("SG calibration points must be between 0.990 and 1.200")
+                if len({point[0] for point in points}) != len(points):
+                    raise ValueError("two SG calibration points have the same raw value")
 
             # Validate temp_points if present and not null
             if has_temp_points:
@@ -271,6 +270,8 @@ class CalibrationRequest(BaseModel):
                     # Validate temperature ranges (in Celsius: -10 to 50)
                     if not (-10 <= point[0] <= 50 and -10 <= point[1] <= 50):
                         raise ValueError("Temperature calibration points must be between -10°C and 50°C")
+                if len({point[0] for point in temp_points}) != len(temp_points):
+                    raise ValueError("two temperature calibration points have the same raw value")
 
         elif cal_type == "polynomial":
             # Polynomial requires coefficients array
@@ -508,68 +509,6 @@ async def unpair_device(
         await manager.broadcast(reading)
 
     return DeviceResponse.from_orm_with_calibration(device)
-
-
-# CalibrationPoint Endpoints (table-based calibration for Tilt devices)
-@router.get("/{device_id}/calibration_points", response_model=list[CalibrationPointResponse])
-async def get_device_calibration_points(
-    device_id: str,
-    user: AuthUser = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get calibration points for any device type."""
-    await get_user_device(device_id, user, db)  # Verify ownership
-
-    result = await db.execute(
-        select(CalibrationPoint)
-        .where(CalibrationPoint.device_id == device_id)
-        .order_by(CalibrationPoint.type, CalibrationPoint.raw_value)
-    )
-    return result.scalars().all()
-
-
-@router.post("/{device_id}/calibration_points", response_model=CalibrationPointResponse)
-async def add_device_calibration_point(
-    device_id: str,
-    point: CalibrationPointCreate,
-    user: AuthUser = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Add calibration point for any device type."""
-    await get_user_device(device_id, user, db)  # Verify ownership
-
-    calibration_point = CalibrationPoint(
-        device_id=device_id,
-        **point.model_dump()
-    )
-    db.add(calibration_point)
-    await db.commit()
-    await db.refresh(calibration_point)
-
-    return calibration_point
-
-
-@router.delete("/{device_id}/calibration_points/{type}")
-async def clear_device_calibration_points(
-    device_id: str,
-    type: str,
-    user: AuthUser = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Clear calibration points for a specific type (sg or temp)."""
-    if type not in ["sg", "temp"]:
-        raise HTTPException(status_code=400, detail="Type must be 'sg' or 'temp'")
-
-    await get_user_device(device_id, user, db)  # Verify ownership
-
-    await db.execute(
-        delete(CalibrationPoint)
-        .where(CalibrationPoint.device_id == device_id)
-        .where(CalibrationPoint.type == type)
-    )
-    await db.commit()
-
-    return {"message": f"Cleared {type} calibration for device {device_id}"}
 
 
 @router.get("/{device_id}/readings", response_model=list[ReadingResponse])

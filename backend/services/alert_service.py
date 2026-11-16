@@ -406,7 +406,8 @@ async def _dry_hop_alert(
     from backend.temp_controller import rest_trigger_sg  # temp_controller imports this module
 
     row = (await db.execute(
-        select(Batch).where(Batch.id == batch_id).execution_options(populate_existing=True)
+        select(Batch).options(*batch_with_recipe_options()).where(Batch.id == batch_id)
+        .execution_options(populate_existing=True)
     )).scalar_one_or_none()
     if row is None or row.status != "fermenting" or row.dry_hop_done_at is not None:
         await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)

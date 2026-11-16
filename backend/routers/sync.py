@@ -391,6 +391,7 @@ async def _sync_batch(
         "measured_fg": batch.measured_fg,
         "measured_abv": batch.measured_abv,
         "measured_attenuation": batch.measured_attenuation,
+        **{f"expected_{n}": getattr(batch, f"expected_{n}") for n in ("og", "fg", "abv", "ibu", "srm")},
         "notes": batch.notes,
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,

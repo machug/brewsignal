@@ -140,7 +140,7 @@ async def list_fermentations(
             "current_sg": current_sg,
             "current_temp_c": current_temp,
             "measured_og": batch.measured_og,
-            "target_fg": batch_expected_fg(batch) if batch.recipe else None,
+            "target_fg": batch_expected_fg(batch),
             "progress_percent": progress_percent,
             "yeast_name": yeast_name,
             "temp_status": temp_status,
@@ -202,14 +202,16 @@ async def get_fermentation_status(
 
     # Build recipe info
     recipe_info = None
-    if batch.recipe:
+    recipe = batch.recipe
+    targets = (batch_recipe_og(batch), batch_expected_fg(batch), batch_expected_abv(batch))
+    if recipe or any(t is not None for t in targets):  # a snapshot outlives its recipe
         recipe_info = {
-            "name": batch.recipe.name,
-            "style": batch.recipe.style.name if batch.recipe.style else None,
-            "target_og": batch_recipe_og(batch),
-            "target_fg": batch_expected_fg(batch),
-            "target_abv": batch_expected_abv(batch),
-            "primary_temp_c": batch.recipe.primary_temp_c,
+            "name": recipe.name if recipe else None,
+            "style": recipe.style.name if recipe and recipe.style else None,
+            "target_og": targets[0],
+            "target_fg": targets[1],
+            "target_abv": targets[2],
+            "primary_temp_c": recipe.primary_temp_c if recipe else None,
         }
 
     # Build device info

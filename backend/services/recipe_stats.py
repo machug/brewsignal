@@ -86,7 +86,7 @@ def _expected(batch: Batch, name: str, recipe: Recipe | None = None) -> float | 
     """planning/brewing read the recipe live (batch.recipe must be loaded with
     ingredients, or pass recipe); later statuses read the snapshot."""
     if (batch.status or "planning") in LIVE_STATUSES:
-        recipe = recipe if recipe is not None else batch.recipe
+        recipe = recipe if recipe is not None else getattr(batch, "recipe", None)
         return getattr(effective_stats(recipe), name) if recipe is not None else None
     return getattr(batch, f"expected_{name}")
 

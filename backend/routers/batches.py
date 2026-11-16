@@ -575,7 +575,11 @@ async def update_batch(
     if "dry_hop_trigger_sg" in update.model_fields_set:  # null = back to the default
         batch.dry_hop_trigger_sg = update.dry_hop_trigger_sg
     if resnapshot:
+        old_gravities = (batch.expected_og, batch.expected_fg)
         snapshot_expected(batch, snapshot_recipe)
+        if old_gravities != (batch.expected_og, batch.expected_fg):
+            # The rest hold was timed against the old gravities; rest_fired_at stays.
+            batch.rest_below_since = batch.rest_confirmed_at = batch.rest_hold_trigger_sg = None
     _require_complete_rest_rule(batch)
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already
@@ -828,16 +832,12 @@ async def get_batch_progress(
             if last_reading:
                 current_sg = last_reading.sg_filtered or last_reading.sg_calibrated
 
-    # Targets: the batch's expected numbers (live while planning/brewing, snapshot after)
+    # Targets: the batch's expected numbers (live while planning/brewing, snapshot after).
+    # A snapshot outlives its recipe, so this does not depend on batch.recipe.
+    exp_og, exp_fg, exp_abv = batch_recipe_og(batch), batch_expected_fg(batch), batch_expected_abv(batch)
     targets = {}
-    if batch.recipe:
-        exp_og, exp_fg = batch_recipe_og(batch), batch_expected_fg(batch)
-        targets = {
-            "og": exp_og,
-            "fg": exp_fg,
-            "attenuation": None,
-            "abv": batch_expected_abv(batch),
-        }
+    if any(v is not None for v in (exp_og, exp_fg, exp_abv)):
+        targets = {"og": exp_og, "fg": exp_fg, "attenuation": None, "abv": exp_abv}
         if exp_og and exp_fg:
             targets["attenuation"] = round(((exp_og - exp_fg) / (exp_og - 1.0)) * 100, 1)
 

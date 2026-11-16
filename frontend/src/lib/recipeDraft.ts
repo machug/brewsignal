@@ -26,8 +26,9 @@ interface DraftYeast {
 	attenuation_high?: number | null;
 }
 
-// Cold-side or mash additions have no boil duration to send.
-const NO_DURATION_USES = new Set(['dry_hop', 'mash']);
+// Dry hop duration is a day count stored as minutes, never a boil time. Mash hops
+// send theirs: the backend counts them like boil hops, as a saved recipe does.
+const NO_DURATION_USES = new Set(['dry_hop']);
 
 export function buildDraft(input: {
 	batchSizeLiters: number;
@@ -77,6 +78,11 @@ export function buildDraft(input: {
 export interface DraftCalculator {
 	request(draft: RecipeDraft): void;
 	cancel(): void;
+	/**
+	 * Resolves true when the newest requested draft has been calculated
+	 * successfully. Runs a waiting debounce immediately; false on failure.
+	 */
+	settled(): Promise<boolean>;
 }
 
 /**
@@ -93,6 +99,9 @@ export function createDraftCalculator(opts: {
 	const delay = opts.delayMs ?? 200;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let controller: AbortController | null = null;
+	let pendingDraft: RecipeDraft | null = null;
+	let inflight: Promise<boolean> | null = null;
+	let lastOk = false;
 
 	function cancel() {
 		if (timer) clearTimeout(timer);
@@ -101,23 +110,45 @@ export function createDraftCalculator(opts: {
 		controller = null;
 	}
 
+	function start() {
+		timer = null;
+		const draft = pendingDraft!;
+		const mine = (controller = new AbortController());
+		return (inflight = (async () => {
+			try {
+				const stats = await calculate(draft, mine.signal);
+				if (mine.signal.aborted) return false;
+				opts.onResult(stats);
+				opts.onStale(false);
+				return (lastOk = true);
+			} catch {
+				if (mine.signal.aborted) return false;
+				opts.onStale(true);
+				return false;
+			}
+		})());
+	}
+
 	return {
 		cancel,
 		request(draft) {
 			cancel();
-			timer = setTimeout(async () => {
-				timer = null;
-				const mine = (controller = new AbortController());
-				try {
-					const stats = await calculate(draft, mine.signal);
-					if (mine.signal.aborted) return;
-					opts.onResult(stats);
-					opts.onStale(false);
-				} catch {
-					if (mine.signal.aborted) return;
-					opts.onStale(true);
+			pendingDraft = draft;
+			lastOk = false;
+			timer = setTimeout(start, delay);
+		},
+		async settled() {
+			for (;;) {
+				if (timer) {
+					clearTimeout(timer);
+					start();
 				}
-			}, delay);
+				const p = inflight;
+				if (!p) return lastOk;
+				if (await p) return true;
+				// false: failed, or superseded by a newer request (then go again)
+				if (p === inflight && !timer) return false;
+			}
 		}
 	};
 }

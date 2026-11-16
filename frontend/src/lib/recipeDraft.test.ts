@@ -60,6 +60,43 @@ describe('createDraftCalculator', () => {
 	});
 });
 
+describe('settled', () => {
+	test('flushes the debounce and resolves true once the current draft is calculated', async () => {
+		const calculate = vi.fn().mockResolvedValue(stats(1.05));
+		const calc = createDraftCalculator({ calculate, onResult: () => {}, onStale: () => {} });
+		calc.request(draft());
+		expect(await calc.settled()).toBe(true);
+		expect(calculate).toHaveBeenCalledTimes(1);
+	});
+
+	test('false when the current draft failed, even if an older one succeeded', async () => {
+		const calculate = vi.fn().mockResolvedValueOnce(stats(1.05)).mockRejectedValueOnce(new Error('offline'));
+		const calc = createDraftCalculator({ calculate, onResult: () => {}, onStale: () => {} });
+		calc.request(draft());
+		expect(await calc.settled()).toBe(true);
+		calc.request(draft());
+		expect(await calc.settled()).toBe(false);
+	});
+
+	test('waits for the newest draft when one supersedes an in-flight request', async () => {
+		let release!: (s: CalculatedStats) => void;
+		const calculate = vi
+			.fn()
+			.mockImplementationOnce(() => new Promise<CalculatedStats>(() => {}))
+			.mockImplementationOnce(() => new Promise<CalculatedStats>((r) => (release = r)));
+		const shown: number[] = [];
+		const calc = createDraftCalculator({ calculate, onResult: (s) => shown.push(s!.og), onStale: () => {} });
+		calc.request(draft());
+		await vi.advanceTimersByTimeAsync(200);
+		calc.request(draft());
+		const p = calc.settled();
+		await vi.advanceTimersByTimeAsync(0);
+		release(stats(1.07));
+		expect(await p).toBe(true);
+		expect(shown).toEqual([1.07]);
+	});
+});
+
 describe('buildDraft', () => {
 	test('maps editor state to the calculate payload', () => {
 		const d = buildDraft({
@@ -67,6 +104,7 @@ describe('buildDraft', () => {
 			fermentables: [{ name: 'Pale', amount_kg: 4, potential_sg: 1.037, color_srm: 2, type: 'base' }, { name: 'X', amount_kg: 1, potential_sg: 9 }],
 			hops: [
 				{ name: 'Citra', amount_grams: 30, alpha_acid_percent: 12, boil_time_minutes: 20, use: 'whirlpool', whirlpool_temp_c: 80 },
+				{ name: 'Mash', amount_grams: 10, boil_time_minutes: 60, use: 'mash' },
 				{ name: 'Dry', amount_grams: 50, boil_time_minutes: 5760, use: 'dry_hop' },
 				{ name: 'Ext', amount_grams: 9, is_extract: true, use: 'dry_hop' }
 			],
@@ -74,8 +112,9 @@ describe('buildDraft', () => {
 		});
 		expect(d.fermentables[1].potential_sg).toBeUndefined();
 		expect(d.hops[0].timing).toEqual({ use: 'whirlpool', duration: { value: 20, unit: 'min' }, temperature: { value: 80, unit: 'C' } });
-		expect(d.hops[1].timing.duration).toBeUndefined();
-		expect(d.hops[2]).toMatchObject({ amount_grams: 0, is_extract: true });
+		expect(d.hops[1].timing.duration).toEqual({ value: 60, unit: 'min' });
+		expect(d.hops[2].timing.duration).toBeUndefined();
+		expect(d.hops[3]).toMatchObject({ amount_grams: 0, is_extract: true });
 		expect(d.cultures).toEqual([{ attenuation_min_percent: 73, attenuation_max_percent: 77 }]);
 	});
 });

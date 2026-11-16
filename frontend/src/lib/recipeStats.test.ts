@@ -13,6 +13,11 @@ describe('effectiveStats', () => {
 		expect(s).toMatchObject({ source: 'calculated', og: 1.05, ibu: 37, colorHex: '#ffcc00', buGu: 0.74 });
 		expect(s.assumptions).toEqual(['Assumed 75% brewhouse efficiency']);
 	});
+	test('resolves per field: a missing calculated field falls back to its target', () => {
+		const partial = { ...calc, ibu: null } as unknown as CalculatedStats;
+		const s = effectiveStats({ calculated: partial, target_ibu: 40, target_og: 1.09 });
+		expect(s).toMatchObject({ source: 'calculated', og: 1.05, ibu: 40 });
+	});
 	test('declared when only targets exist', () => {
 		const s = effectiveStats({ calculated: null, target_og: 1.06, target_ibu: 40 });
 		expect(s).toMatchObject({ source: 'declared', og: 1.06, ibu: 40 });
@@ -43,20 +48,26 @@ describe('statDiffers', () => {
 
 describe('batchExpected', () => {
 	const recipe = { calculated: calc };
+	const planning = 'planning' as const;
+	const fermenting = 'fermenting' as const;
 	test('measured OG wins', () => {
-		expect(batchExpected({ measured_og: 1.048, expected_og: 1.05, recipe }).og).toBe(1.048);
+		expect(batchExpected({ status: fermenting, measured_og: 1.048, expected_og: 1.05, recipe }).og).toBe(1.048);
 	});
 	test('snapshot beats live recipe (recipe edited after fermenting started)', () => {
-		const b = batchExpected({ expected_og: 1.07, expected_fg: 1.012, expected_abv: 7, recipe });
+		const b = batchExpected({ status: fermenting, expected_og: 1.07, expected_fg: 1.012, expected_abv: 7, recipe });
 		expect(b).toMatchObject({ og: 1.07, fg: 1.012, abv: 7 });
 	});
 	test('planning batch uses live recipe stats', () => {
-		expect(batchExpected({ recipe })).toMatchObject({ og: 1.05, fg: 1.01, ibu: 37 });
+		expect(batchExpected({ status: planning, recipe })).toMatchObject({ og: 1.05, fg: 1.01, ibu: 37 });
 	});
 	test('target view ignores measured OG', () => {
-		expect(batchExpected({ measured_og: 1.048, expected_og: 1.05, recipe }, false).og).toBe(1.05);
+		expect(batchExpected({ status: fermenting, measured_og: 1.048, expected_og: 1.05, recipe }, false).og).toBe(1.05);
+	});
+	test('fermenting batch with an empty snapshot stays empty (no live fallback)', () => {
+		const b = batchExpected({ status: fermenting, expected_og: null, expected_fg: null, expected_abv: null, recipe });
+		expect(b).toEqual({ og: undefined, fg: undefined, abv: undefined, ibu: undefined, srm: undefined });
 	});
 	test('no recipe and no snapshot gives nothing', () => {
-		expect(batchExpected({}).fg).toBeUndefined();
+		expect(batchExpected({ status: planning }).fg).toBeUndefined();
 	});
 });

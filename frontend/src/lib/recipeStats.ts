@@ -36,36 +36,47 @@ const FIELDS = ['og', 'fg', 'abv', 'ibu', 'srm'] as const;
 export function effectiveStats(recipe: RecipeLike): EffectiveStats {
 	const calc = recipe.calculated ?? null;
 	const out: EffectiveStats = { source: 'empty', assumptions: calc?.assumptions ?? [] };
+	let anyCalculated = false;
 	let anyDeclared = false;
 	for (const f of FIELDS) {
-		const target = recipe[`target_${f}` as const] ?? undefined;
-		if (calc) out[f] = calc[f];
-		else if (target !== undefined) {
+		const value = calc?.[f];
+		const target = recipe[`target_${f}` as const];
+		if (value != null) {
+			out[f] = value;
+			anyCalculated = true;
+		} else if (target != null) {
 			out[f] = target;
 			anyDeclared = true;
 		}
 	}
 	if (calc) {
-		out.source = 'calculated';
 		out.colorHex = calc.color_hex;
 		out.buGu = calc.bu_gu;
 		out.caloriesPer330ml = calc.calories_per_330ml;
-	} else if (anyDeclared) out.source = 'declared';
+	}
+	out.source = anyCalculated ? 'calculated' : anyDeclared ? 'declared' : 'empty';
 	return out;
 }
 
 /**
  * What a batch is expected to reach. OG prefers the measured value (unless
- * `includeMeasured` is false), then the snapshot taken when fermenting began,
- * then the recipe's live stats (planning and brewing batches have no snapshot).
+ * `includeMeasured` is false), then the snapshot taken when fermenting began.
+ * Only planning and brewing batches have no snapshot and read the recipe's live
+ * stats; from fermenting on the snapshot is frozen, even where a field is null.
  */
+/** True once the batch's expected numbers are a frozen snapshot (fermenting or later). */
+export function hasSnapshot(status: BatchResponse['status']): boolean {
+	return status !== 'planning' && status !== 'brewing';
+}
+
 export function batchExpected(
-	batch: Pick<BatchResponse, 'measured_og' | 'expected_og' | 'expected_fg' | 'expected_abv' | 'expected_ibu' | 'expected_srm'> & {
+	batch: Pick<BatchResponse, 'status' | 'measured_og' | 'expected_og' | 'expected_fg' | 'expected_abv' | 'expected_ibu' | 'expected_srm'> & {
 		recipe?: RecipeLike | null;
 	},
 	includeMeasured = true
 ): StatValues {
-	const live = batch.recipe ? effectiveStats(batch.recipe) : ({} as EffectiveStats);
+	const isLive = !hasSnapshot(batch.status);
+	const live = isLive && batch.recipe ? effectiveStats(batch.recipe) : ({} as EffectiveStats);
 	return {
 		og: (includeMeasured ? batch.measured_og : null) ?? batch.expected_og ?? live.og,
 		fg: batch.expected_fg ?? live.fg,

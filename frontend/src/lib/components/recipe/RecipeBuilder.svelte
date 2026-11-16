@@ -534,7 +534,12 @@
 		showReviewModal = true;
 
 		try {
-			// The server's numbers; no made-up ones if they are not available.
+			// Only the numbers for the ingredients as they are now: wait for the
+			// current calculation, and never send an older one.
+			if (!(await calculator.settled())) {
+				reviewError = 'Recipe numbers are not available yet. Try again in a moment.';
+				return;
+			}
 			if (stats.og == null || stats.fg == null || stats.abv == null || stats.ibu == null || stats.srm == null) {
 				reviewError = 'Recipe numbers are not available yet. Try again in a moment.';
 				return;

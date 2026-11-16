@@ -434,3 +434,54 @@ class TestFinishesBelowRecipeFG:
             )
             assert result["fitted"], (model, result)
             assert abs(result["predicted_fg"] - 1.004) < 0.002, (model, result["predicted_fg"])
+
+
+def test_yeast_attenuation_keeps_fg_plausible_while_gravity_falls_linearly():
+    """tilt_ui-hcly: a straight-line drop gave FG 1.001/0.996 on a US-05 batch (recipe FG 1.011)."""
+    times = [h * 0.5 for h in range(120)]
+    sgs = [1.0526 - 0.00045 * t for t in times]  # still falling at full speed
+    for model in ("auto", "exponential", "logistic", "gompertz"):
+        out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, model=model, attenuation=(72.0, 78.0))
+        if out["fitted"]:
+            assert out["predicted_fg"] >= 1.0089 and abs(out["predicted_fg"] - 1.011) <= 0.005, (model, out["predicted_fg"])
+
+
+def test_batch_finishing_below_the_yeast_range_still_fits():
+    """The FG floor never sits above the reading already reached (tilt_ui-fod1)."""
+    times = [float(h) for h in range(200)]
+    sgs = [1.004 + 0.048 * np.exp(-0.04 * t) for t in times]  # 92% attenuation, plateaued
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"]
+    assert out["predicted_fg"] <= sgs[-1]
+
+
+def test_stalled_batch_shows_where_it_stopped_not_recipe_fg():
+    """A plateau above recipe FG is a stall; the prior must not hide it (tilt_ui-hcly review)."""
+    times = [float(h) for h in range(200)]
+    sgs = [1.022 + 0.030 * np.exp(-0.05 * t) for t in times]
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"]
+    assert abs(out["predicted_fg"] - 1.022) < 0.001
+
+
+def test_stall_is_seen_with_sparse_readings():
+    times = [float(h) for h in range(0, 200, 6)]
+    sgs = [1.022 + 0.030 * np.exp(-0.05 * t) for t in times]
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"] and abs(out["predicted_fg"] - 1.022) < 0.001
+
+
+def test_seen_stop_at_the_floor_is_shown():
+    times = [float(h) for h in range(200)]
+    sgs = [1.009 + 0.043 * np.exp(-0.05 * t) for t in times]
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.004, attenuation=(72.0, 78.0))
+    assert out["fitted"] and abs(out["predicted_fg"] - 1.009) < 0.001
+
+
+def test_fg_source_says_recipe_until_the_readings_decide():
+    times = [h * 0.5 for h in range(120)]
+    early = FermentationCurveFitter().fit(times, [1.0526 - 0.00045 * t for t in times], expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert early["fg_source"] == "recipe"
+    times = [float(h) for h in range(200)]
+    late = FermentationCurveFitter().fit(times, [1.022 + 0.030 * np.exp(-0.05 * t) for t in times], expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert late["fg_source"] == "readings"

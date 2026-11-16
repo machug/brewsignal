@@ -23,6 +23,14 @@ from typing import Optional
 from enum import Enum
 
 
+# Percentage points above the yeast's documented high attenuation still
+# treated as plausible. ponytail: fixed margin; learn it per strain from past
+# batches' measured_attenuation if it proves too tight or loose.
+ATTENUATION_MARGIN = 5.0
+# Without yeast data: how far below recipe FG a prediction may go.
+RECIPE_FG_MARGIN = 0.006
+
+
 class PredictionModel(str, Enum):
     """Available prediction model types."""
     EXPONENTIAL = "exponential"
@@ -115,6 +123,7 @@ class FermentationCurveFitter:
         sgs: list[float],
         expected_fg: Optional[float] = None,
         model: str = "auto",
+        attenuation: Optional[tuple[float, float]] = None,
     ) -> dict:
         """Fit a curve model to fermentation data.
 
@@ -123,6 +132,8 @@ class FermentationCurveFitter:
             sgs: Specific gravity readings
             expected_fg: Expected final gravity from recipe (used as lower bound)
             model: Model type to use: "exponential", "gompertz", "logistic", or "auto"
+            attenuation: Yeast apparent attenuation range in percent (low, high).
+                Sets the lowest plausible FG and the prior FG.
 
         Returns:
             Dictionary with fit results:
@@ -152,34 +163,100 @@ class FermentationCurveFitter:
         if sg_drop < 0.005:
             return self._failure_result("insufficient_fermentation_progress")
 
-        # FG lower bound. Real batches often finish well below recipe FG, so a
-        # tight bound (recipe FG - 0.003) put the last reading - the initial FG
-        # guess - outside the bounds and the fit failed near the end of every
-        # such batch (tilt_ui-fod1). Dry beers can finish below 1.000.
-        if expected_fg is not None:
-            fg_lower = max(0.990, expected_fg - 0.015)
+        # FG lower bound and prior FG (tilt_ui-hcly). While gravity still falls
+        # in a straight line the curve cannot see where it will stop, so the
+        # fit drifts to the bound (1.001, 0.996 on a US-05 batch with recipe
+        # FG 1.011). The yeast's documented attenuation sets the lowest
+        # plausible FG; the recipe FG (else mid-range attenuation) is the prior.
+        if attenuation is not None:
+            att_low, att_high = attenuation
+            fg_lower = og_guess - (og_guess - 1.0) * min(att_high + ATTENUATION_MARGIN, 100.0) / 100.0
+            prior_fg = expected_fg if expected_fg is not None else (
+                og_guess - (og_guess - 1.0) * (att_low + att_high) / 200.0
+            )
+        elif expected_fg is not None:
+            fg_lower = expected_fg - RECIPE_FG_MARGIN
+            prior_fg = expected_fg
         else:
             fg_lower = 0.990
+            prior_fg = None
+        # Never above the reading we already have: a batch that really goes
+        # lower than expected must still fit (tilt_ui-fod1).
+        fg_lower = max(0.990, min(fg_lower, float(sgs_arr[-1]) - 0.001))
         # scipy rejects an initial guess outside the bounds; keep it inside.
         fg_guess = float(np.clip(fg_guess, fg_lower + 1e-4, 1.100 - 1e-4))
 
         # Normalize model string
         model = model.lower() if model else "auto"
 
-        # AUTO mode: try all models and pick the best R²
-        if model == "auto":
-            return self._fit_auto(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
+        fitters = {
+            "auto": self._fit_auto,
+            "exponential": self._fit_exponential,
+            "gompertz": self._fit_gompertz,
+            "logistic": self._fit_logistic,
+        }
+        # Unknown model, default to exponential
+        fit_func = fitters.get(model, self._fit_exponential)
+        result = fit_func(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
+        return self._apply_prior(result, prior_fg, fg_lower, times_arr, sgs_arr)
 
-        # Fit specific model
-        if model == "exponential":
-            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
-        elif model == "gompertz":
-            return self._fit_gompertz(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
-        elif model == "logistic":
-            return self._fit_logistic(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
+    @staticmethod
+    def _slowdown(times_arr: np.ndarray, sgs_arr: np.ndarray) -> float:
+        """How far the gravity drop has slowed from its fastest: 0 = full speed, 1 = stopped.
+
+        Slope per 12 h window (least squares, robust to Tilt noise); the
+        faster of the last two windows against the steepest, so one noisy or
+        stepped window does not look like a stop. Sparse sensors get wider
+        windows (4 reading gaps) so each still holds several readings.
+        """
+        if len(times_arr) < 2:
+            return 0.0
+        window_hours = max(12.0, 4.0 * float(np.median(np.diff(times_arr))))
+        bins = np.floor((times_arr - times_arr[0]) / window_hours).astype(int)
+        rates = []
+        for b in np.unique(bins):
+            mask = bins == b
+            if mask.sum() >= 3 and np.ptp(times_arr[mask]) >= window_hours / 2:
+                rates.append(-np.polyfit(times_arr[mask], sgs_arr[mask], 1)[0])
+        if len(rates) < 3:
+            return 0.0
+        peak = max(rates)
+        if peak <= 0:
+            return 0.0
+        return float(np.clip(1.0 - max(max(rates[-2:]), 0.0) / peak, 0.0, 1.0))
+
+    def _apply_prior(
+        self,
+        result: dict,
+        prior_fg: Optional[float],
+        fg_lower: float,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+    ) -> dict:
+        """Blend the curve FG with the prior FG (tilt_ui-hcly).
+
+        Early on confidence is low (little progress, FG far from target), so
+        the shown FG stays near the recipe/yeast value. Once the drop has
+        clearly slowed the curve is trusted alone, so a batch that stops
+        high (a stall) shows where it stopped, not the recipe FG. A curve
+        pinned at the floor is used only once the stop is seen.
+        """
+        if not result.get("fitted") or prior_fg is None:
+            return result
+        curve_fg = result["predicted_fg"]
+        current_sg = float(sgs_arr[-1])
+        # Slowed by 50% -> no extra trust; by 90% or more -> curve alone.
+        plateau = float(np.clip((self._slowdown(times_arr, sgs_arr) - 0.5) / 0.4, 0.0, 1.0))
+        if curve_fg <= fg_lower + 0.001:
+            weight = plateau  # pinned: only a seen stop makes the curve FG real
         else:
-            # Unknown model, default to exponential
-            return self._fit_exponential(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
+            weight = max(result.get("confidence") or 0.0, plateau)
+        result["curve_fg"] = curve_fg
+        # Mostly the recipe/yeast value, not yet a forecast from the readings.
+        result["fg_source"] = "recipe" if weight < 0.5 else "readings"
+        # FG is never above the gravity already reached.
+        result["predicted_fg"] = min(weight * curve_fg + (1 - weight) * prior_fg, current_sg)
+        return result
 
     def _failure_result(self, reason: str) -> dict:
         """Return a standard failure result dictionary."""

@@ -182,18 +182,17 @@ class TestScaleEndpoint:
     @pytest.mark.asyncio
     async def test_stats_recomputed_and_roughly_invariant(self, client, test_db):
         rid = await _create_recipe(client)
-        # Establish a computed baseline first — creation doesn't run the calculators.
-        before = (await client.post(f"/api/recipes/{rid}/recalculate")).json()
+        before = (await client.get(f"/api/recipes/{rid}")).json()["calculated"]
         r = await client.post(
             f"/api/recipes/{rid}/scale", json={"target_batch_size_liters": 40}
         )
         assert r.status_code == 200, r.text
-        after = r.json()
+        after = r.json()["calculated"]
         # Proportional scaling keeps concentrations constant; recomputed
         # stats should match the originals closely.
         assert after["og"] == pytest.approx(before["og"], abs=0.002)
         assert after["ibu"] == pytest.approx(before["ibu"], rel=0.05)
-        assert after["color_srm"] == pytest.approx(before["color_srm"], rel=0.05)
+        assert after["srm"] == pytest.approx(before["srm"], rel=0.05)
 
     @pytest.mark.asyncio
     async def test_dry_run_previews_without_persisting(self, client, test_db):

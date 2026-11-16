@@ -1251,11 +1251,9 @@ export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse
 
 export async function updateRecipe(
 	id: number,
-	recipe: RecipeUpdateData,
-	options: { recalculate?: boolean } = {}
+	recipe: RecipeUpdateData
 ): Promise<RecipeResponse> {
-	const qs = options.recalculate ? '?recalculate=true' : '';
-	const response = await authFetch(`${BASE_URL}/recipes/${id}${qs}`, {
+	const response = await authFetch(`${BASE_URL}/recipes/${id}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(recipe)

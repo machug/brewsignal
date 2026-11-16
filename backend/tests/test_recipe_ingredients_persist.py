@@ -86,7 +86,7 @@ class TestCreatePersistsIngredients:
         r = await client.post("/api/recipes", json=_stout_payload())
         # Editor sent color_srm=4 (pale); server recomputes from the colored
         # bill to a real dry-stout color.
-        assert r.json()["color_srm"] > 25
+        assert r.json()["calculated"]["srm"] > 25
 
 
 class TestMetadataPreserved:

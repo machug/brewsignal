@@ -10,7 +10,7 @@ async def test_create_fermentable_with_recipe():
 
     async for db in get_db():
         # Create a recipe
-        recipe = Recipe(name="Test IPA", og=1.060)
+        recipe = Recipe(name="Test IPA")
         db.add(recipe)
         await db.commit()
         await db.refresh(recipe)

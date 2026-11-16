@@ -1,7 +1,6 @@
-"""Recipe stats for the API: eager-load helpers, effective stats, legacy columns.
+"""Recipe stats for the API: eager-load helpers, effective stats, batch snapshots.
 
-The numbers come from brewing.calculate_recipe_stats; nothing here stores them
-except fill_legacy_columns (deleted in Task 5 with the legacy columns).
+The numbers come from brewing.calculate_recipe_stats; nothing stores them on recipes.
 """
 from dataclasses import dataclass
 from typing import Literal
@@ -57,18 +56,6 @@ def effective_stats(recipe: Recipe) -> EffectiveStats:
     else:
         source = "empty"
     return EffectiveStats(source=source, **values)
-
-
-def fill_legacy_columns(recipe: Recipe) -> None:
-    """Write recipe.og/fg/abv/ibu/color_srm from the calculator (until Task 5).
-
-    Leaves them untouched when there is nothing to calculate.
-    """
-    stats = calculate_recipe_stats(recipe)
-    if stats is None:
-        return
-    recipe.og, recipe.fg, recipe.abv = stats.og, stats.fg, stats.abv
-    recipe.ibu, recipe.color_srm = stats.ibu, stats.srm
 
 
 LIVE_STATUSES = ("planning", "brewing")

@@ -28,8 +28,6 @@ async def sample_recipe_id():
         recipe = Recipe(
             user_id="local",  # Matches the fallback user in local mode
             name="Test Miscs Recipe",
-            og=1.050,
-            fg=1.010,
             batch_size_liters=20.0,
         )
         session.add(recipe)

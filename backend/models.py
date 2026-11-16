@@ -457,14 +457,8 @@ class Recipe(Base):
     boil_time_minutes: Mapped[Optional[int]] = mapped_column()
     efficiency_percent: Mapped[Optional[float]] = mapped_column()  # Brewhouse efficiency (0-100)
 
-    # Gravity targets (renamed from *_target). These are the canonical /
-    # displayed values; recipe edit form binds to them; recipe stat
-    # recalculation overwrites them when ?recalculate=true.
-    og: Mapped[Optional[float]] = mapped_column()
-    fg: Mapped[Optional[float]] = mapped_column()
-    abv: Mapped[Optional[float]] = mapped_column()
-    ibu: Mapped[Optional[float]] = mapped_column()
-    color_srm: Mapped[Optional[float]] = mapped_column()  # renamed from srm_target
+    # OG/FG/ABV/IBU/colour are not stored: calculated on read
+    # (services.recipe_stats.effective_stats); declared values live in target_*.
     carbonation_vols: Mapped[Optional[float]] = mapped_column()  # CO2 volumes
 
     # Brewer-declared targets from imported recipes (BeerXML/Brewfather/
@@ -537,9 +531,9 @@ class Recipe(Base):
     # fingerprint) are stable across loads (tilt_ui-de6v).
     style: Mapped[Optional["Style"]] = relationship(back_populates="recipes")
     batches: Mapped[list["Batch"]] = relationship(back_populates="recipe")
-    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeFermentable.id")
-    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeHop.id")
-    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeCulture.id")
+    fermentables: Mapped[list["RecipeFermentable"]] = relationship(back_populates="recipe", lazy="raise", cascade="all, delete-orphan", order_by="RecipeFermentable.id")
+    hops: Mapped[list["RecipeHop"]] = relationship(back_populates="recipe", lazy="raise", cascade="all, delete-orphan", order_by="RecipeHop.id")
+    cultures: Mapped[list["RecipeCulture"]] = relationship(back_populates="recipe", lazy="raise", cascade="all, delete-orphan", order_by="RecipeCulture.id")
     miscs: Mapped[list["RecipeMisc"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeMisc.id")
     water_profiles: Mapped[list["RecipeWaterProfile"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterProfile.id")
     water_adjustments: Mapped[list["RecipeWaterAdjustment"]] = relationship(back_populates="recipe", cascade="all, delete-orphan", order_by="RecipeWaterAdjustment.id")
@@ -1805,11 +1799,6 @@ class RecipeCreate(BaseModel):
     # when the user typed without selecting from the autocomplete.
     style: Optional[str] = None
     type: Optional[str] = None
-    og: Optional[float] = None
-    fg: Optional[float] = None
-    abv: Optional[float] = None
-    ibu: Optional[float] = None
-    color_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
     boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None
@@ -1832,11 +1821,6 @@ class RecipeUpdate(BaseModel):
     # See RecipeCreate.style — same resolver semantics.
     style: Optional[str] = None
     type: Optional[str] = None
-    og: Optional[float] = None
-    fg: Optional[float] = None
-    abv: Optional[float] = None
-    ibu: Optional[float] = None
-    color_srm: Optional[float] = None
     batch_size_liters: Optional[float] = None
     boil_size_l: Optional[float] = None
     boil_time_minutes: Optional[int] = None
@@ -1961,17 +1945,12 @@ class RecipeResponse(_HasCalculated):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og: Optional[float] = None
-    fg: Optional[float] = None
     yeast_name: Optional[str] = None
     yeast_lab: Optional[str] = None
     yeast_product_id: Optional[str] = None
     yeast_temp_min: Optional[float] = None
     yeast_temp_max: Optional[float] = None
     yeast_attenuation: Optional[float] = None
-    ibu: Optional[float] = None
-    color_srm: Optional[float] = None
-    abv: Optional[float] = None
     # Imported brewer-declared targets (tilt_ui-ak6). Mirror calculated
     # values at import time but never get overwritten by recalculation.
     target_og: Optional[float] = None
@@ -2151,11 +2130,6 @@ class RecipeDetailResponse(_HasCalculated):
     author: Optional[str] = None
     style_id: Optional[str] = None
     type: Optional[str] = None
-    og: Optional[float] = None
-    fg: Optional[float] = None
-    ibu: Optional[float] = None
-    color_srm: Optional[float] = None
-    abv: Optional[float] = None
     target_og: Optional[float] = None
     target_fg: Optional[float] = None
     target_abv: Optional[float] = None

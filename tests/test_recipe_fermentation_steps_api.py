@@ -19,9 +19,6 @@ async def sample_recipe_id():
         recipe = Recipe(
             user_id="local",  # Matches LOCAL mode auth user
             name="Test Fermentation Recipe",
-            og=1.055,
-            fg=1.012,
-            abv=5.6,
             batch_size_liters=20.0,
         )
         session.add(recipe)

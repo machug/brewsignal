@@ -11,9 +11,8 @@ async def test_recipe(test_db):
     """Create a test recipe for update tests."""
     recipe = Recipe(
         name="Test Recipe",
-        og=1.050,
-        fg=1.010,
-        abv=5.0,
+        target_og=1.050,
+        target_fg=1.010,
         batch_size_liters=20
     )
     test_db.add(recipe)
@@ -49,7 +48,7 @@ async def test_create_recipe(client):
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Test Recipe"
-    assert data["og"] is None  # stats are calculated from ingredients, client value ignored
+    assert "og" not in data and data["target_og"] is None  # client stats ignored
     assert data["yeast_temp_min"] == 15.0
     assert "id" in data
 
@@ -105,7 +104,7 @@ async def test_import_beerxml(client):
     assert response.status_code in (200, 201)  # Accept both 200 OK and 201 Created
     data = response.json()
     assert data["name"] == "Imported IPA"
-    assert data["og"] == 1.065
+    assert data["target_og"] == 1.065
     assert data["yeast_name"] == "US-05"
 
 
@@ -136,8 +135,7 @@ async def test_update_recipe(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Updated Name"
-    assert data["og"] is None  # client stats ignored (no ingredients to calculate from)
-    assert data["ibu"] is None
+    assert data["target_og"] is None and data["target_ibu"] is None  # client stats ignored
     assert data["batch_size_liters"] == 19.0
     assert data["yeast_name"] == "US-05"
 
@@ -162,7 +160,7 @@ async def test_update_recipe_partial(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Updated"
-    assert data["og"] is None  # client og ignored
+    assert data["target_og"] is None  # client og ignored
 
 
 @pytest.mark.asyncio
@@ -292,17 +290,19 @@ async def test_import_beerxml_empty_file(client):
 
 
 @pytest.mark.asyncio
-async def test_create_recipe_og_less_than_fg(client):
-    """Creating recipe with OG <= FG should fail."""
-    response = await client.post("/api/recipes", json={
-        "name": "Invalid Gravity Test",
-        "og": 1.010,
-        "fg": 1.050,
-        "abv": 5.0,
-        "batch_size_liters": 20
-    })
+@pytest.mark.parametrize("og,fg,abv,message", [
+    (1.010, 1.050, 5.0, "greater than final gravity"),
+    (1.050, 1.010, 25.0, "between 0% and 20%"),
+    (1.050, 1.010, -5.0, "between 0% and 20%"),
+])
+async def test_calculated_stats_are_validated(client, monkeypatch, og, fg, abv, message):
+    """The constraint check runs on the calculator's numbers, on create and update."""
+    from types import SimpleNamespace
+    from backend.routers import recipes as router
+    monkeypatch.setattr(router, "calculate_recipe_stats", lambda recipe: SimpleNamespace(og=og, fg=fg, abv=abv))
+    response = await client.post("/api/recipes", json={"name": "Bad numbers", "batch_size_liters": 20})
     assert response.status_code == 400
-    assert "greater than final gravity" in response.json()["detail"]
+    assert message in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -310,9 +310,6 @@ async def test_create_recipe_zero_batch_size(client):
     """Creating recipe with batch_size <= 0 should fail."""
     response = await client.post("/api/recipes", json={
         "name": "Zero Batch Size Test",
-        "og": 1.050,
-        "fg": 1.010,
-        "abv": 5.0,
         "batch_size_liters": 0
     })
     assert response.status_code == 400
@@ -324,41 +321,10 @@ async def test_create_recipe_negative_batch_size(client):
     """Creating recipe with negative batch_size should fail."""
     response = await client.post("/api/recipes", json={
         "name": "Negative Batch Size Test",
-        "og": 1.050,
-        "fg": 1.010,
-        "abv": 5.0,
         "batch_size_liters": -10
     })
     assert response.status_code == 400
     assert "greater than zero" in response.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_create_recipe_abv_too_high(client):
-    """Creating recipe with ABV > 20 should fail."""
-    response = await client.post("/api/recipes", json={
-        "name": "High ABV Test",
-        "og": 1.050,
-        "fg": 1.010,
-        "abv": 25.0,
-        "batch_size_liters": 20
-    })
-    assert response.status_code == 400
-    assert "between 0% and 20%" in response.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_create_recipe_negative_abv(client):
-    """Creating recipe with negative ABV should fail."""
-    response = await client.post("/api/recipes", json={
-        "name": "Negative ABV Test",
-        "og": 1.050,
-        "fg": 1.010,
-        "abv": -5.0,
-        "batch_size_liters": 20
-    })
-    assert response.status_code == 400
-    assert "between 0% and 20%" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -367,10 +333,9 @@ async def test_update_recipe_partial_og_is_ignored(
     test_recipe: Recipe
 ):
     """Client OG is ignored (stats are calculated), so it cannot create an invalid state."""
-    # test_recipe has og=1.050, fg=1.010 and no ingredients
     response = await client.put(f"/api/recipes/{test_recipe.id}", json={"og": 1.005})
     assert response.status_code == 200
-    assert response.json()["og"] == 1.050
+    assert response.json()["target_og"] == 1.050
 
 
 @pytest.mark.asyncio
@@ -381,7 +346,7 @@ async def test_update_recipe_partial_fg_is_ignored(
     """Client FG is ignored (stats are calculated), so it cannot create an invalid state."""
     response = await client.put(f"/api/recipes/{test_recipe.id}", json={"fg": 1.060})
     assert response.status_code == 200
-    assert response.json()["fg"] == 1.010
+    assert response.json()["target_fg"] == 1.010
 
 
 @pytest.mark.asyncio
@@ -389,10 +354,10 @@ async def test_update_recipe_valid_partial_update(
     client,
     test_recipe: Recipe
 ):
-    """A PUT without stats leaves the stored values alone when there is nothing to calculate."""
+    """A PUT without stats leaves the declared targets alone."""
     response = await client.put(f"/api/recipes/{test_recipe.id}", json={"notes": "n"})
     assert response.status_code == 200
-    assert response.json()["og"] == 1.050
+    assert response.json()["target_og"] == 1.050
 
 
 @pytest.mark.asyncio
@@ -403,11 +368,6 @@ async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
     color_srm are always worked out from the ingredients (tilt_ui-4x2f.2)."""
     recipe = Recipe(
         name="Imported IPA",
-        og=1.067,
-        fg=1.013,
-        abv=6.9,
-        ibu=60.0,
-        color_srm=4.0,
         target_og=1.067,
         target_ibu=60.0,
         batch_size_liters=23.0,
@@ -444,56 +404,4 @@ async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
     assert data["name"] == "Renamed Only"
     assert data["target_og"] == 1.067
     assert data["target_ibu"] == 60.0
-    assert data["og"] == data["calculated"]["og"] != 1.067
-    assert data["ibu"] == data["calculated"]["ibu"]
-
-
-@pytest.mark.asyncio
-async def test_update_recipe_recalculates_when_explicitly_requested(
-    client, test_db
-):
-    """PUT ?recalculate=true must recompute stats from ingredients.
-
-    Opt-in path used by recipe edit UI when the user changes ingredients
-    and wants the stat fields refreshed in the same request.
-    """
-    recipe = Recipe(
-        name="Imported IPA",
-        og=1.067,
-        ibu=60.0,
-        batch_size_liters=23.0,
-    )
-    test_db.add(recipe)
-    await test_db.commit()
-    await test_db.refresh(recipe)
-
-    test_db.add_all([
-        RecipeFermentable(
-            recipe_id=recipe.id,
-            name="Pilsner Malt",
-            type="grain",
-            amount_kg=5.0,
-            yield_percent=80.0,
-            color_srm=2.0,
-        ),
-        RecipeHop(
-            recipe_id=recipe.id,
-            name="Columbus Cryo",
-            alpha_acid_percent=20.0,
-            amount_grams=5.0,
-            timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}},
-        ),
-    ])
-    await test_db.commit()
-
-    response = await client.put(
-        f"/api/recipes/{recipe.id}?recalculate=true",
-        json={"name": "Recalc Me"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "Recalc Me"
-    # Calculator should drive these away from the imported targets.
-    assert data["og"] != 1.067
-    assert data["ibu"] != 60.0
+    assert data["calculated"]["og"] != 1.067

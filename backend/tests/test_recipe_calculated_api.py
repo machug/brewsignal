@@ -94,8 +94,8 @@ async def test_update_ignores_client_stats(client, test_db):
     resp = await client.put(f"/api/recipes/{r.id}", json={"og": 1.200, "ibu": 99.0, "name": "X"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["og"] == calculated["og"] != 1.200
-    assert data["ibu"] == calculated["ibu"]
+    assert data["calculated"] == calculated
+    assert "og" not in data and data["target_og"] is None
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_create_ignores_client_stats(client):
     })
     assert resp.status_code == 201
     data = resp.json()
-    assert data["og"] == data["calculated"]["og"] != 1.200
+    assert "og" not in data and data["target_og"] is None
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_importer_writes_targets(client):
     data = resp.json()
     assert data["target_og"] == 1.099 and data["target_ibu"] == 77
     assert data["calculated"] is not None
-    assert data["og"] == data["calculated"]["og"] != 1.099
+    assert data["calculated"]["og"] != 1.099
 
 
 @pytest.mark.asyncio
@@ -179,7 +179,6 @@ async def test_put_yeast_change_updates_calculated_fg(client):
     after = resp.json()["calculated"]
     assert after["og"] == before["og"]
     assert after["fg"] < before["fg"]
-    assert resp.json()["fg"] == after["fg"]
     # a second PUT that does not mention yeast keeps the new attenuation
     again = await client.put(f"/api/recipes/{rid}", json={"notes": "n"})
     assert again.json()["calculated"]["fg"] == after["fg"]

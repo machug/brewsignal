@@ -267,11 +267,6 @@ async def _sync_recipe(
         "batch_size_liters": recipe.batch_size_liters,
         "boil_time_minutes": recipe.boil_time_minutes,
         "efficiency_percent": recipe.efficiency_percent,
-        "og": recipe.og,
-        "fg": recipe.fg,
-        "abv": recipe.abv,
-        "ibu": recipe.ibu,
-        "color_srm": recipe.color_srm,
         # The UI editor stores ingredients (incl. hops) in format_extensions and
         # the recipe-detail page reads them from there first. Omitting it left
         # cloud recipes with no hop schedule even when relationship rows synced

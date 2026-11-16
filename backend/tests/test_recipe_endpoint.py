@@ -17,8 +17,8 @@ async def test_get_recipe_endpoint_with_ingredients():
         recipe = Recipe(
             name="API Test IPA",
             author="API Tester",
-            og=1.060,
-            ibu=50.0,
+            target_og=1.060,
+            target_ibu=50.0,
         )
         db.add(recipe)
         await db.commit()
@@ -73,8 +73,8 @@ async def test_get_recipe_endpoint_with_ingredients():
     assert data["id"] == recipe_id
     assert data["name"] == "API Test IPA"
     assert data["author"] == "API Tester"
-    assert data["og"] == 1.060
-    assert data["ibu"] == 50.0
+    assert data["target_og"] == 1.060
+    assert data["target_ibu"] == 50.0
 
     # Verify ingredients are included
     assert "fermentables" in data
@@ -109,7 +109,7 @@ async def test_get_recipe_endpoint_empty_ingredients():
         # Create a recipe without ingredients
         recipe = Recipe(
             name="Empty Recipe",
-            og=1.050,
+            target_og=1.050,
         )
         db.add(recipe)
         await db.commit()

@@ -908,8 +908,6 @@ async def review_recipe_style(
 
         if fixes_applied:
             # Recalculate stats after fixes
-            from backend.services.recipe_stats import fill_legacy_columns
-            fill_legacy_columns(recipe)
             new_stats = _stats_dict(recipe)
             await db.commit()
 

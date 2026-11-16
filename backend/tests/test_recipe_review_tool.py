@@ -48,7 +48,6 @@ async def recipe_with_style(
         type="all-grain",
         style_id=style_apa.id,
         batch_size_liters=20,
-        og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
         user_id="test-user",
     )
     recipe.fermentables.append(
@@ -74,7 +73,6 @@ async def recipe_without_style(test_db: AsyncSession) -> Recipe:
         name="Style-less Brew",
         type="all-grain",
         batch_size_liters=20,
-        og=1.050, fg=1.012, abv=5.0, ibu=25, color_srm=8,
         user_id="test-user",
     )
     recipe.fermentables.append(

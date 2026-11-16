@@ -47,9 +47,10 @@ async def test_recipe_table_has_beerjson_columns():
         assert 'carbonation_vols' in columns
 
         # Renamed columns
-        assert 'og' in columns
-        assert 'fg' in columns
-        assert 'color_srm' in columns
+        # og/fg/abv/ibu/color_srm are renamed, then dropped (tilt_ui-4x2f.5): values live in target_*
+        assert 'og' not in columns
+        assert 'color_srm' not in columns
+        assert 'target_og' in columns
 
         # Old names should not exist
         assert 'og_target' not in columns
@@ -89,7 +90,7 @@ async def test_migration_preserves_recipe_data():
     # Verify data was preserved and columns renamed
     async with engine.connect() as conn:
         result = await conn.execute(text("""
-            SELECT id, name, og, fg, batch_size_liters, notes, beerjson_version
+            SELECT id, name, target_og, target_fg, batch_size_liters, notes, beerjson_version
             FROM recipes
             ORDER BY id
         """))
@@ -100,8 +101,8 @@ async def test_migration_preserves_recipe_data():
         # Check first recipe
         assert recipes[0][0] == 1  # id
         assert recipes[0][1] == 'Test IPA'  # name
-        assert recipes[0][2] == 1.065  # og (renamed from og_target)
-        assert recipes[0][3] == 1.012  # fg (renamed from fg_target)
+        assert recipes[0][2] == 1.065  # og (renamed from og_target, kept as the declared value)
+        assert recipes[0][3] == 1.012  # fg (renamed from fg_target, kept as the declared value)
         assert recipes[0][4] == 20.0  # batch_size_liters (renamed from batch_size)
         assert recipes[0][5] == 'Test recipe 1'  # notes
         assert recipes[0][6] == '1.0'  # beerjson_version (new default)
@@ -129,9 +130,9 @@ async def test_migration_preserves_recipe_data():
         rows = result.fetchall()
         columns = {row[1] for row in rows}
 
-        # Verify renamed columns exist
-        assert 'og' in columns
-        assert 'fg' in columns
+        # Stat columns were dropped (declared values kept in target_*)
+        assert 'og' not in columns
+        assert 'target_og' in columns
         assert 'batch_size_liters' in columns
 
         # Verify old columns are gone

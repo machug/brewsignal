@@ -50,7 +50,6 @@ async def recipe_in_style(
         type="all-grain",
         style_id=apa_style.id,
         batch_size_liters=20,
-        og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
         user_id="test-user",
     )
     recipe.fermentables.append(
@@ -77,7 +76,6 @@ async def recipe_no_style(test_db: AsyncSession) -> Recipe:
         name="Unstyled",
         type="all-grain",
         batch_size_liters=20,
-        og=1.050, fg=1.012, abv=5.0, ibu=25, color_srm=8,
         user_id="test-user",
     )
     recipe.fermentables.append(
@@ -178,8 +176,8 @@ class TestNoFermentablesStyleReview:
 
         recipe = Recipe(
             name="Hops only", type="all-grain", style_id=apa_style.id,
-            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
-            user_id="test-user",
+            batch_size_liters=20, user_id="test-user",
+            target_og=1.052, target_fg=1.012, target_abv=5.2, target_ibu=38, target_srm=7,
         )
         recipe.hops.append(
             RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
@@ -199,7 +197,7 @@ class TestNoFermentablesStyleReview:
         assert not result.get("auto_fix_applied")
 
         await test_db.refresh(recipe)
-        assert (recipe.og, recipe.fg, recipe.abv, recipe.ibu, recipe.color_srm) == (1.052, 1.012, 5.2, 38, 7)
+        assert (recipe.target_og, recipe.target_fg, recipe.target_abv, recipe.target_ibu, recipe.target_srm) == (1.052, 1.012, 5.2, 38, 7)
 
     @pytest.mark.asyncio
     async def test_prompt_for_hops_only_recipe_says_stats_unavailable(
@@ -207,8 +205,7 @@ class TestNoFermentablesStyleReview:
     ):
         recipe = Recipe(
             name="Hops only", type="all-grain", style_id=apa_style.id,
-            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
-            user_id="test-user",
+            batch_size_liters=20, user_id="test-user",
         )
         recipe.hops.append(
             RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
@@ -235,8 +232,7 @@ class TestNoFermentablesStyleReview:
 
         recipe = Recipe(
             name="Hops only", type="all-grain", style_id=apa_style.id,
-            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
-            user_id="test-user",
+            batch_size_liters=20, user_id="test-user",
         )
         recipe.hops.append(
             RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,

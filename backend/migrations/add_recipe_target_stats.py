@@ -6,10 +6,11 @@ and the existing og/fg/abv/ibu/color_srm) lets the UI show source-of-truth
 imported values while still surfacing the live calculation. Without this
 split they fight for the same column and one always loses (tilt_ui-ak6).
 
-The existing columns (og/fg/abv/ibu/color_srm) keep their meaning as the
-displayed/canonical values that the recipe edit form binds to. The new
-target_* columns are populated by importers from the source recipe's
-declared values and are read-only from the calculator's perspective.
+The target_* columns are populated by importers from the source recipe's
+declared values and are read-only from the calculator's perspective. The
+old og/fg/abv/ibu/color_srm columns were dropped later (tilt_ui-4x2f.5,
+see drop_recipe_stat_columns.py); this migration only seeds target_* from
+them on databases that still have them.
 """
 import logging
 from sqlalchemy import text
@@ -49,11 +50,9 @@ async def migrate_add_recipe_target_stats(conn: AsyncConnection) -> None:
         added_any = True
 
     if added_any:
-        # Backfill: existing recipes have only their canonical og/fg/abv/
-        # ibu/color_srm values. Without a backfill, the first
-        # ?recalculate=true on a pre-existing imported recipe would erase
-        # the only copy of the brewer-declared target. Seed target_* from
-        # the canonical column where target_* is currently NULL.
+        # Backfill: existing recipes have only their og/fg/abv/ibu/color_srm
+        # values (still present on databases this old). Seed target_* from
+        # them where target_* is currently NULL.
         await conn.execute(text(
             "UPDATE recipes SET "
             "target_og = COALESCE(target_og, og), "

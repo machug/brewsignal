@@ -35,7 +35,7 @@ async def test_import_beerxml_via_api():
     assert "id" in data
     assert data["name"] == "Philter XPA - Clone"
     assert data["author"] == "Pig Den Brewing"
-    assert data["og"] == pytest.approx(1.040)
+    assert data["target_og"] == pytest.approx(1.040)
     assert data["batch_size_liters"] == pytest.approx(21.0)
 
 

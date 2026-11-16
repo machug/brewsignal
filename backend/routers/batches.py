@@ -41,6 +41,7 @@ from ..models import (
     YeastStrain,
 )
 from ..services.inventory import check_inventory_availability, deduct_inventory_for_batch, reverse_inventory_deductions
+from ..services.recipe_stats import batch_with_recipe_options
 from ..state import latest_readings
 from ..mqtt_manager import publish_batch_discovery, mark_batch_unavailable
 
@@ -198,7 +199,7 @@ async def list_batches(
     """List batches with optional filters. By default excludes deleted batches."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
+        .options(*batch_with_recipe_options(), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(user_owns_batch(user))  # User isolation (LOCAL mode includes unclaimed)
         .order_by(Batch.created_at.desc())
     )
@@ -227,7 +228,7 @@ async def list_active_batches(
     """Active batches: planning, brewing, or fermenting status, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
+        .options(*batch_with_recipe_options(), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(
             user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
@@ -247,7 +248,7 @@ async def list_completed_batches(
     """Historical batches: completed or conditioning, not deleted."""
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
+        .options(*batch_with_recipe_options(), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(
             user_owns_batch(user),  # User isolation (LOCAL mode includes unclaimed)
             Batch.deleted_at.is_(None),
@@ -269,8 +270,7 @@ async def get_batch(
     query = (
         select(Batch)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables),
-            selectinload(Batch.recipe).selectinload(Recipe.fermentables),
+            *batch_with_recipe_options(),
             selectinload(Batch.yeast_strain),
             selectinload(Batch.tasting_notes),
             selectinload(Batch.reflections),
@@ -367,7 +367,7 @@ async def create_batch(
     query = (
         select(Batch)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables),
+            *batch_with_recipe_options(),
             selectinload(Batch.yeast_strain),
             selectinload(Batch.tasting_notes),
             selectinload(Batch.reflections),
@@ -611,7 +611,7 @@ async def update_batch(
     # Always reload batch with eager loading to avoid MissingGreenlet errors
     # Load recipe relationship for response with eager loading of nested style
     stmt = select(Batch).where(Batch.id == batch_id).options(
-        selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables),
+        *batch_with_recipe_options(),
         selectinload(Batch.yeast_strain),
         selectinload(Batch.tasting_notes),
         selectinload(Batch.reflections),
@@ -764,7 +764,7 @@ async def get_batch_progress(
     # Get batch with recipe and user isolation
     query = (
         select(Batch)
-        .options(selectinload(Batch.recipe).selectinload(Recipe.style), selectinload(Batch.recipe).selectinload(Recipe.fermentables), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
+        .options(*batch_with_recipe_options(), selectinload(Batch.yeast_strain), selectinload(Batch.tasting_notes), selectinload(Batch.reflections))
         .where(Batch.id == batch_id, user_owns_batch(user))
     )
     result = await db.execute(query)

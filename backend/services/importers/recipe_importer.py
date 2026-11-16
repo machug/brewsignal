@@ -13,6 +13,7 @@ from backend.services.validators.beerjson_validator import BeerJSONValidator
 from backend.services.serializers.recipe_serializer import RecipeSerializer
 from backend.services.brewsignal_format import BrewSignalRecipe, BrewSignalRecipeV2
 from backend.services.converters.brewsignal_v2 import apply_v2_extensions
+from backend.services.recipe_stats import fill_legacy_columns
 from backend.services.style_resolver import resolve_style_id
 from backend.models import Recipe, Style
 
@@ -235,6 +236,9 @@ class RecipeImporter:
                         )
                         if resolved:
                             recipe.style_id = resolved
+                # File stats stay in target_*; the stored og/fg/abv/ibu/color_srm
+                # come from the calculator (until the legacy columns go).
+                fill_legacy_columns(recipe)
             except Exception as e:
                 await self._rollback(session)
                 return ImportResult(

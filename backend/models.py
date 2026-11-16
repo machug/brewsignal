@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_validator, field_serializer, model_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1911,7 +1911,41 @@ class MiscInput(BaseModel):
     notes: Optional[str] = None
 
 
-class RecipeResponse(BaseModel):
+class CalculatedStatsResponse(BaseModel):
+    """Stats worked out from the ingredients (services.brewing.CalculatedStats)."""
+    og: float
+    fg: float
+    abv: float
+    ibu: float
+    srm: float
+    bu_gu: float
+    calories_per_330ml: int
+    color_hex: str
+    assumptions: list[str] = []
+
+
+class _HasCalculated(BaseModel):
+    """Fills `calculated` when validated from a Recipe row.
+
+    Any model built from an ORM Recipe must have fermentables/hops/cultures
+    eager-loaded (recipe_with_ingredients_stmt() / batch_with_recipe_options()
+    in services/recipe_stats.py); otherwise this raises MissingGreenlet or
+    calculates from empty lists.
+    """
+    calculated: Optional[CalculatedStatsResponse] = None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _fill_calculated(cls, data, handler):
+        model = handler(data)
+        if isinstance(data, Recipe):
+            from .services.brewing import calculate_recipe_stats
+            stats = calculate_recipe_stats(data)
+            model.calculated = CalculatedStatsResponse(**stats.to_dict()) if stats else None
+        return model
+
+
+class RecipeResponse(_HasCalculated):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -2100,7 +2134,7 @@ class WaterAdjustmentResponse(BaseModel):
     acid_concentration_percent: Optional[float] = None
 
 
-class RecipeDetailResponse(BaseModel):
+class RecipeDetailResponse(_HasCalculated):
     """Full recipe with all ingredients."""
     model_config = ConfigDict(from_attributes=True)
 
@@ -2154,6 +2188,55 @@ class RecipeDetailResponse(BaseModel):
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt)
+
+
+class _DraftFermentable(BaseModel):
+    name: str = Field("", max_length=200)
+    amount_kg: float = Field(0, ge=0, le=1000)
+    yield_percent: Optional[float] = Field(None, ge=0, le=100)
+    potential_sg: Optional[float] = Field(None, ge=1, le=1.2)
+    color_srm: Optional[float] = Field(None, ge=0, le=1000)
+    type: Optional[str] = Field(None, max_length=50)
+
+
+class _DraftDuration(BaseModel):
+    value: float = Field(0, ge=0, le=100000)
+    unit: Optional[str] = Field(None, max_length=20)
+
+
+class _DraftTemperature(BaseModel):
+    value: float = Field(ge=0, le=100)  # Celsius
+    unit: Optional[str] = Field(None, max_length=20)
+
+
+class _DraftTiming(BaseModel):
+    use: Optional[str] = Field(None, max_length=40)
+    duration: Optional[_DraftDuration] = None
+    temperature: Optional[_DraftTemperature] = None
+
+
+class _DraftHop(BaseModel):
+    name: str = Field("", max_length=200)
+    amount_grams: float = Field(0, ge=0, le=100000)
+    alpha_acid_percent: Optional[float] = Field(None, ge=0, le=100)
+    form: Optional[str] = Field(None, max_length=50)
+    is_extract: bool = False
+    timing: Optional[_DraftTiming] = None
+
+
+class _DraftCulture(BaseModel):
+    attenuation_min_percent: Optional[float] = Field(None, ge=0, le=100)
+    attenuation_max_percent: Optional[float] = Field(None, ge=0, le=100)
+
+
+class RecipeDraftCalculateRequest(BaseModel):
+    """Unsaved recipe ingredients for POST /api/recipes/calculate."""
+    batch_size_liters: Optional[float] = Field(None, ge=0, le=10000)
+    efficiency_percent: Optional[float] = Field(None, ge=0, le=100)
+    yeast_attenuation: Optional[float] = Field(None, ge=0, le=100)
+    fermentables: list[_DraftFermentable] = Field([], max_length=100)
+    hops: list[_DraftHop] = Field([], max_length=100)
+    cultures: list[_DraftCulture] = Field([], max_length=20)
 
 
 class _RestRuleFields(BaseModel):

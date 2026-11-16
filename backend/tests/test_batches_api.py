@@ -123,17 +123,14 @@ async def test_get_batch_not_found(client):
 
 
 @pytest.mark.asyncio
-async def test_batch_progress(client):
+async def test_batch_progress(client, test_db):
     """GET /api/batches/{id}/progress should return progress data."""
-    # Create recipe with targets
-    recipe_response = await client.post("/api/recipes", json={
-        "name": "Progress Test",
-        "og": 1.050,
-        "fg": 1.010,
-        "yeast_temp_min": 18.0,
-        "yeast_temp_max": 22.0,
-    })
-    recipe_id = recipe_response.json()["id"]
+    # Recipe with stored stats (the API no longer takes them from the client)
+    from backend.models import Recipe
+    recipe = Recipe(name="Progress Test", og=1.050, fg=1.010, yeast_temp_min=18.0, yeast_temp_max=22.0)
+    test_db.add(recipe)
+    await test_db.commit()
+    recipe_id = recipe.id
 
     # Create batch
     batch_response = await client.post("/api/batches", json={

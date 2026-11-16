@@ -15,8 +15,9 @@ async def test_jasper_v2_imports(test_db):
     assert result.format == "brewsignal"
     recipe = result.recipe
 
-    assert recipe.og == 1.067
-    assert recipe.abv == 6.5
+    # File stats are the declared targets; og/abv come from the calculator.
+    assert recipe.target_og == 1.067
+    assert recipe.target_abv == 6.5
     assert recipe.batch_size_liters == 19.0
     assert recipe.boil_size_l == 26.0          # pre_boil_size fallback
     assert recipe.efficiency_percent == 72.0

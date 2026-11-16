@@ -49,7 +49,7 @@ async def test_create_recipe(client):
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Test Recipe"
-    assert data["og"] == 1.050
+    assert data["og"] is None  # stats are calculated from ingredients, client value ignored
     assert data["yeast_temp_min"] == 15.0
     assert "id" in data
 
@@ -136,10 +136,8 @@ async def test_update_recipe(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Updated Name"
-    assert data["og"] == 1.055
-    assert data["fg"] == 1.010  # Unchanged
-    assert data["ibu"] == 45
-    assert data["color_srm"] == 10  # Unchanged
+    assert data["og"] is None  # client stats ignored (no ingredients to calculate from)
+    assert data["ibu"] is None
     assert data["batch_size_liters"] == 19.0
     assert data["yeast_name"] == "US-05"
 
@@ -164,7 +162,7 @@ async def test_update_recipe_partial(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Updated"
-    assert data["og"] == 1.050  # Should be unchanged
+    assert data["og"] is None  # client og ignored
 
 
 @pytest.mark.asyncio
@@ -364,31 +362,26 @@ async def test_create_recipe_negative_abv(client):
 
 
 @pytest.mark.asyncio
-async def test_update_recipe_partial_og_creates_invalid_state(
+async def test_update_recipe_partial_og_is_ignored(
     client,
     test_recipe: Recipe
 ):
-    """Updating only OG to value < existing FG should fail."""
-    # test_recipe has og=1.050, fg=1.010
-    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
-        "og": 1.005  # Less than existing fg=1.010
-    })
-    assert response.status_code == 400
-    assert "greater than final gravity" in response.json()["detail"]
+    """Client OG is ignored (stats are calculated), so it cannot create an invalid state."""
+    # test_recipe has og=1.050, fg=1.010 and no ingredients
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={"og": 1.005})
+    assert response.status_code == 200
+    assert response.json()["og"] == 1.050
 
 
 @pytest.mark.asyncio
-async def test_update_recipe_partial_fg_creates_invalid_state(
+async def test_update_recipe_partial_fg_is_ignored(
     client,
     test_recipe: Recipe
 ):
-    """Updating only FG to value > existing OG should fail."""
-    # test_recipe has og=1.050, fg=1.010
-    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
-        "fg": 1.060  # Greater than existing og=1.050
-    })
-    assert response.status_code == 400
-    assert "greater than final gravity" in response.json()["detail"]
+    """Client FG is ignored (stats are calculated), so it cannot create an invalid state."""
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={"fg": 1.060})
+    assert response.status_code == 200
+    assert response.json()["fg"] == 1.010
 
 
 @pytest.mark.asyncio
@@ -396,27 +389,18 @@ async def test_update_recipe_valid_partial_update(
     client,
     test_recipe: Recipe
 ):
-    """Updating OG to valid value should succeed."""
-    # test_recipe has og=1.050, fg=1.010
-    response = await client.put(f"/api/recipes/{test_recipe.id}", json={
-        "og": 1.055  # Valid: still > fg
-    })
+    """A PUT without stats leaves the stored values alone when there is nothing to calculate."""
+    response = await client.put(f"/api/recipes/{test_recipe.id}", json={"notes": "n"})
     assert response.status_code == 200
-    assert response.json()["og"] == 1.055
+    assert response.json()["og"] == 1.050
 
 
 @pytest.mark.asyncio
 async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
     client, test_db
 ):
-    """PUT must not silently recalculate brewing stats from ingredients.
-
-    Regression test for tilt_ui-5no: imported recipes carry brewer-declared
-    target stats (OG/FG/ABV/IBU/SRM) that disagree with naive recalculation
-    from the ingredient list. PUT used to overwrite those targets whenever
-    fermentables or hops were present, even when the update payload did not
-    touch ingredients. Recalculation must now be opt-in.
-    """
+    """PUT keeps the brewer-declared target_* (tilt_ui-5no) while og/fg/abv/ibu/
+    color_srm are always worked out from the ingredients (tilt_ui-4x2f.2)."""
     recipe = Recipe(
         name="Imported IPA",
         og=1.067,
@@ -424,6 +408,8 @@ async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
         abv=6.9,
         ibu=60.0,
         color_srm=4.0,
+        target_og=1.067,
+        target_ibu=60.0,
         batch_size_liters=23.0,
     )
     test_db.add(recipe)
@@ -456,11 +442,10 @@ async def test_update_recipe_preserves_imported_stats_when_ingredients_present(
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Renamed Only"
-    assert data["og"] == 1.067
-    assert data["fg"] == 1.013
-    assert data["abv"] == 6.9
-    assert data["ibu"] == 60.0
-    assert data["color_srm"] == 4.0
+    assert data["target_og"] == 1.067
+    assert data["target_ibu"] == 60.0
+    assert data["og"] == data["calculated"]["og"] != 1.067
+    assert data["ibu"] == data["calculated"]["ibu"]
 
 
 @pytest.mark.asyncio

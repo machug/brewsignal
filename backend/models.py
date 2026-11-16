@@ -278,6 +278,18 @@ class Config(Base):
     value: Mapped[Optional[str]] = mapped_column(Text)  # JSON encoded
 
 
+class PushSubscription(Base):
+    """A browser/phone registered for Web Push alerts (tilt_ui-91a)."""
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text)
+    auth: Mapped[str] = mapped_column(Text)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Style(Base):
     """BJCP Style Guidelines reference data."""
     __tablename__ = "styles"

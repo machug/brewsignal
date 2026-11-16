@@ -18,6 +18,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.services import push
 from backend.models import Batch, FermentationAlert, Reading, Recipe, RecipeHop
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,24 @@ class AlertType:
     TEMP_RUNAWAY = "temp_runaway"
     # Reminder: gravity reached the dry hop point (tilt_ui-n1w7)
     DRY_HOP_DUE = "dry_hop_due"
+
+
+# Short push titles. Not listed = no push: rest_started is informational (the
+# diacetyl rest worked as configured), so it never pings the phone.
+PUSH_TITLES = {
+    AlertType.TEMPERATURE_HIGH: "Temperature too high",
+    AlertType.TEMPERATURE_LOW: "Temperature too low",
+    AlertType.TEMP_RUNAWAY: "Temperature runaway",
+    AlertType.ANOMALY: "Unusual reading",
+    AlertType.STALL: "Fermentation stalled",
+    AlertType.SENSOR_STALE: "Temperature sensor stale",
+    AlertType.SENSOR_OFFLINE: "Sensor offline",
+    AlertType.BATTERY_LOW: "Sensor battery low",
+    AlertType.MAX_ON_EXCEEDED: "Heater/cooler on too long",
+    AlertType.EQUIPMENT_CONFLICT: "Equipment conflict",
+    AlertType.REST_BLOCKED: "Diacetyl rest cannot start",
+    AlertType.DRY_HOP_DUE: "Dry hop now",
+}
 
 
 # Stall rule thresholds (tilt_ui-zbhm; tuned on synthetic curves, re-tune on real batches)
@@ -478,6 +497,12 @@ async def _upsert_alert(
         )
         db.add(alert)
         logger.info(f"Created new {alert_type} alert for batch {batch_id}: {message}")
+        title = PUSH_TITLES.get(alert_type)
+        if title:
+            batch = await db.get(Batch, batch_id)
+            if batch and batch.name:
+                title = f"{title}: {batch.name}"
+            push.notify_soon(title, message, f"/batches/{batch_id}")
         return alert
 
 

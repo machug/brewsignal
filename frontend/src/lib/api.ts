@@ -2783,3 +2783,38 @@ export async function deleteRecipeMiscs(recipeId: number): Promise<void> {
 	const response = await authFetch(`${BASE_URL}/recipes/${recipeId}/miscs`, { method: 'DELETE' });
 	if (!response.ok) throw new Error('Failed to delete miscs');
 }
+
+// ---- Web Push (tilt_ui-91a) ----
+
+export async function getVapidPublicKey(): Promise<string> {
+	const res = await authFetch(`${BASE_URL}/push/vapid-public-key`);
+	if (!res.ok) throw new Error('Could not get the push key');
+	return (await res.json()).public_key;
+}
+
+export async function pushSubscribe(sub: PushSubscriptionJSON): Promise<void> {
+	const res = await authFetch(`${BASE_URL}/push/subscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			endpoint: sub.endpoint,
+			p256dh: sub.keys?.p256dh,
+			auth: sub.keys?.auth
+		})
+	});
+	if (!res.ok) throw new Error('Could not save the subscription');
+}
+
+export async function pushUnsubscribe(endpoint: string): Promise<void> {
+	await authFetch(`${BASE_URL}/push/unsubscribe`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ endpoint })
+	});
+}
+
+export async function pushTest(): Promise<number> {
+	const res = await authFetch(`${BASE_URL}/push/test`, { method: 'POST' });
+	if (!res.ok) throw new Error('Test failed');
+	return (await res.json()).sent;
+}

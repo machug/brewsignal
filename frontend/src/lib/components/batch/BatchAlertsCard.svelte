@@ -61,7 +61,8 @@
 		try {
 			dismissingAll = true;
 			await dismissAllAlerts(batchId);
-			alerts = [];
+			// The server keeps the dry hop reminder until it is marked done
+			alerts = alerts.filter((a) => a.alert_type === 'dry_hop_due');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to dismiss alerts';
 		} finally {

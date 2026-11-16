@@ -26,7 +26,7 @@
 	function hint(stat: keyof StatValues, d: number, suffix = ''): string | null {
 		const t = targets?.[stat];
 		return stats.source === 'calculated' && t != null && statDiffers(stat, stats[stat], t)
-			? `src ${t.toFixed(d)}${suffix}`
+			? `Declared ${t.toFixed(d)}${suffix}`
 			: null;
 	}
 
@@ -34,8 +34,35 @@
 	let colorDesc = $derived(stats.srm != null ? srmToDescription(stats.srm) : null);
 	let balanceDesc = $derived(stats.buGu != null ? describeBUGU(stats.buGu) : null);
 	let assumptionsTip = $derived(stats.assumptions.join('\n'));
+	let showAssumptions = $state(false);
+	let hasNote = $derived(
+		stats.source === 'declared' || (stats.source === 'calculated' && stats.assumptions.length > 0) || stale
+	);
 </script>
 
+<div class="stats-block">
+{#if hasNote}
+	<div class="stats-note">
+		{#if stats.source === 'declared'}
+			<span class="note-label" title="No ingredients to work these out from">Declared</span>
+		{:else if stats.source === 'calculated' && stats.assumptions.length > 0}
+			<button
+				type="button"
+				class="note-label note-btn"
+				title={assumptionsTip}
+				aria-expanded={showAssumptions}
+				aria-controls="stats-assumptions"
+				onclick={() => (showAssumptions = !showAssumptions)}
+			>Estimated</button>
+		{/if}
+		{#if stale}<span class="note-label">Not updated</span>{/if}
+	</div>
+	{#if showAssumptions && stats.assumptions.length > 0}
+		<ul class="assumptions" id="stats-assumptions">
+			{#each stats.assumptions as a}<li>{a}</li>{/each}
+		</ul>
+	{/if}
+{/if}
 <div class="stats-panel">
 	{#if styleName}
 		<div class="cell cell-style" title={styleName}>
@@ -90,18 +117,7 @@
 		<span class="value">{stats.caloriesPer330ml ?? DASH}</span>
 		<span class="sub">per 330&thinsp;mL</span>
 	</div>
-	{#if stats.source !== 'empty'}
-		<div class="cell cell-note">
-			{#if stats.source === 'declared'}
-				<span class="sub" title="No ingredients to work these out from">Declared</span>
-			{:else if assumptionsTip}
-				<span class="sub tip" title={assumptionsTip}>Estimated</span>
-			{/if}
-			{#if stale}<span class="sub">Not updated</span>{/if}
-		</div>
-	{:else if stale}
-		<div class="cell cell-note"><span class="sub">Not updated</span></div>
-	{/if}
+</div>
 </div>
 
 <style>
@@ -190,17 +206,42 @@
 		text-overflow: ellipsis;
 	}
 
-	.cell-note {
-		flex: 0 1 auto;
-		justify-content: center;
+	.stats-note {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-xs);
 	}
 
-	.tip {
-		cursor: help;
-		text-decoration: underline dotted;
+	.note-label {
+		font-size: var(--text-xs);
+		color: var(--ink-muted);
+	}
+
+	.note-btn {
+		font: inherit;
+		font-size: var(--text-xs);
+		padding: 0 var(--space-xs);
+		background: transparent;
+		border: 1px solid var(--rule-hairline);
+		cursor: pointer;
+	}
+
+	.note-btn:hover,
+	.note-btn[aria-expanded='true'] {
+		color: var(--ink-primary);
+		border-color: var(--rule-strong);
+	}
+
+	.assumptions {
+		margin: 0 0 var(--space-sm);
+		padding: 0 0 0 var(--space-md);
+		font-size: var(--text-xs);
+		color: var(--ink-secondary);
 	}
 
 	.sub {
+		font-variant-numeric: tabular-nums;
 		font-size: var(--text-xs);
 		color: var(--ink-secondary);
 		white-space: nowrap;

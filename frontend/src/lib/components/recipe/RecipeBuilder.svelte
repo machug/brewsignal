@@ -836,6 +836,13 @@
 					<RecipeStatsPanel
 						{stats}
 						stale={statsStale}
+						targets={{
+							og: initialData?.target_og,
+							fg: initialData?.target_fg,
+							abv: initialData?.target_abv,
+							ibu: initialData?.target_ibu,
+							srm: initialData?.target_srm
+						}}
 						styleName={selectedStyle?.name ?? 'No style selected'}
 						styleCategory={selectedStyle?.category_number ? `${selectedStyle.category_number}${selectedStyle.style_letter ?? ''}` : undefined}
 					/>

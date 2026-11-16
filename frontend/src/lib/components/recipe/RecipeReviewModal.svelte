@@ -39,7 +39,7 @@
 		saved && !!currentFingerprint && !!result?.fingerprint && result.fingerprint !== currentFingerprint
 	);
 	const checks = $derived(
-		Object.entries(result?.compliance ?? {}).filter(([, c]) => c.status !== 'no_guideline')
+		Object.entries(result?.compliance ?? {}).filter(([, c]) => c.status !== 'no_guideline' && c.status !== 'unavailable')
 	);
 
 	const STATUS: Record<string, string> = { in_range: 'in range', below: 'low', above: 'high', unknown: '?' };

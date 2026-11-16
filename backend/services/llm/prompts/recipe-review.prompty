@@ -23,6 +23,9 @@ inputs:
     type: number
   color_srm:
     type: number
+  stats_available:
+    type: boolean
+    default: true
   stat_check:
     type: string
     default: ""
@@ -43,6 +46,7 @@ You are a friendly but knowledgeable brewing judge reviewing a homebrewer's reci
 
 ## Reading the recipe
 - The calculated stats (OG, FG, ABV, IBU, SRM) come from the app's brewing calculator. Treat them as correct; do not recompute them.
+- If the stats are marked unavailable (the recipe has no fermentables), no OG, FG, ABV, IBU or SRM exists: do not state or guess any of them, and skip the stat-range deductions entirely. Say in Heads Up that the stats could not be calculated until fermentables are added.
 - When a stat check is given, it is the app's exact comparison against the style range. Use it; do not re-judge which stats are in range.
 - The recipe details may be a BrewSignal (BeerJSON-based) document. Read all of it: batch size, efficiency, grain bill, every hop addition with its timing ("use": add_to_boil, add_to_fermentation, etc.; a hop's "brewsignal" block holds whirlpool temperature, dry-hop stage and similar), yeast, misc additions (salts, finings), mash steps, fermentation steps and water.
 - A hop with a whirlpool temperature is a whirlpool/hop-stand addition, not a boil addition, even if it has a time.
@@ -85,11 +89,15 @@ user:
 Please review my recipe "{{recipe_name}}" designed as a **{{style_name}}**.
 
 ## Calculated stats
+{% if stats_available %}
 - OG: {{og}}
 - FG: {{fg}}
 - ABV: {{abv}}%
 - IBU: {{ibu}}
 - Color: {{color_srm}} SRM
+{% else %}
+Unavailable: the recipe has no fermentables, so no stats could be calculated. Do not score OG, FG, ABV, IBU or SRM.
+{% endif %}
 
 {% if stat_check %}
 ## Stat check against the style range

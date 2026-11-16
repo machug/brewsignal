@@ -1,7 +1,7 @@
 """Recipe management tools for the AI brewing assistant."""
 
+import copy
 import logging
-import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,7 +12,6 @@ from sqlalchemy.orm import selectinload
 
 from backend.config import get_settings
 from backend.models import Recipe, Style
-from backend.services.brewing import NO_EFFICIENCY_TYPES, hop_stand_temp_factor
 from backend.services.llm.service import LLMService
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -446,218 +445,17 @@ def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def calculate_recipe_stats(normalized: dict[str, Any]) -> dict[str, Any]:
-    """Calculate OG, FG, ABV, IBU, and color from recipe ingredients.
+def _stats_dict(recipe: Recipe) -> Optional[dict[str, float]]:
+    """Calculator output as the og/fg/abv/ibu/color_srm dict the review tools use.
 
-    This ensures consistent, accurate calculations rather than relying on LLM math.
+    None when the recipe has no fermentables (no stats to report).
     """
-    # Extract batch size in liters
-    batch_size = normalized.get("batch_size", {})
-    if isinstance(batch_size, dict):
-        batch_liters = batch_size.get("value", 20)
-    else:
-        batch_liters = float(batch_size) if batch_size else 20
+    from backend.services.brewing import calculate_recipe_stats
 
-    # Default efficiency (72% brewhouse)
-    efficiency = normalized.get("efficiency", {})
-    if isinstance(efficiency, dict):
-        brewhouse = efficiency.get("brewhouse", {})
-        if isinstance(brewhouse, dict):
-            eff_val = brewhouse.get("value", 0.72)
-        else:
-            eff_val = float(brewhouse) if brewhouse else 0.72
-    else:
-        eff_val = 0.72
-    # Ensure efficiency is a decimal
-    if eff_val > 1:
-        eff_val = eff_val / 100
-
-    ingredients = normalized.get("ingredients", {})
-
-    # -------------------------------------------------------------------------
-    # Calculate OG from fermentables
-    # -------------------------------------------------------------------------
-    fermentables = ingredients.get("fermentable_additions", [])
-    total_gravity_points = 0
-    total_mcu = 0  # Malt Color Units for SRM calculation
-
-    # Default extract potentials (points per kg per liter, roughly)
-    # These are simplified - real values depend on specific grain
-    default_potentials = {
-        # Base malts - high potential (~36-38 PPG = ~300-315 points/kg/L at 100% eff)
-        "pale": 37, "pilsner": 37, "maris otter": 38, "golden promise": 37,
-        "2-row": 37, "pale ale": 37, "vienna": 35, "munich": 34,
-        # Wheat/adjuncts
-        "wheat": 36, "rye": 29, "oat": 33, "flaked": 32, "rice": 32, "corn": 36,
-        # Crystal/caramel (lower potential, mostly unfermentable)
-        "crystal": 33, "caramel": 33, "cara": 33,
-        # Roasted (very low potential)
-        "chocolate": 28, "black": 25, "roast": 25,
-        # Sugars (high potential, 100% fermentable)
-        "sugar": 46, "dextrose": 46, "honey": 35, "candi": 38,
-    }
-
-    for ferm in fermentables:
-        name = ferm.get("name", "").lower()
-        amount = ferm.get("amount", {})
-        if isinstance(amount, dict):
-            amount_kg = amount.get("value", 0)
-        else:
-            amount_kg = float(amount) if amount else 0
-
-        # Determine potential based on grain type
-        potential = 36  # Default for unknown grains
-        for key, val in default_potentials.items():
-            if key in name:
-                potential = val
-                break
-
-        # Gravity points contribution using PPG (points per pound per gallon)
-        # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
-        # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
-        # Kettle additions (sugar/extract/fruit/juice) skip the mash and
-        # contribute full potential — mirrors services/brewing.py.
-        ferm_type = (ferm.get("type") or "").lower()
-        ferm_eff = 1.0 if ferm_type in NO_EFFICIENCY_TYPES else eff_val
-        grain_lbs = amount_kg * 2.205
-        batch_gal = batch_liters / 3.785
-        points = (grain_lbs * potential * ferm_eff) / batch_gal
-        total_gravity_points += points
-
-        # Color contribution (MCU)
-        color = ferm.get("color", {})
-        if isinstance(color, dict):
-            color_lov = color.get("value", 3)  # Default to pale malt color
-        else:
-            color_lov = float(color) if color else 3
-
-        # MCU = (grain_lbs * color_lovibond) / batch_gallons
-        grain_lbs = amount_kg * 2.205
-        batch_gal = batch_liters * 0.264172
-        if batch_gal > 0:
-            total_mcu += (grain_lbs * color_lov) / batch_gal
-
-    # Calculate OG
-    calculated_og = 1.0 + (total_gravity_points / 1000)
-
-    # Calculate SRM using Morey equation: SRM = 1.4922 * MCU^0.6859
-    if total_mcu > 0:
-        calculated_srm = 1.4922 * (total_mcu ** 0.6859)
-    else:
-        calculated_srm = 3  # Default pale color
-
-    # -------------------------------------------------------------------------
-    # Calculate IBU from hops (Tinseth formula)
-    # -------------------------------------------------------------------------
-    hops = ingredients.get("hop_additions", [])
-    total_ibu = 0
-
-    for hop in hops:
-        if hop.get("is_extract"):
-            # Abstrax-style extracts have no alpha acids and contribute zero
-            # IBU regardless of timing/amount. Skip before alpha math to
-            # avoid None/0 hazards (tilt_ui-0l5; mirrors brewing._calculate_ibu).
-            continue
-        amount = hop.get("amount", {})
-        if isinstance(amount, dict):
-            amount_g = amount.get("value", 0)
-        else:
-            amount_g = float(amount) if amount else 0
-
-        alpha = hop.get("alpha_acid", {})
-        if isinstance(alpha, dict):
-            alpha_pct = alpha.get("value", 0.05)
-            if alpha_pct > 1:
-                alpha_pct = alpha_pct / 100
-        else:
-            alpha_pct = float(alpha) if alpha else 0.05
-            if alpha_pct > 1:
-                alpha_pct = alpha_pct / 100
-
-        # Get boil time from timing
-        timing = hop.get("timing", {})
-        use = timing.get("use", "boil")
-        duration = timing.get("duration", {})
-        if isinstance(duration, dict):
-            boil_min = duration.get("value", 0)
-        else:
-            boil_min = float(duration) if duration else 0
-
-        # Only calculate IBU for boil additions
-        if use in ["boil", "add_to_boil", "first_wort", "mash", "add_to_mash"]:
-            # Tinseth utilization formula
-            # Bigness factor = 1.65 * 0.000125^(OG - 1)
-            bigness = 1.65 * (0.000125 ** (calculated_og - 1))
-            # Boil time factor = (1 - e^(-0.04 * time)) / 4.15
-            if boil_min > 0:
-                boil_factor = (1 - math.exp(-0.04 * boil_min)) / 4.15
-            else:
-                boil_factor = 0
-            utilization = bigness * boil_factor
-
-            # Pellet (+10%) and first-wort (+10%) adjustments — mirrors
-            # services/brewing.py and the frontend (tilt_ui-nbh0).
-            form = (hop.get("form") or "pellet").lower()
-            if "pellet" in form:
-                utilization *= 1.10
-            if use == "first_wort":
-                utilization *= 1.10
-
-            # IBU = (grams * alpha * utilization * 1000) / liters
-            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
-            total_ibu += ibu_contribution
-        elif use in ["whirlpool", "add_to_whirlpool"]:
-            # Hop-stand utilization: linear ramp from 5% (true flameout) to a
-            # 20% cap reached around 30 minutes, derated by stand temperature.
-            # Mirrors services/brewing.py (tilt_ui-23u, tilt_ui-2mxj). Keep
-            # this in sync when updating the model.
-            stand_min = max(0.0, boil_min)
-            utilization = min(0.05 + 0.005 * stand_min, 0.20) * hop_stand_temp_factor(timing)
-            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
-            total_ibu += ibu_contribution
-        # Dry hops don't contribute significant IBUs
-
-    # -------------------------------------------------------------------------
-    # Calculate FG and ABV from yeast attenuation
-    # -------------------------------------------------------------------------
-    cultures = ingredients.get("culture_additions", [])
-    attenuation = 0.75  # Default 75% if no yeast specified
-
-    for culture in cultures:
-        atten = culture.get("attenuation", {})
-        if isinstance(atten, dict):
-            # Could be {"minimum": {"value": 0.73}} or {"value": 0.75}
-            if "minimum" in atten:
-                min_atten = atten["minimum"]
-                if isinstance(min_atten, dict):
-                    attenuation = min_atten.get("value", 0.75)
-                else:
-                    attenuation = float(min_atten)
-            elif "value" in atten:
-                attenuation = atten.get("value", 0.75)
-            else:
-                attenuation = 0.75
-        else:
-            attenuation = float(atten) if atten else 0.75
-
-        # Ensure attenuation is decimal
-        if attenuation > 1:
-            attenuation = attenuation / 100
-        break  # Use first yeast's attenuation
-
-    # FG = OG - (OG - 1) * attenuation
-    calculated_fg = calculated_og - (calculated_og - 1) * attenuation
-
-    # ABV = (OG - FG) * 131.25
-    calculated_abv = (calculated_og - calculated_fg) * 131.25
-
-    return {
-        "og": round(calculated_og, 3),
-        "fg": round(calculated_fg, 3),
-        "abv": round(calculated_abv, 1),
-        "ibu": round(total_ibu, 0),
-        "color_srm": round(calculated_srm, 1),
-    }
+    st = calculate_recipe_stats(recipe)
+    if st is None:
+        return None
+    return {"og": st.og, "fg": st.fg, "abv": st.abv, "ibu": st.ibu, "color_srm": st.srm}
 
 
 def _format_fermentables_for_review(fermentables) -> str:
@@ -775,9 +573,22 @@ def _compute_style_compliance(recipe: Recipe, target_style: Style) -> dict[str, 
     Returns a dict with keys: compliance, issues, suggestions, style_fit_score,
     style_fit_score_scale, overall_status, current_stats.
     """
-    from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
-
-    current_stats = brewing_calculate_stats(recipe)
+    current_stats = _stats_dict(recipe)
+    if current_stats is None:
+        # No fermentables: nothing to compare, so no false out-of-range findings.
+        return {
+            "compliance": {
+                k: {"value": None, "min": None, "max": None, "unit": "", "status": "unavailable"}
+                for k in ("og", "fg", "abv", "ibu", "srm")
+            },
+            "issues": [],
+            "suggestions": [],
+            "style_fit_score": None,
+            "style_fit_score_scale": "0-10 (10 = every stat in range)",
+            "overall_status": "stats_unavailable",
+            "note": "Stats unavailable: the recipe has no fermentables, so it was not compared with the style.",
+            "current_stats": None,
+        }
     compliance: dict[str, Any] = {}
     issues: list[str] = []
     suggestions: list[str] = []
@@ -859,7 +670,7 @@ def _compact(node: Any) -> Any:
 def _stat_check_text(compliance: dict[str, Any]) -> str:
     lines = []
     for key, c in compliance.items():
-        if c.get("status") == "no_guideline":
+        if c.get("status") in ("no_guideline", "unavailable"):
             continue
         unit = c.get("unit") or ""
         lines.append(f"- {key.upper()}: {c.get('value')}{unit} vs {c.get('min')}-{c.get('max')}{unit}: {c.get('status')}")
@@ -917,16 +728,26 @@ async def review_recipe(
         compliance_block = _compute_style_compliance(recipe, recipe.style)
         stats = compliance_block["current_stats"]
     else:
-        from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
-        stats = brewing_calculate_stats(recipe) if (recipe.fermentables or recipe.hops) else {
-            "og": recipe.og or 0,
-            "fg": recipe.fg or 0,
-            "abv": recipe.abv or 0,
-            "ibu": recipe.ibu or 0,
-            "color_srm": recipe.color_srm or 0,
-        }
+        stats = _stats_dict(recipe)
+    stats_available = stats is not None
+    if stats is None:
+        # Placeholders only: the prompt does not render them when unavailable.
+        stats = {"og": 0, "fg": 0, "abv": 0, "ibu": 0, "color_srm": 0}
 
     document = _export(recipe)
+    prompt_document = document
+    if not stats_available:
+        # Prompt-only copy: `document` stays unmodified so the saved review's
+        # fingerprint matches the recipe's real export.
+        prompt_document = copy.deepcopy(document)
+        # The export carries the stored stat columns; drop them so they do not
+        # read as calculated. The brewer's declared targets stay.
+        from backend.services.llm.tools.recipe_v2 import _TARGET_FIELDS
+        rec = prompt_document.get("recipe") or {}
+        for field, (column, unit) in _TARGET_FIELDS.items():
+            rec.pop(field, None)
+            if getattr(recipe, column) is not None:
+                rec[field] = {"value": getattr(recipe, column), "unit": unit}
     try:
         prompt_path = PROMPTS_DIR / "recipe-review.prompty"
         p = prompty.load(str(prompt_path))
@@ -935,13 +756,14 @@ async def review_recipe(
             "style_name": style_name if style_found else (
                 recipe.style.name if recipe.style else "Unknown"
             ),
+            "stats_available": stats_available,
             "og": stats["og"],
             "fg": stats["fg"],
             "abv": stats["abv"],
             "ibu": stats["ibu"],
             "color_srm": stats["color_srm"],
             "stat_check": _stat_check_text(compliance_block["compliance"]) if compliance_block else "",
-            "recipe_details": json.dumps(_compact(document), separators=(",", ":"), default=str),
+            "recipe_details": json.dumps(_compact(prompt_document), separators=(",", ":"), default=str),
             "style_guidelines": style_guidelines if style_found else "",
         })
 
@@ -1003,8 +825,6 @@ async def review_recipe_style(
     Compares the recipe's stats (OG, FG, ABV, IBU, SRM) against the target style's
     ranges and returns a detailed compliance analysis with suggestions.
     """
-    from backend.services.brewing import calculate_recipe_stats as brewing_calculate_stats
-
     # Fetch recipe with all ingredients and ownership check
     stmt = select(Recipe).options(
         selectinload(Recipe.style),
@@ -1057,7 +877,7 @@ async def review_recipe_style(
     }
 
     # Auto-fix if requested (limited scope - just update batch size for OG issues)
-    if auto_fix and issues:
+    if auto_fix and issues and current_stats is not None:
         fixes_applied = []
 
         # Fix OG by adjusting batch size (simplest fix)
@@ -1085,12 +905,10 @@ async def review_recipe_style(
 
         if fixes_applied:
             # Recalculate stats after fixes
-            new_stats = brewing_calculate_stats(recipe)
-            recipe.og = new_stats["og"]
-            recipe.fg = new_stats["fg"]
-            recipe.abv = new_stats["abv"]
-            recipe.ibu = new_stats["ibu"]
-            recipe.color_srm = new_stats["color_srm"]
+            from backend.services.brewing import calculate_recipe_stats, write_legacy_stats
+            calc = calculate_recipe_stats(recipe)
+            write_legacy_stats(recipe, calc)
+            new_stats = _stats_dict(recipe)
             await db.commit()
 
             response["auto_fix_applied"] = True

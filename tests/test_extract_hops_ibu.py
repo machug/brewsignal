@@ -92,36 +92,28 @@ def test_normalize_preserves_extract_marker():
     assert not pellet.get("is_extract"), "non-extract must not be marked"
 
 
-def test_llm_calculate_recipe_stats_skips_extract_ibu():
-    """End-to-end: an extract added via the LLM normalization+stats path
-    must not contribute IBU. Without preserving is_extract, the duplicate
-    IBU calculator at recipe.py:612 would never short-circuit."""
-    from backend.services.llm.tools.recipe import (
-        normalize_recipe_to_beerjson,
-        calculate_recipe_stats,
-    )
+def test_calculate_recipe_stats_skips_extract_ibu():
+    """End-to-end: an extract added via the LLM normalization path must not
+    contribute IBU in the one calculator."""
+    from types import SimpleNamespace
+    from backend.services.brewing import calculate_recipe_stats
 
-    pellet_only = normalize_recipe_to_beerjson({
-        "name": "Pellet Only",
-        "batch_size_liters": 20,
-        "hops": [
-            {"name": "Mosaic", "amount": 20, "alpha_acid": 12, "use": "boil", "time": 60},
-        ],
-    })
-    mixed = normalize_recipe_to_beerjson({
-        "name": "Mixed",
-        "batch_size_liters": 20,
-        "hops": [
-            {"name": "Mosaic", "amount": 20, "alpha_acid": 12, "use": "boil", "time": 60},
-            {"name": "Quantum MOS", "is_extract": True, "amount_ml": 2.5, "use": "dry_hop"},
-        ],
-    })
-    pellet_ibu = calculate_recipe_stats(pellet_only)["ibu"]
-    mixed_ibu = calculate_recipe_stats(mixed)["ibu"]
+    def stats(hops):
+        return calculate_recipe_stats(SimpleNamespace(
+            fermentables=[SimpleNamespace(name="Pilsner", type="grain", amount_kg=4.0,
+                                          yield_percent=80, color_srm=2)],
+            hops=hops, cultures=[], efficiency_percent=72, batch_size_liters=20,
+            yeast_attenuation=75,
+        ))
+
+    mosaic = _FakeHop(name="Mosaic", amount_grams=20, alpha_acid_percent=12, is_extract=False,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+    extract = _FakeHop(name="Quantum MOS", amount_grams=0, alpha_acid_percent=None, is_extract=True,
+                       amount_ml=2.5, timing={"use": "add_to_fermentation"})
+    pellet_ibu = stats([mosaic]).ibu
+    mixed_ibu = stats([mosaic, extract]).ibu
     assert pellet_ibu > 0
-    assert mixed_ibu == pytest.approx(pellet_ibu), (
-        f"extract perturbed LLM IBU: pellet={pellet_ibu} mixed={mixed_ibu}"
-    )
+    assert mixed_ibu == pytest.approx(pellet_ibu)
 
 
 def test_serializer_persists_extract_fields():

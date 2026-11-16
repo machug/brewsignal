@@ -2,8 +2,8 @@
 
 import pytest
 
-from backend.models import RecipeHop
-from backend.services.brewing import calculate_ibu_from_hops
+from backend.models import Recipe, RecipeFermentable, RecipeHop
+from backend.services.brewing import calculate_ibu_from_hops, calculate_recipe_stats
 
 
 def _hop(use: str, duration_min: float, amount_g: float = 30.0, alpha: float = 12.0) -> RecipeHop:
@@ -121,27 +121,16 @@ class TestWhirlpoolStandTemperature:
         ibu = calculate_ibu_from_hops(hops, batch_liters=21, og=1.054)
         assert 45 <= ibu <= 56
 
-    def test_llm_mirror_applies_stand_temperature(self):
-        from backend.services.llm.tools.recipe import calculate_recipe_stats
-
-        def doc(temp_c):
+    def test_calculator_applies_stand_temperature(self):
+        def ibu(temp_c):
             timing = {"use": "add_to_whirlpool", "duration": {"value": 20.0, "unit": "min"}}
             if temp_c is not None:
                 timing["temperature"] = {"value": temp_c, "unit": "C"}
-            return {
-                "batch_size": {"value": 21, "unit": "l"},
-                "original_gravity": {"value": 1.054},
-                "ingredients": {"hop_additions": [{
-                    "name": "Nectaron", "form": "pellet",
-                    "amount": {"value": 30.0, "unit": "g"},
-                    "alpha_acid": {"value": 12.0, "unit": "%"},
-                    "timing": timing,
-                }]},
-            }
+            hop = RecipeHop(name="Nectaron", form="pellet", amount_grams=30.0,
+                            alpha_acid_percent=12.0, timing=timing)
+            return calculate_ibu_from_hops([hop], batch_liters=21, og=1.054)
 
-        hot = calculate_recipe_stats(doc(None))["ibu"]
-        at_80 = calculate_recipe_stats(doc(80))["ibu"]
-        assert at_80 == pytest.approx(hot * 0.229, rel=0.02)
+        assert ibu(80) == pytest.approx(ibu(None) * 0.229, rel=0.02)
 
 
 class TestDryHopUnchanged:
@@ -208,35 +197,19 @@ class TestDryHopUnchanged:
         assert with_dry == without_dry
 
 
-class TestLLMToolsCalculatorAgreesOnZero:
-    """The LLM-tools recipe calculator is a separate code path used when
-    the assistant saves recipes. It must agree that dry hops produce 0 IBU."""
-
-    def test_llm_calculator_credits_zero_ibu_to_dry_hops(self):
-        """The LLM calculator reads amount.value as grams. Use a charge
-        that would visibly inflate IBU if the dry-hop branch were ever
-        miswired into boil or whirlpool — 50g of 22% AA cryo hops would
-        yield ~10+ IBU through the whirlpool branch and ~50+ through the
-        boil branch."""
-        from backend.services.llm.tools.recipe import calculate_recipe_stats
-
-        normalized = {
-            "batch_size": {"value": 23, "unit": "l"},
-            "ingredients": {
-                "fermentable_additions": [
-                    {"name": "Pilsner", "amount": {"value": 5, "unit": "kg"},
-                     "yield": {"fine_grind": {"value": 80, "unit": "%"}}}
-                ],
-                "hop_additions": [
-                    {"name": "Mosaic Cryo", "amount": {"value": 50, "unit": "g"},
-                     "alpha_acid": {"value": 22, "unit": "%"},
-                     "timing": {"use": "add_to_fermentation",
-                                "duration": {"value": 4, "unit": "day"}}}
-                ],
-            },
-        }
-        stats = calculate_recipe_stats(normalized)
-        assert stats["ibu"] == 0
+class TestCalculatorCreditsZeroToDryHops:
+    def test_calculator_credits_zero_ibu_to_dry_hops(self):
+        """50 g of 22% AA cryo hops would give ~10+ IBU if the dry-hop branch
+        were miswired into whirlpool and ~50+ into boil."""
+        recipe = Recipe(
+            name="t", batch_size_liters=23, efficiency_percent=72,
+            fermentables=[RecipeFermentable(name="Pilsner", amount_kg=5, yield_percent=80, color_srm=2)],
+            hops=[RecipeHop(name="Mosaic Cryo", amount_grams=50, alpha_acid_percent=22,
+                            timing={"use": "add_to_fermentation",
+                                    "duration": {"value": 4, "unit": "day"}})],
+            cultures=[],
+        )
+        assert calculate_recipe_stats(recipe).ibu == 0
 
 
 class TestPelletAndFirstWortAdjustments:
@@ -282,36 +255,3 @@ class TestPelletAndFirstWortAdjustments:
         base = calculate_ibu_from_hops(
             [self._hop_with_form("leaf", use="add_to_boil")], batch_liters=20, og=1.060)
         assert both == pytest.approx(base * 1.21)
-
-
-class TestLLMToolsIBUMirrorAdjustments:
-    """LLM-tools duplicate calculator must apply the same pellet/first-wort
-    adjustments (tilt_ui-nbh0)."""
-
-    def _doc(self, form, use):
-        return {
-            "batch_size": {"value": 20.0, "unit": "l"},
-            "original_gravity": {"value": 1.060},
-            "efficiency": {"brewhouse": {"value": 72, "unit": "%"}},
-            "ingredients": {
-                "hop_additions": [{
-                    "name": "Test", "form": form,
-                    "amount": {"value": 30.0, "unit": "g"},
-                    "alpha_acid": {"value": 12.0, "unit": "%"},
-                    "timing": {"use": use,
-                               "duration": {"value": 60.0, "unit": "min"}},
-                }]
-            },
-        }
-
-    def test_llm_mirror_applies_pellet_adjustment(self):
-        from backend.services.llm.tools.recipe import calculate_recipe_stats
-        pellet = calculate_recipe_stats(self._doc("pellet", "add_to_boil"))["ibu"]
-        leaf = calculate_recipe_stats(self._doc("leaf", "add_to_boil"))["ibu"]
-        assert pellet == pytest.approx(leaf * 1.10, rel=0.01)
-
-    def test_llm_mirror_applies_first_wort_adjustment(self):
-        from backend.services.llm.tools.recipe import calculate_recipe_stats
-        fw = calculate_recipe_stats(self._doc("leaf", "first_wort"))["ibu"]
-        boil = calculate_recipe_stats(self._doc("leaf", "add_to_boil"))["ibu"]
-        assert fw == pytest.approx(boil * 1.10, rel=0.01)

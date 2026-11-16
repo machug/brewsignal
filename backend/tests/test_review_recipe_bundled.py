@@ -167,3 +167,98 @@ class TestReviewRecipeBundled:
                 db=test_db, recipe_id=999_999, user_id="test-user",
             )
         assert "error" in result
+
+
+class TestNoFermentablesStyleReview:
+    @pytest.mark.asyncio
+    async def test_hops_only_recipe_reports_no_false_failures_and_keeps_stored_stats(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        from backend.services.llm.tools.recipe import review_recipe_style
+
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        result = await review_recipe_style(
+            db=test_db, recipe_id=recipe.id, auto_fix=True, user_id="test-user"
+        )
+        assert result["issues"] == []
+        assert result["overall_status"] == "stats_unavailable"
+        assert result["current_stats"] is None
+        assert all(c["status"] == "unavailable" for c in result["compliance"].values())
+        assert not result.get("auto_fix_applied")
+
+        await test_db.refresh(recipe)
+        assert (recipe.og, recipe.fg, recipe.abv, recipe.ibu, recipe.color_srm) == (1.052, 1.012, 5.2, 38, 7)
+
+    @pytest.mark.asyncio
+    async def test_prompt_for_hops_only_recipe_says_stats_unavailable(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        svc = _service("No stats.")
+        with patch("backend.services.llm.tools.recipe.LLMService", return_value=svc):
+            await review_recipe(db=test_db, recipe_id=recipe.id, user_id="test-user")
+        prompt = "\n".join(str(m.get("content", "")) for m in svc.chat.call_args.kwargs["messages"])
+        assert "Unavailable: the recipe has no fermentables" in prompt
+        assert "- OG:" not in prompt and "- FG:" not in prompt
+        assert "1.052" not in prompt and "Stat check against" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_hops_only_review_is_not_stale(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        from backend.services import recipe_reviews
+        from backend.services.llm.tools.recipe_v2 import _export
+
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        with patch("backend.services.llm.tools.recipe.LLMService", return_value=_service("ok")):
+            await review_recipe(db=test_db, recipe_id=recipe.id, user_id="test-user")
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from backend.models import RecipeReview
+        saved = (await test_db.execute(
+            select(RecipeReview).where(RecipeReview.recipe_id == recipe.id)
+        )).scalar_one()
+        fresh = (await test_db.execute(
+            select(Recipe).options(
+                selectinload(Recipe.style), selectinload(Recipe.fermentables),
+                selectinload(Recipe.hops), selectinload(Recipe.cultures),
+            ).where(Recipe.id == recipe.id)
+        )).scalar_one()
+        assert saved.fingerprint == recipe_reviews.fingerprint(_export(fresh))

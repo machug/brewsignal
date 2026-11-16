@@ -4,6 +4,7 @@ Provides deterministic server-side calculation of OG, FG, ABV, IBU, and color
 from recipe ingredients. These calculations replace LLM-based estimation.
 """
 import math
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -57,10 +58,17 @@ def get_extract_potential(name: str, yield_percent: float | None = None) -> floa
     return 36  # Default for unknown grains
 
 
+def _note(assumptions: list[str] | None, text: str) -> None:
+    """Record an assumption once (no-op when the caller does not collect them)."""
+    if assumptions is not None and text not in assumptions:
+        assumptions.append(text)
+
+
 def calculate_og_from_fermentables(
     fermentables: list["RecipeFermentable"],
     batch_liters: float,
-    efficiency: float
+    efficiency: float,
+    assumptions: list[str] | None = None,
 ) -> tuple[float, float]:
     """Calculate OG and color (SRM) from fermentable ingredients.
 
@@ -68,9 +76,10 @@ def calculate_og_from_fermentables(
         fermentables: List of RecipeFermentable models
         batch_liters: Batch size in liters
         efficiency: Brewhouse efficiency as decimal (0.72 = 72%)
+        assumptions: Optional list that collects a line for each estimated input
 
     Returns:
-        Tuple of (og, color_srm)
+        Tuple of (og, color_srm). SRM is not capped.
     """
     if batch_liters <= 0:
         batch_liters = 20  # Default
@@ -78,43 +87,37 @@ def calculate_og_from_fermentables(
     if efficiency > 1:
         efficiency = efficiency / 100
 
-    total_gravity_points = 0
-    total_mcu = 0  # Malt Color Units
+    total_gravity_points = 0.0
+    total_mcu = 0.0  # Malt Color Units
+    batch_gal = batch_liters / 3.785
 
     for ferm in fermentables:
         amount_kg = ferm.amount_kg or 0
         if amount_kg <= 0:
             continue
 
-        # Get extract potential (PPG = points per pound per gallon)
+        if not ferm.yield_percent or ferm.yield_percent <= 0:
+            _note(assumptions, f"Estimated yield for {ferm.name}")
         potential = get_extract_potential(ferm.name, ferm.yield_percent)
 
-        # Convert to metric: gravity points = (lbs * PPG * efficiency) / gallons
-        # Where: 1 kg = 2.205 lbs, 1 gallon = 3.785 liters
+        # gravity points = (lbs * PPG * efficiency) / gallons; 1 kg = 2.205 lbs
         ferm_type = (ferm.type or "").lower()
         ferm_efficiency = 1.0 if ferm_type in NO_EFFICIENCY_TYPES else efficiency
         grain_lbs = amount_kg * 2.205
-        batch_gal = batch_liters / 3.785
-        points = (grain_lbs * potential * ferm_efficiency) / batch_gal
-        total_gravity_points += points
+        total_gravity_points += (grain_lbs * potential * ferm_efficiency) / batch_gal
 
-        # Color contribution (MCU)
-        color_lov = ferm.color_srm or 3  # Default pale malt color
-        grain_lbs = amount_kg * 2.205
-        batch_gal = batch_liters * 0.264172
-        if batch_gal > 0:
-            total_mcu += (grain_lbs * color_lov) / batch_gal
+        if ferm.color_srm is None:
+            _note(assumptions, f"Estimated colour for {ferm.name}")
+            color_lov = 3  # pale malt
+        else:
+            color_lov = ferm.color_srm
+        total_mcu += (grain_lbs * color_lov) / (batch_liters * 0.264172)
 
-    # Calculate OG
-    calculated_og = 1.0 + (total_gravity_points / 1000)
+    og = 1.0 + (total_gravity_points / 1000)
 
-    # Calculate SRM using Morey equation: SRM = 1.4922 * MCU^0.6859
-    if total_mcu > 0:
-        calculated_srm = 1.4922 * (total_mcu ** 0.6859)
-    else:
-        calculated_srm = 3  # Default pale color
-
-    return calculated_og, calculated_srm
+    # Morey equation: SRM = 1.4922 * MCU^0.6859
+    srm = 1.4922 * (total_mcu ** 0.6859) if total_mcu > 0 else 0.0
+    return og, srm
 
 
 def hop_stand_temp_factor(timing: dict) -> float:
@@ -131,97 +134,88 @@ def hop_stand_temp_factor(timing: dict) -> float:
     return min(1.0, 2.39e11 * math.exp(-9773 / (float(temp) + 273.15)))
 
 
+_UNIT_MINUTES = {
+    "day": 1440, "days": 1440, "d": 1440,
+    "hr": 60, "hrs": 60, "h": 60, "hour": 60, "hours": 60,
+    "s": 1 / 60, "sec": 1 / 60, "secs": 1 / 60, "second": 1 / 60, "seconds": 1 / 60,
+}
+
+
+def _duration_minutes(timing: dict) -> float:
+    """Hop timing duration in minutes; units other than day/hour/second count as minutes."""
+    duration = timing.get("duration")
+    if isinstance(duration, dict):
+        value, unit = duration.get("value"), duration.get("unit")
+    else:
+        value, unit = duration, None
+    try:
+        value = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return value * _UNIT_MINUTES.get(str(unit or "min").lower(), 1)
+
+
 def _calculate_ibu(
     hops: list["RecipeHop"],
     og: float,
     batch_liters: float,
+    assumptions: list[str] | None = None,
 ) -> float:
-    """Internal IBU calculator (Tinseth) — testable in isolation.
-
-    Hoisted from the inline loop in calculate_ibu_from_hops so unit tests
-    (and the LLM-tools mirror) can target it directly. Same math, same
-    return value as the previous implementation.
+    """Total IBU (Tinseth for the boil, Malowicki-scaled ramp for whirlpool).
 
     Args:
         hops: List of RecipeHop models (or fakes exposing the same attrs)
         og: Original gravity for utilization calculation
         batch_liters: Batch size in liters
-
-    Returns:
-        Total IBU
+        assumptions: Optional list that collects a line for each estimated input
     """
     if batch_liters <= 0:
         batch_liters = 20
 
-    total_ibu = 0
+    total_ibu = 0.0
 
     for hop in hops:
         if getattr(hop, "is_extract", False):
             # Abstrax-style extracts have no alpha acids and contribute zero
-            # IBU regardless of timing/amount. Skipping early also protects
-            # the alpha math below from a None alpha_acid_percent (tilt_ui-0l5).
+            # IBU regardless of timing/amount (tilt_ui-0l5).
             continue
         amount_g = hop.amount_grams or 0
         if amount_g <= 0:
             continue
 
-        alpha_pct = hop.alpha_acid_percent or 5
+        timing = hop.timing or {}
+        use = (timing.get("use") or "boil").lower()
+        minutes = _duration_minutes(timing)
+        is_boil = use in ("boil", "add_to_boil", "mash", "add_to_mash", "first_wort")
+        is_whirlpool = use in ("whirlpool", "add_to_whirlpool")
+        # Dry hop / add_to_fermentation / add_to_package give 0 IBU; so does a 0 min boil hop.
+        if not (is_whirlpool or (is_boil and minutes > 0)):
+            continue
+
+        name = getattr(hop, "name", None) or "hop"
+        alpha_pct = hop.alpha_acid_percent
+        if not alpha_pct or alpha_pct <= 0:
+            _note(assumptions, f"Assumed 5% alpha for {name}")
+            alpha_pct = 5
         if alpha_pct > 1:
             alpha_pct = alpha_pct / 100
-        else:
-            # Already decimal, keep as is
-            pass
 
-        # Get timing info
-        timing = hop.timing or {}
-        use = timing.get("use", "boil").lower()
-
-        # Get boil time
-        duration = timing.get("duration", {})
-        if isinstance(duration, dict):
-            boil_min = duration.get("value", 0)
-        else:
-            boil_min = float(duration) if duration else 0
-
-        # Only calculate IBU for boil additions
-        # Handle both naming conventions: "boil" vs "add_to_boil"
-        if use in ["boil", "add_to_boil", "mash", "add_to_mash", "first_wort"]:
-            # Tinseth utilization formula
-            # Bigness factor = 1.65 * 0.000125^(OG - 1)
+        if is_boil:
             bigness = 1.65 * (0.000125 ** (og - 1))
-
-            # Boil time factor = (1 - e^(-0.04 * time)) / 4.15
-            if boil_min > 0:
-                boil_factor = (1 - math.exp(-0.04 * boil_min)) / 4.15
-            else:
-                boil_factor = 0
-            utilization = bigness * boil_factor
-
-            # Pellet (+10%) and first-wort (+10%) utilization adjustments —
-            # mirrors the frontend Tinseth calculator so the displayed IBU
-            # and the recalculate endpoint agree (tilt_ui-nbh0).
-            # Missing form defaults to pellet, matching the recipe UI
-            # (h.form || 'pellet') so display and recalc agree.
-            form = (getattr(hop, "form", None) or "pellet").lower()
-            if "pellet" in form:
+            utilization = bigness * (1 - math.exp(-0.04 * minutes)) / 4.15
+            # Missing form defaults to pellet (+10%); first-wort +10% (tilt_ui-nbh0).
+            if "pellet" in (getattr(hop, "form", None) or "pellet").lower():
                 utilization *= 1.10
             if use == "first_wort":
                 utilization *= 1.10
+        else:
+            # Hop-stand: ramp from 5% to a 20% cap, scaled by stand temperature
+            # (tilt_ui-23u, tilt_ui-2mxj).
+            if (timing.get("temperature") or {}).get("value") is None:
+                _note(assumptions, f"No whirlpool temperature for {name}: counted as boiling")
+            utilization = min(0.05 + 0.005 * max(0.0, minutes), 0.20) * hop_stand_temp_factor(timing)
 
-            # IBU = (grams * alpha * utilization * 1000) / liters
-            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
-            total_ibu += ibu_contribution
-
-        elif use in ["whirlpool", "add_to_whirlpool"]:
-            # Hop-stand utilization: linear ramp from 5% (true flameout) to a
-            # 20% cap reached around 30 minutes of stand time, which models a
-            # boil-hot stand (tilt_ui-23u). Scaled down by the stand
-            # temperature when the timing records one (tilt_ui-2mxj).
-            stand_min = max(0.0, boil_min)
-            utilization = min(0.05 + 0.005 * stand_min, 0.20) * hop_stand_temp_factor(timing)
-            ibu_contribution = (amount_g * alpha_pct * utilization * 1000) / batch_liters
-            total_ibu += ibu_contribution
-        # Dry hops (dry_hop, add_to_fermentation) don't contribute significant IBUs
+        total_ibu += (amount_g * alpha_pct * utilization * 1000) / batch_liters
 
     return total_ibu
 
@@ -230,21 +224,10 @@ def calculate_ibu_from_hops(
     hops: list["RecipeHop"],
     batch_liters: float,
     og: float,
+    assumptions: list[str] | None = None,
 ) -> float:
-    """Calculate IBU from hop additions using Tinseth formula.
-
-    Thin public wrapper preserving the historical (hops, batch_liters, og)
-    signature. New code/tests should target _calculate_ibu directly.
-
-    Args:
-        hops: List of RecipeHop models
-        batch_liters: Batch size in liters
-        og: Original gravity for utilization calculation
-
-    Returns:
-        Total IBU
-    """
-    return _calculate_ibu(hops, og=og, batch_liters=batch_liters)
+    """Total IBU from hop additions; historical (hops, batch_liters, og) signature."""
+    return _calculate_ibu(hops, og=og, batch_liters=batch_liters, assumptions=assumptions)
 
 
 def calculate_fg_and_abv(og: float, attenuation: float) -> tuple[float, float]:
@@ -260,87 +243,123 @@ def calculate_fg_and_abv(og: float, attenuation: float) -> tuple[float, float]:
     if attenuation > 1:
         attenuation = attenuation / 100
 
-    # FG = OG - (OG - 1) * attenuation
     fg = og - (og - 1) * attenuation
-
-    # ABV = (OG - FG) * 131.25
     abv = (og - fg) * 131.25
-
     return fg, abv
 
 
 def get_attenuation_from_cultures(
     cultures: list["RecipeCulture"],
-    recipe_attenuation: float | None = None
+    recipe_attenuation: float | None = None,
+    assumptions: list[str] | None = None,
 ) -> float:
-    """Get attenuation from culture list or recipe-level value.
+    """Attenuation as a decimal (0.75 = 75%).
 
-    Args:
-        cultures: List of RecipeCulture models
-        recipe_attenuation: Recipe-level yeast_attenuation fallback
-
-    Returns:
-        Attenuation as decimal (0.75 = 75%)
+    Order: middle of the first culture's range, or its one set bound, then
+    the recipe-level value, then 75%.
     """
-    # Try to get from cultures
+    def frac(v: float) -> float:
+        return v / 100 if v > 1 else v
+
     for culture in cultures:
-        atten = culture.attenuation_min_percent
-        if atten is not None and atten > 0:
-            if atten > 1:
-                return atten / 100
-            return atten
+        bounds = [
+            frac(v) for v in (culture.attenuation_min_percent, culture.attenuation_max_percent)
+            if v is not None and v > 0
+        ]
+        if bounds:
+            return sum(bounds) / len(bounds)
 
-    # Fall back to recipe-level attenuation
     if recipe_attenuation is not None and recipe_attenuation > 0:
-        if recipe_attenuation > 1:
-            return recipe_attenuation / 100
-        return recipe_attenuation
+        return frac(recipe_attenuation)
 
-    # Default 75%
+    _note(assumptions, "Assumed 75% yeast attenuation")
     return 0.75
 
 
-def calculate_recipe_stats(recipe: "Recipe") -> dict[str, float]:
-    """Calculate all brewing statistics for a recipe from its ingredients.
+# BJCP-style SRM colour chart, ported from frontend srmToHex.
+_SRM_HEX = {
+    1: "#FFE699", 2: "#FFD878", 3: "#FFCA5A", 4: "#FFBF42", 5: "#FBB123",
+    6: "#F8A600", 7: "#F39C00", 8: "#EA8F00", 9: "#E58500", 10: "#DE7C00",
+    11: "#D77200", 12: "#CF6900", 13: "#CB6200", 14: "#C35900", 15: "#BB5100",
+    16: "#B54C00", 17: "#B04500", 18: "#A63E00", 19: "#A13700", 20: "#9B3200",
+    25: "#7C2900", 30: "#5E1E00", 35: "#401500", 40: "#261000",
+}
 
-    Args:
-        recipe: Recipe model with fermentables, hops, and cultures loaded
 
-    Returns:
-        Dict with og, fg, abv, ibu, color_srm
+def srm_to_hex(srm: float) -> str:
+    """Colour for an SRM value; clamps to 1..40."""
+    clamped = max(1, min(40, srm))
+    return _SRM_HEX[max(k for k in _SRM_HEX if k <= clamped)]
+
+
+@dataclass(frozen=True)
+class CalculatedStats:
+    """Recipe stats from the calculator. Rounded here: SG 3 dp, IBU/SRM 1 dp, ABV 2 dp."""
+    og: float
+    fg: float
+    abv: float
+    ibu: float
+    srm: float
+    bu_gu: float
+    calories_per_330ml: int
+    color_hex: str
+    assumptions: tuple[str, ...]
+
+    def __post_init__(self):
+        for name, dp in (("og", 3), ("fg", 3), ("abv", 2), ("ibu", 1), ("srm", 1), ("bu_gu", 2)):
+            object.__setattr__(self, name, round(getattr(self, name), dp))
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["assumptions"] = list(self.assumptions)
+        return d
+
+
+def calculate_recipe_stats(recipe: "Recipe") -> CalculatedStats | None:
+    """Calculate all stats for a recipe from its ingredients, or None with no fermentables.
+
+    Pure: reads attributes only (no DB, no lazy loads). Inputs the recipe does
+    not give are defaulted and listed in `assumptions`.
     """
-    batch_liters = recipe.batch_size_liters or 20
-    efficiency = recipe.efficiency_percent or 75  # Default 75% efficiency
-    if efficiency > 1:
-        efficiency = efficiency / 100
+    fermentables = [f for f in (recipe.fermentables or []) if (f.amount_kg or 0) > 0]
+    if not fermentables:
+        return None
+    notes: list[str] = []
 
-    # Calculate OG and color from fermentables
-    og, color_srm = calculate_og_from_fermentables(
-        recipe.fermentables or [],
-        batch_liters,
-        efficiency
-    )
+    batch_liters = recipe.batch_size_liters
+    if not batch_liters or batch_liters <= 0:
+        batch_liters = 20
+        _note(notes, "Assumed 20 L batch")
 
-    # Calculate IBU from hops
-    ibu = calculate_ibu_from_hops(
-        recipe.hops or [],
-        batch_liters,
-        og
-    )
+    efficiency = recipe.efficiency_percent
+    if not efficiency or efficiency <= 0:
+        efficiency = 75
+        if any((f.type or "").lower() not in NO_EFFICIENCY_TYPES for f in fermentables):
+            _note(notes, "Assumed 75% brewhouse efficiency")
 
-    # Get attenuation from cultures or recipe
+    og, srm = calculate_og_from_fermentables(fermentables, batch_liters, efficiency, notes)
+    ibu = calculate_ibu_from_hops(recipe.hops or [], batch_liters, og, notes)
     attenuation = get_attenuation_from_cultures(
-        recipe.cultures or [],
-        recipe.yeast_attenuation
+        recipe.cultures or [], recipe.yeast_attenuation, notes
     )
-
-    # Calculate FG and ABV
     fg, abv = calculate_fg_and_abv(og, attenuation)
 
-    return {
-        "og": round(og, 3),
-        "fg": round(fg, 3),
-        "abv": round(abv, 1),
-        "ibu": round(ibu, 0),
-        "color_srm": round(color_srm, 1),
-    }
+    og_points = (og - 1) * 1000
+    # Ported from frontend calculateCalories (330 mL serving) and calculateBUGU.
+    calories = (abv * 0.79 * 7 + (fg - 1) * 1000 * 0.4) * 3.3
+
+    return CalculatedStats(
+        og=og, fg=fg, abv=abv, ibu=ibu, srm=srm,
+        bu_gu=ibu / og_points if og_points > 0 else 0.0,
+        calories_per_330ml=math.floor(calories + 0.5),
+        color_hex=srm_to_hex(srm),
+        assumptions=tuple(notes),
+    )
+
+
+def write_legacy_stats(recipe: "Recipe", stats: CalculatedStats | None) -> None:
+    """Copy stats into the stored recipe.og/fg/abv/ibu/color_srm columns (until Task 5)."""
+    if stats is None:
+        return
+    recipe.og, recipe.fg, recipe.abv = stats.og, stats.fg, stats.abv
+    recipe.ibu, recipe.color_srm = stats.ibu, stats.srm

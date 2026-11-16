@@ -133,8 +133,8 @@ def test_steep_drop_then_flat_is_not_a_step_up():
 
 
 def test_step_up_during_fast_fall_still_flagged():
-    """A real +1.5 pt step while SG falls 2 pt/h is still a step up."""
+    """A real +1.3 pt step while SG falls 2 pt/h is still a step up."""
     hours = np.arange(0, 8, STEP)
-    sgs = 1.050 - 0.002 * hours + np.where(hours >= 4, 0.0015, 0.0)
+    sgs = 1.050 - 0.002 * hours + np.where(hours >= 4, 0.0013, 0.0)
     results = feed(FermentationAnomalyDetector(), hours, sgs)
     assert [r["reason"] for r in results if r["is_anomaly"]] == ["step_change_up"]

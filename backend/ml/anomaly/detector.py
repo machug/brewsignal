@@ -135,7 +135,11 @@ class FermentationAnomalyDetector:
         offset = float(np.min(np.abs(resid))) if same_side else 0.0
         score = min(1.0, offset / (2 * self.step_threshold))
 
-        if np.all(resid > self.step_threshold):
+        # A step up must also rise above the real level just before it, not only
+        # above the trend line: when a steep drop flattens, the extrapolated
+        # line falls away and flat readings look "up" (tilt_ui-6de9).
+        level = float(base_z[-1])
+        if np.all(resid > self.step_threshold) and float(np.max(recent_z)) > level + self.step_threshold:
             direction = "step_change_up"
         elif np.all(resid < -self.step_threshold):
             direction = "step_change_down"

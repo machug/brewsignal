@@ -120,3 +120,21 @@ def test_slope_none_after_long_outage():
     det = FermentationAnomalyDetector()
     feed(det, np.arange(0, 12.5, 0.5), np.full(25, 1.030))
     assert det.check_reading(1.030, 36.0)["sg_slope_12h"] is None
+
+
+def test_steep_drop_then_flat_is_not_a_step_up():
+    """Batch 16 (tilt_ui-6de9): dry hop CO2 surge drops SG fast, then it levels
+    off. Flat readings sit above the steep trend line, but gravity never rose,
+    so there must be no step_change_up."""
+    hours = np.arange(0, 10, STEP)
+    sgs = np.interp(hours, [0, 3, 4.5, 10], [1.0240, 1.0235, 1.0155, 1.0154])
+    results = feed(FermentationAnomalyDetector(), hours, sgs)
+    assert "step_change_up" not in [r["reason"] for r in results]
+
+
+def test_step_up_during_fast_fall_still_flagged():
+    """A real +1.3 pt step while SG falls 2 pt/h is still a step up."""
+    hours = np.arange(0, 8, STEP)
+    sgs = 1.050 - 0.002 * hours + np.where(hours >= 4, 0.0013, 0.0)
+    results = feed(FermentationAnomalyDetector(), hours, sgs)
+    assert [r["reason"] for r in results if r["is_anomaly"]] == ["step_change_up"]

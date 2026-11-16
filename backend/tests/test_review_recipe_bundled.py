@@ -225,3 +225,40 @@ class TestNoFermentablesStyleReview:
         assert "Unavailable: the recipe has no fermentables" in prompt
         assert "- OG:" not in prompt and "- FG:" not in prompt
         assert "1.052" not in prompt and "Stat check against" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_hops_only_review_is_not_stale(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        from backend.services import recipe_reviews
+        from backend.services.llm.tools.recipe_v2 import _export
+
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        with patch("backend.services.llm.tools.recipe.LLMService", return_value=_service("ok")):
+            await review_recipe(db=test_db, recipe_id=recipe.id, user_id="test-user")
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from backend.models import RecipeReview
+        saved = (await test_db.execute(
+            select(RecipeReview).where(RecipeReview.recipe_id == recipe.id)
+        )).scalar_one()
+        fresh = (await test_db.execute(
+            select(Recipe).options(
+                selectinload(Recipe.style), selectinload(Recipe.fermentables),
+                selectinload(Recipe.hops), selectinload(Recipe.cultures),
+            ).where(Recipe.id == recipe.id)
+        )).scalar_one()
+        assert saved.fingerprint == recipe_reviews.fingerprint(_export(fresh))

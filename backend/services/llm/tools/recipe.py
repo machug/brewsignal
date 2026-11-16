@@ -1,5 +1,6 @@
 """Recipe management tools for the AI brewing assistant."""
 
+import copy
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -734,11 +735,15 @@ async def review_recipe(
         stats = {"og": 0, "fg": 0, "abv": 0, "ibu": 0, "color_srm": 0}
 
     document = _export(recipe)
+    prompt_document = document
     if not stats_available:
+        # Prompt-only copy: `document` stays unmodified so the saved review's
+        # fingerprint matches the recipe's real export.
+        prompt_document = copy.deepcopy(document)
         # The export carries the stored stat columns; drop them so they do not
         # read as calculated. The brewer's declared targets stay.
         from backend.services.llm.tools.recipe_v2 import _TARGET_FIELDS
-        rec = document.get("recipe") or {}
+        rec = prompt_document.get("recipe") or {}
         for field, (column, unit) in _TARGET_FIELDS.items():
             rec.pop(field, None)
             if getattr(recipe, column) is not None:
@@ -758,7 +763,7 @@ async def review_recipe(
             "ibu": stats["ibu"],
             "color_srm": stats["color_srm"],
             "stat_check": _stat_check_text(compliance_block["compliance"]) if compliance_block else "",
-            "recipe_details": json.dumps(_compact(document), separators=(",", ":"), default=str),
+            "recipe_details": json.dumps(_compact(prompt_document), separators=(",", ":"), default=str),
             "style_guidelines": style_guidelines if style_found else "",
         })
 

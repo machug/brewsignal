@@ -1,15 +1,22 @@
 """Web Push subscription endpoints (tilt_ui-91a)."""
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..database import get_db
 from ..models import PushSubscription
 from ..services import push as push_service
 
-router = APIRouter(prefix="/api/push", tags=["push"])
+def _local_only() -> None:
+    """Subscriptions have no owner, so push is for the single-user Pi only."""
+    if get_settings().is_cloud:
+        raise HTTPException(status_code=404, detail="Push notifications are only available on a local install")
+
+
+router = APIRouter(prefix="/api/push", tags=["push"], dependencies=[Depends(_local_only)])
 
 
 class SubscribeRequest(BaseModel):

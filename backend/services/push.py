@@ -10,6 +10,7 @@ from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
 
 from .. import database
+from ..config import get_settings
 from ..models import PushSubscription
 from ..routers.config import get_config_value, set_config_value
 
@@ -48,6 +49,10 @@ def _send(sub: dict, payload: str, private: str, subject: str) -> None:
 
 async def notify(title: str, body: str, url: str = "/") -> int:
     """Send to every subscription. Returns how many were delivered. Never raises."""
+    # ponytail: subscriptions have no owner, so push is local (single-user Pi)
+    # only; cloud needs a user_id on PushSubscription and a filter here.
+    if get_settings().is_cloud:
+        return 0
     try:
         async with database.async_session_factory() as db:
             subs = (await db.execute(select(PushSubscription))).scalars().all()

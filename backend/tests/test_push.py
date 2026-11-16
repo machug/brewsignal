@@ -73,3 +73,12 @@ async def test_notify_deletes_subscription_on_410(test_db):
          patch.object(push, "webpush", side_effect=err):
         assert await push.notify("t", "b", "/") == 0
     assert (await test_db.execute(select(PushSubscription))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_cloud_mode_never_pushes(monkeypatch):
+    from types import SimpleNamespace
+    from backend.services import push
+    monkeypatch.setattr(push, "get_settings", lambda: SimpleNamespace(is_cloud=True))
+    monkeypatch.setattr(push.database, "async_session_factory", None)  # would fail if reached
+    assert await push.notify("t", "b") == 0

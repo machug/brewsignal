@@ -8,11 +8,11 @@ from backend.models import Batch, Recipe, RecipeCulture
 
 @pytest.mark.asyncio
 async def test_alert_context_uses_recipe_culture_range(test_db):
-    recipe = Recipe(name="APA", og=1.050, fg=1.010)
+    recipe = Recipe(name="APA", target_og=1.050, target_fg=1.010)
     recipe.cultures.append(RecipeCulture(name="US-05", temp_min_c=18.0, temp_max_c=22.0))
     test_db.add(recipe)
     await test_db.flush()
-    batch = Batch(name="B", status="fermenting", recipe_id=recipe.id)
+    batch = Batch(name="B", status="fermenting", recipe_id=recipe.id, expected_og=1.050, expected_fg=1.010)
     test_db.add(batch)
     await test_db.commit()
 

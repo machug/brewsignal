@@ -738,7 +738,7 @@ async def _handle_conflicted_batch(
 _BATCH_FIELDS = (
     "id", "name", "status", "device_id", "heater_entity_id", "cooler_entity_id",
     "temp_target", "temp_hysteresis",
-    "recipe_id", "measured_og", "readings_paused",
+    "recipe_id", "measured_og", "readings_paused", "expected_og", "expected_fg",
     "rest_trigger_percent", "rest_temp_target", "rest_hold_hours",
     "rest_below_since", "rest_confirmed_at", "rest_hold_trigger_sg", "rest_fired_at",
 )
@@ -756,6 +756,7 @@ def rest_trigger_sg(og: Optional[float], fg: Optional[float], percent: Optional[
 # so an edit through the API always wins and is evaluated on the next cycle.
 _REST_DECISION_FIELDS = (
     "status", "device_id", "recipe_id", "measured_og", "readings_paused", "temp_target",
+    "expected_og", "expected_fg",
     "rest_trigger_percent", "rest_temp_target", "rest_hold_hours", "rest_fired_at",
 )
 
@@ -769,13 +770,18 @@ def _rest_unchanged(batch) -> list:
 
 
 async def _rest_gravities(db, batch) -> tuple[Optional[float], Optional[float]]:
-    """OG (measured, else recipe) and the recipe's expected FG for the rest rule."""
-    og, fg = batch.measured_og, None
-    if batch.recipe_id is not None:
-        row = (await db.execute(select(Recipe.og, Recipe.fg).where(Recipe.id == batch.recipe_id))).first()
-        if row:
-            og, fg = og or row[0], row[1]
-    return og, fg
+    """OG (measured, else the batch's expected) and expected FG for the rest rule.
+
+    Fermenting batches read their snapshot; planning/brewing read the recipe live.
+    """
+    from .services.recipe_stats import batch_expected_fg, batch_expected_og, recipe_with_ingredients_stmt
+
+    recipe = None
+    if batch.recipe_id is not None and (batch.status or "planning") in ("planning", "brewing"):
+        recipe = (await db.execute(
+            recipe_with_ingredients_stmt().where(Recipe.id == batch.recipe_id)
+        )).scalar_one_or_none()
+    return batch_expected_og(batch, recipe), batch_expected_fg(batch, recipe)
 
 
 async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optional[dict]:

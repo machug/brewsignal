@@ -281,8 +281,11 @@ _TARGET_TOLERANCE = {"og": 0.003, "fg": 0.003, "abv": 0.4, "ibu": 8, "srm": 3}
 
 
 def _stats(recipe: Recipe) -> dict:
+    from backend.services.brewing import calculate_recipe_stats
+
+    calc = calculate_recipe_stats(recipe)
     return {
-        "calculated": {"og": recipe.og, "fg": recipe.fg, "abv": recipe.abv, "ibu": recipe.ibu, "srm": recipe.color_srm},
+        "calculated": {n: getattr(calc, n) if calc else None for n in ("og", "fg", "abv", "ibu", "srm")},
         "targets": {"og": recipe.target_og, "fg": recipe.target_fg, "abv": recipe.target_abv,
                     "ibu": recipe.target_ibu, "srm": recipe.target_srm},
     }

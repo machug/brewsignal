@@ -206,7 +206,9 @@ class MLPipelineManager:
         elif not device_id:
             return {"available": False, "error": "No device linked"}
 
-        expected_fg = batch.recipe.fg if batch.recipe else None
+        from backend.services.recipe_stats import batch_expected_fg
+
+        expected_fg = batch_expected_fg(batch)
         attenuation = await self._yeast_attenuation(db_session, batch)
         kwargs = dict(expected_fg=expected_fg, model=model, batch_id=batch.id, attenuation=attenuation)
         state = self.get_device_state(device_id, **kwargs)

@@ -19,6 +19,13 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 logger = logging.getLogger(__name__)
 
 
+def _list_stats(recipe: Recipe) -> dict:
+    from backend.services.recipe_stats import effective_stats
+
+    st = effective_stats(recipe)
+    return {"og": st.og, "fg": st.fg, "abv": st.abv, "ibu": st.ibu, "color_srm": st.srm}
+
+
 async def list_recipes(
     db: AsyncSession,
     search: Optional[str] = None,
@@ -26,9 +33,9 @@ async def list_recipes(
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """List recipes from the user's library, optionally filtered by search term."""
-    stmt = select(Recipe).options(
-        selectinload(Recipe.style),
-    )
+    from backend.services.recipe_stats import recipe_with_ingredients_stmt
+
+    stmt = recipe_with_ingredients_stmt()
 
     settings = get_settings()
     if not settings.is_local and user_id:
@@ -56,11 +63,7 @@ async def list_recipes(
                 "name": r.name,
                 "style": r.style.name if r.style else None,
                 "type": r.type,
-                "og": r.og,
-                "fg": r.fg,
-                "abv": r.abv,
-                "ibu": r.ibu,
-                "color_srm": r.color_srm,
+                **_list_stats(r),
                 "batch_size_liters": r.batch_size_liters,
             }
             for r in recipes

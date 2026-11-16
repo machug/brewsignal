@@ -71,6 +71,43 @@ def fill_legacy_columns(recipe: Recipe) -> None:
     recipe.ibu, recipe.color_srm = stats.ibu, stats.srm
 
 
+LIVE_STATUSES = ("planning", "brewing")
+_EXPECTED_FIELDS = ("og", "fg", "abv", "ibu", "srm")
+
+
+def snapshot_expected(batch: Batch, recipe: Recipe | None) -> None:
+    """Freeze the recipe's effective stats on the batch (D6). None clears them."""
+    stats = effective_stats(recipe) if recipe is not None else None
+    for name in _EXPECTED_FIELDS:
+        setattr(batch, f"expected_{name}", getattr(stats, name) if stats else None)
+
+
+def _expected(batch: Batch, name: str, recipe: Recipe | None = None) -> float | None:
+    """planning/brewing read the recipe live (batch.recipe must be loaded with
+    ingredients, or pass recipe); later statuses read the snapshot."""
+    if (batch.status or "planning") in LIVE_STATUSES:
+        recipe = recipe if recipe is not None else getattr(batch, "recipe", None)
+        return getattr(effective_stats(recipe), name) if recipe is not None else None
+    return getattr(batch, f"expected_{name}")
+
+
+def batch_recipe_og(batch: Batch, recipe: Recipe | None = None) -> float | None:
+    """The recipe's OG for this batch (live or snapshot), ignoring measured_og."""
+    return _expected(batch, "og", recipe)
+
+
+def batch_expected_og(batch: Batch, recipe: Recipe | None = None) -> float | None:
+    return batch.measured_og or batch_recipe_og(batch, recipe)
+
+
+def batch_expected_fg(batch: Batch, recipe: Recipe | None = None) -> float | None:
+    return _expected(batch, "fg", recipe)
+
+
+def batch_expected_abv(batch: Batch, recipe: Recipe | None = None) -> float | None:
+    return _expected(batch, "abv", recipe)
+
+
 def to_recipe_response(recipe: Recipe) -> RecipeResponse:
     return RecipeResponse.model_validate(recipe)
 

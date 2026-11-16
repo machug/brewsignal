@@ -24,11 +24,11 @@ def set_sg(clock, sg, temp=18.0, age=timedelta(0), **extra):
 
 
 async def make_batch(db, **kw):
-    recipe = Recipe(name="Pale", og=OG, fg=FG)
+    recipe = Recipe(name="Pale", target_og=OG, target_fg=FG)
     db.add(recipe)
     await db.flush()
     fields = dict(
-        name="A", status="fermenting", device_id="BLUE", recipe_id=recipe.id,
+        name="A", status="fermenting", device_id="BLUE", recipe_id=recipe.id, expected_og=OG, expected_fg=FG,
         heater_entity_id=HEATER, cooler_entity_id=COOLER, temp_target=18.0, temp_hysteresis=1.0,
         rest_trigger_percent=75.0, rest_temp_target=21.0, rest_hold_hours=3.0,
     )
@@ -222,7 +222,7 @@ async def test_slow_device_hold_is_stable_with_a_real_clock(test_db, monkeypatch
 
 @pytest.mark.asyncio
 async def test_api_clears_blocked_warning_when_batch_leaves_fermenting(client, test_db, clock):
-    b = await make_batch(test_db, recipe_id=None)
+    b = await make_batch(test_db, recipe_id=None, expected_og=None, expected_fg=None)
     set_sg(clock, 1.012)
     await cycle(test_db, b.id)
     assert "rest_blocked" in await active_alerts(test_db, b.id)
@@ -274,7 +274,7 @@ async def test_does_not_heat_a_cold_crash(test_db, clock):
 @pytest.mark.parametrize("kw", [
     {"rest_trigger_percent": None},          # rule off
     {"status": "conditioning"},              # only while fermenting
-    {"recipe_id": None},                     # no expected FG
+    {"recipe_id": None, "expected_og": None, "expected_fg": None},                     # no expected FG
 ])
 async def test_rule_inactive(test_db, clock, kw):
     b = await make_batch(test_db, **kw)
@@ -318,7 +318,7 @@ async def test_stale_snapshot_does_not_fire_after_api_edit(test_db, clock, edit)
 
 @pytest.mark.asyncio
 async def test_missing_fg_warns_then_clears(test_db, clock):
-    b = await make_batch(test_db, recipe_id=None)
+    b = await make_batch(test_db, recipe_id=None, expected_og=None, expected_fg=None)
     set_sg(clock, 1.012)
     await cycle(test_db, b.id)
     assert "rest_blocked" in await active_alerts(test_db, b.id)
@@ -500,10 +500,10 @@ async def test_status_endpoint_reports_rule_state(client, test_db, clock):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kw,state", [
-    ({"recipe_id": None}, "blocked"),
+    ({"recipe_id": None, "expected_og": None, "expected_fg": None}, "blocked"),
     ({"status": "conditioning"}, "inactive"),
     ({"temp_target": 2.0}, "inactive"),
-    ({"recipe_id": None, "status": "planning"}, "inactive"),   # not run yet: paused, not a warning
+    ({"recipe_id": None, "expected_og": None, "expected_fg": None, "status": "planning"}, "inactive"),   # not run yet: paused, not a warning
     ({"heater_entity_id": None, "cooler_entity_id": None}, "inactive"),  # the loop does not drive it
 ])
 async def test_status_endpoint_other_states(client, test_db, kw, state):

@@ -29,7 +29,7 @@ from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, t
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_ingredients import hydrate_recipe_ingredients, _potential_to_yield
 from ..services.recipe_stats import (
-    fill_legacy_columns, recipe_with_ingredients_stmt, to_recipe_detail_response, to_recipe_response,
+    effective_stats, fill_legacy_columns, recipe_with_ingredients_stmt, to_recipe_detail_response, to_recipe_response,
 )
 from ..services.recipe_validation import validate_recipe_constraints
 from ..services.style_resolver import resolve_style_id
@@ -503,6 +503,15 @@ async def export_recipe_beerjson(
     """
     recipe = await _load_recipe_for_export(recipe_id, user, db)
     doc = RecipeToBrewSignalV2Converter().convert(recipe)
+    # D8: foreign formats get per-field effective stats (calculated, else declared)
+    stats = effective_stats(recipe)
+    for key, value, unit in (
+        ("original_gravity", stats.og, "sg"), ("final_gravity", stats.fg, "sg"),
+        ("alcohol_by_volume", stats.abv, "%"), ("ibu_estimate", stats.ibu, "IBUs"),
+        ("color_estimate", stats.srm, "SRM"),
+    ):
+        if value is not None:
+            doc["recipe"][key] = {"value": value, "unit": unit}
     strict_recipe = to_strict_beerjson(doc["recipe"], doc.get("notes"))
     beerjson = {"beerjson": {"version": 1.0, "recipes": [strict_recipe]}}
 

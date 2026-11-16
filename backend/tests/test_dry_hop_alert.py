@@ -10,14 +10,14 @@ HOPS = (("Citra", 35), ("Amarillo", 25), ("Mosaic", 20))
 
 
 async def _batch(db, hops=True, trigger=None, done=None, status="fermenting"):
-    recipe = Recipe(name="APA", og=1.050, fg=1.011)
+    recipe = Recipe(name="APA", target_og=1.050, target_fg=1.011)
     db.add(recipe)
     await db.flush()
     if hops:
         for name, g in HOPS:
             db.add(RecipeHop(recipe_id=recipe.id, name=name, amount_grams=g, timing={"use": "dry_hop"}))
         db.add(RecipeHop(recipe_id=recipe.id, name="Magnum", amount_grams=10, timing={"use": "add_to_boil"}))
-    batch = Batch(name="APA", status=status, recipe_id=recipe.id, dry_hop_trigger_sg=trigger, dry_hop_done_at=done)
+    batch = Batch(name="APA", status=status, recipe_id=recipe.id, expected_og=1.050, expected_fg=1.011, dry_hop_trigger_sg=trigger, dry_hop_done_at=done)
     db.add(batch)
     await db.flush()
     return batch

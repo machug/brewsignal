@@ -622,6 +622,14 @@ class Batch(Base):
     dry_hop_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rest_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # set once; rule never fires again
 
+    # Recipe numbers frozen when the batch enters fermenting (tilt_ui-4x2f.3).
+    # planning/brewing read the recipe live; see services/recipe_stats.snapshot_expected.
+    expected_og: Mapped[Optional[float]] = mapped_column()
+    expected_fg: Mapped[Optional[float]] = mapped_column()
+    expected_abv: Mapped[Optional[float]] = mapped_column()
+    expected_ibu: Mapped[Optional[float]] = mapped_column()
+    expected_srm: Mapped[Optional[float]] = mapped_column()
+
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -2471,6 +2479,11 @@ class BatchResponse(BaseModel):
     rest_fired_at: Optional[datetime] = None
     dry_hop_trigger_sg: Optional[float] = None
     dry_hop_done_at: Optional[datetime] = None
+    expected_og: Optional[float] = None
+    expected_fg: Optional[float] = None
+    expected_abv: Optional[float] = None
+    expected_ibu: Optional[float] = None
+    expected_srm: Optional[float] = None
     # Reading control
     readings_paused: bool = False
     # Timer state

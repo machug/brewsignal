@@ -19,11 +19,12 @@ def test_live_history_holds_the_measurement_not_the_filter_output():
 
 @pytest.mark.asyncio
 async def test_predict_batch_headline_is_the_blended_estimate(test_db):
-    recipe = Recipe(name="APA", og=1.050, fg=1.011)
+    recipe = Recipe(name="APA", target_og=1.050, target_fg=1.011)
     test_db.add(recipe)
     await test_db.flush()
     start = datetime.now(timezone.utc) - timedelta(hours=72)
-    batch = Batch(name="APA", status="fermenting", device_id="BLUE", recipe_id=recipe.id, start_time=start)
+    batch = Batch(name="APA", status="fermenting", device_id="BLUE", recipe_id=recipe.id, start_time=start,
+                  expected_og=1.050, expected_fg=1.011)
     test_db.add(batch)
     await test_db.flush()
     for h in range(72):  # exponential decay towards 1.011

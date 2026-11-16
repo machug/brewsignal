@@ -41,6 +41,7 @@ dependencies = [
     "youtube-transcript-api==1.2.4",
     # mem0 pgvector store on hosted (pure-python psycopg + binary wheels incl. linux aarch64)
     "psycopg[binary,pool]>=3.2",
+    "pywebpush>=2.3.0",
 ]
 
 [project.optional-dependencies]

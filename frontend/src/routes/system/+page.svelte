@@ -5,7 +5,7 @@
 	import { config, onConfigLoaded, configStores } from '$lib/config';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from '$lib/supabase';
-	import { authFetch } from '$lib/api';
+	import { authFetch, getVapidPublicKey, pushSubscribe, pushUnsubscribe, pushTest } from '$lib/api';
 
 	interface GPUInfo {
 		vendor: string;  // "nvidia", "amd", "intel", "apple", "none"
@@ -880,7 +880,79 @@
 		}
 	}
 
+	// --- Notifications (Web Push, tilt_ui-91a) ---
+	type PushStatus = 'checking' | 'unsupported' | 'insecure' | 'ios-install' | 'denied' | 'off' | 'on';
+	let pushStatus = $state<PushStatus>('checking');
+	let pushMessage = $state('');
+	let pushBusy = $state(false);
+
+	async function refreshPushStatus() {
+		const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+		const standalone = window.matchMedia('(display-mode: standalone)').matches;
+		if (!window.isSecureContext) pushStatus = 'insecure';
+		else if (ios && !standalone) pushStatus = 'ios-install';
+		else if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) pushStatus = 'unsupported';
+		else if (Notification.permission === 'denied') pushStatus = 'denied';
+		else {
+			const reg = await navigator.serviceWorker.ready;
+			pushStatus = (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+		}
+	}
+
+	async function enablePush() {
+		pushBusy = true;
+		pushMessage = '';
+		try {
+			if ((await Notification.requestPermission()) !== 'granted') {
+				await refreshPushStatus();
+				return;
+			}
+			const key = await getVapidPublicKey();
+			const reg = await navigator.serviceWorker.ready;
+			const sub = await reg.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey: Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+			});
+			await pushSubscribe(sub.toJSON());
+			await refreshPushStatus();
+		} catch (e) {
+			pushMessage = e instanceof Error ? e.message : 'Could not enable notifications';
+		} finally {
+			pushBusy = false;
+		}
+	}
+
+	async function disablePush() {
+		pushBusy = true;
+		pushMessage = '';
+		try {
+			const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+			if (sub) {
+				await pushUnsubscribe(sub.endpoint);
+				await sub.unsubscribe();
+			}
+			await refreshPushStatus();
+		} catch (e) {
+			pushMessage = e instanceof Error ? e.message : 'Could not disable notifications';
+		} finally {
+			pushBusy = false;
+		}
+	}
+
+	async function sendPushTest() {
+		pushBusy = true;
+		pushMessage = '';
+		try {
+			pushMessage = (await pushTest()) > 0 ? 'Test sent.' : 'Nothing was delivered. Try Disable, then Enable again.';
+		} catch (e) {
+			pushMessage = e instanceof Error ? e.message : 'Test failed';
+		} finally {
+			pushBusy = false;
+		}
+	}
+
 	onMount(async () => {
+		refreshPushStatus().catch(() => (pushStatus = 'unsupported'));
 		await Promise.all([
 			loadSystemInfo(),
 			loadStorageStats(),
@@ -924,6 +996,7 @@
 		{ label: 'Devices', id: 'devicecontrol', open: 'devicecontrol' },
 		{ label: 'Data', id: 'storage', open: 'storage' },
 		...(authEnabled ? [{ label: 'Cloud sync', id: 'cloud', open: 'cloud' }] : []),
+		{ label: 'Notifications', id: 'notifications', open: 'notifications' },
 		{ label: 'Power', id: 'power', open: 'power' },
 		{ label: 'About', id: 'about', open: null as string | null }
 	]);
@@ -1819,6 +1892,47 @@
 				{/if}
 			</section>
 
+			<!-- Notifications Section -->
+			<section class="settings-section" id="sec-notifications" style="order: 8">
+				<button
+					type="button"
+					class="section-header"
+					onclick={() => toggleSection('notifications')}
+					aria-expanded={expandedSection === 'notifications'}
+				>
+					<div class="section-title-group">
+						<h2>Notifications</h2>
+					</div>
+					<svg class="chevron" class:rotated={expandedSection === 'notifications'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				{#if expandedSection === 'notifications'}
+					<div class="section-content">
+						{#if pushStatus === 'insecure'}
+							<p class="retention-note">Notifications need the HTTPS (Tailscale) address of this system. Open BrewSignal from that address, not from http:// or an IP address.</p>
+						{:else if pushStatus === 'ios-install'}
+							<p class="retention-note">On iPhone and iPad, add BrewSignal to the Home Screen first (Share, then Add to Home Screen), then open it from there and come back to this page.</p>
+						{:else if pushStatus === 'unsupported'}
+							<p class="retention-note">This browser does not support push notifications.</p>
+						{:else if pushStatus === 'denied'}
+							<p class="retention-note">Notifications are blocked for this site. Allow them in the browser or phone settings, then come back here.</p>
+						{:else if pushStatus === 'checking'}
+							<p class="retention-note">Checking...</p>
+						{:else}
+							<p class="retention-note">Notifications are {pushStatus === 'on' ? 'on' : 'off'} on this device. You get a message when a batch alert is raised, such as a stalled fermentation, a temperature problem, a sensor going offline or a dry hop being due.</p>
+							{#if pushStatus === 'off'}
+								<button type="button" class="primary-btn" onclick={enablePush} disabled={pushBusy}>Enable notifications on this device</button>
+							{:else}
+								<button type="button" class="secondary-btn" onclick={sendPushTest} disabled={pushBusy}>Send test</button>
+								<button type="button" class="secondary-btn" onclick={disablePush} disabled={pushBusy}>Disable</button>
+							{/if}
+						{/if}
+						{#if pushMessage}<p class="retention-note" role="status">{pushMessage}</p>{/if}
+					</div>
+				{/if}
+			</section>
+
 			<!-- Cloud Sync Section -->
 			{#if authEnabled}
 				<section class="settings-section" id="sec-cloud" style="order: 7">
@@ -2034,7 +2148,7 @@
 			{/if}
 
 			<!-- Power Controls -->
-			<section class="settings-section danger-section" id="sec-power" style="order: 8">
+			<section class="settings-section danger-section" id="sec-power" style="order: 9">
 				<button
 					type="button"
 					class="section-header"

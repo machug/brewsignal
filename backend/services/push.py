@@ -43,7 +43,7 @@ async def get_vapid_keys(db) -> tuple[str, str]:
 
 
 def _send(sub: dict, payload: str, private: str, subject: str) -> None:
-    webpush(sub, payload, vapid_private_key=private, vapid_claims={"sub": subject}, ttl=86400)
+    webpush(sub, payload, vapid_private_key=private, vapid_claims={"sub": subject}, ttl=86400, timeout=10)
 
 
 async def notify(title: str, body: str, url: str = "/") -> int:

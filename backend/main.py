@@ -875,6 +875,7 @@ if _serve_frontend:
         "logo.svg": "image/svg+xml",
         "manifest.webmanifest": "application/manifest+json",
         "robots.txt": "text/plain",
+        "service-worker.js": "text/javascript",  # Web Push (tilt_ui-91a)
     }
 
     def _root_asset_route(name: str, media_type: str):

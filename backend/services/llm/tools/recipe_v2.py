@@ -269,9 +269,9 @@ async def _import(db: AsyncSession, document: dict[str, Any]) -> tuple[Optional[
     for ferm in recipe.fermentables:
         if ferm.color_srm is None:
             ferm.color_srm = await resolve_fermentable_color_srm(db, ferm.name)
-    stats = calculate_recipe_stats(recipe) if (recipe.fermentables or recipe.hops) else {}
-    for key in ("og", "fg", "abv", "ibu", "color_srm"):
-        setattr(recipe, key, stats.get(key))
+    stats = calculate_recipe_stats(recipe)
+    recipe.og, recipe.fg, recipe.abv = (stats.og, stats.fg, stats.abv) if stats else (None, None, None)
+    recipe.ibu, recipe.color_srm = (stats.ibu, stats.srm) if stats else (None, None)
     return recipe, []
 
 

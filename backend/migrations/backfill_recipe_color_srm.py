@@ -63,9 +63,10 @@ async def backfill_recipe_color_srm(session: AsyncSession) -> int:
                     ferm.color_srm = srm
                     dirty = True
 
-        new_srm = calculate_recipe_stats(recipe).get("color_srm")
-        if new_srm is None:
+        stats = calculate_recipe_stats(recipe)
+        if stats is None:
             continue
+        new_srm = stats.srm
 
         if recipe.color_srm is None or (
             float(new_srm) - float(recipe.color_srm) > _MIN_UNDERSTATEMENT_SRM

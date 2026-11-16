@@ -60,28 +60,20 @@ class TestSugarSkipsEfficiency:
         assert og == pytest.approx(1.077, abs=0.001)
 
 
-class TestLLMToolsStatsMirror:
-    """services/llm/tools/recipe.py has a dict-based duplicate of the OG calc
-    used when the assistant saves/updates recipes — must apply the same rule."""
+class TestRecipeStatsSugarEfficiency:
+    def test_calculate_recipe_stats_sugar_skips_efficiency(self):
+        from backend.models import Recipe, RecipeFermentable
+        from backend.services.brewing import calculate_recipe_stats
 
-    def test_llm_calculate_recipe_stats_sugar_skips_efficiency(self):
-        from backend.services.llm.tools.recipe import calculate_recipe_stats
+        def og(eff):
+            recipe = Recipe(
+                name="t", batch_size_liters=20.0, efficiency_percent=eff,
+                fermentables=[RecipeFermentable(name="Cane Sugar", type="sugar", amount_kg=1.0)],
+                hops=[], cultures=[],
+            )
+            return calculate_recipe_stats(recipe).og
 
-        def doc(eff):
-            return {
-                "batch_size": {"value": 20.0, "unit": "l"},
-                "efficiency": {"brewhouse": {"value": eff, "unit": "%"}},
-                "ingredients": {
-                    "fermentable_additions": [
-                        {"name": "Cane Sugar", "type": "sugar",
-                         "amount": {"value": 1.0, "unit": "kg"}},
-                    ]
-                },
-            }
-
-        og_low = calculate_recipe_stats(doc(50))["og"]
-        og_high = calculate_recipe_stats(doc(90))["og"]
-        assert og_low == pytest.approx(og_high)
+        assert og(50) == pytest.approx(og(90))
 
 
 class TestPercentBoundary:

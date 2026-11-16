@@ -23,7 +23,7 @@ from ..models import (
     RecipeFermentationStep, FermentationStepInput, FermentationStepResponse,
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
-from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats
+from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats, write_legacy_stats
 from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, to_strict_beerjson
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_ingredients import hydrate_recipe_ingredients
@@ -758,11 +758,7 @@ async def update_recipe(
     # any subsequent PUT (tilt_ui-5no).
     if recalculate and (existing_recipe.fermentables or existing_recipe.hops):
         stats = calculate_recipe_stats(existing_recipe)
-        existing_recipe.og = stats["og"]
-        existing_recipe.fg = stats["fg"]
-        existing_recipe.abv = stats["abv"]
-        existing_recipe.ibu = stats["ibu"]
-        existing_recipe.color_srm = stats["color_srm"]
+        write_legacy_stats(existing_recipe, stats)
 
     # Validate the final values
     validate_recipe_constraints(
@@ -824,11 +820,12 @@ async def recalculate_recipe_stats(
         )
 
     stats = calculate_recipe_stats(recipe)
-    recipe.og = stats["og"]
-    recipe.fg = stats["fg"]
-    recipe.abv = stats["abv"]
-    recipe.ibu = stats["ibu"]
-    recipe.color_srm = stats["color_srm"]
+    if stats is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Recipe has no fermentables to calculate from"
+        )
+    write_legacy_stats(recipe, stats)
 
     await db.commit()
     # Re-query with eager loading for response serialization
@@ -989,11 +986,7 @@ async def scale_recipe_endpoint(
 
     if recipe.fermentables or recipe.hops:
         stats = calculate_recipe_stats(recipe)
-        recipe.og = stats["og"]
-        recipe.fg = stats["fg"]
-        recipe.abv = stats["abv"]
-        recipe.ibu = stats["ibu"]
-        recipe.color_srm = stats["color_srm"]
+        write_legacy_stats(recipe, stats)
 
     if request.dry_run:
         # Serialize the preview BEFORE rolling back — rollback expires the

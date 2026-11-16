@@ -296,6 +296,12 @@ def _warnings(recipe: Recipe) -> list[str]:
         out.append("No yeast: add recipe.ingredients.culture_additions.")
     if not recipe.fermentables:
         out.append("No fermentables: add recipe.ingredients.fermentable_additions.")
+    # No stand temperature means the IBU calc treats the hop as boiling
+    # (tilt_ui-qig5: recipe 32 read ~24 IBU high after an edit dropped 80 C).
+    for hop in recipe.hops:
+        timing = hop.timing or {}
+        if timing.get("use") in ("whirlpool", "add_to_whirlpool") and not (timing.get("temperature") or {}).get("value"):
+            out.append(f"Whirlpool hop {hop.name} has no temperature, so IBU counts it as boiling: set timing.temperature (e.g. 80 C).")
     s = _stats(recipe)
     for key, tol in _TARGET_TOLERANCE.items():
         calc, target = s["calculated"][key], s["targets"][key]

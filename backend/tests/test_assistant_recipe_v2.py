@@ -412,3 +412,15 @@ async def test_db_level_failure_leaves_the_session_usable(test_db):
     assert "error" in await save_recipe_document(test_db, bad)
     assert await test_db.scalar(select(func.count(Recipe.id))) == 0
     assert (await save_recipe_document(test_db, JASPER)).get("applied")
+
+
+@pytest.mark.asyncio
+async def test_whirlpool_hop_without_temperature_is_warned(test_db):
+    """tilt_ui-qig5: no stand temperature = counted as boiling, IBU reads high."""
+    hop = {"name": "Cascade", "alpha_acid": {"value": 6, "unit": "%"}, "amount": {"value": 40, "unit": "g"},
+           "timing": {"use": "add_to_whirlpool", "duration": {"value": 20, "unit": "min"}}}
+    out = await _save(test_db, _minimal(hops=[hop]))
+    assert any("Whirlpool hop Cascade has no temperature" in w for w in out["warnings"])
+    hop["timing"]["temperature"] = {"value": 80, "unit": "C"}
+    out = await _save(test_db, _minimal(hops=[hop]))
+    assert not any("Whirlpool hop" in w for w in out["warnings"])

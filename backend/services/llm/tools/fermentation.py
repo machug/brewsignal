@@ -94,8 +94,8 @@ async def list_fermentations(
         progress_percent = None
         current_sg = live_reading.get("sg") if live_reading else None
         if batch.measured_og and current_sg:
-            target_fg = batch_expected_fg(batch) or 1.010
-            if batch.measured_og > target_fg:
+            target_fg = batch_expected_fg(batch)
+            if target_fg is not None and batch.measured_og > target_fg:
                 progress = (batch.measured_og - current_sg) / (batch.measured_og - target_fg) * 100
                 progress_percent = min(100.0, max(0.0, round(progress, 1)))
 
@@ -239,8 +239,8 @@ async def get_fermentation_status(
     # Progress calculations
     progress_info = {"available": False}
     if batch.measured_og and current_sg:
-        target_fg = batch_expected_fg(batch) or 1.010
-        if batch.measured_og > target_fg:
+        target_fg = batch_expected_fg(batch)
+        if target_fg is not None and batch.measured_og > target_fg:
             progress = (batch.measured_og - current_sg) / (batch.measured_og - target_fg) * 100
             progress_percent = min(100.0, max(0.0, round(progress, 1)))
             current_attenuation = (batch.measured_og - current_sg) / (batch.measured_og - 1.0) * 100

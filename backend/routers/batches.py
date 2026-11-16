@@ -580,6 +580,8 @@ async def update_batch(
         if old_gravities != (batch.expected_og, batch.expected_fg):
             # The rest hold was timed against the old gravities; rest_fired_at stays.
             batch.rest_below_since = batch.rest_confirmed_at = batch.rest_hold_trigger_sg = None
+    elif new_status in LIVE_STATUSES and not was_live:
+        snapshot_expected(batch, None)  # back to planning/brewing: read the recipe live again
     _require_complete_rest_rule(batch)
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already

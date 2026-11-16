@@ -200,6 +200,17 @@ async def test_reassign_recipe_resnapshots_fermenting_batch(client, test_db):
 
 
 @pytest.mark.asyncio
+async def test_fermenting_back_to_planning_clears_snapshot(client, test_db):
+    r = await _recipe(test_db)
+    bid = await _new_batch(client, r.id, status="fermenting")
+    assert (await _load_batch(test_db, bid)).expected_fg is not None
+    resp = await client.put(f"/api/batches/{bid}", json={"status": "planning"})
+    assert resp.status_code == 200, resp.text
+    batch = await _load_batch(test_db, bid)
+    assert [getattr(batch, f"expected_{n}") for n in ("og", "fg", "abv", "ibu", "srm")] == [None] * 5
+
+
+@pytest.mark.asyncio
 async def test_unlink_recipe_clears_snapshot(client, test_db):
     r = await _recipe(test_db)
     bid = await _new_batch(client, r.id, status="fermenting")
@@ -273,7 +284,6 @@ async def test_backfill_uses_legacy_stats_for_running_batches(test_db, monkeypat
     _factory(monkeypatch, test_db)
     async with test_db.bind.begin() as conn:  # the drop migration seeds the batches first
         await migrate_drop_recipe_stat_columns(conn)
-    await dbm._backfill_batch_expected()
 
     for name in ("f", "d", "x"):
         row = (await test_db.execute(text(
@@ -290,23 +300,22 @@ async def test_backfill_uses_legacy_stats_for_running_batches(test_db, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_backfill_runs_every_boot_and_never_overwrites(test_db, monkeypatch):
-    """Columns already present, snapshot all null -> filled; existing snapshot untouched."""
+async def test_boot_never_fills_an_all_null_snapshot(test_db, monkeypatch):
+    """A fermenting batch started without stats keeps a null snapshot across boots (D6)."""
     r = await _recipe(test_db)
     empty = Batch(name="e", status="fermenting", recipe_id=r.id)
     kept = Batch(name="k", status="conditioning", recipe_id=r.id, expected_og=1.040, expected_fg=1.008)
     test_db.add_all([empty, kept])
     await test_db.commit()
     _factory(monkeypatch, test_db)
-    await dbm._backfill_batch_expected()
-    stats = effective_stats(await _load_recipe(test_db, r.id))
+    assert not hasattr(dbm, "_backfill_batch_expected")
+    async with test_db.bind.begin() as conn:  # what every boot runs
+        await conn.run_sync(dbm._migrate_add_batch_expected_columns)
+        await migrate_drop_recipe_stat_columns(conn)
     e = await _fresh(test_db, empty.id)
-    assert (e.expected_og, e.expected_fg, e.expected_abv, e.expected_ibu, e.expected_srm) == (
-        stats.og, stats.fg, stats.abv, stats.ibu, stats.srm)
+    assert (e.expected_og, e.expected_fg, e.expected_abv, e.expected_ibu, e.expected_srm) == (None,) * 5
     k = await _fresh(test_db, kept.id)
     assert (k.expected_og, k.expected_fg, k.expected_abv) == (1.040, 1.008, None)
-    await dbm._backfill_batch_expected()  # again: no change
-    assert (await _fresh(test_db, empty.id)).expected_og == stats.og
 
 
 @pytest.mark.asyncio
@@ -419,3 +428,21 @@ async def test_progress_keeps_snapshot_targets_without_recipe(client, test_db):
     resp = await client.get(f"/api/batches/{b.id}/progress")
     assert resp.status_code == 200, resp.text
     assert resp.json()["targets"]["og"] == 1.050 and resp.json()["targets"]["fg"] == 1.010
+
+
+@pytest.mark.asyncio
+async def test_assistant_progress_unavailable_without_expected_fg(test_db):
+    from backend.services.llm.tools.fermentation import get_fermentation_status, list_fermentations
+    from backend.state import latest_readings
+    b = Batch(name="nofg", status="fermenting", measured_og=1.050, device_id="BLUE")
+    test_db.add(b)
+    await test_db.commit()
+    latest_readings["BLUE"] = {"sg": 1.030, "temp": 19.0}
+    try:
+        status = await get_fermentation_status(test_db, b.id)
+        listed = await list_fermentations(test_db)
+    finally:
+        latest_readings.pop("BLUE", None)
+    assert status["progress"]["available"] is False
+    assert "percent_complete" not in status["progress"]
+    assert listed["batches"][0]["progress_percent"] is None

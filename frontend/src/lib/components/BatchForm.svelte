@@ -94,13 +94,16 @@
 	let restTempMin = $derived(configState.config.temp_units === 'C' ? 5.5 : 42);
 
 	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
-	let restTriggerSg = $derived.by(() => {
-		// Shows what the backend will use after saving with the chosen status and recipe
-		const exp = batch
+	// Shows what the backend will use after saving with the chosen status and recipe
+	let expectedPreview = $derived.by(() =>
+		batch
 			? previewExpected(batch, status, selectedRecipe)
 			: selectedRecipe
 				? effectiveStats(selectedRecipe)
-				: undefined;
+				: undefined
+	);
+	let restTriggerSg = $derived.by(() => {
+		const exp = expectedPreview;
 		const og = parseFloat(measuredOg) || exp?.og;
 		const fg = exp?.fg;
 		const pct = parseFloat(restPercent);
@@ -197,10 +200,6 @@
 			// Auto-fill form from recipe
 			name = recipe.name;
 			recipeId = recipe.id;
-			const og = effectiveStats(recipe).og;
-			if (og) {
-				measuredOg = og.toString();
-			}
 		} else {
 			recipeId = null;
 		}
@@ -458,7 +457,7 @@
 					id="og"
 					class="form-input"
 					bind:value={measuredOg}
-					placeholder="1.050"
+					placeholder={expectedPreview?.og ? expectedPreview.og.toFixed(3) : '1.050'}
 					step="0.001"
 					min="0.990"
 					max="1.200"

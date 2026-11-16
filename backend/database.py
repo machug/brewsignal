@@ -730,10 +730,6 @@ async def init_db():
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
 
-    # Batch expected numbers for running batches (D6): synchronous, before serving,
-    # so a running batch never reads a recipe it was not started against.
-    await _backfill_batch_expected()
-
     # NOTE: the recipe style_id backfill runs off the startup critical
     # path via run_deferred_backfills() — see init_db's cloud-mode branch and
     # tilt_ui-h0j. Seeding above is their only prerequisite and is complete.
@@ -1262,8 +1258,8 @@ _EXPECTED_COLUMNS = (("expected_og", "og"), ("expected_fg", "fg"), ("expected_ab
 
 
 def _migrate_add_batch_expected_columns(conn) -> None:
-    """Add batches.expected_* (tilt_ui-4x2f.3). The data fill is
-    _backfill_batch_expected, which runs on every boot."""
+    """Add batches.expected_* (tilt_ui-4x2f.3). Not filled on boot: a snapshot is
+    taken only when a batch starts fermenting (D6), and an all-null one stays null."""
     from sqlalchemy import text
     columns = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
     if not columns:
@@ -1272,39 +1268,6 @@ def _migrate_add_batch_expected_columns(conn) -> None:
         if name not in columns:
             conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} FLOAT"))
             print(f"Migration: Added {name} column to batches")
-
-
-async def _backfill_batch_expected() -> None:
-    """Snapshot the expected stats of every batch at or past fermenting (soft-deleted
-    included) whose five expected_* are all NULL (D6).
-
-    From effective_stats (the legacy stored recipe columns were copied into the batches
-    by migrate_drop_recipe_stat_columns before they were dropped). Idempotent and run
-    every boot, so an interrupted start finishes next time; a batch that already has
-    any value is never touched.
-    """
-    from sqlalchemy import and_, select
-    from backend.models import Batch, Recipe
-    from backend.services.recipe_stats import effective_stats, recipe_with_ingredients_stmt
-
-    async with async_session_factory() as session:
-        batches = (await session.execute(
-            select(Batch).where(
-                Batch.recipe_id.is_not(None),
-                Batch.status.notin_(("planning", "brewing")),
-                and_(*(getattr(Batch, name).is_(None) for name, _ in _EXPECTED_COLUMNS)),
-            )
-        )).scalars().all()
-        for batch in batches:
-            recipe = (await session.execute(
-                recipe_with_ingredients_stmt().where(Recipe.id == batch.recipe_id)
-            )).scalar_one_or_none()
-            if recipe is None:
-                continue
-            stats = effective_stats(recipe)
-            for name, field in _EXPECTED_COLUMNS:
-                setattr(batch, name, getattr(stats, field))
-        await session.commit()
 
 
 def _migrate_add_control_progress_columns(conn) -> None:

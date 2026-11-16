@@ -58,17 +58,17 @@ export function effectiveStats(recipe: RecipeLike): EffectiveStats {
 	return out;
 }
 
-/**
- * What a batch is expected to reach. OG prefers the measured value (unless
- * `includeMeasured` is false), then the snapshot taken when fermenting began.
- * Only planning and brewing batches have no snapshot and read the recipe's live
- * stats; from fermenting on the snapshot is frozen, even where a field is null.
- */
 /** True once the batch's expected numbers are a frozen snapshot (fermenting or later). */
 export function hasSnapshot(status: BatchResponse['status']): boolean {
 	return status !== 'planning' && status !== 'brewing';
 }
 
+/**
+ * What a batch is expected to reach. OG prefers the measured value (unless
+ * `includeMeasured` is false). Otherwise planning and brewing batches read the
+ * recipe's live stats and ignore any stored snapshot; from fermenting on the
+ * snapshot is all there is, frozen even where a field is null (no mixing).
+ */
 export function batchExpected(
 	batch: Pick<BatchResponse, 'status' | 'measured_og' | 'expected_og' | 'expected_fg' | 'expected_abv' | 'expected_ibu' | 'expected_srm'> & {
 		recipe?: RecipeLike | null;
@@ -78,11 +78,11 @@ export function batchExpected(
 	const isLive = !hasSnapshot(batch.status);
 	const live = isLive && batch.recipe ? effectiveStats(batch.recipe) : ({} as EffectiveStats);
 	return {
-		og: (includeMeasured ? batch.measured_og : null) ?? batch.expected_og ?? live.og,
-		fg: batch.expected_fg ?? live.fg,
-		abv: batch.expected_abv ?? live.abv,
-		ibu: batch.expected_ibu ?? live.ibu,
-		srm: batch.expected_srm ?? live.srm
+		og: (includeMeasured ? batch.measured_og : null) ?? (isLive ? live.og : batch.expected_og ?? undefined),
+		fg: isLive ? live.fg : batch.expected_fg ?? undefined,
+		abv: isLive ? live.abv : batch.expected_abv ?? undefined,
+		ibu: isLive ? live.ibu : batch.expected_ibu ?? undefined,
+		srm: isLive ? live.srm : batch.expected_srm ?? undefined
 	};
 }
 

@@ -94,3 +94,20 @@ export function statDiffers(stat: keyof StatValues, calc?: number | null, target
 	return Math.abs(calc - target) > THRESHOLD[stat] + 1e-9;
 }
 
+
+/**
+ * Expected numbers for the batch form's preview, based on what saving will do:
+ * the stored snapshot is kept only when the batch is already fermenting or later,
+ * stays so, and keeps its recipe. Otherwise the backend snapshots (or reads) the
+ * live recipe, so that is what is shown.
+ */
+export function previewExpected(
+	batch: Parameters<typeof batchExpected>[0] & { recipe_id?: number | null },
+	destinationStatus: BatchResponse['status'],
+	selectedRecipe?: (RecipeLike & { id: number }) | null
+): StatValues {
+	const sameRecipe = !selectedRecipe || selectedRecipe.id === batch.recipe_id;
+	if (hasSnapshot(batch.status) && hasSnapshot(destinationStatus) && sameRecipe) return batchExpected(batch, false);
+	const recipe = selectedRecipe ?? batch.recipe;
+	return recipe ? effectiveStats(recipe) : {};
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { batchExpected, effectiveStats, statDiffers } from './recipeStats';
+import { batchExpected, effectiveStats, previewExpected, statDiffers } from './recipeStats';
 import type { CalculatedStats } from './api';
 
 const calc: CalculatedStats = {
@@ -69,5 +69,30 @@ describe('batchExpected', () => {
 	});
 	test('no recipe and no snapshot gives nothing', () => {
 		expect(batchExpected({ status: planning }).fg).toBeUndefined();
+	});
+});
+
+describe('previewExpected (batch form)', () => {
+	const live = { id: 1, calculated: { ...calc, fg: 1.025 } };
+	const base = { recipe_id: 1, expected_og: 1.05, expected_fg: 1.01, recipe: live };
+	test('fermenting stays fermenting with the same recipe: snapshot', () => {
+		expect(previewExpected({ ...base, status: 'fermenting' }, 'conditioning').fg).toBe(1.01);
+		expect(previewExpected({ ...base, status: 'fermenting' }, 'fermenting', live).fg).toBe(1.01);
+	});
+	test('moved back to planning or brewing: live recipe', () => {
+		expect(previewExpected({ ...base, status: 'fermenting' }, 'planning').fg).toBe(1.025);
+		expect(previewExpected({ ...base, status: 'fermenting' }, 'brewing').fg).toBe(1.025);
+	});
+	test('entering fermenting from planning or brewing: live recipe', () => {
+		expect(previewExpected({ ...base, status: 'planning' }, 'fermenting').fg).toBe(1.025);
+		expect(previewExpected({ ...base, status: 'brewing' }, 'fermenting').fg).toBe(1.025);
+	});
+	test('changed recipe on a fermenting batch: new recipe live stats', () => {
+		const other = { id: 2, calculated: { ...calc, fg: 1.018 } };
+		expect(previewExpected({ ...base, status: 'fermenting' }, 'fermenting', other).fg).toBe(1.018);
+	});
+	test('planning batch with a selected recipe uses that recipe', () => {
+		const other = { id: 2, calculated: { ...calc, fg: 1.018 } };
+		expect(previewExpected({ ...base, status: 'planning' }, 'planning', other).fg).toBe(1.018);
 	});
 });

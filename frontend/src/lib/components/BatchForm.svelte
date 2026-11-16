@@ -4,7 +4,7 @@
 	import { fetchRecipes, fetchHeaterEntities, fetchCoolerEntities } from '$lib/api';
 	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import { fetchAllDevices, type DeviceResponse } from '$lib/api/devices';
-	import { batchExpected, effectiveStats, hasSnapshot } from '$lib/recipeStats';
+	import { effectiveStats, previewExpected } from '$lib/recipeStats';
 	import RecipeSelector from './RecipeSelector.svelte';
 	import YeastSelector from './batch/YeastSelector.svelte';
 
@@ -95,16 +95,12 @@
 
 	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
 	let restTriggerSg = $derived.by(() => {
-		// From fermenting on the controller uses the batch's snapshot, not the live recipe
-		// (unless the recipe is being changed here, which re-snapshots on save).
-		const frozen = batch && hasSnapshot(batch.status) && (!selectedRecipe || selectedRecipe.id === batch.recipe_id);
-		const exp = frozen
-			? batchExpected(batch, false)
+		// Shows what the backend will use after saving with the chosen status and recipe
+		const exp = batch
+			? previewExpected(batch, status, selectedRecipe)
 			: selectedRecipe
 				? effectiveStats(selectedRecipe)
-				: batch
-					? batchExpected(batch, false)
-					: undefined;
+				: undefined;
 		const og = parseFloat(measuredOg) || exp?.og;
 		const fg = exp?.fg;
 		const pct = parseFloat(restPercent);

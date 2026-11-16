@@ -435,3 +435,14 @@ async def test_grain_yield_given_as_potential_is_kept(test_db):
     rows = (await test_db.execute(select(RecipeFermentable).where(
         RecipeFermentable.recipe_id == out["recipe_id"]))).scalars().all()
     assert rows and abs(rows[0].yield_percent - (0.037 / 0.046 * 100)) < 0.01
+
+
+@pytest.mark.asyncio
+async def test_grain_yield_potential_in_plato_is_converted(test_db):
+    doc = _minimal()
+    doc["recipe"]["ingredients"]["fermentable_additions"][0]["yield"] = {"potential": {"value": 9.25, "unit": "plato"}}
+    out = await _save(test_db, doc)
+    from backend.models import RecipeFermentable
+    row = (await test_db.execute(select(RecipeFermentable).where(
+        RecipeFermentable.recipe_id == out["recipe_id"]))).scalars().first()
+    assert abs(row.yield_percent - 0.037 / 0.046 * 100) < 1.0

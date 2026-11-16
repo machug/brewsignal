@@ -304,7 +304,10 @@ class RecipeSerializer:
             # yield and the OG fell back to a default (tilt_ui-utvv). Same
             # mapping as the editor: potential = 1 + yield% / 100 * 0.046.
             pot = ferm_dict['yield']['potential']
+            unit = (pot.get('unit') or 'sg').lower() if isinstance(pot, dict) else 'sg'
             pot = pot.get('value') if isinstance(pot, dict) else pot
+            if isinstance(pot, (int, float)) and unit in ('plato', 'brix'):
+                pot = 1 + pot / (258.6 - pot / 258.2 * 227.1)  # degrees -> SG (Brix ~ Plato)
             if isinstance(pot, (int, float)) and 1.0 < pot < 1.1:
                 ferm.yield_percent = (pot - 1.0) / 0.046 * 100
 

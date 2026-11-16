@@ -22,6 +22,13 @@ class TestResolveColor:
         assert await resolve_fermentable_color_srm(test_db, "Roasted Barley") == 500
 
     @pytest.mark.asyncio
+    async def test_pilsen_spelling_and_pale_ale_fallback(self, test_db: AsyncSession):
+        """tilt_ui-wsuu: recipe 32's 'Pilsen Malt' and 'Pale Ale' stayed colourless."""
+        assert await resolve_fermentable_color_srm(test_db, "Pilsen Malt") == await resolve_fermentable_color_srm(test_db, "Pilsner Malt")
+        assert await resolve_fermentable_color_srm(test_db, "Pilsen Malt") is not None
+        assert await resolve_fermentable_color_srm(test_db, "Pale Ale") == 3.0
+
+    @pytest.mark.asyncio
     async def test_case_insensitive(self, test_db: AsyncSession):
         assert await resolve_fermentable_color_srm(test_db, "roasted barley") == 500
 

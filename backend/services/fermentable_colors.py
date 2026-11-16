@@ -7,12 +7,19 @@ color, the roasted contribution vanishes and a stout reads as ~3 SRM
 (Roasted Barley = 500 SRM), so we fill missing colors from it before the SRM
 calc and before serialization writes the recipe_fermentables rows.
 """
+import re
 from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Fermentable
+
+# Spellings the reference table does not use (tilt_ui-wsuu): "Pilsen Malt"
+# missed "Pilsner Malt" and left the grain colourless.
+_SPELLINGS = ((re.compile(r"\bpilsen\b", re.I), "pilsner"),)
+# Common grains with no reference row. Pale ale malt is 2.5-3.5 SRM.
+_FALLBACK_SRM = {"pale ale": 3.0, "pale ale malt": 3.0}
 
 
 async def resolve_fermentable_color_srm(
@@ -29,6 +36,8 @@ async def resolve_fermentable_color_srm(
     n = name.strip()
     if not n:
         return None
+    for wrong, right in _SPELLINGS:
+        n = wrong.sub(right, n)
 
     result = await db.execute(
         select(Fermentable)
@@ -44,6 +53,8 @@ async def resolve_fermentable_color_srm(
             .limit(1)
         )
         ref = result.scalar_one_or_none()
+    if ref is None:
+        return _FALLBACK_SRM.get(n.lower())
 
     return ref.color_srm if ref is not None and ref.color_srm is not None else None
 

@@ -128,7 +128,7 @@
 				<div class="alert-item" style="--severity-color: {getSeverityColor(alert.severity)}">
 					<div class="alert-content">
 						<div class="alert-header">
-							<span class="alert-type">{alert.alert_type.replace('_', ' ')}</span>
+							<span class="alert-type">{alert.alert_type.replaceAll('_', ' ')}</span>
 							<span class="severity-badge">
 								{alert.severity}
 							</span>

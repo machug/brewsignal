@@ -298,6 +298,15 @@ class RecipeSerializer:
         if 'yield' in ferm_dict and 'fine_grind' in ferm_dict['yield']:
             yield_val = self._extract_percent(ferm_dict['yield']['fine_grind'])
             ferm.yield_percent = yield_val * 100 if yield_val <= 1 else yield_val
+        elif isinstance(ferm_dict.get('yield'), dict) and 'potential' in ferm_dict['yield']:
+            # BeerJSON also allows yield as potential gravity (1.037 sg). The
+            # assistant writes that form; ignoring it dropped every grain's
+            # yield and the OG fell back to a default (tilt_ui-utvv). Same
+            # mapping as the editor: potential = 1 + yield% / 100 * 0.046.
+            pot = ferm_dict['yield']['potential']
+            pot = pot.get('value') if isinstance(pot, dict) else pot
+            if isinstance(pot, (int, float)) and 1.0 < pot < 1.1:
+                ferm.yield_percent = (pot - 1.0) / 0.046 * 100
 
         # Timing
         if 'timing' in ferm_dict:

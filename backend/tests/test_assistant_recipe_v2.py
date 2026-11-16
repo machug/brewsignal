@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from backend.services.llm.tools.recipe_v2 import (
     get_recipe_document,
@@ -424,3 +425,13 @@ async def test_whirlpool_hop_without_temperature_is_warned(test_db):
     hop["timing"]["temperature"] = {"value": 80, "unit": "C"}
     out = await _save(test_db, _minimal(hops=[hop]))
     assert not any("Whirlpool hop" in w for w in out["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_grain_yield_given_as_potential_is_kept(test_db):
+    """tilt_ui-utvv: yield as potential (1.037 sg) was dropped, so OG used a default."""
+    out = await _save(test_db, _minimal())
+    from backend.models import RecipeFermentable
+    rows = (await test_db.execute(select(RecipeFermentable).where(
+        RecipeFermentable.recipe_id == out["recipe_id"]))).scalars().all()
+    assert rows and abs(rows[0].yield_percent - (0.037 / 0.046 * 100)) < 0.01

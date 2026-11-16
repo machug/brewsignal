@@ -283,8 +283,13 @@
 				<!-- Predicted FG -->
 				{#if predictions.predicted_fg}
 					<div class="metric">
-						<span class="label">Predicted FG:</span>
-						<span class="value">{formatGravity(predictions.predicted_fg)}</span>
+						{#if predictions.fg_source === 'recipe'}
+							<span class="label" title="Readings do not show a slowdown yet, so this is the recipe/yeast figure">Expected FG:</span>
+							<span class="value">~{formatGravity(predictions.predicted_fg)} <span class="days">(recipe/yeast)</span></span>
+						{:else}
+							<span class="label">Predicted FG:</span>
+							<span class="value">{formatGravity(predictions.predicted_fg)}</span>
+						{/if}
 					</div>
 				{/if}
 

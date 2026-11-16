@@ -252,6 +252,8 @@ class FermentationCurveFitter:
         else:
             weight = max(result.get("confidence") or 0.0, plateau)
         result["curve_fg"] = curve_fg
+        # Mostly the recipe/yeast value, not yet a forecast from the readings.
+        result["fg_source"] = "recipe" if weight < 0.5 else "readings"
         # FG is never above the gravity already reached.
         result["predicted_fg"] = min(weight * curve_fg + (1 - weight) * prior_fg, current_sg)
         return result

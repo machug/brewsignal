@@ -144,6 +144,7 @@ export interface MLPredictions {
 	available: boolean;
 	predicted_fg?: number;
 	predicted_og?: number;
+	fg_source?: 'recipe' | 'readings';  // recipe = recipe/yeast value, not yet a forecast
 	estimated_completion?: string;
 	hours_to_completion?: number;  // Blended estimate (linear/curve blend)
 	hours_to_target_linear?: number;  // Linear extrapolation to recipe target

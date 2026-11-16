@@ -476,3 +476,12 @@ def test_seen_stop_at_the_floor_is_shown():
     sgs = [1.009 + 0.043 * np.exp(-0.05 * t) for t in times]
     out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.004, attenuation=(72.0, 78.0))
     assert out["fitted"] and abs(out["predicted_fg"] - 1.009) < 0.001
+
+
+def test_fg_source_says_recipe_until_the_readings_decide():
+    times = [h * 0.5 for h in range(120)]
+    early = FermentationCurveFitter().fit(times, [1.0526 - 0.00045 * t for t in times], expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert early["fg_source"] == "recipe"
+    times = [float(h) for h in range(200)]
+    late = FermentationCurveFitter().fit(times, [1.022 + 0.030 * np.exp(-0.05 * t) for t in times], expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert late["fg_source"] == "readings"

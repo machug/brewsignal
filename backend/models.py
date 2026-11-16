@@ -2390,6 +2390,7 @@ class BatchPredictionsResponse(BaseModel):
     available: bool
     predicted_fg: Optional[float] = None
     predicted_og: Optional[float] = None
+    fg_source: Optional[str] = None  # "recipe" (recipe/yeast value) or "readings" (tilt_ui-hcly)
     estimated_completion: Optional[str] = None
     hours_to_completion: Optional[float] = None
     model_type: Optional[str] = None

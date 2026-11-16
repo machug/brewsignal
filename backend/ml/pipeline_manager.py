@@ -234,6 +234,7 @@ class MLPipelineManager:
             "available": True,
             "predicted_fg": predictions.get("predicted_fg"),
             "predicted_og": predictions.get("predicted_og"),
+            "fg_source": predictions.get("fg_source", "readings"),
             "estimated_completion": completion.isoformat() if completion else None,
             "hours_to_completion": hours,
             "hours_to_target_linear": predictions.get("hours_to_target_linear"),

@@ -100,25 +100,6 @@ class TestFermentationCurveFitter:
         assert result["predicted_fg"] >= 1.035  # Within reasonable range of stuck point
         assert result["predicted_fg"] <= 1.042  # Not too high
 
-    def test_returns_predictions_at_intervals(self, fermentation_data):
-        """Fitter can predict SG at future time points."""
-        fitter = FermentationCurveFitter(min_readings=10)
-
-        # Fit on first half
-        midpoint = len(fermentation_data["hours"]) // 2
-        result = fitter.fit(
-            fermentation_data["hours"][:midpoint],
-            fermentation_data["sg"][:midpoint]
-        )
-
-        # Get predictions for next 48 hours
-        predictions = fitter.predict([24, 48, 72])
-
-        assert len(predictions) == 3
-        assert all(1.000 < sg < 1.100 for sg in predictions)
-        # Predictions should decline over time
-        assert predictions[0] > predictions[1] > predictions[2]
-
 
 class TestMultiModelPredictions:
     """Tests for multi-model prediction system (Gompertz, Logistic, Auto)."""

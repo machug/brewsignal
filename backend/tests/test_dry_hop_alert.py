@@ -92,3 +92,23 @@ async def test_endpoint_sets_done_and_clears_alert(client, test_db):
 @pytest.mark.asyncio
 async def test_endpoint_404_missing(client):
     assert (await client.post("/api/batches/9999/dry-hop-done")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dismiss_all_keeps_the_dry_hop_reminder(test_db):
+    from backend.routers.batches import dismiss_all_alerts
+    from backend.models import FermentationAlert
+    from backend.services.alert_service import AlertType
+    from datetime import datetime, timezone
+    batch = Batch(name="DH", status="fermenting")
+    test_db.add(batch)
+    await test_db.flush()
+    now = datetime.now(timezone.utc)
+    for t in (AlertType.DRY_HOP_DUE, AlertType.STALL):
+        test_db.add(FermentationAlert(batch_id=batch.id, alert_type=t, severity="warning", message=t,
+                                      first_detected_at=now, last_seen_at=now))
+    await test_db.flush()
+    await dismiss_all_alerts(batch.id, test_db)
+    left = (await test_db.execute(select(FermentationAlert.alert_type).where(
+        FermentationAlert.batch_id == batch.id, FermentationAlert.cleared_at.is_(None)))).scalars().all()
+    assert left == [AlertType.DRY_HOP_DUE]

@@ -148,6 +148,7 @@
 							</span>
 						</div>
 					</div>
+					{#if alert.alert_type !== 'dry_hop_due'}
 					<button
 						type="button"
 						class="dismiss-btn"
@@ -163,6 +164,7 @@
 							</svg>
 						{/if}
 					</button>
+					{/if}
 				</div>
 			{/each}
 		</div>

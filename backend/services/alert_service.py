@@ -409,7 +409,9 @@ async def _dry_hop_alert(
     ]
     if not hops:
         return None
-    names = ", ".join(f"{h.name} {h.amount_grams:g} g" for h in hops)
+    def dose(h) -> str:  # liquid extracts are dosed by volume
+        return f"{h.amount_ml:g} mL" if not h.amount_grams and h.amount_ml else f"{h.amount_grams:g} g"
+    names = ", ".join(f"{h.name} {dose(h)}" for h in hops)
     return await _upsert_alert(
         db=db,
         batch_id=batch_id,
@@ -420,7 +422,7 @@ async def _dry_hop_alert(
         context=json.dumps({
             "trigger_sg": trigger,
             "sg": current_sg,
-            "hops": [{"name": h.name, "amount_grams": h.amount_grams} for h in hops],
+            "hops": [{"name": h.name, "amount_grams": h.amount_grams, "amount_ml": h.amount_ml} for h in hops],
         }),
         trigger_reading_id=reading.id,
         now=now,

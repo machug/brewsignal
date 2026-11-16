@@ -20,6 +20,7 @@
 		onOverride: (deviceType: 'heater' | 'cooler', state: 'on' | 'off' | null) => void;
 		onClearOverrides: () => void;
 		onTempControlToggle: () => void;
+		onBatchUpdate?: (batch: BatchResponse) => void;
 	}
 
 	let {
@@ -33,11 +34,10 @@
 		onOverride,
 		onClearOverrides,
 		onTempControlToggle,
+		onBatchUpdate,
 	}: Props = $props();
 
-	// Set by the alerts card when the dry hop is marked done; else what the batch says
-	let dryHopDoneNow = $state<string | null>(null);
-	let dryHopDoneAt = $derived(dryHopDoneNow ?? batch.dry_hop_done_at ?? null);
+	let dryHopDoneAt = $derived(batch.dry_hop_done_at ?? null);
 
 	let tempUnit = $derived(getTempUnit());
 
@@ -96,7 +96,7 @@
 	<div class="info-section">
 		<!-- Active Alerts Card (only show during fermentation/conditioning) -->
 		{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
-			<BatchAlertsCard batchId={batch.id} onDryHopDone={(b) => (dryHopDoneNow = b.dry_hop_done_at ?? null)} />
+			<BatchAlertsCard batchId={batch.id} onDryHopDone={(b) => onBatchUpdate?.(b)} />
 		{#if dryHopDoneAt}
 			<p class="dry-hop-done">Dry hopped {formatWhen(dryHopDoneAt)}</p>
 		{/if}

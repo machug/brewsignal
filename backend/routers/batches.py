@@ -1119,10 +1119,14 @@ async def dismiss_all_alerts(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    from ..services.alert_service import AlertType
+
     # Get all active alerts for this batch
     query = select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
-        FermentationAlert.cleared_at.is_(None)
+        FermentationAlert.cleared_at.is_(None),
+        # The dry hop reminder clears only when marked done (tilt_ui-n1w7)
+        FermentationAlert.alert_type != AlertType.DRY_HOP_DUE,
     )
     result = await db.execute(query)
     alerts = result.scalars().all()

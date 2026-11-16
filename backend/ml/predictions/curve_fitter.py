@@ -239,17 +239,17 @@ class FermentationCurveFitter:
         the shown FG stays near the recipe/yeast value. Once the drop has
         clearly slowed the curve is trusted alone, so a batch that stops
         high (a stall) shows where it stopped, not the recipe FG. A curve
-        pinned at the floor carries no information, so the prior is shown.
+        pinned at the floor is used only once the stop is seen.
         """
         if not result.get("fitted") or prior_fg is None:
             return result
         curve_fg = result["predicted_fg"]
         current_sg = float(sgs_arr[-1])
+        # Slowed by 50% -> no extra trust; by 90% or more -> curve alone.
+        plateau = float(np.clip((self._slowdown(times_arr, sgs_arr) - 0.5) / 0.4, 0.0, 1.0))
         if curve_fg <= fg_lower + 0.001:
-            weight = 0.0
+            weight = plateau  # pinned: only a seen stop makes the curve FG real
         else:
-            # Slowed by 50% -> no extra trust; by 90% or more -> curve alone.
-            plateau = float(np.clip((self._slowdown(times_arr, sgs_arr) - 0.5) / 0.4, 0.0, 1.0))
             weight = max(result.get("confidence") or 0.0, plateau)
         result["curve_fg"] = curve_fg
         # FG is never above the gravity already reached.

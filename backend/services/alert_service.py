@@ -18,7 +18,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models import Batch, FermentationAlert, Reading, Recipe
+from backend.models import Batch, FermentationAlert, Reading, Recipe, RecipeHop
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +41,16 @@ class AlertType:
     SENSOR_OFFLINE = "sensor_offline"
     BATTERY_LOW = "battery_low"
     TEMP_RUNAWAY = "temp_runaway"
+    # Reminder: gravity reached the dry hop point (tilt_ui-n1w7)
+    DRY_HOP_DUE = "dry_hop_due"
 
 
 # Stall rule thresholds (tilt_ui-zbhm; tuned on synthetic curves, re-tune on real batches)
 STALL_MAX_SLOPE = 2.5e-5  # SG/hour, i.e. 0.6 gravity points/day
 STALL_MIN_DROP = 0.004  # must have fermented 4 points first
 STALL_FG_MARGIN = 0.004  # and still be 4 points above expected FG
+
+DRY_HOP_DEFAULT_PERCENT = 65.0  # of the way from OG to expected FG, when the batch sets no gravity
 
 # Sensing alert thresholds (tilt_ui-lgtu; from sensing-anomaly.md, not yet
 # exercised on a real batch - re-tune with tilt_ui-xrq5.7)
@@ -361,7 +365,66 @@ async def detect_and_persist_alerts(
     else:
         await _clear_alert(db, batch_id, AlertType.STALL, now)
 
+    alert = await _dry_hop_alert(db, batch_id, device_id, reading, current_sg, og, fg, now)
+    if alert:
+        current_alerts.append(alert)
+
     return current_alerts
+
+
+async def _dry_hop_alert(
+    db: AsyncSession,
+    batch_id: int,
+    device_id: str,
+    reading: Reading,
+    current_sg: Optional[float],
+    og: Optional[float],
+    fg: Optional[float],
+    now: datetime,
+) -> Optional[FermentationAlert]:
+    """Dry hop reminder (tilt_ui-n1w7). Once raised it stays until marked done:
+    it is only raised or refreshed here, never cleared by gravity noise."""
+    from backend.temp_controller import rest_trigger_sg  # temp_controller imports this module
+
+    row = (await db.execute(
+        select(Batch.status, Batch.recipe_id, Batch.dry_hop_trigger_sg, Batch.dry_hop_done_at)
+        .where(Batch.id == batch_id)
+    )).one_or_none()
+    if row is None or row.status != "fermenting" or row.dry_hop_done_at is not None:
+        await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)
+        return None
+    if current_sg is None or row.recipe_id is None:
+        return None
+    trigger = row.dry_hop_trigger_sg or rest_trigger_sg(og, fg, DRY_HOP_DEFAULT_PERCENT)
+    if trigger is None or current_sg > trigger:
+        # Not (or no longer) at the trigger: keep an alert that is already up.
+        return (await db.execute(select(FermentationAlert).where(
+            FermentationAlert.batch_id == batch_id,
+            FermentationAlert.alert_type == AlertType.DRY_HOP_DUE,
+            FermentationAlert.cleared_at.is_(None),
+        ))).scalar_one_or_none()
+    hops = [
+        h for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == row.recipe_id))).scalars()
+        if (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
+    ]
+    if not hops:
+        return None
+    names = ", ".join(f"{h.name} {h.amount_grams:g} g" for h in hops)
+    return await _upsert_alert(
+        db=db,
+        batch_id=batch_id,
+        device_id=device_id,
+        alert_type=AlertType.DRY_HOP_DUE,
+        severity=AlertSeverity.WARNING,
+        message=f"Dry hop now: {names} (gravity {current_sg:.3f}, planned at {trigger:.3f})",
+        context=json.dumps({
+            "trigger_sg": trigger,
+            "sg": current_sg,
+            "hops": [{"name": h.name, "amount_grams": h.amount_grams} for h in hops],
+        }),
+        trigger_reading_id=reading.id,
+        now=now,
+    )
 
 
 async def _upsert_alert(

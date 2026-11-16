@@ -35,6 +35,10 @@
 		onTempControlToggle,
 	}: Props = $props();
 
+	// Set by the alerts card when the dry hop is marked done; else what the batch says
+	let dryHopDoneNow = $state<string | null>(null);
+	let dryHopDoneAt = $derived(dryHopDoneNow ?? batch.dry_hop_done_at ?? null);
+
 	let tempUnit = $derived(getTempUnit());
 
 	function formatTempValue(value?: number | null): string {
@@ -92,7 +96,10 @@
 	<div class="info-section">
 		<!-- Active Alerts Card (only show during fermentation/conditioning) -->
 		{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
-			<BatchAlertsCard batchId={batch.id} />
+			<BatchAlertsCard batchId={batch.id} onDryHopDone={(b) => (dryHopDoneNow = b.dry_hop_done_at ?? null)} />
+		{#if dryHopDoneAt}
+			<p class="dry-hop-done">Dry hopped {formatWhen(dryHopDoneAt)}</p>
+		{/if}
 		{/if}
 
 		<!-- ML Predictions Panel -->
@@ -295,6 +302,10 @@
 {/if}
 
 <style>
+	.dry-hop-done {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
 	.num,
 	.detail-value,
 	.chip-state {

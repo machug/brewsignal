@@ -88,6 +88,8 @@
 	// What the form showed at open. An untouched rule is not sent back, so display
 	// rounding (Fahrenheit, 1 decimal) cannot change it or arm a finished rule again.
 	const restShownAtOpen = batch?.rest_trigger_percent != null ? `${restPercent}|${restTemp}` : null;
+	// Dry hop reminder (tilt_ui-n1w7). Empty = default (65% of the way from OG to FG).
+	let dryHopSg = $state(batch?.dry_hop_trigger_sg?.toString() ?? '');
 	let restTempMin = $derived(configState.config.temp_units === 'C' ? 5.5 : 42);
 
 	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
@@ -242,6 +244,8 @@
 					data.rest_temp_target = restC;
 				}
 			}
+			if (dryHopSg !== '') data.dry_hop_trigger_sg = parseFloat(dryHopSg);
+			else if (isEditMode) data.dry_hop_trigger_sg = null;
 			if ((heaterEntityId || coolerEntityId) && data.temp_target === undefined && (!legacyNoTarget || restEnabled)) {
 				throw new Error('Set a target temperature. Without one the heater and cooler are not controlled.');
 			}
@@ -595,6 +599,12 @@
 				{/if}
 			{/if}
 		{/if}
+
+		<div class="form-group">
+			<label class="form-label" for="dryHopSg">Dry hop at gravity</label>
+			<input type="number" id="dryHopSg" class="form-input" bind:value={dryHopSg} step="0.001" min="1.001" max="1.199" placeholder="Default: 65% of the way from OG to FG" />
+			<span class="form-hint">Fermenting batches with dry hops in the recipe get a reminder at this gravity (SG).</span>
+		</div>
 
 		<!-- Notes -->
 		<div class="form-group">

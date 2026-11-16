@@ -45,8 +45,10 @@ async def test_jasper_v2_roundtrip(test_db):
 
     assert doc["brewsignal_version"] == "2.0"
     r = doc["recipe"]
-    assert r["original_gravity"] == {"value": 1.067, "unit": "sg"}
-    assert r["final_gravity"] == {"value": 1.018, "unit": "sg"}
+    assert recipe.target_og == 1.067 and recipe.target_fg == 1.018
+    # exporter still reads og/fg (now calculated) until Task 4
+    assert r["original_gravity"] == {"value": recipe.og, "unit": "sg"}
+    assert r["final_gravity"] == {"value": recipe.fg, "unit": "sg"}
     assert r["batch_size"] == {"value": 19.0, "unit": "l"}
     assert r["boil"]["pre_boil_size"] == {"value": 26.0, "unit": "l"}
     assert len(r["ingredients"]["fermentable_additions"]) == 3

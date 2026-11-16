@@ -356,10 +356,3 @@ def calculate_recipe_stats(recipe: "Recipe") -> CalculatedStats | None:
         assumptions=tuple(notes),
     )
 
-
-def write_legacy_stats(recipe: "Recipe", stats: CalculatedStats | None) -> None:
-    """Copy stats into the stored recipe.og/fg/abv/ibu/color_srm columns (until Task 5)."""
-    if stats is None:
-        return
-    recipe.og, recipe.fg, recipe.abv = stats.og, stats.fg, stats.abv
-    recipe.ibu, recipe.color_srm = stats.ibu, stats.srm

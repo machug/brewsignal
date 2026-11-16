@@ -21,12 +21,16 @@ from ..models import (
     RecipeWaterAdjustment, WaterAdjustmentInput, WaterAdjustmentResponse,
     RecipeWaterProfile, WaterProfileInput, WaterProfileResponse,
     RecipeFermentationStep, FermentationStepInput, FermentationStepResponse,
+    RecipeFermentable, RecipeHop, RecipeDraftCalculateRequest, CalculatedStatsResponse,
 )
 from ..services.brewsignal_format import BrewSignalRecipe, BeerJSONToBrewSignalConverter
-from ..services.brewing import calculate_og_from_fermentables, calculate_recipe_stats, write_legacy_stats
+from ..services.brewing import calculate_recipe_stats
 from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, to_strict_beerjson
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
-from ..services.recipe_ingredients import hydrate_recipe_ingredients
+from ..services.recipe_ingredients import hydrate_recipe_ingredients, _potential_to_yield
+from ..services.recipe_stats import (
+    fill_legacy_columns, recipe_with_ingredients_stmt, to_recipe_detail_response, to_recipe_response,
+)
 from ..services.recipe_validation import validate_recipe_constraints
 from ..services.style_resolver import resolve_style_id
 
@@ -268,15 +272,45 @@ async def list_recipes(
 ):
     """List all recipes owned by the current user."""
     query = (
-        select(Recipe)
-        .options(selectinload(Recipe.style), selectinload(Recipe.fermentables))
+        recipe_with_ingredients_stmt()
         .where(user_owns_recipe(user))
         .order_by(Recipe.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
     result = await db.execute(query)
-    return result.scalars().all()
+    return [to_recipe_response(r) for r in result.scalars().all()]
+
+
+@router.post("/calculate", response_model=Optional[CalculatedStatsResponse])
+async def calculate_draft(draft: RecipeDraftCalculateRequest):
+    """Calculate stats for unsaved ingredients (the editor's live numbers).
+
+    Same calculator as saved recipes; null when there are no fermentables.
+    """
+    recipe = Recipe(
+        name="draft",
+        batch_size_liters=draft.batch_size_liters,
+        efficiency_percent=draft.efficiency_percent,
+        yeast_attenuation=draft.yeast_attenuation,
+    )
+    recipe.fermentables = [
+        RecipeFermentable(
+            name=f.name, type=f.type, amount_kg=f.amount_kg, color_srm=f.color_srm,
+            yield_percent=f.yield_percent or _potential_to_yield(f.potential_sg),
+        )
+        for f in draft.fermentables
+    ]
+    recipe.hops = [
+        RecipeHop(
+            name=h.name, amount_grams=h.amount_grams, alpha_acid_percent=h.alpha_acid_percent,
+            form=h.form, is_extract=h.is_extract, timing=h.timing,
+        )
+        for h in draft.hops
+    ]
+    recipe.cultures = [RecipeCulture(name="draft", **c.model_dump()) for c in draft.cultures]
+    stats = calculate_recipe_stats(recipe)
+    return CalculatedStatsResponse(**stats.to_dict()) if stats else None
 
 
 @router.post("/validate", response_model=RecipeValidationResponse)
@@ -340,7 +374,7 @@ async def get_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific recipe by ID with all ingredients."""
-    return await get_user_recipe(recipe_id, user, db)
+    return to_recipe_detail_response(await get_user_recipe(recipe_id, user, db))
 
 
 async def _load_recipe_for_export(
@@ -505,11 +539,6 @@ async def create_recipe(
         author=recipe.author,
         style_id=resolved_style_id,
         type=recipe.type,
-        og=recipe.og,
-        fg=recipe.fg,
-        abv=recipe.abv,
-        ibu=recipe.ibu,
-        color_srm=recipe.color_srm,
         batch_size_liters=recipe.batch_size_liters,
         boil_size_l=recipe.boil_size_l,
         boil_time_minutes=recipe.boil_time_minutes,
@@ -532,20 +561,13 @@ async def create_recipe(
     # lookup's SELECT would otherwise autoflush the pending row to persistent,
     # and the subsequent collection .append would lazy-load and raise
     # MissingGreenlet. Children cascade-insert when the parent is added+flushed.
-    rebuilt = await hydrate_recipe_ingredients(
+    await hydrate_recipe_ingredients(
         db, db_recipe, recipe.format_extensions
     )
-    if rebuilt and db_recipe.fermentables:
-        # The grain bill now carries real colors — recompute color_srm so the
-        # card matches reality even when the editor sent a pale default. Use
-        # the fermentables-only calc to avoid touching cultures/hops.
-        _eff = db_recipe.efficiency_percent or 75
-        _, _color = calculate_og_from_fermentables(
-            db_recipe.fermentables,
-            db_recipe.batch_size_liters or 20,
-            _eff / 100 if _eff > 1 else _eff,
-        )
-        db_recipe.color_srm = round(_color, 1)
+    # Stats are always worked out from the ingredients; client values are ignored.
+    # Done while still transient: cultures are not created yet, which gives the
+    # same attenuation (recipe.yeast_attenuation) as the culture added below.
+    fill_legacy_columns(db_recipe)
 
     db.add(db_recipe)
     await db.flush()  # Get recipe ID without committing
@@ -566,12 +588,8 @@ async def create_recipe(
 
     await db.commit()
     # Re-query with eager loading for response serialization
-    result = await db.execute(
-        select(Recipe)
-        .options(selectinload(Recipe.style), selectinload(Recipe.fermentables))
-        .where(Recipe.id == db_recipe.id)
-    )
-    return result.scalar_one()
+    result = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == db_recipe.id))
+    return to_recipe_response(result.scalar_one())
 
 
 @router.post("/import", response_model=RecipeResponse, status_code=201)
@@ -659,53 +677,22 @@ async def import_recipe(
     await db.commit()
 
     # Reload recipe with all relationships for response
-    stmt = (
-        select(Recipe)
-        .where(Recipe.id == result.recipe.id)
-        .options(
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-            selectinload(Recipe.miscs),
-            selectinload(Recipe.mash_steps),
-            selectinload(Recipe.fermentation_steps),
-            selectinload(Recipe.water_profiles),
-            selectinload(Recipe.water_adjustments),
-            selectinload(Recipe.style)
-        )
-    )
-    result_obj = await db.execute(stmt)
-    recipe = result_obj.scalar_one()
-
-    return recipe
+    result_obj = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == result.recipe.id))
+    return to_recipe_response(result_obj.scalar_one())
 
 
 @router.put("/{recipe_id}", response_model=RecipeResponse)
 async def update_recipe(
     recipe_id: int,
     recipe_update: RecipeUpdate,
-    recalculate: bool = Query(
-        False,
-        description=(
-            "If true, server recomputes og/fg/abv/ibu/color_srm from "
-            "ingredients and overwrites those fields on save. Default false "
-            "preserves brewer-declared targets from imported recipes."
-        ),
-    ),
     user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing recipe."""
+    """Update an existing recipe. OG/FG/ABV/IBU/colour are always worked out from
+    the ingredients; values sent for them are ignored."""
     # Fetch existing recipe with ingredients and ownership check
     result = await db.execute(
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-        )
-        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+        recipe_with_ingredients_stmt().where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     existing_recipe = result.scalar_one_or_none()
 
@@ -717,6 +704,8 @@ async def update_recipe(
     # styles.id below when the client didn't explicitly send a non-null
     # style_id.
     update_data = recipe_update.model_dump(exclude_unset=True)
+    for stat in ("og", "fg", "abv", "ibu", "color_srm"):
+        update_data.pop(stat, None)
     style_in_payload = "style" in update_data
     style_free_text = update_data.pop("style", None)
     # A non-null style_id from the client is authoritative. style_id=null
@@ -738,27 +727,11 @@ async def update_recipe(
     # format_extensions cache so recipe_hops / recipe_fermentables remain the
     # source of truth on UI edits (tilt_ui-9y7 / tilt_ui-hfi).
     if "format_extensions" in update_data:
-        rebuilt = await hydrate_recipe_ingredients(
+        await hydrate_recipe_ingredients(
             db, existing_recipe, update_data["format_extensions"]
         )
-        # Recompute color_srm from the now-colored grain bill so the card is
-        # correct, but only when full recalculation isn't already running
-        # below — that preserves brewer-declared OG/FG/IBU targets (tilt_ui-5no).
-        if rebuilt and existing_recipe.fermentables and not recalculate:
-            _eff = existing_recipe.efficiency_percent or 75
-            _, _color = calculate_og_from_fermentables(
-                existing_recipe.fermentables,
-                existing_recipe.batch_size_liters or 20,
-                _eff / 100 if _eff > 1 else _eff,
-            )
-            existing_recipe.color_srm = round(_color, 1)
 
-    # Recalculation is opt-in via ?recalculate=true. Without this gate,
-    # imported recipes lose brewer-declared OG/FG/ABV/IBU/SRM targets on
-    # any subsequent PUT (tilt_ui-5no).
-    if recalculate and (existing_recipe.fermentables or existing_recipe.hops):
-        stats = calculate_recipe_stats(existing_recipe)
-        write_legacy_stats(existing_recipe, stats)
+    fill_legacy_columns(existing_recipe)
 
     # Validate the final values
     validate_recipe_constraints(
@@ -775,17 +748,8 @@ async def update_recipe(
     # re-query's selectinload actually reloads them.
     db.expire(existing_recipe, ["style", "fermentables", "hops", "cultures"])
     # Re-query with eager loading for response serialization
-    result = await db.execute(
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-        )
-        .where(Recipe.id == existing_recipe.id)
-    )
-    return result.scalar_one()
+    result = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == existing_recipe.id))
+    return to_recipe_response(result.scalar_one())
 
 
 @router.post("/{recipe_id}/recalculate", response_model=RecipeResponse)
@@ -799,14 +763,7 @@ async def recalculate_recipe_stats(
     Use this to update existing recipes with server-side calculated statistics.
     """
     result = await db.execute(
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-        )
-        .where(Recipe.id == recipe_id, user_owns_recipe(user))
+        recipe_with_ingredients_stmt().where(Recipe.id == recipe_id, user_owns_recipe(user))
     )
     recipe = result.scalar_one_or_none()
 
@@ -819,27 +776,17 @@ async def recalculate_recipe_stats(
             detail="Recipe has no ingredients to calculate from"
         )
 
-    stats = calculate_recipe_stats(recipe)
-    if stats is None:
+    if calculate_recipe_stats(recipe) is None:
         raise HTTPException(
             status_code=400,
             detail="Recipe has no fermentables to calculate from"
         )
-    write_legacy_stats(recipe, stats)
+    fill_legacy_columns(recipe)
 
     await db.commit()
     # Re-query with eager loading for response serialization
-    result = await db.execute(
-        select(Recipe)
-        .options(
-            selectinload(Recipe.style),
-            selectinload(Recipe.fermentables),
-            selectinload(Recipe.hops),
-            selectinload(Recipe.cultures),
-        )
-        .where(Recipe.id == recipe.id)
-    )
-    return result.scalar_one()
+    result = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == recipe.id))
+    return to_recipe_response(result.scalar_one())
 
 
 class AssistantPreviewRequest(BaseModel):
@@ -984,14 +931,12 @@ async def scale_recipe_endpoint(
 
     scale_recipe(recipe, request.target_batch_size_liters)
 
-    if recipe.fermentables or recipe.hops:
-        stats = calculate_recipe_stats(recipe)
-        write_legacy_stats(recipe, stats)
+    fill_legacy_columns(recipe)
 
     if request.dry_run:
         # Serialize the preview BEFORE rolling back — rollback expires the
         # ORM objects, so the response must already be a plain Pydantic model.
-        preview = RecipeDetailResponse.model_validate(recipe)
+        preview = to_recipe_detail_response(recipe)
         await db.rollback()
         return preview
 
@@ -999,7 +944,7 @@ async def scale_recipe_endpoint(
     result = await db.execute(
         select(Recipe).options(*detail_options).where(Recipe.id == recipe.id)
     )
-    return result.scalar_one()
+    return to_recipe_detail_response(result.scalar_one())
 
 
 @router.delete("/{recipe_id}")

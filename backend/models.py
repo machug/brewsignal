@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
+from pydantic import BaseModel, ConfigDict, field_validator, field_serializer, model_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1911,7 +1911,35 @@ class MiscInput(BaseModel):
     notes: Optional[str] = None
 
 
-class RecipeResponse(BaseModel):
+class CalculatedStatsResponse(BaseModel):
+    """Stats worked out from the ingredients (services.brewing.CalculatedStats)."""
+    og: float
+    fg: float
+    abv: float
+    ibu: float
+    srm: float
+    bu_gu: float
+    calories_per_330ml: int
+    color_hex: str
+    assumptions: list[str] = []
+
+
+class _HasCalculated(BaseModel):
+    """Fills `calculated` when validated from a Recipe row (ingredients must be loaded)."""
+    calculated: Optional[CalculatedStatsResponse] = None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _fill_calculated(cls, data, handler):
+        model = handler(data)
+        if isinstance(data, Recipe):
+            from .services.brewing import calculate_recipe_stats
+            stats = calculate_recipe_stats(data)
+            model.calculated = CalculatedStatsResponse(**stats.to_dict()) if stats else None
+        return model
+
+
+class RecipeResponse(_HasCalculated):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -2100,7 +2128,7 @@ class WaterAdjustmentResponse(BaseModel):
     acid_concentration_percent: Optional[float] = None
 
 
-class RecipeDetailResponse(BaseModel):
+class RecipeDetailResponse(_HasCalculated):
     """Full recipe with all ingredients."""
     model_config = ConfigDict(from_attributes=True)
 
@@ -2154,6 +2182,39 @@ class RecipeDetailResponse(BaseModel):
     @field_serializer('created_at')
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_datetime_to_utc(dt)
+
+
+class _DraftFermentable(BaseModel):
+    name: str = ""
+    amount_kg: float = 0
+    yield_percent: Optional[float] = None
+    potential_sg: Optional[float] = None
+    color_srm: Optional[float] = None
+    type: Optional[str] = None
+
+
+class _DraftHop(BaseModel):
+    name: str = ""
+    amount_grams: float = 0
+    alpha_acid_percent: Optional[float] = None
+    form: Optional[str] = None
+    is_extract: bool = False
+    timing: Optional[Dict[str, Any]] = None
+
+
+class _DraftCulture(BaseModel):
+    attenuation_min_percent: Optional[float] = None
+    attenuation_max_percent: Optional[float] = None
+
+
+class RecipeDraftCalculateRequest(BaseModel):
+    """Unsaved recipe ingredients for POST /api/recipes/calculate."""
+    batch_size_liters: Optional[float] = None
+    efficiency_percent: Optional[float] = None
+    yeast_attenuation: Optional[float] = None
+    fermentables: list[_DraftFermentable] = []
+    hops: list[_DraftHop] = []
+    cultures: list[_DraftCulture] = []
 
 
 class _RestRuleFields(BaseModel):

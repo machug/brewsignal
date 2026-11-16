@@ -146,7 +146,7 @@ async def test_import_beerjson_success(db_session):
     assert len(result.errors) == 0
     assert result.recipe is not None
     assert result.recipe.name == "Test Recipe"
-    assert result.recipe.og == pytest.approx(1.050)
+    assert result.recipe.target_og == pytest.approx(1.050)  # declared; og is calculated
 
 
 @pytest.mark.asyncio

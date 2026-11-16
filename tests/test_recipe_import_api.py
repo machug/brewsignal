@@ -111,7 +111,7 @@ async def test_import_beerjson_via_api():
 
     assert "id" in data
     assert data["name"] == "API Test Recipe"
-    assert data["og"] == pytest.approx(1.050)
+    assert data["target_og"] == pytest.approx(1.050)  # declared; og is calculated
 
 
 @pytest.mark.asyncio

@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.models import Recipe
-from backend.services.brewing import calculate_recipe_stats
+from backend.services.recipe_stats import fill_legacy_columns
 from backend.services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter
 from backend.services.fermentable_colors import resolve_fermentable_color_srm
 from backend.services.importers.recipe_importer import RecipeImporter
@@ -269,9 +269,7 @@ async def _import(db: AsyncSession, document: dict[str, Any]) -> tuple[Optional[
     for ferm in recipe.fermentables:
         if ferm.color_srm is None:
             ferm.color_srm = await resolve_fermentable_color_srm(db, ferm.name)
-    stats = calculate_recipe_stats(recipe)
-    recipe.og, recipe.fg, recipe.abv = (stats.og, stats.fg, stats.abv) if stats else (None, None, None)
-    recipe.ibu, recipe.color_srm = (stats.ibu, stats.srm) if stats else (None, None)
+    fill_legacy_columns(recipe)
     return recipe, []
 
 

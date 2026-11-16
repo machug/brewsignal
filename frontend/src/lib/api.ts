@@ -332,20 +332,30 @@ export interface WaterAdjustmentResponse {
 	acid_concentration_percent?: number;
 }
 
+// Stats worked out by the server from the ingredients (the only calculator).
+// `assumptions` are plain-English defaults it had to use.
+export interface CalculatedStats {
+	og: number;
+	fg: number;
+	abv: number;
+	ibu: number;
+	srm: number;
+	bu_gu: number;
+	calories_per_330ml: number;
+	color_hex: string;
+	assumptions: string[];
+}
+
 export interface RecipeResponse {
 	id: number;
 	name: string;
 	author?: string;
 	style_id?: string;
 	type?: string;
-	// BeerJSON field names (not *_target)
-	og?: number;
-	fg?: number;
-	abv?: number;
-	ibu?: number;
-	color_srm?: number;
+	// Server-calculated stats; null when the recipe has no fermentables.
+	// Read these through effectiveStats() in $lib/recipeStats.
+	calculated?: CalculatedStats | null;
 	// Brewer-declared targets from imported recipes (tilt_ui-ak6).
-	// Mirror og/fg/... at import; never overwritten by recalculation.
 	target_og?: number;
 	target_fg?: number;
 	target_abv?: number;
@@ -641,6 +651,13 @@ export interface BatchResponse {
 	measured_fg?: number;
 	measured_abv?: number;
 	measured_attenuation?: number;
+	// Expected stats snapshot, set only once the batch is fermenting or later.
+	// Read through batchExpected() in $lib/recipeStats.
+	expected_og?: number | null;
+	expected_fg?: number | null;
+	expected_abv?: number | null;
+	expected_ibu?: number | null;
+	expected_srm?: number | null;
 	// Brew day observations
 	actual_mash_temp?: number;
 	actual_mash_ph?: number;
@@ -1133,11 +1150,6 @@ export interface RecipeCreate {
 	style_id?: string | null;
 	style?: string | null;
 	type?: string;
-	og?: number;
-	fg?: number;
-	abv?: number;
-	ibu?: number;
-	color_srm?: number;
 	batch_size_liters?: number;
 	boil_time_minutes?: number;
 	efficiency_percent?: number;
@@ -1158,11 +1170,6 @@ export interface RecipeUpdateData {
 	style_id?: string | null;
 	style?: string | null;
 	type?: string;
-	og?: number;
-	fg?: number;
-	abv?: number;
-	ibu?: number;
-	color_srm?: number;
 	batch_size_liters?: number;
 	boil_time_minutes?: number;
 	efficiency_percent?: number;
@@ -1175,6 +1182,54 @@ export interface RecipeUpdateData {
 	yeast_attenuation?: number;
 	notes?: string;
 	format_extensions?: Record<string, any>;
+}
+
+// Unsaved ingredients for POST /recipes/calculate (field names as in
+// backend RecipeDraftCalculateRequest).
+export interface RecipeDraft {
+	batch_size_liters?: number;
+	efficiency_percent?: number;
+	yeast_attenuation?: number;
+	fermentables: {
+		name: string;
+		amount_kg: number;
+		yield_percent?: number;
+		potential_sg?: number;
+		color_srm?: number;
+		type?: string;
+	}[];
+	hops: {
+		name: string;
+		amount_grams: number;
+		alpha_acid_percent?: number;
+		form?: string;
+		is_extract?: boolean;
+		timing: {
+			use: string;
+			duration?: { value: number; unit: string };
+			temperature?: { value: number; unit: string };
+		};
+	}[];
+	cultures: { attenuation_min_percent?: number; attenuation_max_percent?: number }[];
+}
+
+/** Server-side stats for an unsaved recipe. Null when it has no fermentables. */
+export async function calculateRecipeDraft(
+	draft: RecipeDraft,
+	signal?: AbortSignal
+): Promise<CalculatedStats | null> {
+	const response = await authFetch(`${BASE_URL}/recipes/calculate`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(draft),
+		signal
+	});
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ detail: response.statusText }));
+		const detail = Array.isArray(error.detail) ? error.detail.map((d: { msg?: string }) => d.msg ?? d).join('; ') : error.detail;
+		throw new Error(detail || 'Failed to calculate recipe');
+	}
+	return response.json();
 }
 
 export async function createRecipe(recipe: RecipeCreate): Promise<RecipeResponse> {

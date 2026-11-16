@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import type { HopVarietyResponse } from '$lib/api';
+	import type { CalculatedStats, HopVarietyResponse } from '$lib/api';
 	import { fetchHopVarieties, fetchHopOrigins } from '$lib/api';
-	import { calculateIBU_Tinseth, calculateTotalIBU, calculateBUGU, describeBUGU, type Hop } from '$lib/brewing';
+	import { describeBUGU } from '$lib/brewing';
 	import { EXTRACT_USE_ALLOWLIST, type HopUse, type HopForm } from './hop-types';
 	import type { RecipeHop } from './RecipeBuilder.svelte';
 
@@ -35,12 +35,12 @@
 
 	interface Props {
 		hops: RecipeHop[];
-		og?: number;
-		batchSizeLiters?: number;
+		// Server-calculated totals for the whole recipe (null until known)
+		calculated?: CalculatedStats | null;
 		onUpdate: (hops: RecipeHop[]) => void;
 	}
 
-	let { hops, og = 1.050, batchSizeLiters = 20, onUpdate }: Props = $props();
+	let { hops, calculated = null, onUpdate }: Props = $props();
 
 	let library = $state<HopVarietyResponse[]>([]);
 	let origins = $state<string[]>([]);
@@ -72,52 +72,7 @@
 	// preserved for non-extract users.
 	let editorMode = $state<'hop' | 'extract'>('hop');
 
-	// Calculate total IBU from current hops. Extracts contribute no
-	// alpha-acid-derived IBU (cold-side, by-volume dosing), so they're
-	// excluded from the Tinseth calculation entirely.
-	let totalIBU = $derived(() => {
-		if (hops.length === 0) return 0;
-
-		const calcHops: Hop[] = hops
-			.filter((h) => !h.is_extract)
-			.map((h) => ({
-				name: h.name,
-				amount_grams: h.amount_grams,
-				alpha_acid_percent: h.alpha_acid_percent,
-				boil_time_minutes: h.boil_time_minutes,
-				form: h.form,
-				// `use` may carry an extract-only value on a stale row;
-				// the filter above guarantees we won't pass one through.
-				use: h.use as Hop['use'],
-				whirlpool_temp_c: h.whirlpool_temp_c
-			}));
-
-		return calculateTotalIBU(calcHops, og, batchSizeLiters);
-	});
-
-	// Calculate BU:GU ratio
-	let buguRatio = $derived(() => {
-		return calculateBUGU(totalIBU(), og);
-	});
-
-	// Describe bitterness balance
-	let bitterDescription = $derived(() => describeBUGU(buguRatio()));
-
-	// Calculate individual IBU contribution. Extract hops are cold-side
-	// and contribute no IBU via Tinseth.
-	function getHopIBU(hop: RecipeHop): number {
-		if (hop.is_extract) return 0;
-		const calcHop: Hop = {
-			name: hop.name,
-			amount_grams: hop.amount_grams,
-			alpha_acid_percent: hop.alpha_acid_percent,
-			boil_time_minutes: hop.boil_time_minutes,
-			form: hop.form,
-			use: hop.use as Hop['use'],
-			whirlpool_temp_c: hop.whirlpool_temp_c
-		};
-		return calculateIBU_Tinseth(calcHop, og, batchSizeLiters);
-	}
+	let bitterDescription = $derived(calculated ? describeBUGU(calculated.bu_gu) : '');
 
 	// Filter library based on search and filters
 	let filteredLibrary = $derived(() => {
@@ -334,10 +289,12 @@
 				Hop Schedule
 			</h3>
 			{#if hops.length > 0}
-				<span class="stats">
-					{totalIBU().toFixed(0)}&thinsp;IBU · BU:GU {buguRatio().toFixed(2)} ·
-					<span class="balance">{bitterDescription()}</span>
-				</span>
+				{#if calculated}
+					<span class="stats">
+						{calculated.ibu.toFixed(0)}&thinsp;IBU · BU:GU {calculated.bu_gu.toFixed(2)} ·
+						<span class="balance">{bitterDescription}</span>
+					</span>
+				{/if}
 			{/if}
 		</div>
 		<div class="header-right">
@@ -393,17 +350,11 @@
 					<h4 class="use-name">{formatUse(use as HopUse)}</h4>
 					{#each hopGroup as hop, i (hop.id + '-' + i)}
 						{@const hopIndex = hops.indexOf(hop)}
-						{@const hopIBU = getHopIBU(hop)}
 						<div class="hop-item">
 							<div class="cell c-name">
 								<span class="hop-name">{hop.name}</span>
 								<span class="hop-sub">
 									{#if hop.origin}<span class="hop-origin">{hop.origin}</span>{/if}
-									{#if hopIBU > 0}
-										<span class="ibu-value">+{hopIBU.toFixed(0)}&thinsp;IBU</span>
-									{:else}
-										<span class="ibu-zero">0&thinsp;IBU</span>
-									{/if}
 									{#if hop.is_extract}
 										<span class="ml-helper">1&thinsp;mL ≈ 28&thinsp;g pellet</span>
 									{/if}
@@ -1137,16 +1088,6 @@
 		gap: 0 var(--space-xs);
 		font-size: var(--text-xs);
 		color: var(--ink-muted);
-	}
-
-	.ibu-value,
-	.ibu-zero {
-		font-family: var(--font-num);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.ibu-value {
-		color: var(--ink-primary);
 	}
 
 	.cell input,

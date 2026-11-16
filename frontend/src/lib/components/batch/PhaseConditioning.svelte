@@ -4,6 +4,7 @@
 	import type { TastingNote } from '$lib/types/tasting';
 	import { formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
+	import { batchExpected } from '$lib/recipeStats';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 	import BatchAlertsCard from './BatchAlertsCard.svelte';
 	import BatchNotesCard from './BatchNotesCard.svelte';
@@ -69,7 +70,7 @@
 
 		<!-- Recipe Targets Card (only if recipe exists) -->
 		{#if batch.recipe}
-			<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+			<BatchRecipeTargetsCard recipe={batch.recipe} expected={batchExpected(batch, false)} yeastStrain={batch.yeast_strain} />
 		{/if}
 
 		<!-- Tasting Journal - Primary activity during conditioning -->

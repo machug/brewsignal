@@ -5,6 +5,7 @@
 	import type { RecipeResponse } from '$lib/api';
 	import { fetchRecipes } from '$lib/api';
 	import { srmToHex } from '$lib/brewing';
+	import { effectiveStats } from '$lib/recipeStats';
 
 	let recipes = $state<RecipeResponse[]>([]);
 	let loading = $state(true);
@@ -109,6 +110,7 @@
 				<span class="c-srm num" role="columnheader">SRM</span>
 			</div>
 			{#each filteredRecipes as recipe (recipe.id)}
+				{@const st = effectiveStats(recipe)}
 				<a
 					class="row item"
 					role="row"
@@ -124,16 +126,16 @@
 					</span>
 					<span class="c-type" role="cell">{recipe.type ?? ''}</span>
 					<span class="c-gravity num" role="cell" data-label="OG → FG">
-						{#if recipe.og && recipe.fg}{recipe.og.toFixed(3)}&nbsp;→&nbsp;{recipe.fg.toFixed(3)}{:else}<span class="dash">--</span>{/if}
+						{#if st.og && st.fg}{st.og.toFixed(3)}&nbsp;→&nbsp;{st.fg.toFixed(3)}{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-abv num" role="cell" data-label="ABV">
-						{#if recipe.abv}{recipe.abv.toFixed(1)}%{:else}<span class="dash">--</span>{/if}
+						{#if st.abv}{st.abv.toFixed(1)}%{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-ibu num" role="cell" data-label="IBU">
-						{#if recipe.ibu}{recipe.ibu.toFixed(0)}{:else}<span class="dash">--</span>{/if}
+						{#if st.ibu}{st.ibu.toFixed(0)}{:else}<span class="dash">--</span>{/if}
 					</span>
 					<span class="c-srm num" role="cell" data-label="SRM">
-						{#if recipe.color_srm}<!-- Beer colour is data (SRM), not theme --><span class="swatch" style="background: {srmToHex(recipe.color_srm)}"></span>{recipe.color_srm.toFixed(0)}{:else}<span class="dash">--</span>{/if}
+						{#if st.srm}<!-- Beer colour is data (SRM), not theme --><span class="swatch" style="background: {st.colorHex ?? srmToHex(st.srm)}"></span>{st.srm.toFixed(0)}{:else}<span class="dash">--</span>{/if}
 					</span>
 				</a>
 			{/each}

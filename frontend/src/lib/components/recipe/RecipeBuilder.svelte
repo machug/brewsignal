@@ -88,11 +88,6 @@
 		batch_size_liters: number;
 		efficiency_percent: number;
 		boil_time_minutes: number;
-		og: number;
-		fg: number;
-		abv: number;
-		ibu: number;
-		color_srm: number;
 		fermentables: RecipeFermentable[];
 		hops: RecipeHop[];
 		yeast: YeastStrainResponse | null;
@@ -101,23 +96,16 @@
 </script>
 
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
-	import { fetchYeastStrains, getStyle, reviewRecipe, searchStyles, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
+	import { onDestroy, onMount, type Snippet } from 'svelte';
+	import { fetchYeastStrains, getStyle, reviewRecipe, searchStyles, type CalculatedStats, type RecipeReviewResponse, type BJCPStyleResponse } from '$lib/api';
+	import { buildDraft, createDraftCalculator } from '$lib/recipeDraft';
+	import { effectiveStats } from '$lib/recipeStats';
 	import RecipeReviewModal from './RecipeReviewModal.svelte';
 	import RecipeStatsPanel from './RecipeStatsPanel.svelte';
 	import { computeStyleWarnings } from '$lib/brewing/styleWarnings';
 	import FermentableSelector from './FermentableSelector.svelte';
 	import HopSelector from './HopSelector.svelte';
 	import YeastSelector from '$lib/components/batch/YeastSelector.svelte';
-	import {
-		calculateRecipeStats,
-		calculateFG,
-		calculateABV,
-		type Fermentable,
-		type Hop,
-		type Yeast,
-		type BatchParams
-	} from '$lib/brewing';
 
 	interface Props {
 		initialData?: RecipeResponse;
@@ -218,6 +206,8 @@
 				styleInput = initialData.type || '';
 			}
 			notes = initialData.notes || '';
+			// Show the saved numbers until the first live calculation lands
+			calculated = initialData.calculated ?? null;
 			batchSizeLiters = initialData.batch_size_liters || 20;
 			efficiencyPercent = initialData.efficiency_percent || 72;
 			boilTimeMinutes = initialData.boil_time_minutes || 60;
@@ -226,7 +216,7 @@
 			const ext = initialData.format_extensions as { fermentables?: RecipeFermentable[]; hops?: RecipeHop[] } | undefined;
 			if (ext?.fermentables && ext.fermentables.length > 0) {
 				// format_extensions grain rows often omit color_srm, which makes
-				// recipeStats() default them to ~2 SRM and report a dark beer as
+				// the calculator default them to ~2 SRM and report a dark beer as
 				// pale (tilt_ui-b94). Backfill color from the colored
 				// relationship rows (matched by name, then index) without
 				// disturbing the rest of the stored shape.
@@ -365,71 +355,43 @@
 		}
 	});
 
-	// Calculate recipe stats in real-time
-	let recipeStats = $derived(() => {
-		if (fermentables.length === 0) {
-			return {
-				og: 1.0,
-				fg: 1.0,
-				abv: 0,
-				ibu: 0,
-				srm: 0,
-				color_hex: '#FFE699',
-				calories_per_330ml: 0
-			};
-		}
+	// Numbers come from the server (POST /recipes/calculate). If a request
+	// fails the last good numbers stay, marked "Not updated".
+	let calculated = $state<CalculatedStats | null>(null);
+	let statsStale = $state(false);
+	const calculator = createDraftCalculator({
+		onResult: (stats) => (calculated = stats),
+		onStale: (stale) => (statsStale = stale)
+	});
+	onDestroy(() => calculator.cancel());
 
-		// Convert to calculation format
-		const calcFermentables: Fermentable[] = fermentables.map((f) => ({
-			name: f.name,
-			amount_kg: f.amount_kg,
-			potential_sg: f.potential_sg || 1.036,
-			color_srm: f.color_srm || 2,
-			type: f.type ?? undefined
-		}));
-
-		// Extract-mode hops (Abstrax Quantum-style) are dosed cold-side by
-		// volume and contribute no alpha-acid-based IBU, so they're
-		// excluded from the IBU calculation. Their bittering profile is
-		// captured separately on the extract spec, not via Tinseth.
-		const calcHops: Hop[] = hops
-			.filter((h) => !h.is_extract)
-			.map((h) => ({
-				name: h.name,
-				amount_grams: h.amount_grams,
-				alpha_acid_percent: h.alpha_acid_percent,
-				boil_time_minutes: h.boil_time_minutes,
-				form: h.form,
-				// `use` may carry an extract-only long-form value
-				// (e.g. add_to_package) on a stale row — cast through
-				// the calculator's narrower union here. The filter
-				// above ensures we never actually pass one through.
-				use: h.use as Hop['use'],
-				whirlpool_temp_c: h.whirlpool_temp_c
-			}));
-
-		// Use default yeast if none selected
-		const calcYeast: Yeast = {
-			name: selectedYeast?.name || 'Default Yeast',
-			attenuation_percent:
-				selectedYeast?.attenuation_low && selectedYeast?.attenuation_high
-					? (selectedYeast.attenuation_low + selectedYeast.attenuation_high) / 2
-					: 75,
-			temp_min_c: selectedYeast?.temp_low || 18,
-			temp_max_c: selectedYeast?.temp_high || 22
-		};
-
-		const batch: BatchParams = {
-			batch_size_liters: batchSizeLiters,
-			efficiency_percent: efficiencyPercent,
-			boil_time_minutes: boilTimeMinutes
-		};
-
-		return calculateRecipeStats(calcFermentables, calcHops, calcYeast, batch);
+	$effect(() => {
+		calculator.request(
+			buildDraft({
+				batchSizeLiters,
+				efficiencyPercent,
+				fermentables,
+				hops,
+				yeast: selectedYeast,
+				yeastAttenuation: initialData?.yeast_attenuation
+			})
+		);
 	});
 
+	// Calculated stats, else the recipe's declared targets (imports without ingredients)
+	let stats = $derived(
+		effectiveStats({
+			calculated,
+			target_og: initialData?.target_og,
+			target_fg: initialData?.target_fg,
+			target_abv: initialData?.target_abv,
+			target_ibu: initialData?.target_ibu,
+			target_srm: initialData?.target_srm
+		})
+	);
+
 	// Style warnings (proactive validation against BJCP guidelines)
-	let styleWarnings = $derived(() => computeStyleWarnings(selectedStyle, recipeStats()));
+	let styleWarnings = $derived(() => (calculated ? computeStyleWarnings(selectedStyle, calculated) : []));
 
 	// Style search with debounce
 	async function handleStyleSearch(query: string) {
@@ -545,11 +507,6 @@
 			batch_size_liters: batchSizeLiters,
 			efficiency_percent: efficiencyPercent,
 			boil_time_minutes: boilTimeMinutes,
-			og: recipeStats().og,
-			fg: recipeStats().fg,
-			abv: recipeStats().abv,
-			ibu: recipeStats().ibu,
-			color_srm: recipeStats().srm,
 			fermentables,
 			hops,
 			yeast: selectedYeast,
@@ -577,7 +534,12 @@
 		showReviewModal = true;
 
 		try {
-			const stats = recipeStats();
+			// The server's numbers; no made-up ones if they are not available.
+			if (stats.og == null || stats.fg == null || stats.abv == null || stats.ibu == null || stats.srm == null) {
+				reviewError = 'Recipe numbers are not available yet. Try again in a moment.';
+				return;
+			}
+			const { og, fg, abv, ibu, srm } = stats;
 			// Prefer brewer-declared imported targets when the user hasn't
 			// edited ingredients since load — those are the recipe the
 			// brewer wrote and the LLM should review them. Once ingredients
@@ -587,11 +549,11 @@
 			reviewResult = await reviewRecipe({
 				name: name || 'Untitled Recipe',
 				style: styleInput,
-				og: useTargets ? initialData?.target_og ?? stats.og : stats.og,
-				fg: useTargets ? initialData?.target_fg ?? stats.fg : stats.fg,
-				abv: useTargets ? initialData?.target_abv ?? stats.abv : stats.abv,
-				ibu: useTargets ? initialData?.target_ibu ?? stats.ibu : stats.ibu,
-				color_srm: useTargets ? initialData?.target_srm ?? stats.srm : stats.srm,
+				og: useTargets ? initialData?.target_og ?? og : og,
+				fg: useTargets ? initialData?.target_fg ?? fg : fg,
+				abv: useTargets ? initialData?.target_abv ?? abv : abv,
+				ibu: useTargets ? initialData?.target_ibu ?? ibu : ibu,
+				color_srm: useTargets ? initialData?.target_srm ?? srm : srm,
 				fermentables: fermentables.map((f) => ({
 					name: f.name,
 					amount_kg: f.amount_kg,
@@ -783,15 +745,14 @@
 			<section class="block ingredient-section">
 				<FermentableSelector
 					{fermentables}
-					{batchSizeLiters}
-					{efficiencyPercent}
+					{calculated}
 					onUpdate={handleFermentablesUpdate}
 				/>
 			</section>
 
 			<!-- Hops -->
 			<section class="block ingredient-section">
-				<HopSelector hops={hops} og={recipeStats().og} {batchSizeLiters} onUpdate={handleHopsUpdate} />
+				<HopSelector hops={hops} {calculated} onUpdate={handleHopsUpdate} />
 			</section>
 
 			<!-- Yeast -->
@@ -866,15 +827,10 @@
 		<!-- Live readings: always visible; top of page on phone, sticky rail on desk -->
 		<aside class="rail" aria-label="Live recipe readings">
 			{#if true}
-				{@const stats = recipeStats()}
 				<div class="rail-sticky">
 					<RecipeStatsPanel
-						og={stats.og}
-						fg={stats.fg}
-						abv={stats.abv}
-						ibu={stats.ibu}
-						colorSrm={stats.srm}
-						{batchSizeLiters}
+						{stats}
+						stale={statsStale}
 						styleName={selectedStyle?.name ?? 'No style selected'}
 						styleCategory={selectedStyle?.category_number ? `${selectedStyle.category_number}${selectedStyle.style_letter ?? ''}` : undefined}
 					/>

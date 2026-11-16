@@ -6,7 +6,6 @@
 	import { fetchRecipe, updateRecipe } from '$lib/api';
 	import RecipeBuilder from '$lib/components/recipe/RecipeBuilder.svelte';
 	import type { RecipeData } from '$lib/components/recipe/RecipeBuilder.svelte';
-	import { srmToHex, srmToDescription, calculateBUGU } from '$lib/brewing';
 	// Nested collection editors
 	import MashScheduleEditor from '$lib/components/recipe/MashScheduleEditor.svelte';
 	import FermentationScheduleEditor from '$lib/components/recipe/FermentationScheduleEditor.svelte';
@@ -58,11 +57,6 @@
 		const id = parseInt($page.params.id || '', 10);
 		return isNaN(id) || id <= 0 ? null : id;
 	});
-
-	// Derived stats (matching detail page)
-	let srmColor = $derived(recipe?.color_srm ? srmToHex(recipe.color_srm) : null);
-	let srmDesc = $derived(recipe?.color_srm ? srmToDescription(recipe.color_srm) : null);
-	let bugu = $derived(recipe?.ibu && recipe?.og ? calculateBUGU(recipe.ibu, recipe.og) : null);
 
 	// Poll review loading state from component
 	$effect(() => {
@@ -244,11 +238,6 @@
 				batch_size_liters: data.batch_size_liters,
 				efficiency_percent: data.efficiency_percent,
 				boil_time_minutes: data.boil_time_minutes,
-				og: data.og,
-				fg: data.fg,
-				abv: data.abv,
-				ibu: data.ibu,
-				color_srm: data.color_srm,
 				notes: data.notes || undefined,
 				// Yeast details
 				yeast_name: data.yeast?.name,
@@ -294,11 +283,8 @@
 				}
 			};
 
-			// Stats sent in recipeUpdate (og/fg/abv/ibu/color_srm) come from the
-			// form, which carries either the user's typed values or imported
-			// targets. Don't auto-recalculate — that would silently overwrite
-			// both. A separate "Recalculate from ingredients" action calls
-			// POST /recipes/{id}/recalculate when the user wants that.
+			// No stat fields are sent: the server works the numbers out from the
+			// ingredients and keeps any declared targets.
 			await updateRecipe(recipeId, recipeUpdate);
 			goto(`/recipes/${recipeId}`);
 		} catch (e) {

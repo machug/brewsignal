@@ -4,6 +4,7 @@
 	import { fetchRecipes, fetchHeaterEntities, fetchCoolerEntities } from '$lib/api';
 	import { configState, getTempUnit, fahrenheitToCelsius, celsiusToFahrenheit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 	import { fetchAllDevices, type DeviceResponse } from '$lib/api/devices';
+	import { batchExpected, effectiveStats } from '$lib/recipeStats';
 	import RecipeSelector from './RecipeSelector.svelte';
 	import YeastSelector from './batch/YeastSelector.svelte';
 
@@ -94,9 +95,9 @@
 
 	// Preview only. Same formula as rest_trigger_sg in backend/temp_controller.py, which decides.
 	let restTriggerSg = $derived.by(() => {
-		const recipe = selectedRecipe ?? batch?.recipe;
-		const og = parseFloat(measuredOg) || recipe?.og;
-		const fg = recipe?.fg;
+		const exp = selectedRecipe ? effectiveStats(selectedRecipe) : batch ? batchExpected(batch, false) : undefined;
+		const og = parseFloat(measuredOg) || exp?.og;
+		const fg = exp?.fg;
 		const pct = parseFloat(restPercent);
 		if (!og || !fg || isNaN(pct) || og <= fg || og > 1.2) return null;
 		return og - ((og - fg) * pct) / 100;
@@ -191,8 +192,9 @@
 			// Auto-fill form from recipe
 			name = recipe.name;
 			recipeId = recipe.id;
-			if (recipe.og) {
-				measuredOg = recipe.og.toString();
+			const og = effectiveStats(recipe).og;
+			if (og) {
+				measuredOg = og.toString();
 			}
 		} else {
 			recipeId = null;

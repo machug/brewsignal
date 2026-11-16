@@ -4,6 +4,7 @@
 	import { formatTemp, getTempUnit, configState } from '$lib/stores/config.svelte';
 	import BrewDayTimer from './BrewDayTimer.svelte';
 	import BrewDayChecklist from './BrewDayChecklist.svelte';
+	import { batchExpected } from '$lib/recipeStats';
 	import BrewDayObservations from './BrewDayObservations.svelte';
 	import BatchDeviceCard from './BatchDeviceCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
@@ -182,7 +183,7 @@
 
 	{#if batch.recipe}
 		<div class="brewday-ref-grid">
-			<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+			<BatchRecipeTargetsCard recipe={batch.recipe} expected={batchExpected(batch, false)} yeastStrain={batch.yeast_strain} />
 			<BrewDayWaterCard recipe={batch.recipe} />
 		</div>
 	{/if}

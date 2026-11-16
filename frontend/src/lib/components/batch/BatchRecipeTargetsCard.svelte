@@ -1,27 +1,21 @@
 <script lang="ts">
 	import type { RecipeResponse, YeastStrainResponse } from '$lib/api';
 	import { formatGravity } from '$lib/stores/config.svelte';
-	import { ABV_MULTIPLIER } from '$lib/constants';
+	import type { StatValues } from '$lib/recipeStats';
 
 	interface Props {
 		recipe: RecipeResponse;
+		// The batch's target numbers (see batchExpected in $lib/recipeStats)
+		expected: StatValues;
 		yeastStrain?: YeastStrainResponse | null;
 	}
 
-	let { recipe, yeastStrain }: Props = $props();
+	let { recipe, expected, yeastStrain }: Props = $props();
 
 	function formatSG(value?: number | null): string {
 		if (value === undefined || value === null) return '--';
 		return formatGravity(value);
 	}
-
-	let calculatedABV = $derived.by(() => {
-		if (recipe.abv != null) return recipe.abv;
-		if (recipe.og && recipe.fg) {
-			return (recipe.og - recipe.fg) * ABV_MULTIPLIER;
-		}
-		return null;
-	});
 
 	let yeastDisplay = $derived.by(() => {
 		if (yeastStrain) {
@@ -37,9 +31,9 @@
 </script>
 
 <div class="recipe-strip">
-	<span class="item"><span class="lbl">Target OG</span> <span class="val">{formatSG(recipe.og)}</span></span>
-	<span class="item"><span class="lbl">Target FG</span> <span class="val">{formatSG(recipe.fg)}</span></span>
-	<span class="item"><span class="lbl">Target ABV</span> <span class="val">{calculatedABV != null ? `${calculatedABV.toFixed(1)}%` : '--'}</span></span>
+	<span class="item"><span class="lbl">Target OG</span> <span class="val">{formatSG(expected.og)}</span></span>
+	<span class="item"><span class="lbl">Target FG</span> <span class="val">{formatSG(expected.fg)}</span></span>
+	<span class="item"><span class="lbl">Target ABV</span> <span class="val">{expected.abv != null ? `${expected.abv.toFixed(1)}%` : '--'}</span></span>
 	{#if yeastDisplay}
 		<span class="sep"></span>
 		<span class="item yeast">{yeastDisplay}</span>

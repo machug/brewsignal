@@ -16,9 +16,9 @@
 	import RecipeBrewabilityBanner from '$lib/components/recipe/RecipeBrewabilityBanner.svelte';
 	import ScaleRecipeDialog from '$lib/components/recipe/ScaleRecipeDialog.svelte';
 	import { totalMashGrainKg } from '$lib/brewing/brewability';
-	import { normalizeHopUse } from '$lib/components/recipe/RecipeBuilder.svelte';
 	import { calculateWaterVolumes } from '$lib/utils/water';
-	import { calculateRecipeStats, type Fermentable, type Hop, type Yeast, type BatchParams } from '$lib/brewing';
+	import type { Fermentable } from '$lib/brewing';
+	import { effectiveStats } from '$lib/recipeStats';
 
 	let recipe = $state<RecipeResponse | null>(null);
 	let loading = $state(true);
@@ -91,7 +91,7 @@
 	let reviewError = $state<string | null>(null);
 
 	// UI-created recipes carry fermentables in format_extensions while
-	// recipe.fermentables may be empty — same precedence as liveStats below
+	// recipe.fermentables may be empty — same precedence as displayHops below
 	// (explicit empty array in format_extensions = deletion intent). Kettle
 	// additions (extract/sugar/honey) never enter the mash, so they are
 	// excluded from the grain total used for water and brewability math.
@@ -108,102 +108,8 @@
 		return calculateWaterVolumes(recipe.batch_size_liters, totalGrainKg, recipe.boil_time_minutes, recipe.boil_size_l);
 	});
 
-	// Compute recipe stats live from ingredients so the detail page
-	// matches the editor (and reflects the post-2.13.0 IBU model)
-	// instead of showing stale stored DB values that may have been
-	// computed under an older formula. Falls back to recipe.* when the
-	// ingredient list is empty.
-	let liveStats = $derived.by(() => {
-		if (!recipe) return null;
-		const ext = recipe.format_extensions as
-			| { fermentables?: Fermentable[]; hops?: Array<Hop & { use?: string }> }
-			| undefined;
-		// format_extensions saves carry color_lovibond rather than
-		// color_srm; calculateSRM needs color_srm and returns NaN
-		// without it. Track whether ANY fermentable came in without a
-		// usable color value so we can fall back to stored stats rather
-		// than synthesizing a 0-SRM live result.
-		const lovibondToSrm = (lov: number | undefined) =>
-			lov != null ? 1.3546 * lov - 0.76 : undefined;
-		let missingColor = false;
-		// Explicit empty array in format_extensions is a deletion intent
-		// (user removed all items); fall back to recipe.fermentables only
-		// when format_extensions has no fermentables key at all.
-		const fermentables: Fermentable[] = (
-			Array.isArray(ext?.fermentables)
-				? ext!.fermentables!.map((f) => {
-						const srm =
-							(f as { color_srm?: number }).color_srm ??
-							lovibondToSrm((f as { color_lovibond?: number }).color_lovibond);
-						if (srm == null) missingColor = true;
-						return { ...f, color_srm: srm ?? 0 };
-					})
-				: (recipe.fermentables ?? []).map((f) => {
-						if (f.color_srm == null) missingColor = true;
-						return {
-							name: f.name,
-							amount_kg: f.amount_kg ?? 0,
-							color_srm: f.color_srm ?? 0,
-							type: f.type,
-							potential_sg: f.yield_percent ? 1 + (f.yield_percent / 100) * 0.046 : undefined,
-						};
-					})
-		) as Fermentable[];
-		if (fermentables.length === 0) return null;
-
-		// Extract-mode hops (Abstrax Quantum-style) are cold-side and
-		// contribute no Tinseth IBU — skip them entirely so their wider
-		// `use` allowlist (add_to_fermentation / add_to_package / etc.)
-		// never has to round-trip through the IBU calculator's narrower
-		// hot-side union.
-		const rawHops: Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }> = Array.isArray(ext?.hops)
-			? (ext!.hops! as Array<Omit<Hop, 'use'> & { use?: string; is_extract?: boolean }>)
-			: (recipe.hops ?? []).map((h) => {
-					const timing = h.timing || {};
-					const tv = timing.duration?.value ?? timing.time?.value ?? 0;
-					const tu = timing.duration?.unit ?? timing.time?.unit ?? 'min';
-					const minutes = tu === 'day' ? tv * 24 * 60 : tv;
-					return {
-						name: h.name,
-						amount_grams: h.amount_grams || 0,
-						alpha_acid_percent: h.alpha_acid_percent || 0,
-						boil_time_minutes: minutes,
-						use: normalizeHopUse(timing.use) as string,
-						form: (h.form || 'pellet') as 'pellet' | 'whole' | 'plug',
-						is_extract: Boolean(h.is_extract),
-						whirlpool_temp_c: timing.temperature?.value ?? null,
-					};
-				});
-		const hops = rawHops
-			.filter((h) => !h.is_extract)
-			.map((h) => ({ ...h, use: normalizeHopUse(h.use) })) as Hop[];
-
-		const yeast: Yeast = {
-			name: recipe.yeast_name || '',
-			attenuation_percent: recipe.yeast_attenuation ?? 75,
-			temp_min_c: recipe.yeast_temp_min ?? 18,
-			temp_max_c: recipe.yeast_temp_max ?? 22,
-		};
-		const batch: BatchParams = {
-			batch_size_liters: recipe.batch_size_liters ?? 20,
-			efficiency_percent: recipe.efficiency_percent ?? 72,
-			boil_time_minutes: recipe.boil_time_minutes ?? 60,
-		};
-		const stats = calculateRecipeStats(fermentables, hops, yeast, batch);
-		// If anything came back NaN (missing data, exotic units), fall
-		// back to the stored stats rather than rendering NaN in the UI.
-		// Also fall back on SRM if any fermentable was missing color
-		// info — synthesizing 0 SRM would override valid stored color.
-		const finite = (n: number | undefined) =>
-			typeof n === 'number' && Number.isFinite(n) ? n : undefined;
-		return {
-			og: finite(stats.og),
-			fg: finite(stats.fg),
-			abv: finite(stats.abv),
-			ibu: finite(stats.ibu),
-			srm: missingColor ? undefined : finite(stats.srm),
-		};
-	});
+	// Numbers worked out by the server (calculated, else declared)
+	let stats = $derived(recipe ? effectiveStats(recipe) : null);
 
 	// Show the readable URL (/recipes/25-west-coast-ipa) without a reload,
 	// also after a rename; the leading id is what the page reads (tilt_ui-9hg).
@@ -220,7 +126,7 @@
 		return isNaN(id) || id <= 0 ? null : id;
 	});
 
-	// Unified hop view that mirrors the liveStats precedence: prefer the
+	// Unified hop view that mirrors the same precedence: prefer the
 	// UI editor's format_extensions.hops copy (where new/edit pages save
 	// their structured hop data including is_extract + amount_ml) and
 	// fall back to recipe.hops (rows written by the LLM tool / import
@@ -483,21 +389,14 @@
 		</header>
 
 		<!-- Stats strip with SRM glass -->
-		<RecipeStatsPanel
-			og={liveStats?.og ?? recipe.og ?? 1.050}
-			fg={liveStats?.fg ?? recipe.fg ?? 1.010}
-			abv={liveStats?.abv ?? recipe.abv ?? 5.0}
-			ibu={liveStats?.ibu ?? recipe.ibu ?? 30}
-			colorSrm={liveStats?.srm ?? recipe.color_srm ?? 8}
-			batchSizeLiters={recipe.batch_size_liters ?? 20}
-			styleName={recipe.style?.name}
-			styleCategory={recipe.style?.category_number ? `${recipe.style.category_number}${recipe.style.style_letter ?? ''}` : undefined}
-			targetOg={recipe.target_og}
-			targetFg={recipe.target_fg}
-			targetAbv={recipe.target_abv}
-			targetIbu={recipe.target_ibu}
-			targetSrm={recipe.target_srm}
-		/>
+		{#if stats}
+			<RecipeStatsPanel
+				{stats}
+				targets={{ og: recipe.target_og, fg: recipe.target_fg, abv: recipe.target_abv, ibu: recipe.target_ibu, srm: recipe.target_srm }}
+				styleName={recipe.style?.name}
+				styleCategory={recipe.style?.category_number ? `${recipe.style.category_number}${recipe.style.style_letter ?? ''}` : undefined}
+			/>
+		{/if}
 
 		<RecipeBrewabilityBanner
 			batchSizeLiters={recipe.batch_size_liters}

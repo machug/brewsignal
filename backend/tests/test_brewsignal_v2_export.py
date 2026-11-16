@@ -487,3 +487,9 @@ def test_editor_ingredient_cache_is_not_exported():
     r = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
     ext = r.get("_extensions", {})
     assert "hops" not in ext and "fermentables" not in ext and ext.get("keep") == 1
+
+
+def test_editor_cache_kept_when_it_is_the_only_copy():
+    recipe = Recipe(name="Legacy", format_extensions={"hops": [{"name": "Only"}]})
+    r = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
+    assert r["_extensions"]["hops"] == [{"name": "Only"}]

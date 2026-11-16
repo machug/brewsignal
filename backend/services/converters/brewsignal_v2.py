@@ -375,7 +375,9 @@ class RecipeToBrewSignalV2Converter:
         # which the document already carries as real lists. Re-emitting them
         # let an assistant edit (export, patch, re-import) restore a stale
         # cache that the recipe page shows over the edited rows (tilt_ui-1rth).
-        _emit_extensions(out, recipe, exclude=('brewsignal', 'hops', 'fermentables'))
+        # A legacy recipe with no rows keeps its cache: it is the only copy.
+        cache = tuple(k for k in ('hops', 'fermentables') if getattr(recipe, k))
+        _emit_extensions(out, recipe, exclude=('brewsignal',) + cache)
         return out
 
     def _convert_fermentable(self, ferm) -> Dict[str, Any]:

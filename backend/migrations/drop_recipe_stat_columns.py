@@ -2,10 +2,10 @@
 
 Stats are now calculated on read. Before the drop, nothing is lost:
   1. Running batches (at or past fermenting) with no snapshot get expected_*
-     from the stored legacy values (what they have been running against).
+     per field: the stored legacy value, else the effective stats.
   2. Per field, a stored legacy value the calculator cannot reproduce (recipe
-     without fermentables, or IBU with no hops) is copied to target_* when
-     target_* is empty.
+     without fermentables, or a stored IBU > 0 where the calculator gives
+     none or 0) is copied to target_* when target_* is empty.
 """
 import logging
 
@@ -31,32 +31,51 @@ async def migrate_drop_recipe_stat_columns(conn: AsyncConnection) -> None:
     if not legacy:
         return
 
-    batch_columns = {row[1] for row in (await conn.execute(text("PRAGMA table_info(batches)"))).fetchall()}
-    if all(n in batch_columns for n, _ in _EXPECTED):
-        sets = ", ".join(
-            f"{n} = (SELECT r.{c} FROM recipes r WHERE r.id = batches.recipe_id)" for n, c in _EXPECTED
-            if c in columns
-        )
-        nulls = " AND ".join(f"{n} IS NULL" for n, _ in _EXPECTED)
-        await conn.execute(text(
-            f"UPDATE batches SET {sets} WHERE recipe_id IS NOT NULL "
-            f"AND status NOT IN ('planning', 'brewing') AND {nulls}"
-        ))
-
-    stored = {row[0]: row[1:] for row in (await conn.execute(text(
-        "SELECT id, " + ", ".join(c for c, _, _ in _FIELDS) + " FROM recipes"
+    stored = {row[0]: dict(zip(legacy, row[1:])) for row in (await conn.execute(text(
+        "SELECT id, " + ", ".join(legacy) + " FROM recipes"
     ))).fetchall()}
+    batch_columns = {row[1] for row in (await conn.execute(text("PRAGMA table_info(batches)"))).fetchall()}
+    seed_batches = all(n in batch_columns for n, _ in _EXPECTED)
     async with AsyncSession(bind=conn, expire_on_commit=False) as session:
         recipes = (await session.execute(recipe_with_ingredients_stmt())).scalars().all()
         for recipe in recipes:
             calc = calculate_recipe_stats(recipe)
-            has_hops = any((h.amount_grams or 0) > 0 for h in recipe.hops)
-            values = dict(zip((c for c, _, _ in _FIELDS), stored[recipe.id]))
+            values = stored[recipe.id]
             for col, target, attr in _FIELDS:
-                uncalculable = calc is None or (attr == "ibu" and not has_hops)
-                if uncalculable and getattr(recipe, target) is None and values[col] is not None:
-                    setattr(recipe, target, values[col])
+                legacy_value = values.get(col)
+                if legacy_value is None or getattr(recipe, target) is not None:
+                    continue
+                calculated = getattr(calc, attr) if calc else None
+                # IBU is 0.0 (not None) with no boil/whirlpool hops: a stored IBU is not reproducible
+                if calculated is None or (attr == "ibu" and not calculated and legacy_value > 0):
+                    setattr(recipe, target, legacy_value)
         await session.flush()
+
+        if seed_batches:
+            # D6 per field: the legacy stored value (what the batch has been running
+            # against) if set, else the effective stats. Soft-deleted batches included.
+            nulls = " AND ".join(f"{n} IS NULL" for n, _ in _EXPECTED)
+            rows = (await conn.execute(text(
+                "SELECT id, recipe_id FROM batches WHERE recipe_id IS NOT NULL "
+                f"AND status NOT IN ('planning', 'brewing') AND {nulls}"
+            ))).fetchall()
+            by_id = {r.id: r for r in recipes}
+            for batch_id, recipe_id in rows:
+                recipe = by_id.get(recipe_id)
+                if recipe is None:
+                    continue
+                calc = calculate_recipe_stats(recipe)
+                snap = {}
+                for name, col in _EXPECTED:
+                    attr = "srm" if col == "color_srm" else col
+                    value = stored[recipe_id].get(col)
+                    if value is None and calc is not None:
+                        value = getattr(calc, attr)
+                    if value is None:
+                        value = getattr(recipe, "target_" + attr)
+                    snap[name] = value
+                sets = ", ".join(f"{n} = :{n}" for n in snap)
+                await conn.execute(text(f"UPDATE batches SET {sets} WHERE id = :id"), {**snap, "id": batch_id})
 
     for col in legacy:
         await conn.execute(text(f"ALTER TABLE recipes DROP COLUMN {col}"))

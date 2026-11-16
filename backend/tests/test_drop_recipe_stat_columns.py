@@ -117,3 +117,31 @@ async def test_lazy_raise_catches_unloaded_ingredients(test_db):
     for rel in ("fermentables", "hops", "cultures"):
         with pytest.raises(InvalidRequestError):
             getattr(recipe, rel)
+
+
+@pytest.mark.asyncio
+async def test_drop_seeds_batch_per_field(test_db):
+    """Legacy og set, fg NULL but calculable: expected_og = legacy, expected_fg = calculated."""
+    from backend.services.recipe_stats import effective_stats, recipe_with_ingredients_stmt
+    await _old_schema(test_db)
+    rid = await _recipe(test_db, "partial", og=1.099)
+    test_db.add(Batch(name="f", status="fermenting", recipe_id=rid))
+    await test_db.commit()
+    recipe = (await test_db.execute(recipe_with_ingredients_stmt().where(Recipe.id == rid))).scalar_one()
+    calc = effective_stats(recipe)
+    await _run_drop(test_db)
+    og, fg, ibu = (await test_db.execute(text(
+        "SELECT expected_og, expected_fg, expected_ibu FROM batches"))).one()
+    assert (og, fg, ibu) == (1.099, calc.fg, calc.ibu)
+
+
+@pytest.mark.asyncio
+async def test_drop_keeps_stored_ibu_when_calculated_ibu_is_zero(test_db):
+    """Only dry hops: the calculator gives 0.0 IBU, the stored 35 is kept as a target."""
+    await _old_schema(test_db)
+    rid = await _recipe(test_db, "dry", hops=False, ibu=35.0)
+    test_db.add(RecipeHop(recipe_id=rid, name="D", alpha_acid_percent=10.0, amount_grams=50.0,
+                          timing={"use": "add_to_fermentation", "duration": {"value": 3, "unit": "day"}}))
+    await test_db.commit()
+    await _run_drop(test_db)
+    assert (await _targets(test_db, rid))[3] == 35.0

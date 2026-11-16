@@ -597,8 +597,8 @@ async def init_db():
         await _reconcile_postgres_columns()
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
-        # NOTE: recipe backfills (style_id, color_srm) are NOT run here. They
-        # sweep every recipe and can exceed the platform healthcheck window on
+        # NOTE: the recipe style_id backfill is NOT run here. It
+        # sweeps every recipe and can exceed the platform healthcheck window on
         # a cold boot. They run off the critical path via run_deferred_backfills()
         # after the app is serving (tilt_ui-h0j). Seeding above is their only
         # prerequisite and is complete.
@@ -742,7 +742,7 @@ async def init_db():
 async def run_deferred_backfills():
     """Run one-time historical recipe backfills off the startup critical path.
 
-    Both sweeps load every recipe and recompute stats, so on a cold boot they
+    The sweep loads every recipe, so on a cold boot it
     can take long enough to blow a platform healthcheck window (Railway's is
     30s) if run inside init_db before the lifespan yields. They are idempotent
     and config-flag gated, and their only prerequisite (reference-data seeding,

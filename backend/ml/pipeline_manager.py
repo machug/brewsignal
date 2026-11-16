@@ -233,7 +233,6 @@ class MLPipelineManager:
         return {
             "available": True,
             "predicted_fg": predictions.get("predicted_fg"),
-            "curve_fg": predictions.get("curve_fg"),
             "predicted_og": predictions.get("predicted_og"),
             "estimated_completion": completion.isoformat() if completion else None,
             "hours_to_completion": hours,

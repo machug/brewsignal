@@ -462,3 +462,10 @@ def test_stalled_batch_shows_where_it_stopped_not_recipe_fg():
     out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
     assert out["fitted"]
     assert abs(out["predicted_fg"] - 1.022) < 0.001
+
+
+def test_stall_is_seen_with_sparse_readings():
+    times = [float(h) for h in range(0, 200, 6)]
+    sgs = [1.022 + 0.030 * np.exp(-0.05 * t) for t in times]
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"] and abs(out["predicted_fg"] - 1.022) < 0.001

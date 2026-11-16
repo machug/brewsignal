@@ -201,13 +201,17 @@ class FermentationCurveFitter:
         return self._apply_prior(result, prior_fg, fg_lower, times_arr, sgs_arr)
 
     @staticmethod
-    def _slowdown(times_arr: np.ndarray, sgs_arr: np.ndarray, window_hours: float = 12.0) -> float:
+    def _slowdown(times_arr: np.ndarray, sgs_arr: np.ndarray) -> float:
         """How far the gravity drop has slowed from its fastest: 0 = full speed, 1 = stopped.
 
         Slope per 12 h window (least squares, robust to Tilt noise); the
         faster of the last two windows against the steepest, so one noisy or
-        stepped window does not look like a stop.
+        stepped window does not look like a stop. Sparse sensors get wider
+        windows (4 reading gaps) so each still holds several readings.
         """
+        if len(times_arr) < 2:
+            return 0.0
+        window_hours = max(12.0, 4.0 * float(np.median(np.diff(times_arr))))
         bins = np.floor((times_arr - times_arr[0]) / window_hours).astype(int)
         rates = []
         for b in np.unique(bins):

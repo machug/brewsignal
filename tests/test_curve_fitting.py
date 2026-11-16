@@ -453,3 +453,12 @@ def test_batch_finishing_below_the_yeast_range_still_fits():
     out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
     assert out["fitted"]
     assert out["predicted_fg"] <= sgs[-1]
+
+
+def test_stalled_batch_shows_where_it_stopped_not_recipe_fg():
+    """A plateau above recipe FG is a stall; the prior must not hide it (tilt_ui-hcly review)."""
+    times = [float(h) for h in range(200)]
+    sgs = [1.022 + 0.030 * np.exp(-0.05 * t) for t in times]
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"]
+    assert abs(out["predicted_fg"] - 1.022) < 0.001

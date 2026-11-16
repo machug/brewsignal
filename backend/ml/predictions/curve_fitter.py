@@ -198,21 +198,55 @@ class FermentationCurveFitter:
         # Unknown model, default to exponential
         fit_func = fitters.get(model, self._fit_exponential)
         result = fit_func(times_arr, sgs_arr, og_guess, fg_guess, fg_lower, expected_fg)
-        return self._apply_prior(result, prior_fg, fg_lower, float(sgs_arr[-1]))
+        return self._apply_prior(result, prior_fg, fg_lower, times_arr, sgs_arr)
 
     @staticmethod
-    def _apply_prior(result: dict, prior_fg: Optional[float], fg_lower: float, current_sg: float) -> dict:
-        """Blend the curve FG with the prior FG, weighted by confidence.
+    def _slowdown(times_arr: np.ndarray, sgs_arr: np.ndarray, window_hours: float = 12.0) -> float:
+        """How far the gravity drop has slowed from its fastest: 0 = full speed, 1 = stopped.
+
+        Slope per 12 h window (least squares, robust to Tilt noise); the
+        faster of the last two windows against the steepest, so one noisy or
+        stepped window does not look like a stop.
+        """
+        bins = np.floor((times_arr - times_arr[0]) / window_hours).astype(int)
+        rates = []
+        for b in np.unique(bins):
+            mask = bins == b
+            if mask.sum() >= 3 and np.ptp(times_arr[mask]) >= window_hours / 2:
+                rates.append(-np.polyfit(times_arr[mask], sgs_arr[mask], 1)[0])
+        if len(rates) < 3:
+            return 0.0
+        peak = max(rates)
+        if peak <= 0:
+            return 0.0
+        return float(np.clip(1.0 - max(max(rates[-2:]), 0.0) / peak, 0.0, 1.0))
+
+    def _apply_prior(
+        self,
+        result: dict,
+        prior_fg: Optional[float],
+        fg_lower: float,
+        times_arr: np.ndarray,
+        sgs_arr: np.ndarray,
+    ) -> dict:
+        """Blend the curve FG with the prior FG (tilt_ui-hcly).
 
         Early on confidence is low (little progress, FG far from target), so
-        the shown FG stays near the recipe/yeast value; it follows the curve
-        once the slowdown shows. A curve FG pinned at the bound carries no
-        information, so the prior is shown alone.
+        the shown FG stays near the recipe/yeast value. Once the drop has
+        clearly slowed the curve is trusted alone, so a batch that stops
+        high (a stall) shows where it stopped, not the recipe FG. A curve
+        pinned at the floor carries no information, so the prior is shown.
         """
         if not result.get("fitted") or prior_fg is None:
             return result
         curve_fg = result["predicted_fg"]
-        weight = 0.0 if curve_fg <= fg_lower + 0.001 else (result.get("confidence") or 0.0)
+        current_sg = float(sgs_arr[-1])
+        if curve_fg <= fg_lower + 0.001:
+            weight = 0.0
+        else:
+            # Slowed by 50% -> no extra trust; by 90% or more -> curve alone.
+            plateau = float(np.clip((self._slowdown(times_arr, sgs_arr) - 0.5) / 0.4, 0.0, 1.0))
+            weight = max(result.get("confidence") or 0.0, plateau)
         result["curve_fg"] = curve_fg
         # FG is never above the gravity already reached.
         result["predicted_fg"] = min(weight * curve_fg + (1 - weight) * prior_fg, current_sg)

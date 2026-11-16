@@ -3,6 +3,7 @@
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatGravity, formatTemp, getTempUnit } from '$lib/stores/config.svelte';
 	import { timeSince, getSignalStrength } from '$lib/utils/signal';
+	import { batchExpected } from '$lib/recipeStats';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
@@ -50,12 +51,15 @@
 		return { abv, attenuation };
 	});
 
+	// Running batches follow their snapshot, not later recipe edits
+	let expected = $derived(batchExpected(batch));
+
 	// Calculate progress position (0-100%)
 	// OG is LEFT (high), Target FG is RIGHT (low)
 	// Progress = how far current has dropped from OG toward FG
 	let progressPercent = $derived.by(() => {
 		const og = batch.measured_og;
-		const fg = batch.recipe?.fg;
+		const fg = expected.fg;
 		if (!og || !fg || !sg) return null;
 
 		const totalDrop = og - fg;  // e.g., 1.047 - 1.012 = 0.035
@@ -137,7 +141,7 @@
 		</div>
 
 		<!-- Gravity Drop Progress Bar -->
-		{#if progressPercent !== null && batch.measured_og && batch.recipe?.fg}
+		{#if progressPercent !== null && batch.measured_og && expected.fg}
 			<div class="progress-section">
 				<div class="progress-labels">
 					<div class="progress-endpoint start">
@@ -148,7 +152,7 @@
 						<span class="current-percent num">{progressPercent.toFixed(0)}%</span>
 					</div>
 					<div class="progress-endpoint end">
-						<span class="endpoint-value num">{formatSG(batch.recipe.fg)}</span>
+						<span class="endpoint-value num">{formatSG(expected.fg)}</span>
 						<span class="endpoint-label">Target FG</span>
 					</div>
 				</div>
@@ -180,12 +184,12 @@
 			<div class="cell">
 				<span class="label">FG</span>
 				<span class="primary num">{formatSG(finalGravity)}</span>
-				<span class="sub">{#if batch.recipe?.fg}target <span class="num">{formatSG(batch.recipe.fg)}</span>{:else}final{/if}</span>
+				<span class="sub">{#if expected.fg}target <span class="num">{formatSG(expected.fg)}</span>{:else}final{/if}</span>
 			</div>
 			<div class="cell">
 				<span class="label">ABV</span>
 				<span class="primary num">{abv != null ? abv.toFixed(1) : '--'}<span class="unit">%</span></span>
-				<span class="sub">{#if batch.recipe?.abv}target <span class="num">{batch.recipe.abv.toFixed(1)}%</span>{:else}measured{/if}</span>
+				<span class="sub">{#if expected.abv}target <span class="num">{expected.abv.toFixed(1)}%</span>{:else}measured{/if}</span>
 			</div>
 			<div class="cell">
 				<span class="label">Attenuation</span>

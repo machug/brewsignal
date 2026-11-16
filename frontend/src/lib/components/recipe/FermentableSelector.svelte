@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import type { FermentableResponse } from '$lib/api';
+	import type { CalculatedStats, FermentableResponse } from '$lib/api';
 	import { fetchFermentables, fetchFermentableTypes, fetchFermentableOrigins } from '$lib/api';
-	import { calculateOG, calculateSRM, srmToHex, type Fermentable } from '$lib/brewing';
+	import { srmToHex } from '$lib/brewing';
 
 	interface RecipeFermentable extends FermentableResponse {
 		amount_kg: number;
@@ -10,12 +10,12 @@
 
 	interface Props {
 		fermentables: RecipeFermentable[];
-		batchSizeLiters?: number;
-		efficiencyPercent?: number;
+		// Server-calculated totals for the whole recipe (null until known)
+		calculated?: CalculatedStats | null;
 		onUpdate: (fermentables: RecipeFermentable[]) => void;
 	}
 
-	let { fermentables, batchSizeLiters = 20, efficiencyPercent = 72, onUpdate }: Props = $props();
+	let { fermentables, calculated = null, onUpdate }: Props = $props();
 
 	let library = $state<FermentableResponse[]>([]);
 	let types = $state<string[]>([]);
@@ -44,34 +44,6 @@
 
 	// Calculate totals
 	let totalKg = $derived(fermentables.reduce((sum, f) => sum + f.amount_kg, 0));
-
-	// Calculate recipe stats from current fermentables
-	let recipeStats = $derived(() => {
-		if (fermentables.length === 0) {
-			return { og: 1.000, srm: 0, color_hex: '#FFE699' };
-		}
-
-		// Convert to calculation format
-		const calcFermentables: Fermentable[] = fermentables.map(f => ({
-			name: f.name,
-			amount_kg: f.amount_kg,
-			potential_sg: f.potential_sg || 1.036,
-			color_srm: f.color_srm || 2,
-			type: f.type ?? undefined
-		}));
-
-		const batch = {
-			batch_size_liters: batchSizeLiters,
-			efficiency_percent: efficiencyPercent,
-			boil_time_minutes: 60
-		};
-
-		const og = calculateOG(calcFermentables, batch);
-		const srm = calculateSRM(calcFermentables, batchSizeLiters);
-		const color_hex = srmToHex(srm);
-
-		return { og, srm, color_hex };
-	});
 
 	// Filter library based on search and filters
 	let filteredLibrary = $derived(() => {
@@ -182,9 +154,10 @@
 			</h3>
 			{#if fermentables.length > 0}
 				<span class="stats">
-					{totalKg.toFixed(2)}&thinsp;kg · OG {recipeStats().og.toFixed(3)} ·
-					<span class="color-swatch" style="background-color: {recipeStats().color_hex}"></span>
-					{recipeStats().srm.toFixed(0)}&thinsp;SRM
+					{totalKg.toFixed(2)}&thinsp;kg{#if calculated}
+						· OG {calculated.og.toFixed(3)} ·
+						<span class="color-swatch" style="background-color: {calculated.color_hex}"></span>
+						{calculated.srm.toFixed(0)}&thinsp;SRM{/if}
 				</span>
 			{/if}
 		</div>

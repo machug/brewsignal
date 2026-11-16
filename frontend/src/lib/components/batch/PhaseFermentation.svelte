@@ -2,6 +2,7 @@
 	import type { BatchResponse, BatchProgressResponse, BatchControlStatus } from '$lib/api';
 	import type { TiltReading } from '$lib/stores/tilts.svelte';
 	import { formatTemp, getTempUnit, formatGravity, getGravityUnit, configState } from '$lib/stores/config.svelte';
+	import { batchExpected } from '$lib/recipeStats';
 	import BatchFermentationCard from './BatchFermentationCard.svelte';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 	import BatchAlertsCard from './BatchAlertsCard.svelte';
@@ -83,7 +84,7 @@
 
 		<!-- Recipe Targets Card (only if recipe exists) -->
 		{#if batch.recipe}
-			<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+			<BatchRecipeTargetsCard recipe={batch.recipe} expected={batchExpected(batch, false)} yeastStrain={batch.yeast_strain} />
 		{/if}
 
 		<!-- Notes Card (only if notes exist) -->
@@ -108,7 +109,7 @@
 			batchStatus={batch.status}
 			measuredOg={batch.measured_og}
 			measuredFg={batch.measured_fg ?? progress?.measured?.current_sg}
-			recipeFg={batch.recipe?.fg}
+			recipeFg={batchExpected(batch).fg}
 			currentSg={liveReading?.sg ?? progress?.measured?.current_sg}
 			{liveReading}
 		/>

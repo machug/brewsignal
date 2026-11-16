@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { RecipeResponse } from '$lib/api';
 	import { fetchRecipes } from '$lib/api';
+	import { effectiveStats } from '$lib/recipeStats';
 
 	interface Props {
 		selectedRecipeId?: number;
@@ -27,6 +28,7 @@
 	let selectedRecipe = $derived(
 		selectedRecipeId ? recipes.find((r) => r.id === selectedRecipeId) : null
 	);
+	let selectedStats = $derived(selectedRecipe ? effectiveStats(selectedRecipe) : null);
 
 	onMount(async () => {
 		try {
@@ -75,9 +77,9 @@
 			<div class="selected-recipe">
 				<div class="recipe-info">
 					<p class="recipe-name">{selectedRecipe.name}</p>
-					{#if selectedRecipe.og && selectedRecipe.fg}
+					{#if selectedStats?.og && selectedStats.fg}
 						<p class="recipe-gravity">
-							{selectedRecipe.og.toFixed(3)} → {selectedRecipe.fg.toFixed(3)}
+							{selectedStats.og.toFixed(3)} → {selectedStats.fg.toFixed(3)}
 						</p>
 					{/if}
 					{#if selectedRecipe.yeast_name}
@@ -98,8 +100,8 @@
 				{#each filteredRecipes as recipe (recipe.id)}
 					<button type="button" class="recipe-item" onclick={() => handleSelect(recipe)}>
 						<span class="recipe-item-name">{recipe.name}</span>
-						{#if recipe.og}
-							<span class="recipe-item-og">{recipe.og.toFixed(3)}</span>
+						{#if effectiveStats(recipe).og}
+							<span class="recipe-item-og">{effectiveStats(recipe).og?.toFixed(3)}</span>
 						{/if}
 					</button>
 				{/each}

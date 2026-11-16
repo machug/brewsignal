@@ -36,11 +36,6 @@
 				batch_size_liters: data.batch_size_liters,
 				efficiency_percent: data.efficiency_percent,
 				boil_time_minutes: data.boil_time_minutes,
-				og: data.og,
-				fg: data.fg,
-				abv: data.abv,
-				ibu: data.ibu,
-				color_srm: data.color_srm,
 				notes: data.notes || undefined,
 				// Yeast details
 				yeast_name: data.yeast?.name,

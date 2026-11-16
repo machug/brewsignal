@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { BatchResponse, BatchUpdate, RecipeResponse } from '$lib/api';
 	import { updateBatch } from '$lib/api';
+	import { effectiveStats } from '$lib/recipeStats';
 	import { formatTemp, getTempUnit, formatGravity, getGravityUnit } from '$lib/stores/config.svelte';
 
 	interface Props {
@@ -32,7 +33,7 @@
 
 	// Recipe targets for comparison
 	let targetMashTemp = $derived(recipe.mash_temp);
-	let targetOg = $derived(recipe.og);
+	let targetOg = $derived(effectiveStats(recipe).og);
 	let targetPreBoilGravity = $derived(recipe.pre_boil_og);
 	let targetBatchSize = $derived(recipe.batch_size_liters);
 	let targetEfficiency = $derived(recipe.efficiency_percent);

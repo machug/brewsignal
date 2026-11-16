@@ -1,8 +1,8 @@
 /**
- * Brewing Calculations Module
- *
- * Standard formulas for calculating beer characteristics from ingredients.
- * All calculations use metric units internally (kg, liters, Celsius).
+ * Brewing helpers: unit conversions, labels, water and carbonation maths.
+ * Recipe stats (OG, FG, ABV, IBU, SRM, calories, BU:GU) are calculated only by
+ * the backend (services/brewing.py); see $lib/recipeStats for reading them.
+ * Metric units internally (kg, liters, Celsius).
  */
 
 // ============================================================================
@@ -16,90 +16,6 @@ export interface Fermentable {
   color_srm: number;
   yield_percent?: number;  // Alternative to potential_sg (e.g., 80%)
   type?: string;  // BeerJSON type: grain, sugar, extract, dry extract, honey...
-}
-
-// Kettle additions (not mashed) contribute full potential — brewhouse
-// efficiency only models mash losses, so it must not be applied to these.
-const NO_EFFICIENCY_TYPES = new Set(['sugar', 'extract', 'dry extract', 'liquid extract', 'honey', 'fruit', 'juice']);
-
-export interface Hop {
-  name: string;
-  amount_grams: number;
-  alpha_acid_percent: number;
-  boil_time_minutes: number;
-  form?: 'pellet' | 'whole' | 'plug';
-  use?: 'boil' | 'whirlpool' | 'dry_hop' | 'first_wort' | 'mash';
-  // Hop stand temperature (imported timing.temperature). Null = boil-hot.
-  whirlpool_temp_c?: number | null;
-}
-
-export interface Yeast {
-  name: string;
-  attenuation_percent: number;  // e.g., 75
-  temp_min_c: number;
-  temp_max_c: number;
-}
-
-export interface RecipeStats {
-  og: number;
-  fg: number;
-  abv: number;
-  ibu: number;
-  srm: number;
-  color_hex: string;
-  calories_per_330ml: number;
-}
-
-export interface BatchParams {
-  batch_size_liters: number;
-  efficiency_percent: number;
-  boil_time_minutes: number;
-  boil_off_liters_per_hour?: number;  // default 4
-}
-
-// ============================================================================
-// Gravity Calculations
-// ============================================================================
-
-/**
- * Calculate Original Gravity from fermentables
- *
- * Formula: OG = 1 + (sum of gravity points / batch volume)
- *
- * Note: potential_sg values in brewing databases are based on the US PPG system
- * (1 lb grain in 1 gal water). To use with metric units (kg, L), we apply a
- * conversion factor: (lbs/kg) * (L/gal) = 2.205 * 3.785 ≈ 8.345
- */
-export function calculateOG(
-  fermentables: Fermentable[],
-  batch: BatchParams
-): number {
-  // Conversion factor: PPG (lb/gal) to metric (kg/L)
-  const PPG_TO_METRIC = 8.345;
-
-  const totalPoints = fermentables.reduce((sum, f) => {
-    // Convert potential SG to points (e.g., 1.037 -> 37)
-    const potentialPoints = (f.potential_sg - 1) * 1000;
-    // Sugars/extracts skip the mash: full potential, no efficiency penalty
-    const efficiency = NO_EFFICIENCY_TYPES.has((f.type ?? '').toLowerCase())
-      ? 1
-      : batch.efficiency_percent / 100;
-    // Apply metric conversion, efficiency, and scale to batch size
-    const points = (f.amount_kg * potentialPoints * PPG_TO_METRIC * efficiency) /
-                   batch.batch_size_liters;
-    return sum + points;
-  }, 0);
-
-  return 1 + (totalPoints / 1000);
-}
-
-/**
- * Calculate Final Gravity from OG and yeast attenuation
- */
-export function calculateFG(og: number, attenuation_percent: number): number {
-  const ogPoints = (og - 1) * 1000;
-  const fgPoints = ogPoints * (1 - attenuation_percent / 100);
-  return 1 + (fgPoints / 1000);
 }
 
 /**
@@ -116,25 +32,6 @@ export function pointsToGravity(points: number): number {
   return 1 + (points / 1000);
 }
 
-// ============================================================================
-// ABV Calculations
-// ============================================================================
-
-/**
- * Calculate ABV from OG and FG
- *
- * Standard formula: ABV = (OG - FG) * 131.25
- * More accurate formula: ABV = (76.08 * (OG - FG) / (1.775 - OG)) * (FG / 0.794)
- */
-export function calculateABV(og: number, fg: number, method: 'simple' | 'accurate' = 'simple'): number {
-  if (method === 'simple') {
-    return (og - fg) * 131.25;
-  }
-
-  // More accurate formula accounting for alcohol's effect on density
-  return (76.08 * (og - fg) / (1.775 - og)) * (fg / 0.794);
-}
-
 /**
  * Calculate Apparent Attenuation
  */
@@ -142,105 +39,6 @@ export function calculateApparentAttenuation(og: number, fg: number): number {
   const ogPoints = (og - 1) * 1000;
   const fgPoints = (fg - 1) * 1000;
   return ((ogPoints - fgPoints) / ogPoints) * 100;
-}
-
-// ============================================================================
-// IBU Calculations
-// ============================================================================
-
-/**
- * Calculate IBU contribution from a single hop addition using Tinseth formula
- *
- * Tinseth is most accurate for high-gravity beers
- */
-export function calculateIBU_Tinseth(
-  hop: Hop,
-  og: number,
-  batch_size_liters: number
-): number {
-  // Recipes loaded from format_extensions can carry either the short
-  // HopUse form ('whirlpool', 'dry_hop', 'boil') or the BeerJSON full
-  // form ('add_to_whirlpool', 'add_to_fermentation', 'add_to_boil').
-  // Defensively map both to a canonical bucket — without this guard a
-  // dry-hop tagged 'add_to_fermentation' with boil_time_minutes=5760
-  // (4 days encoded as minutes) falls through into the boil branch
-  // and computes as a 96-hour boil, producing absurd IBU values.
-  const useStr = (hop.use ?? '').toString().toLowerCase();
-  const isDryHop = useStr === 'dry_hop' || useStr === 'add_to_fermentation';
-  const isWhirlpool = useStr === 'whirlpool' || useStr === 'add_to_whirlpool';
-  const isFirstWort = useStr === 'first_wort';
-
-  // Dry hops contribute negligible IBU.
-  if (isDryHop) return 0;
-
-  // Whirlpool / hop-stand additions: linear ramp from 5% (true flameout) to a
-  // 20% cap reached around 30 min stand time, for a boil-hot stand
-  // (tilt_ui-23u). A recorded stand temperature scales it by Malowicki's
-  // Arrhenius fit — Brewfather's aroma utilisation, 80 °C -> 0.23
-  // (tilt_ui-2mxj). Mirrors backend services/brewing.py.
-  if (isWhirlpool) {
-    const standMin = Math.max(0, hop.boil_time_minutes);
-    const tempC = hop.whirlpool_temp_c;
-    const tempFactor = tempC == null ? 1 : Math.min(1, 2.39e11 * Math.exp(-9773 / (tempC + 273.15)));
-    const utilization = Math.min(0.05 + 0.005 * standMin, 0.20) * tempFactor;
-    const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
-                batch_size_liters;
-    return Math.max(0, ibu);
-  }
-
-  // Boil-tagged hop with no boil time: nothing to credit. True flameout
-  // additions should be tagged 'whirlpool' instead.
-  if (hop.boil_time_minutes <= 0) return 0;
-
-  // Bigness factor (adjusts for wort gravity)
-  const bigness = 1.65 * Math.pow(0.000125, og - 1);
-
-  // Boil time factor (utilization increases with time, max around 60 min)
-  const btFactor = (1 - Math.exp(-0.04 * hop.boil_time_minutes)) / 4.15;
-
-  // Combined utilization
-  let utilization = bigness * btFactor;
-
-  // Pellet adjustment (10% better utilization)
-  if (hop.form === 'pellet') {
-    utilization *= 1.10;
-  }
-
-  // First wort hopping adjustment (10% more utilization)
-  if (isFirstWort) {
-    utilization *= 1.10;
-  }
-
-  // IBU = (alpha * amount_grams * utilization * 1000) / batch_liters
-  const ibu = (hop.alpha_acid_percent / 100) * hop.amount_grams * utilization * 1000 /
-              batch_size_liters;
-
-  return Math.max(0, ibu);
-}
-
-/**
- * Calculate total IBU from all hop additions
- */
-export function calculateTotalIBU(
-  hops: Hop[],
-  og: number,
-  batch_size_liters: number
-): number {
-  return hops.reduce((total, hop) => {
-    return total + calculateIBU_Tinseth(hop, og, batch_size_liters);
-  }, 0);
-}
-
-/**
- * Calculate BU:GU ratio (bitterness balance)
- *
- * < 0.5 = malty/sweet
- * 0.5 - 0.8 = balanced
- * > 0.8 = hoppy/bitter
- */
-export function calculateBUGU(ibu: number, og: number): number {
-  const ogPoints = (og - 1) * 1000;
-  return ogPoints > 0 ? ibu / ogPoints : 0;
 }
 
 /**
@@ -257,34 +55,8 @@ export function describeBUGU(ratio: number): string {
 }
 
 // ============================================================================
-// Color (SRM) Calculations
+// Color (SRM) display
 // ============================================================================
-
-/**
- * Calculate SRM using Morey equation
- *
- * MCU (Malt Color Units) = (weight_lbs * color_lovibond) / volume_gallons
- * SRM = 1.4922 * MCU^0.6859
- */
-export function calculateSRM(
-  fermentables: Fermentable[],
-  batch_size_liters: number
-): number {
-  // Convert to US units for the formula
-  const batch_gallons = batch_size_liters * 0.264172;
-
-  const mcu = fermentables.reduce((sum, f) => {
-    const weight_lbs = f.amount_kg * 2.20462;
-    // SRM and Lovibond are approximately equal for our purposes
-    return sum + (weight_lbs * f.color_srm) / batch_gallons;
-  }, 0);
-
-  // Morey equation
-  const srm = 1.4922 * Math.pow(mcu, 0.6859);
-
-  // Cap at 40 SRM (anything darker is essentially black)
-  return Math.min(40, Math.max(0, srm));
-}
 
 /**
  * Convert SRM to approximate hex color for display
@@ -472,47 +244,7 @@ export function calculateForcedCarbonationPSI(
 // Utility Functions
 // ============================================================================
 
-/**
- * Calculate calories per serving (330ml)
- *
- * Approximation based on alcohol and residual sugars
- */
-export function calculateCalories(og: number, fg: number, serving_ml: number = 330): number {
-  const abv = calculateABV(og, fg);
-  // Alcohol contributes ~7 calories per gram, ~6.9 per mL of pure alcohol
-  // Residual carbs contribute ~4 calories per gram
 
-  const alcoholCalories = abv * 0.79 * 7 * (serving_ml / 100);  // 0.79 g/mL density
-  const carbCalories = (fg - 1) * 1000 * 0.4 * (serving_ml / 100);  // Rough approximation
-
-  return Math.round(alcoholCalories + carbCalories);
-}
-
-/**
- * Calculate all recipe stats at once
- */
-export function calculateRecipeStats(
-  fermentables: Fermentable[],
-  hops: Hop[],
-  yeast: Yeast,
-  batch: BatchParams
-): RecipeStats {
-  const og = calculateOG(fermentables, batch);
-  const fg = calculateFG(og, yeast.attenuation_percent);
-  const abv = calculateABV(og, fg);
-  const ibu = calculateTotalIBU(hops, og, batch.batch_size_liters);
-  const srm = calculateSRM(fermentables, batch.batch_size_liters);
-
-  return {
-    og: Math.round(og * 1000) / 1000,
-    fg: Math.round(fg * 1000) / 1000,
-    abv: Math.round(abv * 10) / 10,
-    ibu: Math.round(ibu),
-    srm: Math.round(srm * 10) / 10,
-    color_hex: srmToHex(srm),
-    calories_per_330ml: calculateCalories(og, fg, 330),
-  };
-}
 
 /**
  * Format gravity for display (e.g., 1.052)

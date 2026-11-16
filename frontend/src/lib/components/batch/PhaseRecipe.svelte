@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { recipeUrl } from '$lib/urls';
 	import type { BatchResponse } from '$lib/api';
+	import { batchExpected } from '$lib/recipeStats';
 	import BatchRecipeTargetsCard from './BatchRecipeTargetsCard.svelte';
 
 	interface Props {
@@ -54,7 +55,7 @@
 	{/if}
 
 	{#if batch.recipe}
-		<BatchRecipeTargetsCard recipe={batch.recipe} yeastStrain={batch.yeast_strain} />
+		<BatchRecipeTargetsCard recipe={batch.recipe} expected={batchExpected(batch, false)} yeastStrain={batch.yeast_strain} />
 	{/if}
 </div>
 

@@ -1,48 +1,39 @@
 <script lang="ts">
-	import { srmToHex, srmToDescription, calculateBUGU, calculateCalories, describeBUGU } from '$lib/brewing';
+	import { srmToHex, srmToDescription, describeBUGU } from '$lib/brewing';
+	import { statDiffers, type EffectiveStats, type StatValues } from '$lib/recipeStats';
 
 	interface Props {
-		og?: number;
-		fg?: number;
-		abv?: number;
-		ibu?: number;
-		colorSrm?: number;
-		batchSizeLiters?: number;
+		// Numbers worked out by the server (see effectiveStats in $lib/recipeStats)
+		stats: EffectiveStats;
+		// Brewer-declared targets. Shown beside a calculated value when they differ.
+		targets?: StatValues;
+		// The last calculation failed; the numbers shown are the previous ones.
+		stale?: boolean;
 		// BJCP style metadata for the linked Style row. Rendered as a
 		// dedicated cell at the left of the stats grid so brewers see the
 		// target style alongside the core stats without scrolling back up
 		// to the title card (tilt_ui-6b9).
 		styleName?: string;
 		styleCategory?: string; // e.g. "21A"
-		// Imported brewer-declared targets. When present and meaningfully
-		// different from the calculated value, displayed as a small "src N"
-		// hint under the stat (tilt_ui-ak6).
-		targetOg?: number;
-		targetFg?: number;
-		targetAbv?: number;
-		targetIbu?: number;
-		targetSrm?: number;
 	}
 
-	let {
-		og = 1.050, fg = 1.010, abv = 5.0, ibu = 30, colorSrm = 8, batchSizeLiters = 20,
-		styleName, styleCategory,
-		targetOg, targetFg, targetAbv, targetIbu, targetSrm,
-	}: Props = $props();
+	let { stats, targets, stale = false, styleName, styleCategory }: Props = $props();
 
-	function showDelta(target: number | undefined, actual: number, threshold: number): boolean {
-		if (target == null) return false;
-		return Math.abs(target - actual) >= threshold;
+	const DASH = '\u2014';
+	const fmt = (v: number | undefined, d: number) => (v == null ? DASH : v.toFixed(d));
+
+	// Hint under a calculated stat when the declared target differs.
+	function hint(stat: keyof StatValues, d: number, suffix = ''): string | null {
+		const t = targets?.[stat];
+		return stats.source === 'calculated' && t != null && statDiffers(stat, stats[stat], t)
+			? `src ${t.toFixed(d)}${suffix}`
+			: null;
 	}
 
-	// Derived calculations
-	let colorHex = $derived(srmToHex(colorSrm));
-	let colorDesc = $derived(srmToDescription(colorSrm));
-	let buguRatio = $derived(ibu && og ? calculateBUGU(ibu, og) : 0);
-	let calories = $derived(og && fg ? calculateCalories(og, fg) : 0);
-
-	// Balance description based on BU:GU ratio
-	let balanceDesc = $derived(describeBUGU(buguRatio));
+	let colorHex = $derived(stats.colorHex ?? (stats.srm != null ? srmToHex(stats.srm) : null));
+	let colorDesc = $derived(stats.srm != null ? srmToDescription(stats.srm) : null);
+	let balanceDesc = $derived(stats.buGu != null ? describeBUGU(stats.buGu) : null);
+	let assumptionsTip = $derived(stats.assumptions.join('\n'));
 </script>
 
 <div class="stats-panel">
@@ -58,57 +49,59 @@
 
 	<div class="cell">
 		<span class="label">OG</span>
-		<span class="value">{og.toFixed(3)}</span>
-		{#if showDelta(targetOg, og, 0.002)}
-			<span class="sub">src {targetOg!.toFixed(3)}</span>
-		{/if}
+		<span class="value">{fmt(stats.og, 3)}</span>
+		{#if hint('og', 3)}<span class="sub">{hint('og', 3)}</span>{/if}
 	</div>
 	<div class="cell">
 		<span class="label">FG</span>
-		<span class="value">{fg.toFixed(3)}</span>
-		{#if showDelta(targetFg, fg, 0.002)}
-			<span class="sub">src {targetFg!.toFixed(3)}</span>
-		{/if}
+		<span class="value">{fmt(stats.fg, 3)}</span>
+		{#if hint('fg', 3)}<span class="sub">{hint('fg', 3)}</span>{/if}
 	</div>
 	<div class="cell">
 		<span class="label">ABV</span>
-		<span class="value">{abv.toFixed(1)}<span class="unit pct">%</span></span>
-		{#if showDelta(targetAbv, abv, 0.2)}
-			<span class="sub">src {targetAbv!.toFixed(1)}%</span>
-		{/if}
+		<span class="value">{fmt(stats.abv, 1)}{#if stats.abv != null}<span class="unit pct">%</span>{/if}</span>
+		{#if hint('abv', 1, '%')}<span class="sub">{hint('abv', 1, '%')}</span>{/if}
 	</div>
 	<div class="cell">
 		<span class="label">IBU</span>
-		<span class="value">{ibu.toFixed(0)}</span>
-		{#if showDelta(targetIbu, ibu, 3)}
-			<span class="sub">src {targetIbu!.toFixed(0)}</span>
-		{/if}
+		<span class="value">{fmt(stats.ibu, 0)}</span>
+		{#if hint('ibu', 0)}<span class="sub">{hint('ibu', 0)}</span>{/if}
 	</div>
 	<div class="cell">
 		<span class="label">BU:GU</span>
-		<span class="value">{buguRatio.toFixed(2)}</span>
-		<span class="sub">{balanceDesc}</span>
+		<span class="value">{fmt(stats.buGu, 2)}</span>
+		{#if balanceDesc}<span class="sub">{balanceDesc}</span>{/if}
 	</div>
 	<div class="cell cell-color">
 		<!-- Flat SRM indicator; fill is beer colour (data), not theme -->
 		<svg class="glass" viewBox="0 0 24 36" aria-hidden="true">
 			<path d="M3 2h18l-2.5 31a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z" fill="none" stroke="var(--rule-strong)" stroke-width="1.5" />
-			<path d="M4.1 10h15.8l-2.1 23a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z" style="fill: {colorHex}" />
+			{#if colorHex}<path d="M4.1 10h15.8l-2.1 23a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z" style="fill: {colorHex}" />{/if}
 		</svg>
 		<div class="color-text">
 			<span class="label">Color</span>
-			<span class="value">{colorSrm.toFixed(0)}<span class="unit">SRM</span></span>
-			<span class="sub">{colorDesc}</span>
-			{#if showDelta(targetSrm, colorSrm, 1)}
-				<span class="sub">src {targetSrm!.toFixed(0)}</span>
-			{/if}
+			<span class="value">{fmt(stats.srm, 0)}{#if stats.srm != null}<span class="unit">SRM</span>{/if}</span>
+			{#if colorDesc}<span class="sub">{colorDesc}</span>{/if}
+			{#if hint('srm', 0)}<span class="sub">{hint('srm', 0)}</span>{/if}
 		</div>
 	</div>
 	<div class="cell">
 		<span class="label">Calories</span>
-		<span class="value">{calories}</span>
+		<span class="value">{stats.caloriesPer330ml ?? DASH}</span>
 		<span class="sub">per 330&thinsp;mL</span>
 	</div>
+	{#if stats.source !== 'empty'}
+		<div class="cell cell-note">
+			{#if stats.source === 'declared'}
+				<span class="sub" title="No ingredients to work these out from">Declared</span>
+			{:else if assumptionsTip}
+				<span class="sub tip" title={assumptionsTip}>Estimated</span>
+			{/if}
+			{#if stale}<span class="sub">Not updated</span>{/if}
+		</div>
+	{:else if stale}
+		<div class="cell cell-note"><span class="sub">Not updated</span></div>
+	{/if}
 </div>
 
 <style>
@@ -195,6 +188,16 @@
 		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.cell-note {
+		flex: 0 1 auto;
+		justify-content: center;
+	}
+
+	.tip {
+		cursor: help;
+		text-decoration: underline dotted;
 	}
 
 	.sub {

@@ -434,3 +434,22 @@ class TestFinishesBelowRecipeFG:
             )
             assert result["fitted"], (model, result)
             assert abs(result["predicted_fg"] - 1.004) < 0.002, (model, result["predicted_fg"])
+
+
+def test_yeast_attenuation_keeps_fg_plausible_while_gravity_falls_linearly():
+    """tilt_ui-hcly: a straight-line drop gave FG 1.001/0.996 on a US-05 batch (recipe FG 1.011)."""
+    times = [h * 0.5 for h in range(120)]
+    sgs = [1.0526 - 0.00045 * t for t in times]  # still falling at full speed
+    for model in ("auto", "exponential", "logistic", "gompertz"):
+        out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, model=model, attenuation=(72.0, 78.0))
+        if out["fitted"]:
+            assert out["predicted_fg"] >= 1.0089 and abs(out["predicted_fg"] - 1.011) <= 0.005, (model, out["predicted_fg"])
+
+
+def test_batch_finishing_below_the_yeast_range_still_fits():
+    """The FG floor never sits above the reading already reached (tilt_ui-fod1)."""
+    times = [float(h) for h in range(200)]
+    sgs = [1.004 + 0.048 * np.exp(-0.04 * t) for t in times]  # 92% attenuation, plateaued
+    out = FermentationCurveFitter().fit(times, sgs, expected_fg=1.011, attenuation=(72.0, 78.0))
+    assert out["fitted"]
+    assert out["predicted_fg"] <= sgs[-1]

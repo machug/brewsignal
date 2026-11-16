@@ -149,6 +149,7 @@ class MLPipelineManager:
         expected_fg: Optional[float] = None,
         model: str = "auto",
         batch_id: Optional[int] = None,
+        attenuation: Optional[tuple[float, float]] = None,
     ) -> Optional[dict]:
         """Get current ML state and predictions for a device.
 
@@ -156,6 +157,7 @@ class MLPipelineManager:
             device_id: Unique device identifier
             expected_fg: Expected final gravity from recipe (constrains predictions)
             model: Prediction model to use: "exponential", "gompertz", "logistic", or "auto"
+            attenuation: Yeast attenuation range in percent (low, high)
 
         Returns:
             Dictionary with device ML state including predictions, or None if no pipeline exists
@@ -174,6 +176,7 @@ class MLPipelineManager:
                 sgs=pipeline.sg_history,
                 expected_fg=expected_fg,
                 model=model,
+                attenuation=attenuation,
             )
 
             return {
@@ -204,11 +207,13 @@ class MLPipelineManager:
             return {"available": False, "error": "No device linked"}
 
         expected_fg = batch.recipe.fg if batch.recipe else None
-        state = self.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch.id)
+        attenuation = await self._yeast_attenuation(db_session, batch)
+        kwargs = dict(expected_fg=expected_fg, model=model, batch_id=batch.id, attenuation=attenuation)
+        state = self.get_device_state(device_id, **kwargs)
         # Reload from the database if the pipeline is empty or short on history
         if not state or state.get("history_count", 0) < 10:
             await self.reload_from_database(device_id, batch.id, db_session)
-            state = self.get_device_state(device_id, expected_fg=expected_fg, model=model, batch_id=batch.id)
+            state = self.get_device_state(device_id, **kwargs)
 
         if not state or not state.get("predictions"):
             return {"available": False}
@@ -228,6 +233,7 @@ class MLPipelineManager:
         return {
             "available": True,
             "predicted_fg": predictions.get("predicted_fg"),
+            "curve_fg": predictions.get("curve_fg"),
             "predicted_og": predictions.get("predicted_og"),
             "estimated_completion": completion.isoformat() if completion else None,
             "hours_to_completion": hours,
@@ -238,6 +244,23 @@ class MLPipelineManager:
             "r_squared": predictions.get("r_squared"),
             "num_readings": state.get("history_count", 0),
         }
+
+    @staticmethod
+    async def _yeast_attenuation(db_session, batch) -> Optional[tuple[float, float]]:
+        """Documented attenuation range (low, high) % of the batch's yeast (tilt_ui-hcly).
+
+        The batch's chosen strain wins; else the recipe's single figure +/- 3.
+        """
+        from backend.models import YeastStrain
+
+        if batch.yeast_strain_id:
+            strain = await db_session.get(YeastStrain, batch.yeast_strain_id)
+            if strain and strain.attenuation_low and strain.attenuation_high:
+                return (strain.attenuation_low, strain.attenuation_high)
+        recipe_att = batch.recipe.yeast_attenuation if batch.recipe else None
+        if recipe_att:
+            return (recipe_att - 3.0, recipe_att + 3.0)
+        return None
 
     async def warm_active_batches(self, session_factory) -> int:
         """Reload history for every active batch with a device (startup).

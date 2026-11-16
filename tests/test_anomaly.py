@@ -130,3 +130,11 @@ def test_steep_drop_then_flat_is_not_a_step_up():
     sgs = np.interp(hours, [0, 3, 4.5, 10], [1.0240, 1.0235, 1.0155, 1.0154])
     results = feed(FermentationAnomalyDetector(), hours, sgs)
     assert "step_change_up" not in [r["reason"] for r in results]
+
+
+def test_step_up_during_fast_fall_still_flagged():
+    """A real +1.5 pt step while SG falls 2 pt/h is still a step up."""
+    hours = np.arange(0, 8, STEP)
+    sgs = 1.050 - 0.002 * hours + np.where(hours >= 4, 0.0015, 0.0)
+    results = feed(FermentationAnomalyDetector(), hours, sgs)
+    assert [r["reason"] for r in results if r["is_anomaly"]] == ["step_change_up"]

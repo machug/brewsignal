@@ -183,3 +183,35 @@ async def test_put_yeast_change_updates_calculated_fg(client):
     # a second PUT that does not mention yeast keeps the new attenuation
     again = await client.put(f"/api/recipes/{rid}", json={"notes": "n"})
     assert again.json()["calculated"]["fg"] == after["fg"]
+
+
+@pytest.mark.asyncio
+async def test_put_resending_same_yeast_keeps_culture_range(client, test_db):
+    from backend.models import RecipeCulture
+    from sqlalchemy import select
+    r = await _recipe(test_db, hops=False, yeast_name="Y", yeast_attenuation=70.0)
+    test_db.add(RecipeCulture(recipe_id=r.id, name="Y", attenuation_min_percent=70.0,
+                              attenuation_max_percent=80.0))
+    await test_db.commit()
+    before = (await client.get(f"/api/recipes/{r.id}")).json()["calculated"]
+    resp = await client.put(f"/api/recipes/{r.id}", json={"yeast_name": "Y", "yeast_attenuation": 70.0})
+    assert resp.status_code == 200
+    assert resp.json()["calculated"]["fg"] == before["fg"]
+    c = (await test_db.execute(select(RecipeCulture).where(RecipeCulture.recipe_id == r.id))).scalar_one()
+    await test_db.refresh(c)
+    assert (c.attenuation_min_percent, c.attenuation_max_percent) == (70.0, 80.0)
+
+
+@pytest.mark.asyncio
+async def test_attenuation_only_put_keeps_all_cultures(client, test_db):
+    from backend.models import RecipeCulture
+    from sqlalchemy import select
+    r = await _recipe(test_db, hops=False)
+    test_db.add_all([RecipeCulture(recipe_id=r.id, name="A", attenuation_min_percent=70.0, attenuation_max_percent=70.0),
+                     RecipeCulture(recipe_id=r.id, name="B")])
+    await test_db.commit()
+    resp = await client.put(f"/api/recipes/{r.id}", json={"yeast_attenuation": 85.0})
+    assert resp.status_code == 200
+    names = [c.name for c in (await test_db.execute(
+        select(RecipeCulture).where(RecipeCulture.recipe_id == r.id).order_by(RecipeCulture.id))).scalars()]
+    assert names == ["A", "B"]

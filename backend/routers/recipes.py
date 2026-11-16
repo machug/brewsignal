@@ -682,17 +682,22 @@ async def import_recipe(
     return to_recipe_response(result_obj.scalar_one())
 
 
-def _sync_primary_culture(db: AsyncSession, recipe: Recipe, changed: dict) -> None:
-    """Mirror the recipe's yeast_* fields onto its first RecipeCulture (create/remove as needed)."""
-    culture = recipe.cultures[0] if recipe.cultures else None
-    if not recipe.yeast_name:
-        for c in list(recipe.cultures):
-            recipe.cultures.remove(c)
+def _sync_primary_culture(recipe: Recipe, changed: set[str]) -> None:
+    """Mirror yeast_* fields whose value changed onto the FIRST RecipeCulture.
+
+    Creates it when there are no cultures and a yeast name; never deletes rows
+    (secondary cultures survive, and clearing the name leaves the culture's name).
+    """
+    if not changed:
         return
+    culture = recipe.cultures[0] if recipe.cultures else None
     if culture is None:
+        if not recipe.yeast_name:
+            return
         culture = RecipeCulture(name=recipe.yeast_name)
         recipe.cultures.append(culture)
-    culture.name = recipe.yeast_name
+    if "yeast_name" in changed and recipe.yeast_name:
+        culture.name = recipe.yeast_name
     if "yeast_lab" in changed:
         culture.producer = recipe.yeast_lab
     if "yeast_product_id" in changed:
@@ -739,6 +744,10 @@ async def update_recipe(
     explicit_style_id = (
         "style_id" in update_data and update_data["style_id"] is not None
     )
+    yeast_changed = {
+        k for k, v in update_data.items()
+        if k.startswith("yeast_") and v != getattr(existing_recipe, k)
+    }
     for field, value in update_data.items():
         setattr(existing_recipe, field, value)
 
@@ -757,8 +766,7 @@ async def update_recipe(
 
     # The calculator reads attenuation from the culture rows, so keep the primary
     # culture in step with the yeast fields (the edit page sends only yeast_*).
-    if any(k.startswith("yeast_") for k in update_data):
-        _sync_primary_culture(db, existing_recipe, update_data)
+    _sync_primary_culture(existing_recipe, yeast_changed)
 
     fill_legacy_columns(existing_recipe)
 

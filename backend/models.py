@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, field_serializer, model_validator
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, false
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -1925,7 +1925,13 @@ class CalculatedStatsResponse(BaseModel):
 
 
 class _HasCalculated(BaseModel):
-    """Fills `calculated` when validated from a Recipe row (ingredients must be loaded)."""
+    """Fills `calculated` when validated from a Recipe row.
+
+    Any model built from an ORM Recipe must have fermentables/hops/cultures
+    eager-loaded (recipe_with_ingredients_stmt() / batch_with_recipe_options()
+    in services/recipe_stats.py); otherwise this raises MissingGreenlet or
+    calculates from empty lists.
+    """
     calculated: Optional[CalculatedStatsResponse] = None
 
     @model_validator(mode="wrap")
@@ -2185,36 +2191,52 @@ class RecipeDetailResponse(_HasCalculated):
 
 
 class _DraftFermentable(BaseModel):
-    name: str = ""
-    amount_kg: float = 0
-    yield_percent: Optional[float] = None
-    potential_sg: Optional[float] = None
-    color_srm: Optional[float] = None
-    type: Optional[str] = None
+    name: str = Field("", max_length=200)
+    amount_kg: float = Field(0, ge=0, le=1000)
+    yield_percent: Optional[float] = Field(None, ge=0, le=100)
+    potential_sg: Optional[float] = Field(None, ge=1, le=1.2)
+    color_srm: Optional[float] = Field(None, ge=0, le=1000)
+    type: Optional[str] = Field(None, max_length=50)
+
+
+class _DraftDuration(BaseModel):
+    value: float = Field(0, ge=0, le=100000)
+    unit: Optional[str] = Field(None, max_length=20)
+
+
+class _DraftTemperature(BaseModel):
+    value: float = Field(ge=0, le=100)  # Celsius
+    unit: Optional[str] = Field(None, max_length=20)
+
+
+class _DraftTiming(BaseModel):
+    use: Optional[str] = Field(None, max_length=40)
+    duration: Optional[_DraftDuration] = None
+    temperature: Optional[_DraftTemperature] = None
 
 
 class _DraftHop(BaseModel):
-    name: str = ""
-    amount_grams: float = 0
-    alpha_acid_percent: Optional[float] = None
-    form: Optional[str] = None
+    name: str = Field("", max_length=200)
+    amount_grams: float = Field(0, ge=0, le=100000)
+    alpha_acid_percent: Optional[float] = Field(None, ge=0, le=100)
+    form: Optional[str] = Field(None, max_length=50)
     is_extract: bool = False
-    timing: Optional[Dict[str, Any]] = None
+    timing: Optional[_DraftTiming] = None
 
 
 class _DraftCulture(BaseModel):
-    attenuation_min_percent: Optional[float] = None
-    attenuation_max_percent: Optional[float] = None
+    attenuation_min_percent: Optional[float] = Field(None, ge=0, le=100)
+    attenuation_max_percent: Optional[float] = Field(None, ge=0, le=100)
 
 
 class RecipeDraftCalculateRequest(BaseModel):
     """Unsaved recipe ingredients for POST /api/recipes/calculate."""
-    batch_size_liters: Optional[float] = None
-    efficiency_percent: Optional[float] = None
-    yeast_attenuation: Optional[float] = None
-    fermentables: list[_DraftFermentable] = []
-    hops: list[_DraftHop] = []
-    cultures: list[_DraftCulture] = []
+    batch_size_liters: Optional[float] = Field(None, ge=0, le=10000)
+    efficiency_percent: Optional[float] = Field(None, ge=0, le=100)
+    yeast_attenuation: Optional[float] = Field(None, ge=0, le=100)
+    fermentables: list[_DraftFermentable] = Field([], max_length=100)
+    hops: list[_DraftHop] = Field([], max_length=100)
+    cultures: list[_DraftCulture] = Field([], max_length=20)
 
 
 class _RestRuleFields(BaseModel):

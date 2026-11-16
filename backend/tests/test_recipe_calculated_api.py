@@ -140,3 +140,46 @@ async def test_batch_recipe_includes_calculated(client, test_db):
     b = (await client.post("/api/batches", json={"recipe_id": r.id, "status": "planning"})).json()
     got = (await client.get(f"/api/batches/{b['id']}")).json()
     assert got["recipe"]["calculated"]["og"] > 1.0
+
+
+_GRAIN = {"name": "Pale", "type": "grain", "amount_kg": 5.0, "yield_percent": 80.0, "color_srm": 3.0}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_hop", [
+    {"name": "H", "amount_grams": 30, "timing": {"use": 123}},
+    {"name": "H", "amount_grams": 30, "timing": {"use": "whirlpool", "temperature": {"value": -273.15, "unit": "C"}}},
+    {"name": "H", "amount_grams": 30, "timing": {"use": "boil", "duration": {"value": "x", "unit": "min"}}},
+    {"name": "H", "amount_grams": -5},
+    {"name": "H", "amount_grams": 1e308, "alpha_acid_percent": 10},
+])
+async def test_calculate_rejects_bad_hops(client, bad_hop):
+    resp = await client.post("/api/recipes/calculate", json={"fermentables": [_GRAIN], "hops": [bad_hop]})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_calculate_rejects_negative_and_oversized(client):
+    neg = await client.post("/api/recipes/calculate", json={"fermentables": [{**_GRAIN, "amount_kg": -1}]})
+    assert neg.status_code == 422
+    many = await client.post("/api/recipes/calculate", json={"fermentables": [_GRAIN] * 101})
+    assert many.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_put_yeast_change_updates_calculated_fg(client):
+    created = await client.post("/api/recipes", json={
+        "name": "Y", "batch_size_liters": 20.0, "yeast_name": "US-05", "yeast_attenuation": 75.0,
+        "format_extensions": {"fermentables": [_GRAIN]},
+    })
+    rid = created.json()["id"]
+    before = created.json()["calculated"]
+    resp = await client.put(f"/api/recipes/{rid}", json={"yeast_name": "WLP001", "yeast_attenuation": 85.0})
+    assert resp.status_code == 200
+    after = resp.json()["calculated"]
+    assert after["og"] == before["og"]
+    assert after["fg"] < before["fg"]
+    assert resp.json()["fg"] == after["fg"]
+    # a second PUT that does not mention yeast keeps the new attenuation
+    again = await client.put(f"/api/recipes/{rid}", json={"notes": "n"})
+    assert again.json()["calculated"]["fg"] == after["fg"]

@@ -304,7 +304,8 @@ async def calculate_draft(draft: RecipeDraftCalculateRequest):
     recipe.hops = [
         RecipeHop(
             name=h.name, amount_grams=h.amount_grams, alpha_acid_percent=h.alpha_acid_percent,
-            form=h.form, is_extract=h.is_extract, timing=h.timing,
+            form=h.form, is_extract=h.is_extract,
+            timing=h.timing.model_dump(exclude_none=True) if h.timing else None,
         )
         for h in draft.hops
     ]
@@ -681,6 +682,29 @@ async def import_recipe(
     return to_recipe_response(result_obj.scalar_one())
 
 
+def _sync_primary_culture(db: AsyncSession, recipe: Recipe, changed: dict) -> None:
+    """Mirror the recipe's yeast_* fields onto its first RecipeCulture (create/remove as needed)."""
+    culture = recipe.cultures[0] if recipe.cultures else None
+    if not recipe.yeast_name:
+        for c in list(recipe.cultures):
+            recipe.cultures.remove(c)
+        return
+    if culture is None:
+        culture = RecipeCulture(name=recipe.yeast_name)
+        recipe.cultures.append(culture)
+    culture.name = recipe.yeast_name
+    if "yeast_lab" in changed:
+        culture.producer = recipe.yeast_lab
+    if "yeast_product_id" in changed:
+        culture.product_id = recipe.yeast_product_id
+    if "yeast_temp_min" in changed:
+        culture.temp_min_c = recipe.yeast_temp_min
+    if "yeast_temp_max" in changed:
+        culture.temp_max_c = recipe.yeast_temp_max
+    if "yeast_attenuation" in changed:
+        culture.attenuation_min_percent = culture.attenuation_max_percent = recipe.yeast_attenuation
+
+
 @router.put("/{recipe_id}", response_model=RecipeResponse)
 async def update_recipe(
     recipe_id: int,
@@ -730,6 +754,11 @@ async def update_recipe(
         await hydrate_recipe_ingredients(
             db, existing_recipe, update_data["format_extensions"]
         )
+
+    # The calculator reads attenuation from the culture rows, so keep the primary
+    # culture in step with the yeast fields (the edit page sends only yeast_*).
+    if any(k.startswith("yeast_") for k in update_data):
+        _sync_primary_culture(db, existing_recipe, update_data)
 
     fill_legacy_columns(existing_recipe)
 

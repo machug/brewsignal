@@ -651,6 +651,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_bjcp_scoring)  # Add BJCP 50-point subcategory scoring columns
         await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
         await conn.run_sync(_migrate_add_rest_rule_columns)  # Automatic diacetyl rest rule (tilt_ui-ml8e)
+        await conn.run_sync(_migrate_add_dry_hop_columns)  # Dry hop reminder (tilt_ui-n1w7)
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -1236,6 +1237,18 @@ def _migrate_add_rest_rule_columns(conn) -> None:
         ("rest_below_since", "DATETIME"), ("rest_confirmed_at", "DATETIME"),
         ("rest_hold_trigger_sg", "FLOAT"), ("rest_fired_at", "DATETIME"),
     ):
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} {ddl}"))
+            print(f"Migration: Added {name} column to batches")
+
+
+def _migrate_add_dry_hop_columns(conn) -> None:
+    """Add the dry hop reminder columns to batches (tilt_ui-n1w7)."""
+    from sqlalchemy import text
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
+    if not columns:
+        return  # table missing: create_all makes it with the columns
+    for name, ddl in (("dry_hop_trigger_sg", "FLOAT"), ("dry_hop_done_at", "DATETIME")):
         if name not in columns:
             conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} {ddl}"))
             print(f"Migration: Added {name} column to batches")

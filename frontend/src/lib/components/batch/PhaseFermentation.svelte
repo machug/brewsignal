@@ -20,6 +20,7 @@
 		onOverride: (deviceType: 'heater' | 'cooler', state: 'on' | 'off' | null) => void;
 		onClearOverrides: () => void;
 		onTempControlToggle: () => void;
+		onBatchUpdate?: (batch: BatchResponse) => void;
 	}
 
 	let {
@@ -33,7 +34,10 @@
 		onOverride,
 		onClearOverrides,
 		onTempControlToggle,
+		onBatchUpdate,
 	}: Props = $props();
+
+	let dryHopDoneAt = $derived(batch.dry_hop_done_at ?? null);
 
 	let tempUnit = $derived(getTempUnit());
 
@@ -92,7 +96,10 @@
 	<div class="info-section">
 		<!-- Active Alerts Card (only show during fermentation/conditioning) -->
 		{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
-			<BatchAlertsCard batchId={batch.id} />
+			<BatchAlertsCard batchId={batch.id} onDryHopDone={(b) => onBatchUpdate?.(b)} />
+		{#if dryHopDoneAt}
+			<p class="dry-hop-done">Dry hopped {formatWhen(dryHopDoneAt)}</p>
+		{/if}
 		{/if}
 
 		<!-- ML Predictions Panel -->
@@ -295,6 +302,10 @@
 {/if}
 
 <style>
+	.dry-hop-done {
+		font-size: var(--text-sm);
+		color: var(--ink-secondary);
+	}
 	.num,
 	.detail-value,
 	.chip-state {

@@ -673,6 +673,8 @@ export interface BatchResponse {
 	rest_temp_target?: number | null;
 	rest_hold_hours?: number | null;
 	rest_fired_at?: string | null;
+	dry_hop_trigger_sg?: number | null;
+	dry_hop_done_at?: string | null;
 	// Soft delete
 	deleted_at?: string;
 	// Reading control
@@ -702,6 +704,7 @@ export interface BatchCreate {
 	rest_trigger_percent?: number | null;
 	rest_temp_target?: number;
 	rest_hold_hours?: number | null;
+	dry_hop_trigger_sg?: number | null; // null = default (65% of the way from OG to FG)
 }
 
 export interface BatchUpdate {
@@ -742,6 +745,7 @@ export interface BatchUpdate {
 	rest_trigger_percent?: number | null;
 	rest_temp_target?: number;
 	rest_hold_hours?: number | null;
+	dry_hop_trigger_sg?: number | null; // null = default (65% of the way from OG to FG)
 	// Reading control
 	readings_paused?: boolean;
 	// Timer state
@@ -1378,7 +1382,8 @@ export type AlertType =
 	| 'rest_blocked'
 	| 'sensor_offline'
 	| 'battery_low'
-	| 'temp_runaway';
+	| 'temp_runaway'
+	| 'dry_hop_due';
 
 export interface FermentationAlert {
 	id: number;
@@ -1424,6 +1429,17 @@ export async function dismissAlert(
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({ detail: response.statusText }));
 		throw new Error(error.detail || 'Failed to dismiss alert');
+	}
+	return response.json();
+}
+
+/**
+ * Mark the dry hop as added; clears the dry hop reminder
+ */
+export async function markDryHopDone(batchId: number): Promise<BatchResponse> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/dry-hop-done`, { method: 'POST' });
+	if (!response.ok) {
+		throw new Error(await batchErrorMessage(response, 'Failed to mark dry hop done'));
 	}
 	return response.json();
 }

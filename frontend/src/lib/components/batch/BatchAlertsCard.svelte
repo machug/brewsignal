@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { fetchBatchAlerts, dismissAlert, dismissAllAlerts, type FermentationAlert } from '$lib/api';
+	import { fetchBatchAlerts, dismissAlert, dismissAllAlerts, markDryHopDone, type BatchResponse, type FermentationAlert } from '$lib/api';
 	import BatchCard from './BatchCard.svelte';
 
 	interface Props {
 		batchId: number;
+		onDryHopDone?: (batch: BatchResponse) => void;
 	}
 
-	let { batchId }: Props = $props();
+	let { batchId, onDryHopDone }: Props = $props();
 
 	let alerts = $state<FermentationAlert[]>([]);
 	let loading = $state(true);
@@ -43,11 +44,25 @@
 		}
 	}
 
+	async function handleDryHopDone(alertId: number) {
+		try {
+			dismissing = alertId;
+			const updated = await markDryHopDone(batchId);
+			alerts = alerts.filter(a => a.id !== alertId);
+			onDryHopDone?.(updated);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to mark dry hop done';
+		} finally {
+			dismissing = null;
+		}
+	}
+
 	async function handleDismissAll() {
 		try {
 			dismissingAll = true;
 			await dismissAllAlerts(batchId);
-			alerts = [];
+			// The server keeps the dry hop reminder until it is marked done
+			alerts = alerts.filter((a) => a.alert_type === 'dry_hop_due');
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to dismiss alerts';
 		} finally {
@@ -119,6 +134,11 @@
 							</span>
 						</div>
 						<p class="alert-message">{alert.message}</p>
+						{#if alert.alert_type === 'dry_hop_due'}
+							<button type="button" class="dismiss-all-btn dry-hop-btn" onclick={() => handleDryHopDone(alert.id)} disabled={dismissing === alert.id}>
+								Mark dry hopped
+							</button>
+						{/if}
 						<div class="alert-meta">
 							<span class="alert-time" title="First detected: {new Date(alert.first_detected_at).toLocaleString()}">
 								First: {formatTimeAgo(alert.first_detected_at)}
@@ -129,6 +149,7 @@
 							</span>
 						</div>
 					</div>
+					{#if alert.alert_type !== 'dry_hop_due'}
 					<button
 						type="button"
 						class="dismiss-btn"
@@ -144,6 +165,7 @@
 							</svg>
 						{/if}
 					</button>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -203,6 +225,9 @@
 	.dismiss-all-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+	.dry-hop-btn {
+		margin-bottom: var(--space-2xs);
 	}
 	.alerts-list {
 		display: flex;

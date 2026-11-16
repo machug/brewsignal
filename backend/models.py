@@ -604,6 +604,10 @@ class Batch(Base):
     rest_below_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rest_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rest_hold_trigger_sg: Mapped[Optional[float]] = mapped_column()  # trigger gravity the hold was timed against
+
+    # Dry hop reminder (tilt_ui-n1w7): None trigger = 65% of the way from OG to expected FG
+    dry_hop_trigger_sg: Mapped[Optional[float]] = mapped_column()
+    dry_hop_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rest_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # set once; rule never fires again
 
     # Notes
@@ -2170,7 +2174,18 @@ class _RestRuleFields(BaseModel):
         return v
 
 
-class BatchCreate(_RestRuleFields):
+class _DryHopFields(BaseModel):
+    dry_hop_trigger_sg: Optional[float] = None
+
+    @field_validator("dry_hop_trigger_sg")
+    @classmethod
+    def validate_dry_hop_trigger_sg(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not 1.0 < v < 1.2:
+            raise ValueError("dry_hop_trigger_sg must be between 1.000 and 1.200")
+        return v
+
+
+class BatchCreate(_RestRuleFields, _DryHopFields):
     recipe_id: Optional[int] = None
     device_id: Optional[str] = None
     yeast_strain_id: Optional[int] = None  # Override recipe yeast with specific strain
@@ -2217,7 +2232,7 @@ class BatchCreate(_RestRuleFields):
         return v
 
 
-class BatchUpdate(_RestRuleFields):
+class BatchUpdate(_RestRuleFields, _DryHopFields):
     recipe_id: Optional[int] = None
     name: Optional[str] = None
     status: Optional[str] = None
@@ -2359,6 +2374,8 @@ class BatchResponse(BaseModel):
     rest_temp_target: Optional[float] = None
     rest_hold_hours: Optional[float] = None
     rest_fired_at: Optional[datetime] = None
+    dry_hop_trigger_sg: Optional[float] = None
+    dry_hop_done_at: Optional[datetime] = None
     # Reading control
     readings_paused: bool = False
     # Timer state

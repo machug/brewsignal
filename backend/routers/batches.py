@@ -345,6 +345,7 @@ async def create_batch(
         rest_trigger_percent=batch.rest_trigger_percent,
         rest_temp_target=batch.rest_temp_target,
         rest_hold_hours=batch.rest_hold_hours,
+        dry_hop_trigger_sg=batch.dry_hop_trigger_sg,
     )
     _require_complete_rest_rule(db_batch)
 
@@ -545,6 +546,8 @@ async def update_batch(
         batch.rest_temp_target = update.rest_temp_target
     if "rest_hold_hours" in update.model_fields_set:
         batch.rest_hold_hours = update.rest_hold_hours
+    if "dry_hop_trigger_sg" in update.model_fields_set:  # null = back to the default
+        batch.dry_hop_trigger_sg = update.dry_hop_trigger_sg
     _require_complete_rest_rule(batch)
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already
@@ -617,6 +620,24 @@ async def update_batch(
     batch = result.scalar_one()
 
     return batch
+
+
+@router.post("/{batch_id}/dry-hop-done", response_model=BatchResponse)
+async def mark_dry_hop_done(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark the dry hop as added (tilt_ui-n1w7): stops the reminder."""
+    batch = await get_user_batch(batch_id, user, db)
+    if batch.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    from ..services.alert_service import AlertType, _clear_alert
+    now = datetime.now(timezone.utc)
+    batch.dry_hop_done_at = now
+    await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)
+    await db.commit()
+    return await get_batch(batch_id, user, db)
 
 
 @router.get("/{batch_id}/inventory-check")
@@ -1098,10 +1119,14 @@ async def dismiss_all_alerts(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    from ..services.alert_service import AlertType
+
     # Get all active alerts for this batch
     query = select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
-        FermentationAlert.cleared_at.is_(None)
+        FermentationAlert.cleared_at.is_(None),
+        # The dry hop reminder clears only when marked done (tilt_ui-n1w7)
+        FermentationAlert.alert_type != AlertType.DRY_HOP_DUE,
     )
     result = await db.execute(query)
     alerts = result.scalars().all()

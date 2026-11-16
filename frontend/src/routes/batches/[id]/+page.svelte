@@ -642,6 +642,7 @@
 					onOverride={handleOverride}
 					onClearOverrides={handleClearAllOverrides}
 					onTempControlToggle={() => tempControlCollapsed = !tempControlCollapsed}
+					onBatchUpdate={(updated) => batch = updated}
 				/>
 			{:else if activeTab === 'conditioning'}
 				<PhaseConditioning

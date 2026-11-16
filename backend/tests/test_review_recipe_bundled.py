@@ -167,3 +167,36 @@ class TestReviewRecipeBundled:
                 db=test_db, recipe_id=999_999, user_id="test-user",
             )
         assert "error" in result
+
+
+class TestNoFermentablesStyleReview:
+    @pytest.mark.asyncio
+    async def test_hops_only_recipe_reports_no_false_failures_and_keeps_stored_stats(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        from backend.services.llm.tools.recipe import review_recipe_style
+
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        result = await review_recipe_style(
+            db=test_db, recipe_id=recipe.id, auto_fix=True, user_id="test-user"
+        )
+        assert result["issues"] == []
+        assert result["overall_status"] == "stats_unavailable"
+        assert result["current_stats"] is None
+        assert all(c["status"] == "unavailable" for c in result["compliance"].values())
+        assert not result.get("auto_fix_applied")
+
+        await test_db.refresh(recipe)
+        assert (recipe.og, recipe.fg, recipe.abv, recipe.ibu, recipe.color_srm) == (1.052, 1.012, 5.2, 38, 7)

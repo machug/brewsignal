@@ -444,13 +444,16 @@ def normalize_recipe_to_beerjson(recipe: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _stats_dict(recipe: Recipe) -> dict[str, float]:
-    """Calculator output as the og/fg/abv/ibu/color_srm dict the review tools use."""
+def _stats_dict(recipe: Recipe) -> Optional[dict[str, float]]:
+    """Calculator output as the og/fg/abv/ibu/color_srm dict the review tools use.
+
+    None when the recipe has no fermentables (no stats to report).
+    """
     from backend.services.brewing import calculate_recipe_stats
 
     st = calculate_recipe_stats(recipe)
     if st is None:
-        return {"og": 0, "fg": 0, "abv": 0, "ibu": 0, "color_srm": 0}
+        return None
     return {"og": st.og, "fg": st.fg, "abv": st.abv, "ibu": st.ibu, "color_srm": st.srm}
 
 
@@ -570,6 +573,21 @@ def _compute_style_compliance(recipe: Recipe, target_style: Style) -> dict[str, 
     style_fit_score_scale, overall_status, current_stats.
     """
     current_stats = _stats_dict(recipe)
+    if current_stats is None:
+        # No fermentables: nothing to compare, so no false out-of-range findings.
+        return {
+            "compliance": {
+                k: {"value": None, "min": None, "max": None, "unit": "", "status": "unavailable"}
+                for k in ("og", "fg", "abv", "ibu", "srm")
+            },
+            "issues": [],
+            "suggestions": [],
+            "style_fit_score": None,
+            "style_fit_score_scale": "0-10 (10 = every stat in range)",
+            "overall_status": "stats_unavailable",
+            "note": "Stats unavailable: the recipe has no fermentables, so it was not compared with the style.",
+            "current_stats": None,
+        }
     compliance: dict[str, Any] = {}
     issues: list[str] = []
     suggestions: list[str] = []
@@ -651,7 +669,7 @@ def _compact(node: Any) -> Any:
 def _stat_check_text(compliance: dict[str, Any]) -> str:
     lines = []
     for key, c in compliance.items():
-        if c.get("status") == "no_guideline":
+        if c.get("status") in ("no_guideline", "unavailable"):
             continue
         unit = c.get("unit") or ""
         lines.append(f"- {key.upper()}: {c.get('value')}{unit} vs {c.get('min')}-{c.get('max')}{unit}: {c.get('status')}")
@@ -709,9 +727,9 @@ async def review_recipe(
         compliance_block = _compute_style_compliance(recipe, recipe.style)
         stats = compliance_block["current_stats"]
     else:
-        from backend.services.brewing import calculate_recipe_stats
-        calc = calculate_recipe_stats(recipe)
-        stats = _stats_dict(recipe) if calc else {
+        stats = _stats_dict(recipe)
+    if stats is None:
+        stats = {
             "og": recipe.og or 0,
             "fg": recipe.fg or 0,
             "abv": recipe.abv or 0,
@@ -848,7 +866,7 @@ async def review_recipe_style(
     }
 
     # Auto-fix if requested (limited scope - just update batch size for OG issues)
-    if auto_fix and issues:
+    if auto_fix and issues and current_stats is not None:
         fixes_applied = []
 
         # Fix OG by adjusting batch size (simplest fix)
@@ -876,12 +894,10 @@ async def review_recipe_style(
 
         if fixes_applied:
             # Recalculate stats after fixes
+            from backend.services.brewing import calculate_recipe_stats, write_legacy_stats
+            calc = calculate_recipe_stats(recipe)
+            write_legacy_stats(recipe, calc)
             new_stats = _stats_dict(recipe)
-            recipe.og = new_stats["og"]
-            recipe.fg = new_stats["fg"]
-            recipe.abv = new_stats["abv"]
-            recipe.ibu = new_stats["ibu"]
-            recipe.color_srm = new_stats["color_srm"]
             await db.commit()
 
             response["auto_fix_applied"] = True

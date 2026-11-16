@@ -51,7 +51,7 @@ async def test_service_chat_status_and_test_connection():
 
 @pytest.mark.asyncio
 async def test_review_recipe_without_litellm(test_db):
-    recipe = Recipe(name="Plain", type="all-grain", batch_size_liters=20, og=1.050, fg=1.012, user_id="u")
+    recipe = Recipe(name="Plain", type="all-grain", batch_size_liters=20, user_id="u")
     recipe.fermentables.append(RecipeFermentable(name="Pale Malt", amount_kg=4.0))
     test_db.add(recipe)
     await test_db.commit()

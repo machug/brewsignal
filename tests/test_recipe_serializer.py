@@ -47,15 +47,15 @@ async def test_serialize_brewfather_beerjson_to_models():
         assert recipe.batch_size_liters == 21.0
 
         # Verify gravity values (extract from unit objects)
-        assert recipe.og == pytest.approx(1.040069094, abs=0.0001)
-        assert recipe.fg == pytest.approx(1.008, abs=0.0001)
+        assert recipe.target_og == pytest.approx(1.040069094, abs=0.0001)
+        assert recipe.target_fg == pytest.approx(1.008, abs=0.0001)
 
         # Verify ABV (stored as percentage after fix for double conversion)
-        assert recipe.abv == pytest.approx(4.2, abs=0.1)
+        assert recipe.target_abv == pytest.approx(4.2, abs=0.1)
 
         # Verify color and IBU
-        assert recipe.color_srm == pytest.approx(3.8, abs=0.1)
-        assert recipe.ibu == pytest.approx(28.7, abs=0.1)
+        assert recipe.target_srm == pytest.approx(3.8, abs=0.1)
+        assert recipe.target_ibu == pytest.approx(28.7, abs=0.1)
 
         # Verify boil time
         assert recipe.boil_time_minutes == 60
@@ -204,11 +204,11 @@ async def test_serialize_extracts_unit_values():
 
         # Verify unit extraction
         assert recipe.batch_size_liters == 20.0
-        assert recipe.og == pytest.approx(1.050)
-        assert recipe.fg == pytest.approx(1.010)
-        assert recipe.abv == pytest.approx(5.2, abs=0.1)  # Stored as percentage after fix
-        assert recipe.ibu == pytest.approx(35.0)
-        assert recipe.color_srm == pytest.approx(5.5)
+        assert recipe.target_og == pytest.approx(1.050)
+        assert recipe.target_fg == pytest.approx(1.010)
+        assert recipe.target_abv == pytest.approx(5.2, abs=0.1)  # Stored as percentage after fix
+        assert recipe.target_ibu == pytest.approx(35.0)
+        assert recipe.target_srm == pytest.approx(5.5)
         assert recipe.boil_time_minutes == 60
         assert recipe.efficiency_percent == pytest.approx(75.0)
         assert recipe.carbonation_vols == pytest.approx(2.5)
@@ -271,11 +271,11 @@ async def test_serialize_handles_optional_fields():
         assert recipe.batch_size_liters == 19.0
 
         # Optional fields should be None
-        assert recipe.og is None
-        assert recipe.fg is None
-        assert recipe.abv is None
-        assert recipe.ibu is None
-        assert recipe.color_srm is None
+        assert recipe.target_og is None
+        assert recipe.target_fg is None
+        assert recipe.target_abv is None
+        assert recipe.target_ibu is None
+        assert recipe.target_srm is None
         assert recipe.boil_time_minutes is None
         assert recipe.carbonation_vols is None
 

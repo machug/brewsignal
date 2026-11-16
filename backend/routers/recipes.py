@@ -29,7 +29,7 @@ from ..services.converters.brewsignal_v2 import RecipeToBrewSignalV2Converter, t
 from ..services.converters.recipe_to_brewfather import RecipeToBrewfatherConverter
 from ..services.recipe_ingredients import hydrate_recipe_ingredients, _potential_to_yield
 from ..services.recipe_stats import (
-    effective_stats, fill_legacy_columns, recipe_with_ingredients_stmt, to_recipe_detail_response, to_recipe_response,
+    effective_stats, recipe_with_ingredients_stmt, to_recipe_detail_response, to_recipe_response,
 )
 from ..services.recipe_validation import validate_recipe_constraints
 from ..services.style_resolver import resolve_style_id
@@ -116,6 +116,17 @@ def _coerce_brewsignal_recipe(data: dict) -> dict:
             raise ValueError("Recipe field must be a JSON object")
         return recipe
     return data
+
+
+def _validate_calculated(recipe: Recipe) -> None:
+    """Business-rule check on the stats the calculator gives for the recipe."""
+    stats = calculate_recipe_stats(recipe)
+    validate_recipe_constraints(
+        og=stats.og if stats else None,
+        fg=stats.fg if stats else None,
+        batch_size_liters=recipe.batch_size_liters,
+        abv=stats.abv if stats else None,
+    )
 
 
 def _pydantic_errors_to_payload(errors: list[dict]) -> list[RecipeValidationError]:
@@ -528,14 +539,6 @@ async def create_recipe(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new recipe manually."""
-    # Validate business logic
-    validate_recipe_constraints(
-        og=recipe.og,
-        fg=recipe.fg,
-        batch_size_liters=recipe.batch_size_liters,
-        abv=recipe.abv,
-    )
-
     # Resolve free-text "style" (e.g. "American IPA") to a styles.id FK when
     # the client didn't send an explicit style_id. Same helper feeds the
     # LLM save_recipe path so behavior matches.
@@ -574,10 +577,10 @@ async def create_recipe(
     await hydrate_recipe_ingredients(
         db, db_recipe, recipe.format_extensions
     )
-    # Stats are always worked out from the ingredients; client values are ignored.
-    # Done while still transient: cultures are not created yet, which gives the
-    # same attenuation (recipe.yeast_attenuation) as the culture added below.
-    fill_legacy_columns(db_recipe)
+    # Validate the calculated stats. Done while still transient: cultures are not
+    # created yet, which gives the same attenuation (recipe.yeast_attenuation) as
+    # the culture added below.
+    _validate_calculated(db_recipe)
 
     db.add(db_recipe)
     await db.flush()  # Get recipe ID without committing
@@ -726,8 +729,7 @@ async def update_recipe(
     user: AuthUser = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing recipe. OG/FG/ABV/IBU/colour are always worked out from
-    the ingredients; values sent for them are ignored."""
+    """Update an existing recipe. OG/FG/ABV/IBU/colour are worked out from the ingredients."""
     # Fetch existing recipe with ingredients and ownership check
     result = await db.execute(
         recipe_with_ingredients_stmt().where(Recipe.id == recipe_id, user_owns_recipe(user))
@@ -742,8 +744,6 @@ async def update_recipe(
     # styles.id below when the client didn't explicitly send a non-null
     # style_id.
     update_data = recipe_update.model_dump(exclude_unset=True)
-    for stat in ("og", "fg", "abv", "ibu", "color_srm"):
-        update_data.pop(stat, None)
     style_in_payload = "style" in update_data
     style_free_text = update_data.pop("style", None)
     # A non-null style_id from the client is authoritative. style_id=null
@@ -777,15 +777,7 @@ async def update_recipe(
     # culture in step with the yeast fields (the edit page sends only yeast_*).
     _sync_primary_culture(existing_recipe, yeast_changed)
 
-    fill_legacy_columns(existing_recipe)
-
-    # Validate the final values
-    validate_recipe_constraints(
-        og=existing_recipe.og,
-        fg=existing_recipe.fg,
-        batch_size_liters=existing_recipe.batch_size_liters,
-        abv=existing_recipe.abv,
-    )
+    _validate_calculated(existing_recipe)
 
     await db.commit()
     # Session uses expire_on_commit=False, so the in-session instance still
@@ -795,43 +787,6 @@ async def update_recipe(
     db.expire(existing_recipe, ["style", "fermentables", "hops", "cultures"])
     # Re-query with eager loading for response serialization
     result = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == existing_recipe.id))
-    return to_recipe_response(result.scalar_one())
-
-
-@router.post("/{recipe_id}/recalculate", response_model=RecipeResponse)
-async def recalculate_recipe_stats(
-    recipe_id: int,
-    user: AuthUser = Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Recalculate a recipe's OG, FG, ABV, IBU, and color from its ingredients.
-
-    Use this to update existing recipes with server-side calculated statistics.
-    """
-    result = await db.execute(
-        recipe_with_ingredients_stmt().where(Recipe.id == recipe_id, user_owns_recipe(user))
-    )
-    recipe = result.scalar_one_or_none()
-
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-
-    if not recipe.fermentables and not recipe.hops:
-        raise HTTPException(
-            status_code=400,
-            detail="Recipe has no ingredients to calculate from"
-        )
-
-    if calculate_recipe_stats(recipe) is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Recipe has no fermentables to calculate from"
-        )
-    fill_legacy_columns(recipe)
-
-    await db.commit()
-    # Re-query with eager loading for response serialization
-    result = await db.execute(recipe_with_ingredients_stmt().where(Recipe.id == recipe.id))
     return to_recipe_response(result.scalar_one())
 
 
@@ -976,8 +931,6 @@ async def scale_recipe_endpoint(
         )
 
     scale_recipe(recipe, request.target_batch_size_liters)
-
-    fill_legacy_columns(recipe)
 
     if request.dry_run:
         # Serialize the preview BEFORE rolling back — rollback expires the

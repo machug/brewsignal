@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from backend import database as dbm
 from backend import temp_controller as tc
+from backend.migrations.drop_recipe_stat_columns import migrate_drop_recipe_stat_columns
 from backend.models import Batch, FermentationAlert, Reading, Recipe, RecipeFermentable, RecipeHop
 from backend.ml.pipeline_manager import MLPipelineManager
 from backend.services.alert_service import AlertType, detect_and_persist_alerts, get_alert_context
@@ -249,7 +250,11 @@ async def _drop_expected(test_db):
 async def test_backfill_uses_legacy_stats_for_running_batches(test_db, monkeypatch):
     """Review Focus 2: the deploy does not move a running batch."""
     # stored legacy og/fg differ from what the calculator gives for the ingredients
-    r = await _recipe(test_db, og=1.099, fg=1.033, abv=9.9, ibu=77.0, color_srm=12.0)
+    r = await _recipe(test_db)
+    async with test_db.bind.begin() as conn:  # the pre-4x2f.5 schema, stored legacy stats
+        for c in ("og", "fg", "abv", "ibu", "color_srm"):
+            await conn.execute(text(f"ALTER TABLE recipes ADD COLUMN {c} FLOAT"))
+        await conn.execute(text("UPDATE recipes SET og=1.099, fg=1.033, abv=9.9, ibu=77.0, color_srm=12.0"))
     live = Batch(name="plan", status="planning", recipe_id=r.id)
     ferm = Batch(name="f", status="fermenting", recipe_id=r.id, dry_hop_trigger_sg=None)
     done = Batch(name="d", status="completed", recipe_id=r.id)
@@ -266,6 +271,8 @@ async def test_backfill_uses_legacy_stats_for_running_batches(test_db, monkeypat
     async with test_db.bind.begin() as conn:
         await conn.run_sync(dbm._migrate_add_batch_expected_columns)
     _factory(monkeypatch, test_db)
+    async with test_db.bind.begin() as conn:  # the drop migration seeds the batches first
+        await migrate_drop_recipe_stat_columns(conn)
     await dbm._backfill_batch_expected()
 
     for name in ("f", "d", "x"):
@@ -285,7 +292,7 @@ async def test_backfill_uses_legacy_stats_for_running_batches(test_db, monkeypat
 @pytest.mark.asyncio
 async def test_backfill_runs_every_boot_and_never_overwrites(test_db, monkeypatch):
     """Columns already present, snapshot all null -> filled; existing snapshot untouched."""
-    r = await _recipe(test_db, og=1.099, fg=1.033)  # abv/ibu/srm not stored: calculator fills them
+    r = await _recipe(test_db)
     empty = Batch(name="e", status="fermenting", recipe_id=r.id)
     kept = Batch(name="k", status="conditioning", recipe_id=r.id, expected_og=1.040, expected_fg=1.008)
     test_db.add_all([empty, kept])
@@ -294,18 +301,18 @@ async def test_backfill_runs_every_boot_and_never_overwrites(test_db, monkeypatc
     await dbm._backfill_batch_expected()
     stats = effective_stats(await _load_recipe(test_db, r.id))
     e = await _fresh(test_db, empty.id)
-    assert (e.expected_og, e.expected_fg) == (1.099, 1.033)
-    assert (e.expected_abv, e.expected_ibu, e.expected_srm) == (stats.abv, stats.ibu, stats.srm)
+    assert (e.expected_og, e.expected_fg, e.expected_abv, e.expected_ibu, e.expected_srm) == (
+        stats.og, stats.fg, stats.abv, stats.ibu, stats.srm)
     k = await _fresh(test_db, kept.id)
     assert (k.expected_og, k.expected_fg, k.expected_abv) == (1.040, 1.008, None)
     await dbm._backfill_batch_expected()  # again: no change
-    assert (await _fresh(test_db, empty.id)).expected_og == 1.099
+    assert (await _fresh(test_db, empty.id)).expected_og == stats.og
 
 
 @pytest.mark.asyncio
 async def test_brewfather_export_uses_effective_stats(test_db):
     # calculable recipe: calculated numbers win over stale targets and legacy columns
-    r = await _recipe(test_db, og=1.099, target_og=1.040, target_ibu=33.0)
+    r = await _recipe(test_db, target_og=1.040, target_ibu=33.0)
     recipe = await _export_recipe(test_db, r.id)
     stats = effective_stats(recipe)
     bf = RecipeToBrewfatherConverter().convert(recipe)
@@ -318,7 +325,7 @@ async def test_brewfather_export_uses_effective_stats(test_db):
 
 @pytest.mark.asyncio
 async def test_strict_beerjson_export_uses_effective_stats(client, test_db):
-    r = await _recipe(test_db, og=1.099, target_og=1.040)
+    r = await _recipe(test_db, target_og=1.040)
     stats = effective_stats(await _load_recipe(test_db, r.id))
     resp = await client.get(f"/api/recipes/{r.id}/export/beerjson")
     assert resp.status_code == 200, resp.text
@@ -328,7 +335,7 @@ async def test_strict_beerjson_export_uses_effective_stats(client, test_db):
 
 @pytest.mark.asyncio
 async def test_v2_stat_fields_are_targets_and_roundtrip(test_db):
-    r = await _recipe(test_db, og=1.099, target_og=1.044, target_fg=1.011)
+    r = await _recipe(test_db, target_og=1.044, target_fg=1.011)
     recipe = await _export_recipe(test_db, r.id)
     doc = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
     assert doc["original_gravity"] == {"value": 1.044, "unit": "sg"}

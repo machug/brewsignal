@@ -9,7 +9,7 @@ async def test_create_hop_with_recipe():
     await init_db()
 
     async for db in get_db():
-        recipe = Recipe(name="Test IPA", og=1.065)
+        recipe = Recipe(name="Test IPA")
         db.add(recipe)
         await db.commit()
         await db.refresh(recipe)

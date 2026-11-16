@@ -61,7 +61,6 @@ async def recipe_in_style(test_db: AsyncSession, style_apa: Style) -> Recipe:
         type="all-grain",
         style_id=style_apa.id,
         batch_size_liters=20,
-        og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
         user_id="test-user",
     )
     recipe.fermentables.append(

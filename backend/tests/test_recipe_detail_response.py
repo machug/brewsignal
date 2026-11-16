@@ -18,9 +18,9 @@ async def test_recipe_detail_response_with_ingredients(test_db: AsyncSession):
     recipe = Recipe(
         name="Test IPA with Ingredients",
         author="Test Brewer",
-        og=1.065,
-        fg=1.012,
-        ibu=60.0,
+        target_og=1.065,
+        target_fg=1.012,
+        target_ibu=60.0,
         batch_size_liters=20.0,
     )
     test_db.add(recipe)

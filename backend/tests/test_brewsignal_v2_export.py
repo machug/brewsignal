@@ -142,7 +142,7 @@ def test_brewsignal_block_water_and_hops_and_passthrough():
 
 
 def test_minimal_recipe_omits_empty_blocks():
-    doc = RecipeToBrewSignalV2Converter().convert(Recipe(name="Bare", og=1.050, fg=1.010))
+    doc = RecipeToBrewSignalV2Converter().convert(Recipe(name="Bare"))
     assert doc["recipe"]["name"] == "Bare"
     assert "brewsignal" not in doc
     assert "ingredients" not in doc["recipe"] or doc["recipe"]["ingredients"]
@@ -155,7 +155,7 @@ async def test_persistent_recipe_with_unloaded_collections_fails_loud(test_db):
     from backend.models import Recipe
     from sqlalchemy import select
 
-    recipe = Recipe(name="Persisted", og=1.050, fg=1.010)
+    recipe = Recipe(name="Persisted")
     test_db.add(recipe)
     await test_db.commit()
     recipe_id = recipe.id
@@ -172,7 +172,7 @@ def test_style_id_column_wins_over_stale_extension_copy():
     in format_extensions['brewsignal']['style_id'] (e.g. from an earlier
     export captured before the style was changed)."""
     recipe = Recipe(
-        name="Restyled", og=1.050, fg=1.010, style_id="real-id",
+        name="Restyled", style_id="real-id",
         format_extensions={"brewsignal": {"style_id": "stale-id"}},
     )
     bs = RecipeToBrewSignalV2Converter().convert(recipe)["brewsignal"]
@@ -183,7 +183,7 @@ def test_style_id_extension_fallback_when_no_fk():
     """When there's no style_id FK, the leftover extension copy is still
     used as a fallback (existing behavior, must not regress)."""
     recipe = Recipe(
-        name="No FK", og=1.050, fg=1.010,
+        name="No FK",
         format_extensions={"brewsignal": {"style_id": "legacy-id"}},
     )
     bs = RecipeToBrewSignalV2Converter().convert(recipe)["brewsignal"]

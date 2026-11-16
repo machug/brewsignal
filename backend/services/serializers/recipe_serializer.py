@@ -145,11 +145,8 @@ class RecipeSerializer:
     def _extract_recipe_vitals(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:
         """Extract gravity, ABV, IBU, color from BeerJSON unit objects.
 
-        Imported brewer-declared values populate BOTH the canonical column
-        (og/fg/abv/ibu/color_srm) and the target_* mirror. The calculator
-        will later overwrite the canonical values when explicitly asked
-        (PUT ?recalculate=true), but target_* persists so the UI can
-        always surface the imported source-of-truth (tilt_ui-ak6).
+        Imported brewer-declared values are stored in target_* only; displayed
+        numbers are calculated from the ingredients (tilt_ui-4x2f).
         """
         # Batch size
         if 'batch_size' in beerjson_recipe:
@@ -158,31 +155,26 @@ class RecipeSerializer:
         # Original gravity
         if 'original_gravity' in beerjson_recipe:
             og = self._extract_gravity(beerjson_recipe['original_gravity'])
-            recipe.og = og
             recipe.target_og = og
 
         # Final gravity
         if 'final_gravity' in beerjson_recipe:
             fg = self._extract_gravity(beerjson_recipe['final_gravity'])
-            recipe.fg = fg
             recipe.target_fg = fg
 
         # ABV (stored as decimal 0-1)
         if 'alcohol_by_volume' in beerjson_recipe:
             abv = self._extract_percent(beerjson_recipe['alcohol_by_volume'])
-            recipe.abv = abv
             recipe.target_abv = abv
 
         # IBU
         if 'ibu_estimate' in beerjson_recipe:
             ibu = self._extract_dimensionless(beerjson_recipe['ibu_estimate'])
-            recipe.ibu = ibu
             recipe.target_ibu = ibu
 
         # Color (SRM)
         if 'color_estimate' in beerjson_recipe:
             srm = self._extract_color(beerjson_recipe['color_estimate'])
-            recipe.color_srm = srm
             recipe.target_srm = srm
 
     def _extract_boil_info(self, recipe: Recipe, beerjson_recipe: Dict[str, Any]) -> None:

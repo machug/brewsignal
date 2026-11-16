@@ -35,7 +35,7 @@ async def test_import_beerxml_success(db_session):
     assert result.recipe is not None
     assert result.recipe.name == "Philter XPA - Clone"
     assert result.recipe.author == "Pig Den Brewing"
-    assert result.recipe.og == pytest.approx(1.040)
+    assert result.recipe.target_og == pytest.approx(1.040)
 
     # Verify ingredients loaded
     assert len(result.recipe.fermentables) == 4

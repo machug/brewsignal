@@ -195,12 +195,10 @@ class TestWaterAdjustmentImport:
 
 
 class TestImportPopulatesTargetStats:
-    """Imported brewer-declared OG/FG/ABV/IBU/SRM must populate target_*
-    columns in addition to the canonical og/fg/... columns. The canonical
-    fields are subject to recalculation; target_* preserves the imported
-    source-of-truth (tilt_ui-ak6)."""
+    """Imported brewer-declared OG/FG/ABV/IBU/SRM populate target_* (tilt_ui-ak6);
+    recipes store no other copy (tilt_ui-4x2f.5)."""
 
-    def test_brewfather_import_sets_both_canonical_and_target_stats(self):
+    def test_brewfather_import_sets_target_stats(self):
         from backend.models import Recipe
         from backend.services.serializers.recipe_serializer import RecipeSerializer
         bf = {
@@ -215,15 +213,10 @@ class TestImportPopulatesTargetStats:
         recipe = Recipe(name='temp')
         RecipeSerializer()._extract_recipe_vitals(recipe, beerjson['recipes'][0])
 
-        assert recipe.og == 1.067
         assert recipe.target_og == 1.067
-        assert recipe.fg == 1.013
         assert recipe.target_fg == 1.013
-        assert abs((recipe.abv or 0) - 6.9) < 0.01
         assert abs((recipe.target_abv or 0) - 6.9) < 0.01
-        assert recipe.ibu == 60
         assert recipe.target_ibu == 60
-        assert recipe.color_srm == 4.0
         assert recipe.target_srm == 4.0
 
     def test_target_stats_unset_when_source_omits_them(self):
@@ -234,12 +227,9 @@ class TestImportPopulatesTargetStats:
         )['beerjson']
         recipe = Recipe(name='temp')
         RecipeSerializer()._extract_recipe_vitals(recipe, beerjson['recipes'][0])
-        # Brewfather converter still emits zero-valued unit objects for og/fg/...
-        # (they default to None upstream). What matters is target_* tracks
-        # whatever the canonical column gets, never out of sync.
-        assert recipe.target_og == recipe.og
-        assert recipe.target_fg == recipe.fg
-        assert recipe.target_ibu == recipe.ibu
+        assert recipe.target_og is None
+        assert recipe.target_fg is None
+        assert recipe.target_ibu is None
 
 
 class TestHopTimingRoundTrip:
@@ -350,7 +340,7 @@ class TestBrewfatherWaterExport:
         from backend.models import (
             Recipe, RecipeWaterAdjustment, RecipeWaterProfile,
         )
-        recipe = Recipe(name="Watery", og=1.050, fg=1.010)
+        recipe = Recipe(name="Watery")
         recipe.water_profiles.append(RecipeWaterProfile(
             profile_type="target", name="Hazy build",
             chloride_ppm=125.0, sulfate_ppm=75.0, ph=5.4,
@@ -398,7 +388,7 @@ class TestBrewfatherWaterExport:
         from backend.services.converters.recipe_to_brewfather import (
             RecipeToBrewfatherConverter,
         )
-        bf = RecipeToBrewfatherConverter().convert(Recipe(name="Dry", og=1.05, fg=1.01))
+        bf = RecipeToBrewfatherConverter().convert(Recipe(name="Dry"))
         assert "water" not in bf
 
     def test_acid_concentration_only_adjustment_keeps_acids(self):
@@ -409,7 +399,7 @@ class TestBrewfatherWaterExport:
         from backend.services.converters.recipe_to_brewfather import (
             RecipeToBrewfatherConverter,
         )
-        recipe = Recipe(name="Acidic", og=1.05, fg=1.01)
+        recipe = Recipe(name="Acidic")
         recipe.water_adjustments.append(RecipeWaterAdjustment(
             stage="mash", acid_concentration_percent=88.0,
         ))
@@ -425,7 +415,7 @@ class TestBrewfatherWaterExport:
         from backend.services.converters.recipe_to_brewfather import (
             RecipeToBrewfatherConverter,
         )
-        recipe = Recipe(name="Blank water", og=1.05, fg=1.01)
+        recipe = Recipe(name="Blank water")
         recipe.water_profiles.append(RecipeWaterProfile(profile_type="source"))
         bf = RecipeToBrewfatherConverter().convert(recipe)
         assert "source" not in bf.get("water", {})

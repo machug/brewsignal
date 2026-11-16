@@ -721,6 +721,12 @@ async def init_db():
         # Import ag_ui threads into the server-held chat history (tilt_ui-qzk0.1)
         await conn.run_sync(_migrate_legacy_chat_threads)
 
+        # Last in the schema block, after target_* exist and every recipe/ingredient
+        # column is in place: copies uncalculable stats into target_*, then drops
+        # recipes.og/fg/abv/ibu/color_srm (tilt_ui-4x2f.5).
+        from backend.migrations.drop_recipe_stat_columns import migrate_drop_recipe_stat_columns
+        await migrate_drop_recipe_stat_columns(conn)
+
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
 
@@ -728,7 +734,7 @@ async def init_db():
     # so a running batch never reads a recipe it was not started against.
     await _backfill_batch_expected()
 
-    # NOTE: recipe backfills (style_id, color_srm) run off the startup critical
+    # NOTE: the recipe style_id backfill runs off the startup critical
     # path via run_deferred_backfills() — see init_db's cloud-mode branch and
     # tilt_ui-h0j. Seeding above is their only prerequisite and is complete.
 
@@ -761,14 +767,6 @@ async def run_deferred_backfills():
             migrate_backfill_recipe_style_id,
         )
         await migrate_backfill_recipe_style_id(engine)
-
-        # Repair recipe.color_srm computed from color-less grain bills. Enriches
-        # missing grain colors from the seeded reference table; gated on a
-        # config flag (tilt_ui-81n).
-        from backend.migrations.backfill_recipe_color_srm import (
-            migrate_backfill_recipe_color_srm,
-        )
-        await migrate_backfill_recipe_color_srm(engine)
     except Exception:
         logger.exception(
             "Deferred recipe backfills failed; will retry on next boot"
@@ -1260,7 +1258,7 @@ def _migrate_add_dry_hop_columns(conn) -> None:
 
 
 _EXPECTED_COLUMNS = (("expected_og", "og"), ("expected_fg", "fg"), ("expected_abv", "abv"),
-                     ("expected_ibu", "ibu"), ("expected_srm", "color_srm"))
+                     ("expected_ibu", "ibu"), ("expected_srm", "srm"))
 
 
 def _migrate_add_batch_expected_columns(conn) -> None:
@@ -1280,9 +1278,10 @@ async def _backfill_batch_expected() -> None:
     """Snapshot the expected stats of every batch at or past fermenting (soft-deleted
     included) whose five expected_* are all NULL (D6).
 
-    Per field: the legacy stored recipe value first (what the batch has been running
-    against), then effective_stats. Idempotent and run every boot, so an interrupted
-    start finishes next time; a batch that already has any value is never touched.
+    From effective_stats (the legacy stored recipe columns were copied into the batches
+    by migrate_drop_recipe_stat_columns before they were dropped). Idempotent and run
+    every boot, so an interrupted start finishes next time; a batch that already has
+    any value is never touched.
     """
     from sqlalchemy import and_, select
     from backend.models import Batch, Recipe
@@ -1303,9 +1302,8 @@ async def _backfill_batch_expected() -> None:
             if recipe is None:
                 continue
             stats = effective_stats(recipe)
-            for name, legacy in _EXPECTED_COLUMNS:
-                stored = getattr(recipe, legacy)
-                setattr(batch, name, stored if stored is not None else getattr(stats, name[len("expected_"):]))
+            for name, field in _EXPECTED_COLUMNS:
+                setattr(batch, name, getattr(stats, field))
         await session.commit()
 
 

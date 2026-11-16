@@ -200,3 +200,28 @@ class TestNoFermentablesStyleReview:
 
         await test_db.refresh(recipe)
         assert (recipe.og, recipe.fg, recipe.abv, recipe.ibu, recipe.color_srm) == (1.052, 1.012, 5.2, 38, 7)
+
+    @pytest.mark.asyncio
+    async def test_prompt_for_hops_only_recipe_says_stats_unavailable(
+        self, test_db: AsyncSession, apa_style: Style
+    ):
+        recipe = Recipe(
+            name="Hops only", type="all-grain", style_id=apa_style.id,
+            batch_size_liters=20, og=1.052, fg=1.012, abv=5.2, ibu=38, color_srm=7,
+            user_id="test-user",
+        )
+        recipe.hops.append(
+            RecipeHop(name="Centennial", amount_grams=30, alpha_acid_percent=10.0,
+                      timing={"use": "add_to_boil", "duration": {"value": 60, "unit": "min"}})
+        )
+        test_db.add(recipe)
+        await test_db.commit()
+        await test_db.refresh(recipe)
+
+        svc = _service("No stats.")
+        with patch("backend.services.llm.tools.recipe.LLMService", return_value=svc):
+            await review_recipe(db=test_db, recipe_id=recipe.id, user_id="test-user")
+        prompt = "\n".join(str(m.get("content", "")) for m in svc.chat.call_args.kwargs["messages"])
+        assert "Unavailable: the recipe has no fermentables" in prompt
+        assert "- OG:" not in prompt and "- FG:" not in prompt
+        assert "1.052" not in prompt and "Stat check against" not in prompt

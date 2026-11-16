@@ -728,16 +728,21 @@ async def review_recipe(
         stats = compliance_block["current_stats"]
     else:
         stats = _stats_dict(recipe)
+    stats_available = stats is not None
     if stats is None:
-        stats = {
-            "og": recipe.og or 0,
-            "fg": recipe.fg or 0,
-            "abv": recipe.abv or 0,
-            "ibu": recipe.ibu or 0,
-            "color_srm": recipe.color_srm or 0,
-        }
+        # Placeholders only: the prompt does not render them when unavailable.
+        stats = {"og": 0, "fg": 0, "abv": 0, "ibu": 0, "color_srm": 0}
 
     document = _export(recipe)
+    if not stats_available:
+        # The export carries the stored stat columns; drop them so they do not
+        # read as calculated. The brewer's declared targets stay.
+        from backend.services.llm.tools.recipe_v2 import _TARGET_FIELDS
+        rec = document.get("recipe") or {}
+        for field, (column, unit) in _TARGET_FIELDS.items():
+            rec.pop(field, None)
+            if getattr(recipe, column) is not None:
+                rec[field] = {"value": getattr(recipe, column), "unit": unit}
     try:
         prompt_path = PROMPTS_DIR / "recipe-review.prompty"
         p = prompty.load(str(prompt_path))
@@ -746,6 +751,7 @@ async def review_recipe(
             "style_name": style_name if style_found else (
                 recipe.style.name if recipe.style else "Unknown"
             ),
+            "stats_available": stats_available,
             "og": stats["og"],
             "fg": stats["fg"],
             "abv": stats["abv"],

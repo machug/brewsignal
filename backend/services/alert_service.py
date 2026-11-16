@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import push
+from backend.services.recipe_stats import batch_expected_fg, batch_expected_og, batch_with_recipe_options
 from backend.models import Batch, FermentationAlert, Reading, Recipe, RecipeHop
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ async def get_alert_context(
         select(Batch)
         .where(Batch.id == batch_id)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.cultures),
+            *batch_with_recipe_options(),
             selectinload(Batch.yeast_strain),
         )
     )
@@ -153,8 +154,8 @@ async def get_alert_context(
         context["temp_target"] = await get_config_value(session, "temp_target")
 
     # Calculate progress if we have OG and current SG
-    og = batch.measured_og or (batch.recipe.og if batch.recipe else None)
-    fg = batch.recipe.fg if batch.recipe else None
+    og = batch_expected_og(batch)
+    fg = batch_expected_fg(batch)
     context["og"] = og
     context["fg"] = fg
 
@@ -384,7 +385,7 @@ async def detect_and_persist_alerts(
     else:
         await _clear_alert(db, batch_id, AlertType.STALL, now)
 
-    alert = await _dry_hop_alert(db, batch_id, device_id, reading, current_sg, og, fg, now)
+    alert = await _dry_hop_alert(db, batch_id, device_id, reading, current_sg, now)
     if alert:
         current_alerts.append(alert)
 
@@ -397,24 +398,24 @@ async def _dry_hop_alert(
     device_id: str,
     reading: Reading,
     current_sg: Optional[float],
-    og: Optional[float],
-    fg: Optional[float],
     now: datetime,
 ) -> Optional[FermentationAlert]:
-    """Dry hop reminder (tilt_ui-n1w7). Once raised it stays until marked done:
+    """Dry hop reminder (tilt_ui-n1w7). OG/FG come from the batch's expected
+    numbers, so a recipe edit does not move a running batch (tilt_ui-4x2f.3). Once raised it stays until marked done:
     it is only raised or refreshed here, never cleared by gravity noise."""
     from backend.temp_controller import rest_trigger_sg  # temp_controller imports this module
 
     row = (await db.execute(
-        select(Batch.status, Batch.recipe_id, Batch.dry_hop_trigger_sg, Batch.dry_hop_done_at)
-        .where(Batch.id == batch_id)
-    )).one_or_none()
+        select(Batch).where(Batch.id == batch_id).execution_options(populate_existing=True)
+    )).scalar_one_or_none()
     if row is None or row.status != "fermenting" or row.dry_hop_done_at is not None:
         await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)
         return None
     if current_sg is None or row.recipe_id is None:
         return None
-    trigger = row.dry_hop_trigger_sg or rest_trigger_sg(og, fg, DRY_HOP_DEFAULT_PERCENT)
+    trigger = row.dry_hop_trigger_sg or rest_trigger_sg(
+        batch_expected_og(row), batch_expected_fg(row), DRY_HOP_DEFAULT_PERCENT
+    )
     if trigger is None or current_sg > trigger:
         # Not (or no longer) at the trigger: keep an alert that is already up.
         return (await db.execute(select(FermentationAlert).where(

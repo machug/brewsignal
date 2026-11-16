@@ -15,8 +15,8 @@ def _full_recipe() -> Recipe:
     recipe = Recipe(
         name="Test DIPA", type="all grain", author="Hugh",
         batch_size_liters=19.0, boil_time_minutes=60, boil_size_l=26.0,
-        efficiency_percent=72.0, og=1.067, fg=1.018, abv=6.5, ibu=53.0,
-        color_srm=4.5, carbonation_vols=2.4, notes="envelope notes",
+        efficiency_percent=72.0, target_og=1.067, target_fg=1.018, target_abv=6.5, target_ibu=53.0,
+        target_srm=4.5, carbonation_vols=2.4, notes="envelope notes",
     )
     recipe.fermentables.append(RecipeFermentable(
         name="2-Row", type="grain", grain_group="base", amount_kg=4.66,

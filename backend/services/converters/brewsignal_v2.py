@@ -282,16 +282,15 @@ class RecipeToBrewSignalV2Converter:
             out['efficiency'] = {
                 'brewhouse': {'value': recipe.efficiency_percent, 'unit': '%'}
             }
-        if recipe.og is not None:
-            out['original_gravity'] = {'value': recipe.og, 'unit': 'sg'}
-        if recipe.fg is not None:
-            out['final_gravity'] = {'value': recipe.fg, 'unit': 'sg'}
-        if recipe.abv is not None:
-            out['alcohol_by_volume'] = {'value': recipe.abv, 'unit': '%'}
-        if recipe.ibu is not None:
-            out['ibu_estimate'] = {'value': recipe.ibu, 'unit': 'IBUs'}
-        if recipe.color_srm is not None:
-            out['color_estimate'] = {'value': recipe.color_srm, 'unit': 'SRM'}
+        # D8: v2 stat fields are the declared targets only; the importer reads
+        # them back into target_* and recomputes the rest.
+        for key, column, unit in (
+            ('original_gravity', 'target_og', 'sg'), ('final_gravity', 'target_fg', 'sg'),
+            ('alcohol_by_volume', 'target_abv', '%'), ('ibu_estimate', 'target_ibu', 'IBUs'),
+            ('color_estimate', 'target_srm', 'SRM'),
+        ):
+            if getattr(recipe, column) is not None:
+                out[key] = {'value': getattr(recipe, column), 'unit': unit}
         if recipe.carbonation_vols is not None:
             out['carbonation'] = recipe.carbonation_vols
         # Recipe.style is a lazy relationship the importer never populates

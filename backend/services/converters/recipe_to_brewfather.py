@@ -1,6 +1,7 @@
 """Convert internal Recipe model to Brewfather JSON format for export."""
 from typing import Any, Optional
 
+from backend.services.recipe_stats import effective_stats
 from backend.models import (
     Recipe,
     RecipeFermentable,
@@ -46,16 +47,11 @@ class RecipeToBrewfatherConverter:
             "boilTime": recipe.boil_time_minutes or 60,
             "batchSize": recipe.batch_size_liters or 20,
         }
-        if recipe.og is not None:
-            bf_recipe["og"] = recipe.og
-        if recipe.fg is not None:
-            bf_recipe["fg"] = recipe.fg
-        if recipe.abv is not None:
-            bf_recipe["abv"] = recipe.abv
-        if recipe.ibu is not None:
-            bf_recipe["ibu"] = recipe.ibu
-        if recipe.color_srm is not None:
-            bf_recipe["color"] = recipe.color_srm
+        stats = effective_stats(recipe)
+        for key, value in (("og", stats.og), ("fg", stats.fg), ("abv", stats.abv),
+                           ("ibu", stats.ibu), ("color", stats.srm)):
+            if value is not None:
+                bf_recipe[key] = value
         if recipe.carbonation_vols is not None:
             bf_recipe["carbonation"] = recipe.carbonation_vols
 

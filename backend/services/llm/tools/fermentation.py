@@ -13,6 +13,12 @@ from backend.models import (
     Batch, Reading, Device, Recipe, YeastStrain, AmbientReading, RecipeCulture
 )
 from backend.services.alert_service import get_active_alerts
+from backend.services.recipe_stats import (
+    batch_expected_abv,
+    batch_expected_fg,
+    batch_recipe_og,
+    batch_with_recipe_options,
+)
 from backend.state import latest_readings
 
 logger = logging.getLogger(__name__)
@@ -42,8 +48,7 @@ async def list_fermentations(
     stmt = (
         select(Batch)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.style),
-            selectinload(Batch.recipe).selectinload(Recipe.cultures),
+            *batch_with_recipe_options(),
             selectinload(Batch.device),
             selectinload(Batch.yeast_strain),
         )
@@ -89,7 +94,7 @@ async def list_fermentations(
         progress_percent = None
         current_sg = live_reading.get("sg") if live_reading else None
         if batch.measured_og and current_sg:
-            target_fg = batch.recipe.fg if batch.recipe and batch.recipe.fg else 1.010
+            target_fg = batch_expected_fg(batch) or 1.010
             if batch.measured_og > target_fg:
                 progress = (batch.measured_og - current_sg) / (batch.measured_og - target_fg) * 100
                 progress_percent = min(100.0, max(0.0, round(progress, 1)))
@@ -135,7 +140,7 @@ async def list_fermentations(
             "current_sg": current_sg,
             "current_temp_c": current_temp,
             "measured_og": batch.measured_og,
-            "target_fg": batch.recipe.fg if batch.recipe else None,
+            "target_fg": batch_expected_fg(batch) if batch.recipe else None,
             "progress_percent": progress_percent,
             "yeast_name": yeast_name,
             "temp_status": temp_status,
@@ -157,8 +162,7 @@ async def get_fermentation_status(
     stmt = (
         select(Batch)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.style),
-            selectinload(Batch.recipe).selectinload(Recipe.cultures),
+            *batch_with_recipe_options(),
             selectinload(Batch.device),
             selectinload(Batch.yeast_strain),
         )
@@ -202,9 +206,9 @@ async def get_fermentation_status(
         recipe_info = {
             "name": batch.recipe.name,
             "style": batch.recipe.style.name if batch.recipe.style else None,
-            "target_og": batch.recipe.og,
-            "target_fg": batch.recipe.fg,
-            "target_abv": batch.recipe.abv,
+            "target_og": batch_recipe_og(batch),
+            "target_fg": batch_expected_fg(batch),
+            "target_abv": batch_expected_abv(batch),
             "primary_temp_c": batch.recipe.primary_temp_c,
         }
 
@@ -233,7 +237,7 @@ async def get_fermentation_status(
     # Progress calculations
     progress_info = {"available": False}
     if batch.measured_og and current_sg:
-        target_fg = batch.recipe.fg if batch.recipe and batch.recipe.fg else 1.010
+        target_fg = batch_expected_fg(batch) or 1.010
         if batch.measured_og > target_fg:
             progress = (batch.measured_og - current_sg) / (batch.measured_og - target_fg) * 100
             progress_percent = min(100.0, max(0.0, round(progress, 1)))
@@ -382,7 +386,7 @@ async def get_fermentation_history(
     # First verify batch exists and user owns it
     batch_stmt = (
         select(Batch)
-        .options(selectinload(Batch.recipe))
+        .options(*batch_with_recipe_options())
         .where(Batch.id == batch_id)
     )
     if user_id:
@@ -583,8 +587,7 @@ async def compare_batches(
     ref_stmt = (
         select(Batch)
         .options(
-            selectinload(Batch.recipe).selectinload(Recipe.style),
-            selectinload(Batch.recipe).selectinload(Recipe.cultures),
+            *batch_with_recipe_options(),
             selectinload(Batch.yeast_strain),
         )
         .where(Batch.id == batch_id)
@@ -817,7 +820,7 @@ async def get_yeast_fermentation_advice(
         batch_stmt = (
             select(Batch)
             .options(
-                selectinload(Batch.recipe),
+                *batch_with_recipe_options(),
                 selectinload(Batch.device),
             )
             .where(Batch.id == batch_id)

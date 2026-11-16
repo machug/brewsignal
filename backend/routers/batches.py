@@ -41,7 +41,15 @@ from ..models import (
     YeastStrain,
 )
 from ..services.inventory import check_inventory_availability, deduct_inventory_for_batch, reverse_inventory_deductions
-from ..services.recipe_stats import batch_with_recipe_options
+from ..services.recipe_stats import (
+    LIVE_STATUSES,
+    batch_expected_abv,
+    batch_expected_fg,
+    batch_recipe_og,
+    batch_with_recipe_options,
+    recipe_with_ingredients_stmt,
+    snapshot_expected,
+)
 from ..state import latest_readings
 from ..mqtt_manager import publish_batch_discovery, mark_batch_unavailable
 
@@ -311,7 +319,9 @@ async def create_batch(
     yeast_strain_id = batch.yeast_strain_id
     recipe = None
     if batch.recipe_id:
-        recipe = await db.get(Recipe, batch.recipe_id)
+        recipe = (await db.execute(
+            recipe_with_ingredients_stmt().where(Recipe.id == batch.recipe_id)
+        )).scalar_one_or_none()
         if recipe:
             if not batch_name:
                 batch_name = recipe.name
@@ -352,6 +362,8 @@ async def create_batch(
     # Auto-set start_time if status is fermenting
     if batch.status == "fermenting":
         db_batch.start_time = datetime.now(timezone.utc)
+    if db_batch.status not in LIVE_STATUSES:
+        snapshot_expected(db_batch, recipe)
 
     db.add(db_batch)
     await commit_or_409(db)
@@ -426,8 +438,22 @@ async def update_batch(
             exclude_batch_id=batch_id,
         )
 
+    # Expected stats snapshot (D6): taken on leaving planning/brewing, and again
+    # when the recipe is reassigned or unlinked at/after fermenting. Loaded before
+    # any field changes so the query cannot flush half an update.
+    recipe_field_set = "recipe_id" in update.model_fields_set  # explicit null unlinks
+    new_recipe_id = update.recipe_id if recipe_field_set else batch.recipe_id
+    recipe_changed = new_recipe_id != batch.recipe_id
+    was_live = (batch.status or "planning") in LIVE_STATUSES
+    resnapshot = (new_status not in LIVE_STATUSES) and (was_live or recipe_changed)
+    snapshot_recipe = None
+    if resnapshot and new_recipe_id is not None:
+        snapshot_recipe = (await db.execute(
+            recipe_with_ingredients_stmt().where(Recipe.id == new_recipe_id)
+        )).scalar_one_or_none()
+
     # Update fields if provided
-    if update.recipe_id is not None:
+    if recipe_field_set:
         batch.recipe_id = update.recipe_id
     if update.name is not None:
         batch.name = update.name
@@ -548,6 +574,8 @@ async def update_batch(
         batch.rest_hold_hours = update.rest_hold_hours
     if "dry_hop_trigger_sg" in update.model_fields_set:  # null = back to the default
         batch.dry_hop_trigger_sg = update.dry_hop_trigger_sg
+    if resnapshot:
+        snapshot_expected(batch, snapshot_recipe)
     _require_complete_rest_rule(batch)
     if _rest_rule_changed(old_rule, (batch.rest_trigger_percent, batch.rest_temp_target)):
         # A changed rule is a new rule: re-arm it. An unchanged rule that already
@@ -800,19 +828,18 @@ async def get_batch_progress(
             if last_reading:
                 current_sg = last_reading.sg_filtered or last_reading.sg_calibrated
 
-    # Calculate targets from recipe
+    # Targets: the batch's expected numbers (live while planning/brewing, snapshot after)
     targets = {}
     if batch.recipe:
+        exp_og, exp_fg = batch_recipe_og(batch), batch_expected_fg(batch)
         targets = {
-            "og": batch.recipe.og,
-            "fg": batch.recipe.fg,
+            "og": exp_og,
+            "fg": exp_fg,
             "attenuation": None,
-            "abv": batch.recipe.abv,
+            "abv": batch_expected_abv(batch),
         }
-        if batch.recipe.og and batch.recipe.fg:
-            targets["attenuation"] = round(
-                ((batch.recipe.og - batch.recipe.fg) / (batch.recipe.og - 1.0)) * 100, 1
-            )
+        if exp_og and exp_fg:
+            targets["attenuation"] = round(((exp_og - exp_fg) / (exp_og - 1.0)) * 100, 1)
 
     # Calculate measured values
     measured = {
@@ -912,7 +939,7 @@ async def get_batch_predictions(
     # Get batch with recipe eagerly loaded
     result = await db.execute(
         select(Batch)
-        .options(selectinload(Batch.recipe))
+        .options(*batch_with_recipe_options())
         .where(Batch.id == batch_id, Batch.deleted_at.is_(None))
     )
     batch = result.scalar_one_or_none()

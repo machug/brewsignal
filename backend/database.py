@@ -652,6 +652,7 @@ async def init_db():
         await conn.run_sync(_migrate_add_batch_timer_columns)  # Add brew day timer state columns
         await conn.run_sync(_migrate_add_rest_rule_columns)  # Automatic diacetyl rest rule (tilt_ui-ml8e)
         await conn.run_sync(_migrate_add_dry_hop_columns)  # Dry hop reminder (tilt_ui-n1w7)
+        expected_columns_added = await conn.run_sync(_migrate_add_batch_expected_columns)  # tilt_ui-4x2f.3
 
         # Add readings_paused column to batches
         from backend.migrations.add_readings_paused import migrate_add_readings_paused
@@ -722,6 +723,11 @@ async def init_db():
 
     # Seed reference data
     await _seed_reference_data(force_reseed_styles=reseed_styles)
+
+    # Batch expected numbers for running batches (D6): synchronous, before serving,
+    # so a running batch never reads a recipe it was not started against.
+    if expected_columns_added:
+        await _backfill_batch_expected_from_calculator()
 
     # NOTE: recipe backfills (style_id, color_srm) run off the startup critical
     # path via run_deferred_backfills() — see init_db's cloud-mode branch and
@@ -1252,6 +1258,63 @@ def _migrate_add_dry_hop_columns(conn) -> None:
         if name not in columns:
             conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} {ddl}"))
             print(f"Migration: Added {name} column to batches")
+
+
+_EXPECTED_COLUMNS = (("expected_og", "og"), ("expected_fg", "fg"), ("expected_abv", "abv"),
+                     ("expected_ibu", "ibu"), ("expected_srm", "color_srm"))
+
+
+def _migrate_add_batch_expected_columns(conn) -> bool:
+    """Add batches.expected_* (tilt_ui-4x2f.3) and copy the legacy stored recipe
+    numbers into every batch at or past fermenting, soft-deleted included.
+
+    Returns True when the columns were added (the calculator fallback then runs).
+    """
+    from sqlalchemy import text
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(batches)"))}
+    if not columns:
+        return False  # table missing: create_all makes it with the columns
+    missing = [name for name, _ in _EXPECTED_COLUMNS if name not in columns]
+    for name in missing:
+        conn.execute(text(f"ALTER TABLE batches ADD COLUMN {name} FLOAT"))
+        print(f"Migration: Added {name} column to batches")
+    if not missing:
+        return False
+    sets = ", ".join(
+        f"{name} = (SELECT r.{legacy} FROM recipes r WHERE r.id = batches.recipe_id)"
+        for name, legacy in _EXPECTED_COLUMNS
+    )
+    conn.execute(text(
+        f"UPDATE batches SET {sets} WHERE recipe_id IS NOT NULL AND status NOT IN ('planning', 'brewing')"
+    ))
+    return True
+
+
+async def _backfill_batch_expected_from_calculator() -> None:
+    """Fill expected_* fields still empty after the legacy copy from effective_stats."""
+    from sqlalchemy import or_, select
+    from backend.models import Batch, Recipe
+    from backend.services.recipe_stats import effective_stats, recipe_with_ingredients_stmt
+
+    async with async_session_factory() as session:
+        batches = (await session.execute(
+            select(Batch).where(
+                Batch.recipe_id.is_not(None),
+                Batch.status.notin_(("planning", "brewing")),
+                or_(*(getattr(Batch, name).is_(None) for name, _ in _EXPECTED_COLUMNS)),
+            )
+        )).scalars().all()
+        for batch in batches:
+            recipe = (await session.execute(
+                recipe_with_ingredients_stmt().where(Recipe.id == batch.recipe_id)
+            )).scalar_one_or_none()
+            if recipe is None:
+                continue
+            stats = effective_stats(recipe)
+            for name, _ in _EXPECTED_COLUMNS:
+                if getattr(batch, name) is None:
+                    setattr(batch, name, getattr(stats, name[len("expected_"):]))
+        await session.commit()
 
 
 def _migrate_add_control_progress_columns(conn) -> None:

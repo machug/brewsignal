@@ -895,7 +895,9 @@
 		else if (Notification.permission === 'denied') pushStatus = 'denied';
 		else {
 			const reg = await navigator.serviceWorker.ready;
-			pushStatus = (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+			const sub = await reg.pushManager.getSubscription();
+			// Re-save it so "on" means the Pi can reach this device (upsert by endpoint)
+			pushStatus = sub && (await pushSubscribe(sub.toJSON()).then(() => true, () => false)) ? 'on' : 'off';
 		}
 	}
 
@@ -913,7 +915,12 @@
 				userVisibleOnly: true,
 				applicationServerKey: Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
 			});
-			await pushSubscribe(sub.toJSON());
+			try {
+				await pushSubscribe(sub.toJSON());
+			} catch (e) {
+				await sub.unsubscribe(); // the Pi could not save it: do not leave a dead subscription
+				throw e;
+			}
 			await refreshPushStatus();
 		} catch (e) {
 			pushMessage = e instanceof Error ? e.message : 'Could not enable notifications';

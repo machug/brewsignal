@@ -476,3 +476,20 @@ class TestToStrictBeerJSON:
         assert "grain_temperature" not in block["mash"]
         assert block["style"] == {"name": "Hazy IPA"}
         assert "notes" not in block
+
+
+def test_editor_ingredient_cache_is_not_exported():
+    """The UI editor's hops/fermentables cache must not ride along; an
+    assistant edit re-imported it over the edited rows (tilt_ui-1rth)."""
+    recipe = _full_recipe()
+    recipe.format_extensions = {**(recipe.format_extensions or {}),
+                                "hops": [{"name": "Stale"}], "fermentables": [{"name": "Stale"}], "keep": 1}
+    r = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
+    ext = r.get("_extensions", {})
+    assert "hops" not in ext and "fermentables" not in ext and ext.get("keep") == 1
+
+
+def test_editor_cache_kept_when_it_is_the_only_copy():
+    recipe = Recipe(name="Legacy", format_extensions={"hops": [{"name": "Only"}]})
+    r = RecipeToBrewSignalV2Converter().convert(recipe)["recipe"]
+    assert r["_extensions"]["hops"] == [{"name": "Only"}]

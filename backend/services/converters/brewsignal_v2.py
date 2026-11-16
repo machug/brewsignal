@@ -371,7 +371,13 @@ class RecipeToBrewSignalV2Converter:
         # Foreign-format recipe-level extras (e.g. 'brewfather') ride the
         # recipe block; the 'brewsignal' namespace is the block's payload
         # and is handled by _convert_brewsignal_block.
-        _emit_extensions(out, recipe, exclude=('brewsignal',))
+        # 'hops'/'fermentables' are the UI editor's cache of the child rows,
+        # which the document already carries as real lists. Re-emitting them
+        # let an assistant edit (export, patch, re-import) restore a stale
+        # cache that the recipe page shows over the edited rows (tilt_ui-1rth).
+        # A legacy recipe with no rows keeps its cache: it is the only copy.
+        cache = tuple(k for k in ('hops', 'fermentables') if getattr(recipe, k))
+        _emit_extensions(out, recipe, exclude=('brewsignal',) + cache)
         return out
 
     def _convert_fermentable(self, ferm) -> Dict[str, Any]:

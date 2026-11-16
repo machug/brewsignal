@@ -67,6 +67,13 @@ describe('batchExpected', () => {
 		const b = batchExpected({ status: fermenting, expected_og: null, expected_fg: null, expected_abv: null, recipe });
 		expect(b).toEqual({ og: undefined, fg: undefined, abv: undefined, ibu: undefined, srm: undefined });
 	});
+	test('planning/brewing ignore a leftover snapshot and read the recipe live', () => {
+		const left = { expected_og: 1.07, expected_fg: 1.02, expected_abv: 7, expected_ibu: 50, expected_srm: 9 };
+		expect(batchExpected({ status: 'brewing', ...left, recipe })).toMatchObject({ og: 1.05, fg: 1.01, ibu: 37 });
+		expect(batchExpected({ status: planning, ...left })).toEqual({
+			og: undefined, fg: undefined, abv: undefined, ibu: undefined, srm: undefined
+		});
+	});
 	test('no recipe and no snapshot gives nothing', () => {
 		expect(batchExpected({ status: planning }).fg).toBeUndefined();
 	});

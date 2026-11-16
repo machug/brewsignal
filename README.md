@@ -467,11 +467,13 @@ The assistant uses LiteLLM for provider abstraction, supporting OpenAI, Anthropi
 | `/api/recipes` | GET/POST | List or create recipes (BeerJSON schema) |
 | `/api/recipes/{id}` | GET/PUT/DELETE | Recipe with full ingredients (BeerJSON) |
 | `/api/recipes/import` | POST | Import BeerXML, BeerJSON, Brewfather JSON, or native BrewSignal (.brewsignal). Optional `?source_format=` to skip auto-detection. |
-| `/api/recipes/{id}?recalculate=true` | PUT | Update recipe; opt in to recalculate stats from ingredients (default off preserves imported targets) |
+| `/api/recipes/calculate` | POST | Work out OG/FG/ABV/IBU/colour for ingredients that are not saved yet |
 
 **Recipe Fields (BeerJSON 1.0):**
-- Core (canonical, edited/recalculated): `og`, `fg`, `ibu`, `abv`, `color_srm`, `batch_size_liters`
-- Imported targets (preserved from source, never overwritten): `target_og`, `target_fg`, `target_abv`, `target_ibu`, `target_srm`
+- Calculated (server, on every read, never stored): the `calculated` block with `og`, `fg`, `abv`, `ibu`, `srm`, colour and the list of assumptions made
+- Declared targets (from an import or typed in; never overwritten): `target_og`, `target_fg`, `target_abv`, `target_ibu`, `target_srm`
+- Batches snapshot `expected_og/fg/abv/ibu/srm` from the recipe when they start fermenting and keep them after; planning and brewing batches read the recipe live
+- Core: `batch_size_liters`
 - Timing: `boil_time_minutes`, `boil_size_l`, `efficiency_percent`, `carbonation_vols`
 - Extensions: `format_extensions` (preserves BeerXML/Brewfather metadata)
 - Relationships: fermentables, hops, cultures (yeasts), miscs, water profiles, mash steps, fermentation steps

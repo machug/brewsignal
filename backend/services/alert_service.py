@@ -45,6 +45,8 @@ class AlertType:
     TEMP_RUNAWAY = "temp_runaway"
     # Reminder: gravity reached the dry hop point (tilt_ui-n1w7)
     DRY_HOP_DUE = "dry_hop_due"
+    # Info: gravity has been flat at the expected FG for 2 days (tilt_ui-v25i)
+    CRASH_READY = "crash_ready"
 
 
 # Short push titles. Not listed = no push: rest_started is informational (the
@@ -62,6 +64,7 @@ PUSH_TITLES = {
     AlertType.EQUIPMENT_CONFLICT: "Equipment conflict",
     AlertType.REST_BLOCKED: "Diacetyl rest cannot start",
     AlertType.DRY_HOP_DUE: "Dry hop now",
+    AlertType.CRASH_READY: "Ready to cold crash",
 }
 
 
@@ -70,7 +73,15 @@ STALL_MAX_SLOPE = 2.5e-5  # SG/hour, i.e. 0.6 gravity points/day
 STALL_MIN_DROP = 0.004  # must have fermented 4 points first
 STALL_FG_MARGIN = 0.004  # and still be 4 points above expected FG
 
-DRY_HOP_DEFAULT_PERCENT = 65.0  # of the way from OG to expected FG, when the batch sets no gravity
+DRY_HOP_DEFAULT_PERCENT = 65.0
+
+# Ready-to-crash rule (tilt_ui-v25i). Compares the median SG of the first and
+# last READY_EDGE of a READY_WINDOW span; medians ride out Tilt noise.
+# ponytail: fixed thresholds, re-tune on real batches (Tilt temp drift can move 1 pt)
+READY_WINDOW = timedelta(hours=48)
+READY_EDGE = timedelta(hours=4)
+READY_MAX_CHANGE = 0.002  # SG change over READY_WINDOW that still counts as flat
+READY_MAX_GAP = timedelta(hours=6)  # longer gap in the window = no evidence it held  # of the way from OG to expected FG, when the batch sets no gravity
 
 # Sensing alert thresholds (tilt_ui-lgtu; from sensing-anomaly.md, not yet
 # exercised on a real batch - re-tune with tilt_ui-xrq5.7)
@@ -389,7 +400,92 @@ async def detect_and_persist_alerts(
     if alert:
         current_alerts.append(alert)
 
+    alert = await _crash_ready_alert(db, batch_id, device_id, reading, current_sg, fg, temp_target, now)
+    if alert:
+        current_alerts.append(alert)
+
     return current_alerts
+
+
+async def _crash_ready_alert(
+    db: AsyncSession,
+    batch_id: int,
+    device_id: str,
+    reading: Reading,
+    current_sg: Optional[float],
+    fg: Optional[float],
+    temp_target: Optional[float],
+    now: datetime,
+) -> Optional[FermentationAlert]:
+    """Ready-to-cold-crash notice (tilt_ui-v25i): gravity flat for READY_WINDOW
+    and no more than STALL_FG_MARGIN above the expected FG (below FG = finished
+    dry, still ready). Raised once per batch, so a
+    dismissal is final. Cleared when the batch leaves fermenting or the target
+    drops to cold-crash range. Needs an expected FG: flat and high is a stall."""
+    from backend.temp_controller import REST_MIN_ACTIVE_TARGET_C  # temp_controller imports this module
+
+    batch = await db.get(Batch, batch_id)
+    if batch is None or batch.status != "fermenting" or (
+        temp_target is not None and temp_target < REST_MIN_ACTIVE_TARGET_C
+    ):
+        await _clear_alert(db, batch_id, AlertType.CRASH_READY, now)
+        return None
+    previous = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+    ).order_by(FermentationAlert.first_detected_at.desc()).limit(1))).scalar_one_or_none()
+    if previous is not None:
+        return previous if previous.cleared_at is None else None
+    if current_sg is None or fg is None or current_sg - fg > STALL_FG_MARGIN:
+        return None
+    dry_hop_pending = (await db.execute(select(FermentationAlert.id).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.DRY_HOP_DUE,
+        FermentationAlert.cleared_at.is_(None),
+    ).limit(1))).first()
+    if dry_hop_pending:
+        return None
+    if batch.recipe_id is not None and batch.dry_hop_done_at is None and any(
+        (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
+        for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == batch.recipe_id))).scalars()
+    ):
+        return None  # planned dry hop not marked done (its reminder may not have fired yet)
+
+    at = reading.timestamp or now
+    rows = (await db.execute(
+        select(Reading.sg_calibrated, Reading.timestamp).where(
+            Reading.batch_id == batch_id,
+            Reading.sg_calibrated.is_not(None),
+            Reading.timestamp >= at - READY_WINDOW - READY_EDGE,
+            Reading.timestamp <= at,
+        ).order_by(Reading.timestamp)
+    )).all()
+    ref = _naive_utc(at)
+    start = ref - READY_WINDOW
+    stamps = [_naive_utc(r.timestamp) for r in rows]
+    old = [r.sg_calibrated for r, t in zip(rows, stamps) if t <= start]
+    new = [r.sg_calibrated for r, t in zip(rows, stamps) if t >= ref - READY_EDGE]
+    if not old or not new:
+        return None  # less than READY_WINDOW of data
+    if any(b - a > READY_MAX_GAP for a, b in zip(stamps, stamps[1:])):
+        return None  # an outage or pause in the window: flat is not proven
+    old_sg, new_sg = statistics.median(old), statistics.median(new)
+    if abs(old_sg - new_sg) > READY_MAX_CHANGE or new_sg - fg > STALL_FG_MARGIN:
+        return None
+    return await _upsert_alert(
+        db=db,
+        batch_id=batch_id,
+        device_id=device_id,
+        alert_type=AlertType.CRASH_READY,
+        severity=AlertSeverity.INFO,
+        message=(
+            f"Gravity has held at {new_sg:.3f} for 48 hours (expected FG {fg:.3f}). "
+            "Check for diacetyl, then cold crash."
+        ),
+        context=json.dumps({"sg": new_sg, "sg_48h_ago": old_sg, "expected_fg": fg}),
+        trigger_reading_id=reading.id,
+        now=now,
+    )
 
 
 async def _dry_hop_alert(

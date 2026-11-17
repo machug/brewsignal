@@ -1,7 +1,10 @@
 <script lang="ts">
-	import { fetchBatchAlerts, dismissAlert, dismissAllAlerts, markDryHopDone, crashReadyNotYet, updateBatch, type BatchResponse, type FermentationAlert } from '$lib/api';
+	import { fetchBatchAlerts, dismissAlert, dismissAllAlerts, markDryHopDone, crashReadyNotYet, updateBatch, type BatchResponse, type FermentationAlert, type AlertType } from '$lib/api';
 	import { configState, fahrenheitToCelsius, celsiusToFahrenheit } from '$lib/stores/config.svelte';
 	import BatchCard from './BatchCard.svelte';
+
+	// Cleared only by marking the dry hop done (tilt_ui-n1w7, tilt_ui-8ih3)
+	const DRY_HOP_TYPES: AlertType[] = ['dry_hop_due', 'crash_wait_dry_hop'];
 
 	interface Props {
 		batchId: number;
@@ -141,7 +144,7 @@
 			dismissingAll = true;
 			await dismissAllAlerts(batchId);
 			// The server keeps the dry hop reminder until it is marked done
-			alerts = alerts.filter((a) => a.alert_type === 'dry_hop_due');
+			alerts = alerts.filter((a) => DRY_HOP_TYPES.includes(a.alert_type));
 			crashOpen = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to dismiss alerts';
@@ -290,7 +293,7 @@
 								</div>
 							{/if}
 						{/if}
-						{#if alert.alert_type === 'dry_hop_due'}
+						{#if DRY_HOP_TYPES.includes(alert.alert_type)}
 							<button type="button" class="dismiss-all-btn dry-hop-btn" onclick={() => handleDryHopDone(alert.id)} disabled={dismissing === alert.id}>
 								Mark dry hopped
 							</button>
@@ -305,7 +308,7 @@
 							</span>
 						</div>
 					</div>
-					{#if alert.alert_type !== 'dry_hop_due' && !(alert.alert_type === 'crash_ready' && crashOpen)}
+					{#if !DRY_HOP_TYPES.includes(alert.alert_type) && !(alert.alert_type === 'crash_ready' && crashOpen)}
 					<button
 						type="button"
 						class="dismiss-btn"

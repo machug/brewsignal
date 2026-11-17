@@ -835,3 +835,167 @@ async def test_start_crash_via_target_ends_it(client, test_db):
     test_db.expire_all()
     await test_db.refresh(batch)
     assert await _alerts(test_db, batch) == []
+
+
+# --- final gravity latch (tilt_ui-r1hq) ---
+
+@pytest.mark.asyncio
+async def test_crash_start_saves_the_held_sg_as_fg(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050, heater_entity_id="h", cooler_entity_id="c", temp_target=19.0)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"temp_target": 2.0})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["measured_fg"] == pytest.approx(1.011)
+    assert body["measured_abv"] == pytest.approx((1.050 - 1.011) * 131.25)
+
+
+@pytest.mark.asyncio
+async def test_unseen_crash_saves_fg_not_the_cold_reading(test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.011] * 30, temp=19.0)
+    await _run(test_db, batch, [1.015] * 3, start=at, temp=2.0)  # fridge: reads high
+    assert batch.measured_fg == pytest.approx(1.011)
+
+
+@pytest.mark.asyncio
+async def test_own_fg_is_never_overwritten(test_db):
+    batch = await _batch(test_db, measured_og=1.050, measured_fg=1.009)
+    await _run(test_db, batch, [1.011] * 30)
+    await _run(test_db, batch, [1.011], temp_target=2.0)
+    assert batch.measured_fg == pytest.approx(1.009)
+
+
+@pytest.mark.asyncio
+async def test_completing_with_ready_up_uses_held_sg_not_last_reading(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.011] * 30)
+    test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.016, timestamp=at, status="valid"))
+    await test_db.commit()  # a cold, high last reading that never ran through detection
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed"})
+    assert r.status_code == 200, r.text
+    assert r.json()["measured_fg"] == pytest.approx(1.011)
+
+
+@pytest.mark.asyncio
+async def test_no_ready_alert_keeps_old_completion_behaviour(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    await _run(test_db, batch, [1.020] * 3)  # never ready
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed"})
+    assert r.json()["measured_fg"] == pytest.approx(1.020)
+
+
+
+@pytest.mark.asyncio
+async def test_gradual_unseen_crash_still_saves_fg(test_db):
+    """19 C to 2 C over hours; the cold rise passes 2 pt before the wort is below 5 C."""
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.011] * 30, temp=19.0)
+    for temp, sg in [(15.0, 1.012), (12.0, 1.0135), (9.0, 1.0145), (6.0, 1.015), (3.0, 1.015), (2.0, 1.015)]:
+        at = await _run(test_db, batch, [sg], start=at, temp=temp, step=timedelta(hours=1))
+    assert batch.measured_fg == pytest.approx(1.011)
+
+
+
+@pytest.mark.asyncio
+async def test_own_fg_in_the_completing_put_wins(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed", "measured_fg": 1.009})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["measured_fg"] == pytest.approx(1.009)
+    assert body["measured_attenuation"] == pytest.approx((1.050 - 1.009) / 0.050 * 100)
+
+
+@pytest.mark.asyncio
+async def test_latched_fg_survives_cold_conditioning_then_completion(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "conditioning"})
+    assert r.json()["measured_fg"] == pytest.approx(1.011)
+    test_db.add(Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.016,
+                        timestamp=T0 + timedelta(hours=80), status="valid"))  # cold, high
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed"})
+    body = r.json()
+    assert body["measured_fg"] == pytest.approx(1.011)
+    assert body["measured_attenuation"] == pytest.approx((1.050 - 1.011) / 0.050 * 100)
+
+
+@pytest.mark.asyncio
+async def test_going_back_to_planning_does_not_latch(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "planning"})
+    assert r.status_code == 200, r.text
+    assert r.json()["measured_fg"] is None
+
+
+
+@pytest.mark.asyncio
+async def test_cool_night_then_more_fermentation_does_not_lock_an_old_fg(test_db):
+    """Uncontrolled batch: held at 1.016, a cool night reads +2.5 pt, then it warms,
+    ferments on to 1.010 and becomes ready there. FG must be 1.010, not 1.016."""
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.016] * 30, temp=22.0)
+    at = await _run(test_db, batch, [1.0185] * 3, start=at, temp=16.0)  # cool night
+    assert batch.measured_fg is None
+    at = await _run(test_db, batch, [1.013, 1.011] + [1.010] * 30, start=at, temp=21.0)
+    assert len(await _alerts(test_db, batch)) == 1  # ready again, at 1.010
+    await _run(test_db, batch, [1.014] * 3, start=at, temp=2.0)  # now the real crash
+    assert batch.measured_fg == pytest.approx(1.010)
+
+
+@pytest.mark.asyncio
+async def test_archiving_does_not_latch_fg(client, test_db):
+    batch = await _batch(test_db, measured_og=1.050)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "archived"})
+    assert r.status_code == 200, r.text
+    assert r.json()["measured_fg"] is None
+
+
+@pytest.mark.asyncio
+async def test_og_with_completion_and_later_og_edit_recompute_abv(client, test_db):
+    batch = await _batch(test_db)
+    await _run(test_db, batch, [1.011] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed", "measured_og": 1.050})
+    body = r.json()
+    assert body["measured_fg"] == pytest.approx(1.011)
+    assert body["measured_abv"] == pytest.approx((1.050 - 1.011) * 131.25)
+    r = await client.put(f"/api/batches/{batch.id}", json={"measured_og": 1.052})
+    assert r.json()["measured_abv"] == pytest.approx((1.052 - 1.011) * 131.25)
+
+
+@pytest.mark.asyncio
+async def test_cooled_fg_dropped_if_fermentation_went_on_before_the_crash(test_db):
+    """Cool night tags the alert; beer warms and ferments 1.016 -> 1.010; crashed before
+    a new 48 h window: the old 1.016 must not become the FG."""
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.016] * 30, temp=22.0)
+    at = await _run(test_db, batch, [1.0185] * 3, start=at, temp=16.0)
+    at = await _run(test_db, batch, [1.013, 1.011, 1.010, 1.010], start=at, temp=21.0)
+    await _run(test_db, batch, [1.013] * 3, start=at, temp=2.0)  # crash now
+    assert batch.measured_fg is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"status": "conditioning"}, {"status": "completed"}])
+async def test_cooled_fg_used_when_brewer_moves_on_above_5c(client, test_db, change):
+    """Moved to a 6-8 C garage (alert came down as 'cooled'), then marked on: use the held SG."""
+    batch = await _batch(test_db, measured_og=1.050)
+    at = await _run(test_db, batch, [1.011] * 30, temp=19.0)
+    await _run(test_db, batch, [1.012, 1.0135, 1.0145, 1.015], start=at, temp=7.0, step=timedelta(hours=1))
+    assert await _alerts(test_db, batch) == []  # came down while cooling
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json=change)
+    assert r.status_code == 200, r.text
+    assert r.json()["measured_fg"] == pytest.approx(1.011)

@@ -73,15 +73,16 @@ STALL_MAX_SLOPE = 2.5e-5  # SG/hour, i.e. 0.6 gravity points/day
 STALL_MIN_DROP = 0.004  # must have fermented 4 points first
 STALL_FG_MARGIN = 0.004  # and still be 4 points above expected FG
 
-DRY_HOP_DEFAULT_PERCENT = 65.0
+DRY_HOP_DEFAULT_PERCENT = 65.0  # of the way from OG to expected FG, when the batch sets no gravity
 
-# Ready-to-crash rule (tilt_ui-v25i). Compares the median SG of the first and
-# last READY_EDGE of a READY_WINDOW span; medians ride out Tilt noise.
+# Ready-to-crash rule (tilt_ui-v25i, tilt_ui-w2zj). The READY_WINDOW span is cut
+# into READY_EDGE buckets; medians ride out Tilt noise.
 # ponytail: fixed thresholds, re-tune on real batches (Tilt temp drift can move 1 pt)
 READY_WINDOW = timedelta(hours=48)
 READY_EDGE = timedelta(hours=4)
-READY_MAX_CHANGE = 0.002  # SG change over READY_WINDOW that still counts as flat
-READY_MAX_GAP = timedelta(hours=6)  # longer gap in the window = no evidence it held  # of the way from OG to expected FG, when the batch sets no gravity
+READY_MAX_CHANGE = 0.002  # every bucket median within this of the latest SG
+READY_MAX_GAP = timedelta(hours=6)  # longer gap in the window = no evidence it held
+READY_MIN_RECENT = 3  # readings behind the latest SG (from the last READY_EDGE, else the last 3)
 
 # Sensing alert thresholds (tilt_ui-lgtu; from sensing-anomaly.md, not yet
 # exercised on a real batch - re-tune with tilt_ui-xrq5.7)
@@ -400,11 +401,17 @@ async def detect_and_persist_alerts(
     if alert:
         current_alerts.append(alert)
 
-    alert = await _crash_ready_alert(db, batch_id, device_id, reading, current_sg, fg, temp_target, now)
+    alert = await _crash_ready_alert(db, batch_id, device_id, reading, fg, temp_target, now)
     if alert:
         current_alerts.append(alert)
 
     return current_alerts
+
+
+def _pts(diff: float) -> float:
+    """SG difference rounded to 0.1 point: 1.014 - 1.010 is 0.0040000000000000036
+    as a float, which would fail an "at most 4 points" test."""
+    return round(diff, 4)
 
 
 async def _crash_ready_alert(
@@ -412,18 +419,28 @@ async def _crash_ready_alert(
     batch_id: int,
     device_id: str,
     reading: Reading,
-    current_sg: Optional[float],
     fg: Optional[float],
     temp_target: Optional[float],
     now: datetime,
 ) -> Optional[FermentationAlert]:
-    """Ready-to-cold-crash notice (tilt_ui-v25i): gravity flat for READY_WINDOW
-    and no more than STALL_FG_MARGIN above the expected FG (below FG = finished
-    dry, still ready). A dismissal is final. Cleared when the batch leaves
-    fermenting or the target drops to cold-crash range. If gravity falls more
-    than READY_MAX_CHANGE below the alerted value (hop creep), it clears and
-    may be raised again after a new flat window (tilt_ui-zwwy). Needs an
-    expected FG: flat and high is a stall."""
+    """Ready-to-cold-crash notice (tilt_ui-v25i).
+
+    Looks at the last READY_WINDOW of valid readings, cut into READY_EDGE
+    buckets counted back from this reading. Raised when the data covers the
+    whole window with no gap over READY_MAX_GAP (up to now), every bucket
+    median is within READY_MAX_CHANGE of the latest SG, the slope fitted to
+    the bucket medians falls slower than STALL_MAX_SLOPE, and the latest SG is
+    no more than STALL_FG_MARGIN above the expected FG (below FG = finished
+    dry, still ready). "Latest SG" is the median of the last READY_EDGE, or of
+    the last READY_MIN_RECENT readings when the sensor reports less often.
+    Blocked by no expected FG (flat and high is a stall) or a dry hop block.
+
+    A dismissal is final; leaving fermenting or a cold-crash target ends it for
+    good (end_crash_ready). While up, it clears with a "rearm" marker when the
+    latest SG moves more than READY_MAX_CHANGE from the alerted value (hop
+    creep, a sugar addition), or at once when the FG is removed or a dry hop
+    block appears; it may then return only READY_WINDOW after that reading
+    (tilt_ui-zwwy, tilt_ui-w2zj)."""
     from backend.temp_controller import REST_MIN_ACTIVE_TARGET_C  # temp_controller imports this module
 
     batch = await db.get(Batch, batch_id)
@@ -432,65 +449,78 @@ async def _crash_ready_alert(
     ):
         await end_crash_ready(db, batch_id, now)
         return None
-    previous = (await db.execute(select(FermentationAlert).where(
-        FermentationAlert.batch_id == batch_id,
-        FermentationAlert.alert_type == AlertType.CRASH_READY,
-    ).order_by(FermentationAlert.first_detected_at.desc()).limit(1))).scalar_one_or_none()
     at = reading.timestamp or now
-    if previous is not None and previous.cleared_at is None:
-        recent = (await db.execute(select(Reading.sg_calibrated).where(
-            Reading.batch_id == batch_id,
-            Reading.sg_calibrated.is_not(None),
-            Reading.timestamp >= at - READY_EDGE,
-            Reading.timestamp <= at,
-        ))).scalars().all()
-        ctx = json.loads(previous.context or "{}")
-        if not recent or ctx.get("sg") is None or ctx["sg"] - statistics.median(recent) <= READY_MAX_CHANGE:
-            return previous
-        # Fermenting again: not ready after all. "rearm" tells this from a dismissal.
-        previous.context = json.dumps({**ctx, "rearm": True})
-        previous.cleared_at = now
-        return None  # the new 48 h window now holds the drop, so no instant re-raise
-    if previous is not None:
-        if not json.loads(previous.context or "{}").get("rearm"):
-            return None  # dismissed, or cleared by the crash: final
-        if _naive_utc(at) - _naive_utc(previous.cleared_at) < READY_WINDOW:
-            return None  # a slow fall can look flat over 48 h: wait a full new window
-    if current_sg is None or fg is None or current_sg - fg > STALL_FG_MARGIN:
-        return None
-    dry_hop_pending = (await db.execute(select(FermentationAlert.id).where(
-        FermentationAlert.batch_id == batch_id,
-        FermentationAlert.alert_type == AlertType.DRY_HOP_DUE,
-        FermentationAlert.cleared_at.is_(None),
-    ).limit(1))).first()
-    if dry_hop_pending:
-        return None
-    if batch.recipe_id is not None and batch.dry_hop_done_at is None and any(
-        (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
-        for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == batch.recipe_id))).scalars()
-    ):
-        return None  # planned dry hop not marked done (its reminder may not have fired yet)
-
+    ref = _naive_utc(at)
     rows = (await db.execute(
         select(Reading.sg_calibrated, Reading.timestamp).where(
             Reading.batch_id == batch_id,
             Reading.sg_calibrated.is_not(None),
-            Reading.timestamp >= at - READY_WINDOW - READY_EDGE,
-            Reading.timestamp <= at,
+            Reading.status == "valid",
+            Reading.timestamp >= ref - READY_WINDOW - READY_MAX_GAP,
+            Reading.timestamp <= ref,
         ).order_by(Reading.timestamp)
     )).all()
-    ref = _naive_utc(at)
-    start = ref - READY_WINDOW
-    stamps = [_naive_utc(r.timestamp) for r in rows]
-    old = [r.sg_calibrated for r, t in zip(rows, stamps) if t <= start]
-    new = [r.sg_calibrated for r, t in zip(rows, stamps) if t >= ref - READY_EDGE]
-    if not old or not new:
-        return None  # less than READY_WINDOW of data
-    if any(b - a > READY_MAX_GAP for a, b in zip(stamps, stamps[1:])):
-        return None  # an outage or pause in the window: flat is not proven
-    old_sg, new_sg = statistics.median(old), statistics.median(new)
-    if abs(old_sg - new_sg) > READY_MAX_CHANGE or new_sg - fg > STALL_FG_MARGIN:
+    points = [(_naive_utc(r.timestamp), r.sg_calibrated) for r in rows]
+    window = [(t, sg) for t, sg in points if t >= ref - READY_WINDOW]
+    recent = [sg for t, sg in window if t >= ref - READY_EDGE]
+    if len(recent) < READY_MIN_RECENT:
+        # Sparse sensor: its last few readings, if none of them sit across a
+        # dropout (readings from before an outage are not "latest").
+        tail = window[-READY_MIN_RECENT:]
+        steps = [t for t, _ in tail] + [ref]
+        fresh = all(b - a <= READY_MAX_GAP for a, b in zip(steps, steps[1:]))
+        recent = [sg for _, sg in tail] if fresh else []
+    new_sg = statistics.median(recent) if len(recent) >= READY_MIN_RECENT else None
+    plan_blocked = fg is None or await _crash_ready_dry_hop_block(db, batch, ref)
+
+    previous = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+    ).order_by(FermentationAlert.first_detected_at.desc(), FermentationAlert.id.desc()).limit(1))).scalar_one_or_none()
+    ctx = json.loads(previous.context or "{}") if previous is not None else {}
+    if previous is not None and previous.cleared_at is None:
+        # The FG margin is not re-checked here: "moved" already bounds drift,
+        # and re-checking it would flap an alert raised right at the margin.
+        moved = (
+            new_sg is not None and ctx.get("sg") is not None
+            and _pts(abs(new_sg - ctx["sg"])) > READY_MAX_CHANGE
+        )
+        if not moved and not plan_blocked:
+            previous.last_seen_at = now
+            return previous  # includes too few readings to judge a change
+        _rearm(previous, ref, now)
         return None
+    if previous is not None:
+        if not ctx.get("rearm"):
+            return None  # dismissed, or ended by the crash: final
+        cleared = datetime.fromisoformat(ctx["rearm_from"]) if "rearm_from" in ctx else _naive_utc(previous.cleared_at)
+        if ref - cleared < READY_WINDOW:
+            return None  # wait a full new window after it cleared
+    if plan_blocked or new_sg is None or _pts(new_sg - fg) > STALL_FG_MARGIN:
+        return None
+
+    before = [p for p in points if p[0] < ref - READY_WINDOW]
+    if not before and (not window or window[0][0] > ref - READY_WINDOW):
+        return None  # less than READY_WINDOW of data
+    span = before[-1:] + window + [(ref, None)]
+    if any(b[0] - a[0] > READY_MAX_GAP for a, b in zip(span, span[1:])):
+        return None  # an outage or pause in the window (or since): flat is not proven
+    last_bucket = int(READY_WINDOW / READY_EDGE) - 1
+    buckets: dict[int, list[tuple[datetime, float]]] = {}
+    for t, sg in window:
+        buckets.setdefault(min(int((ref - t) / READY_EDGE), last_bucket), []).append((t, sg))
+    medians = {k: statistics.median(sg for _, sg in v) for k, v in buckets.items()}
+    if any(_pts(abs(m - new_sg)) > READY_MAX_CHANGE for m in medians.values()):
+        return None  # moved somewhere in the window (rise and return, still falling)
+    if len(medians) < 2:
+        return None
+    # Medians, not raw readings: one stray reading must not tilt the slope. Each
+    # median sits at its readings' mean time (buckets can be partly filled).
+    hours = [statistics.fmean((t - ref).total_seconds() / 3600 for t, _ in buckets[k]) for k in medians]
+    slope = statistics.linear_regression(hours, list(medians.values())).slope
+    if round(slope, 9) < -STALL_MAX_SLOPE:  # rounded: an exact 0.6 pt/day fit lands a hair over
+        return None  # a slow steady fall: still fermenting
+    old_sg = medians[max(medians)]
     return await _upsert_alert(
         db=db,
         batch_id=batch_id,
@@ -504,6 +534,42 @@ async def _crash_ready_alert(
         context=json.dumps({"sg": new_sg, "sg_48h_ago": old_sg, "expected_fg": fg}),
         trigger_reading_id=reading.id,
         now=now,
+    )
+
+
+def _rearm(alert: FermentationAlert, ref: datetime, now: datetime) -> None:
+    """Clear a crash_ready alert that is no longer true. "rearm" tells this
+    from a dismissal; the alert may come back READY_WINDOW after ``ref``."""
+    alert.context = json.dumps({**json.loads(alert.context or "{}"), "rearm": True, "rearm_from": ref.isoformat()})
+    alert.cleared_at = now
+
+
+async def rearm_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> None:
+    """Dry hop just went in: take down an up crash_ready alert now, without
+    waiting for the next reading (tilt_ui-w2zj)."""
+    alert = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+        FermentationAlert.cleared_at.is_(None),
+    ))).scalar_one_or_none()
+    if alert is not None:
+        _rearm(alert, _naive_utc(now), now)
+
+
+async def _crash_ready_dry_hop_block(db: AsyncSession, batch: Batch, ref: datetime) -> bool:
+    """A dry hop is due, planned and not done, or done less than READY_WINDOW
+    ago (extraction and hop creep need time; the old window is pre-dry-hop)."""
+    if (await db.execute(select(FermentationAlert.id).where(
+        FermentationAlert.batch_id == batch.id,
+        FermentationAlert.alert_type == AlertType.DRY_HOP_DUE,
+        FermentationAlert.cleared_at.is_(None),
+    ).limit(1))).first():
+        return True
+    if batch.dry_hop_done_at is not None:
+        return ref - _naive_utc(batch.dry_hop_done_at) < READY_WINDOW
+    return batch.recipe_id is not None and any(
+        (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
+        for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == batch.recipe_id))).scalars()
     )
 
 

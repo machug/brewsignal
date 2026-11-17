@@ -14,6 +14,7 @@ from ..models import Batch, ControlEvent, ControlEventResponse
 from ..temp_controller import (
     get_control_status,
     get_batch_control_status,
+    controller_running,
     get_rest_rule_status,
     set_manual_override,
     get_device_temp,
@@ -248,9 +249,7 @@ async def get_batch_status(batch_id: int, db: AsyncSession = Depends(get_db)):
         wort_temp=wort_temp,
         state_available=batch_status["state_available"],
         # The control loop only runs (and so only runs the rest rule) with both switched on
-        rest=await get_rest_rule_status(
-            db, batch, controller_on=bool(temp_control_enabled and await get_config_value(db, "ha_enabled")),
-        ),
+        rest=await get_rest_rule_status(db, batch, controller_on=await controller_running(db)),
     )
 
 

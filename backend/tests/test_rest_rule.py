@@ -472,7 +472,9 @@ def test_migration_adds_columns_once():
 # ------------------------------------------------------------------ status for the batch page (tilt_ui-og8s)
 
 async def control_on(client):
-    r = await client.patch("/api/config", json={"ha_enabled": True, "temp_control_enabled": True})
+    r = await client.patch("/api/config", json={
+        "ha_enabled": True, "temp_control_enabled": True, "ha_url": "http://ha.local:8123", "ha_token": "t0ken",
+    })
     assert r.status_code == 200, r.text
 
 

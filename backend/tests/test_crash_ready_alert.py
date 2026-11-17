@@ -27,16 +27,17 @@ async def _batch(db, **kw):
     return batch
 
 
-async def _run(db, batch, sgs, step=timedelta(hours=2), start=T0, status="valid", **kw):
+async def _run(db, batch, sgs, step=timedelta(hours=2), start=T0, status="valid", temp=None, **kw):
     """Store one reading per ``step`` with the given SGs, running detection after each."""
     at = start
     for sg in sgs:
-        reading = Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=sg, timestamp=at, status=status)
+        reading = Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=sg, timestamp=at, status=status,
+                          temp_calibrated=temp)
         db.add(reading)
         await db.flush()
         await detect_and_persist_alerts(
             db=db, batch_id=batch.id, device_id="BLUE", reading=reading,
-            live_reading={"sg": sg}, og=OG, now=at, **{"fg": FG, **kw},
+            live_reading={"sg": sg, "temp": temp}, og=OG, now=at, **{"fg": FG, **kw},
         )
         await db.flush()
         at += step
@@ -149,7 +150,7 @@ async def test_gravity_drop_clears_then_reraises_after_new_flat_window(test_db, 
     assert await _alerts(test_db, batch) == []
     await _run(test_db, batch, [1.010] * 6, start=at)  # 52 h flat
     assert len(await _alerts(test_db, batch)) == 1
-    assert len(_no_push) == 2
+    assert [t for t, *_ in _no_push] == ["Ready to cold crash: APA", "Not ready to cold crash after all: APA", "Ready to cold crash: APA"]
 
 
 @pytest.mark.asyncio
@@ -169,7 +170,7 @@ async def test_slow_fall_after_clear_waits_full_window(test_db, _no_push):
     sgs = [1.013 - 0.00003 * 2 * i for i in range(1, 70)]  # runs well past clear + 48 h
     await _run(test_db, batch, sgs, start=at)
     assert await _alerts(test_db, batch) == []
-    assert len(_no_push) == 1
+    assert [t for t, *_ in _no_push] == ["Ready to cold crash: APA", "Not ready to cold crash after all: APA"]
 
 
 @pytest.mark.asyncio
@@ -181,7 +182,7 @@ async def test_crash_cancels_pending_rearm(test_db, _no_push):
     at = await _run(test_db, batch, [1.010], start=at, temp_target=2.0)  # brewer crashes anyway
     await _run(test_db, batch, [1.010] * 40, start=at, temp_target=19.0)  # then warms it back up
     assert await _alerts(test_db, batch) == []
-    assert len(_no_push) == 1
+    assert [t for t, *_ in _no_push] == ["Ready to cold crash: APA", "Not ready to cold crash after all: APA"]
 
 
 @pytest.mark.asyncio
@@ -389,3 +390,248 @@ async def test_five_hour_reporter_still_judged(test_db):
     assert len(await _alerts(test_db, batch)) == 1
     await _run(test_db, batch, [1.010] * 3, start=at, step=timedelta(hours=5))
     assert await _alerts(test_db, batch) == []
+
+
+async def _not_ready(db, batch):
+    return (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch.id,
+        FermentationAlert.alert_type == AlertType.CRASH_NOT_READY,
+        FermentationAlert.cleared_at.is_(None),
+    ))).scalars().all()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("after,word", [(1.0105, "fell"), (1.0155, "rose")])
+async def test_gravity_move_says_why_the_alert_went(test_db, after, word):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    assert await _not_ready(test_db, batch) == []
+    await _run(test_db, batch, [after] * 3, start=at)
+    (alert,) = await _not_ready(test_db, batch)
+    assert alert.severity == "warning"
+    assert f"Gravity {word} 2.5 points after holding at 1.013" in alert.message
+
+
+@pytest.mark.asyncio
+async def test_not_ready_clears_when_ready_again(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.010] * 3, start=at)
+    assert len(await _not_ready(test_db, batch)) == 1
+    await _run(test_db, batch, [1.010] * 25, start=at)
+    assert len(await _alerts(test_db, batch)) == 1
+    assert await _not_ready(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_not_ready_ends_with_the_crash(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30, temp_target=19.0)
+    at = await _run(test_db, batch, [1.010] * 3, start=at, temp_target=19.0)
+    assert len(await _not_ready(test_db, batch)) == 1
+    await _run(test_db, batch, [1.010], start=at, temp_target=2.0)
+    assert await _not_ready(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_plan_change_gives_no_not_ready_notice(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    await _run(test_db, batch, [1.010] * 3, start=at, fg=None)  # brewer cleared the FG
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cold", [14.0, 3.0])  # fermenter moved to a fridge; target left alone
+async def test_unseen_crash_ends_it_without_a_rise_warning(test_db, _no_push, cold):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30, temp=19.0)
+    assert len(await _alerts(test_db, batch)) == 1
+    await _run(test_db, batch, [1.015] * 3, start=at, temp=cold)  # cold reads the hydrometer high
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_fg_cleared_takes_the_warning_down(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.010] * 3, start=at)
+    assert len(await _not_ready(test_db, batch)) == 1
+    await _run(test_db, batch, [1.010], start=at, fg=None)
+    assert await _not_ready(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_settles_flat_above_fg_clears_warning(test_db):
+    """Rose and then held high for 48 h: a stall, not a wait for crash."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.012] * 30)
+    at = await _run(test_db, batch, [1.016] * 3, start=at)
+    assert len(await _not_ready(test_db, batch)) == 1
+    await _run(test_db, batch, [1.016] * 26, start=at)
+    assert await _not_ready(test_db, batch) == []
+    assert await _alerts(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_own_plan_change_with_a_move_gives_no_warning(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    batch.dry_hop_done_at = at  # dry hop went in; the hops shift the reading too
+    await _run(test_db, batch, [1.0135] * 3, start=at)
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_warning_numbers_follow_gravity_without_more_pushes(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.0105] * 3, start=at)
+    await _run(test_db, batch, [1.007] * 3, start=at)
+    (alert,) = await _not_ready(test_db, batch)
+    assert "fell 6.0 points" in alert.message and "now 1.007" in alert.message
+    assert len(_no_push) == 2
+
+
+@pytest.mark.asyncio
+async def test_hop_creep_named_only_after_a_dry_hop(test_db):
+    batch = await _batch(test_db, dry_hop_done_at=T0 - timedelta(hours=60))
+    at = await _run(test_db, batch, [1.013] * 30)
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    (alert,) = await _not_ready(test_db, batch)
+    assert "hop creep after the dry hop" in alert.message
+
+
+@pytest.mark.asyncio
+async def test_no_dry_hop_says_late_fermentation(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    (alert,) = await _not_ready(test_db, batch)
+    assert "late fermentation" in alert.message and "hop creep" not in alert.message
+
+
+@pytest.mark.asyncio
+async def test_leaving_fermenting_clears_warning(client, test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    await test_db.commit()
+    assert len(await _not_ready(test_db, batch)) == 1
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "conditioning"})
+    assert r.status_code == 200, r.text
+    test_db.expire_all()
+    await test_db.refresh(batch)
+    assert await _not_ready(test_db, batch) == []
+
+
+
+@pytest.mark.asyncio
+async def test_normal_cool_down_does_not_end_it(test_db):
+    """Raised warm (22 C), wort later settles 5 C cooler: not a crash, alert stays."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30, temp=22.0)
+    await _run(test_db, batch, [1.010] * 6, start=at, temp=17.0)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_bad_temperature_cannot_end_it(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30, temp=19.0)
+    at = await _run(test_db, batch, [1.010], start=at, temp=-10.0)  # one glitch
+    await _run(test_db, batch, [1.010] * 3, start=at, temp=19.0)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_cooling_hard_with_a_rise_rearms_quietly(test_db, _no_push):
+    """Crash started at 14 C (target left alone): the alert comes down, no "rose" push,
+    and it is not ended for good (14 C could be a cellar, not a crash)."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30, temp=19.0)
+    await _run(test_db, batch, [1.0135] * 3, start=at, temp=14.0)
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    (old,) = await _alerts(test_db, batch, active_only=False)
+    assert '"rearm": true' in old.context
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_warning_value_follows_gravity_back_toward_held(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.016] * 3, start=at)
+    await _run(test_db, batch, [1.014] * 3, start=at)
+    (alert,) = await _not_ready(test_db, batch)
+    assert "now 1.014" in alert.message and "rose 1.0" not in alert.message
+    assert "Gravity moved after holding at 1.013" in alert.message
+
+
+@pytest.mark.asyncio
+async def test_active_warning_returned_while_waiting(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.010] * 3, start=at)
+    reading = Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=1.010, timestamp=at, status="valid")
+    test_db.add(reading)
+    await test_db.flush()
+    out = await detect_and_persist_alerts(db=test_db, batch_id=batch.id, device_id="BLUE", reading=reading,
+                                          live_reading={"sg": 1.010}, og=OG, fg=FG, now=at)
+    assert AlertType.CRASH_NOT_READY in [a.alert_type for a in out]
+
+
+
+@pytest.mark.asyncio
+async def test_cooling_does_not_hide_a_fall(test_db):
+    """Cold reads high, so a fall while cooling is real fermentation: warn."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30, temp=22.0)
+    await _run(test_db, batch, [1.010] * 3, start=at, temp=17.0)
+    (alert,) = await _not_ready(test_db, batch)
+    assert "fell" in alert.message
+
+
+@pytest.mark.asyncio
+async def test_sparse_reporter_crash_in_fridge_ends_it(test_db, _no_push):
+    """A 5 h reporter still gets a wort temperature, so a fridge crash ends the alert."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 12, step=timedelta(hours=5), temp=19.0)
+    assert len(await _alerts(test_db, batch)) == 1
+    await _run(test_db, batch, [1.016] * 3, start=at, step=timedelta(hours=5), temp=2.0)
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_active_warning_returned_after_the_wait_too(test_db):
+    """Past the 48 h wait but still falling: the warning is still reported."""
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    at = await _run(test_db, batch, [1.010 - 0.0005 * i for i in range(30)], start=at)  # keeps falling 58 h
+    reading = Reading(batch_id=batch.id, device_id="BLUE", sg_calibrated=0.995, timestamp=at, status="valid")
+    test_db.add(reading)
+    await test_db.flush()
+    out = await detect_and_persist_alerts(db=test_db, batch_id=batch.id, device_id="BLUE", reading=reading,
+                                          live_reading={"sg": 0.995}, og=OG, fg=FG, now=at)
+    assert AlertType.CRASH_NOT_READY in [a.alert_type for a in out]
+
+
+
+@pytest.mark.asyncio
+async def test_fg_edit_with_a_move_gives_no_warning(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    await _run(test_db, batch, [1.010] * 3, start=at, fg=1.008)  # brewer lowered the FG
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1

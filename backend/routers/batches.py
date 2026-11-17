@@ -675,10 +675,11 @@ async def mark_dry_hop_done(
     batch = await get_user_batch(batch_id, user, db)
     if batch.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Batch not found")
-    from ..services.alert_service import AlertType, _clear_alert
+    from ..services.alert_service import AlertType, _clear_alert, rearm_crash_ready
     now = datetime.now(timezone.utc)
     batch.dry_hop_done_at = now
     await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)
+    await rearm_crash_ready(db, batch_id, now)  # hop creep may follow: not ready yet
     await db.commit()
     return await get_batch(batch_id, user, db)
 

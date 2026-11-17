@@ -15,7 +15,7 @@ import statistics
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.services import push
@@ -526,7 +526,14 @@ async def _crash_ready_alert(
         )
         # Cooling hard (crash starting, target left alone) reads the hydrometer
         # high: that explains a rise, not a fall. The alert still comes down.
-        if moved and not plan_blocked and not (cooling and new_sg > ctx["sg"]):
+        if moved and not plan_blocked and cooling and new_sg > ctx["sg"]:
+            # Maybe a crash we were not told about (cold reads high). Mark the
+            # alert so its held SG can still become the FG if the crash is
+            # confirmed (wort below 5 C); not saved now, as a cool night on an
+            # uncontrolled batch looks the same (tilt_ui-r1hq).
+            previous.context = json.dumps({**json.loads(previous.context or "{}"), "cooled": True})
+            return None
+        if moved and not plan_blocked:
             # Say why it went away: a quiet disappearance reads as "crash done".
             # A plan change (FG, dry hop) is the brewer's own act: no notice.
             return await _crash_not_ready_alert(
@@ -722,10 +729,57 @@ async def _crash_ready_rest_block(
     return not (sg is not None and status["trigger_sg"] is not None and _pts(sg - status["trigger_sg"]) > 0)
 
 
+async def crash_ready_held_sg(db: AsyncSession, batch_id: int) -> Optional[float]:
+    """The SG the latest ready-to-crash notice held at: if it is up, or if it
+    came down only because the wort was cooling ("cooled", still waiting to
+    re-raise) and no valid reading since has fallen more than READY_MAX_CHANGE
+    below it (a fall means fermentation went on, so the old SG is not final).
+    This is the warm, settled final gravity: once the crash starts, cold wort
+    and dissolved CO2 make a hydrometer read several points high (tilt_ui-r1hq)."""
+    alert = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+    ).order_by(FermentationAlert.first_detected_at.desc(), FermentationAlert.id.desc()).limit(1))).scalar_one_or_none()
+    if alert is None:
+        return None
+    ctx = json.loads(alert.context or "{}")
+    held = ctx.get("sg")
+    if held is None or alert.cleared_at is None:
+        return held
+    if not (ctx.get("cooled") and ctx.get("rearm") and ctx.get("rearm_from")):
+        return None
+    lowest = (await db.execute(select(func.min(Reading.sg_calibrated)).where(
+        Reading.batch_id == batch_id,
+        Reading.status == "valid",
+        Reading.timestamp >= datetime.fromisoformat(ctx["rearm_from"]),
+    ))).scalar()
+    return None if lowest is not None and _pts(held - lowest) > READY_MAX_CHANGE else held
+
+
+def set_measured_fg(batch: Batch, fg: float) -> None:
+    """Set the measured FG, and ABV and attenuation when the OG is known."""
+    batch.measured_fg = fg
+    if batch.measured_og and batch.measured_og > 1.0:  # 1.000 would divide by zero
+        batch.measured_abv = (batch.measured_og - fg) * 131.25
+        batch.measured_attenuation = ((batch.measured_og - fg) / (batch.measured_og - 1.0)) * 100
+
+
 async def end_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> bool:
     """Batch left fermenting or started its crash: clear the notice and cancel
-    any pending re-raise, so it is final. Returns True if anything changed."""
-    changed = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now)
+    any pending re-raise, so it is final. Returns True if anything changed.
+
+    If the notice was up, its held SG becomes the batch's measured FG (when
+    none is set): readings taken during the crash read high (tilt_ui-r1hq).
+    A notice that came down only because the wort was cooling counts too
+    (see crash_ready_held_sg)."""
+    changed = False
+    held = await crash_ready_held_sg(db, batch_id)
+    if held is not None:
+        batch = await db.get(Batch, batch_id)
+        if batch is not None and batch.measured_fg is None and batch.status not in ("planning", "brewing", "archived"):
+            set_measured_fg(batch, held)
+            changed = True
+    changed = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now) or changed
     changed = await _clear_alert(db, batch_id, AlertType.CRASH_NOT_READY, now) or changed
     for alert in (await db.execute(select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,

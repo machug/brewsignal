@@ -511,24 +511,33 @@ async def update_batch(
         elif update.status in ["completed", "archived"]:
             await mark_batch_unavailable()
 
-        # Auto-populate measured_fg from last reading when completing (if not already set)
+        if update.measured_og is not None:
+            batch.measured_og = update.measured_og  # before the FG below, for ABV
+        # Auto-populate measured_fg when completing (if not already set). An up
+        # ready-to-crash notice holds the warm, settled FG; the last reading may
+        # come from cold, crashed beer, which reads high (tilt_ui-r1hq).
+        from ..services.alert_service import crash_ready_held_sg, set_measured_fg
+        if update.status == "completed" and batch.measured_fg is None:
+            with db.no_autoflush:  # a flush here would turn a 409 conflict into a 500
+                held_fg = await crash_ready_held_sg(db, batch_id)
+            if held_fg is not None:
+                set_measured_fg(batch, held_fg)
         if update.status == "completed" and batch.measured_fg is None and batch.measured_og:
-            # Get the last reading for this batch to capture final gravity
-            last_reading_query = (
-                select(Reading)
-                .where(Reading.batch_id == batch_id)
-                .order_by(Reading.timestamp.desc())
-                .limit(1)
-            )
-            last_reading_result = await db.execute(last_reading_query)
-            last_reading = last_reading_result.scalar_one_or_none()
-            if last_reading:
-                # Use filtered SG if available, otherwise calibrated
-                final_sg = last_reading.sg_filtered or last_reading.sg_calibrated
-                if final_sg:
-                    batch.measured_fg = final_sg
-                    batch.measured_abv = (batch.measured_og - final_sg) * 131.25
-                    batch.measured_attenuation = ((batch.measured_og - final_sg) / (batch.measured_og - 1.0)) * 100
+            with db.no_autoflush:
+                # Get the last reading for this batch to capture final gravity
+                last_reading_query = (
+                    select(Reading)
+                    .where(Reading.batch_id == batch_id)
+                    .order_by(Reading.timestamp.desc())
+                    .limit(1)
+                )
+                last_reading_result = await db.execute(last_reading_query)
+                last_reading = last_reading_result.scalar_one_or_none()
+                if last_reading:
+                    # Use filtered SG if available, otherwise calibrated
+                    final_sg = last_reading.sg_filtered or last_reading.sg_calibrated
+                    if final_sg:
+                        set_measured_fg(batch, final_sg)
 
         # Release device when batch is completed or archived
         if update.status in ["completed", "archived"]:
@@ -545,12 +554,12 @@ async def update_batch(
         batch.end_time = update.end_time
     if update.measured_og is not None:
         batch.measured_og = update.measured_og
+        if update.measured_fg is None and batch.measured_fg is not None:
+            from ..services.alert_service import set_measured_fg
+            set_measured_fg(batch, batch.measured_fg)  # ABV and attenuation follow the new OG
     if update.measured_fg is not None:
-        batch.measured_fg = update.measured_fg
-        # Calculate ABV and attenuation when FG is set
-        if batch.measured_og:
-            batch.measured_abv = (batch.measured_og - update.measured_fg) * 131.25
-            batch.measured_attenuation = ((batch.measured_og - update.measured_fg) / (batch.measured_og - 1.0)) * 100
+        from ..services.alert_service import set_measured_fg
+        set_measured_fg(batch, update.measured_fg)  # also ABV and attenuation
     if update.notes is not None:
         batch.notes = update.notes
     # Temperature control fields

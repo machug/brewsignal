@@ -1,5 +1,6 @@
 """Ready-to-cold-crash alert (tilt_ui-v25i): gravity flat for 48 h at the expected FG."""
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -800,3 +801,37 @@ async def test_old_rest_start_does_not_count_for_a_later_firing(test_db):
     await _rest_start_event(test_db, batch, T0 - timedelta(hours=30))  # the first, real rest
     await _run(test_db, batch, [1.010] * 30)
     assert len(await _alerts(test_db, batch)) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_not_yet_takes_it_down_and_it_returns_48h_later(client, test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    await test_db.commit()
+    r = await client.post(f"/api/batches/{batch.id}/crash-ready/not-yet")
+    assert r.status_code == 200, r.text
+    test_db.expire_all()
+    await test_db.refresh(batch)
+    assert await _alerts(test_db, batch) == []
+    (old,) = await _alerts(test_db, batch, active_only=False)
+    rearm_from = datetime.fromisoformat(json.loads(old.context)["rearm_from"])
+    # Flat readings from just before "Not yet": back only at the reading 48 h after it.
+    start = rearm_from.replace(tzinfo=timezone.utc) - timedelta(hours=2)
+    at = await _run(test_db, batch, [1.010] * 25, start=start)  # up to 46 h after
+    assert await _alerts(test_db, batch) == []
+    await _run(test_db, batch, [1.010], start=at)  # 48 h after
+    assert len(await _alerts(test_db, batch)) == 1
+    assert len(_no_push) == 2
+
+
+@pytest.mark.asyncio
+async def test_start_crash_via_target_ends_it(client, test_db):
+    batch = await _batch(test_db, heater_entity_id="switch.heat", cooler_entity_id="switch.cool", temp_target=19.0)
+    await _run(test_db, batch, [1.010] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"temp_target": 2.0})
+    assert r.status_code == 200, r.text
+    test_db.expire_all()
+    await test_db.refresh(batch)
+    assert await _alerts(test_db, batch) == []

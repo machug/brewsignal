@@ -654,8 +654,9 @@ def _rearm(alert: FermentationAlert, ref: datetime, now: datetime) -> None:
 
 
 async def rearm_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> None:
-    """Dry hop just went in: take down an up crash_ready alert now, without
-    waiting for the next reading (tilt_ui-w2zj)."""
+    """Take down an up crash_ready alert now, without waiting for the next
+    reading; it may come back READY_WINDOW later. Used when the dry hop goes
+    in (tilt_ui-w2zj) and for the brewer's "Not yet" (tilt_ui-ifmj)."""
     alert = (await db.execute(select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
         FermentationAlert.alert_type == AlertType.CRASH_READY,

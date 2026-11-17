@@ -684,6 +684,24 @@ async def mark_dry_hop_done(
     return await get_batch(batch_id, user, db)
 
 
+@router.post("/{batch_id}/crash-ready/not-yet", response_model=BatchResponse)
+async def crash_ready_not_yet(
+    batch_id: int,
+    user: AuthUser = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """The brewer is not crashing yet (tilt_ui-ifmj), e.g. a forced diacetyl
+    test smelled of butter: take the ready notice down. It comes back once
+    gravity has held for another 48 h, unlike a dismissal, which is final."""
+    batch = await get_user_batch(batch_id, user, db)
+    if batch.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    from ..services.alert_service import rearm_crash_ready
+    await rearm_crash_ready(db, batch_id, datetime.now(timezone.utc))
+    await db.commit()
+    return await get_batch(batch_id, user, db)
+
+
 @router.get("/{batch_id}/inventory-check")
 async def check_batch_inventory(
     batch_id: int,

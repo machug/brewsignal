@@ -1500,6 +1500,18 @@ export async function markDryHopDone(batchId: number): Promise<BatchResponse> {
 }
 
 /**
+ * Not crashing yet (e.g. diacetyl found): take the ready-to-crash notice down.
+ * It comes back after gravity holds for another 48 hours (tilt_ui-ifmj).
+ */
+export async function crashReadyNotYet(batchId: number): Promise<BatchResponse> {
+	const response = await authFetch(`${BASE_URL}/batches/${batchId}/crash-ready/not-yet`, { method: 'POST' });
+	if (!response.ok) {
+		throw new Error(await batchErrorMessage(response, 'Failed to snooze the cold crash notice'));
+	}
+	return response.json();
+}
+
+/**
  * Dismiss all active alerts for a batch
  */
 export async function dismissAllAlerts(

@@ -97,7 +97,7 @@
 	<div class="info-section">
 		<!-- Active Alerts Card (only show during fermentation/conditioning) -->
 		{#if batch.status === 'fermenting' || batch.status === 'conditioning'}
-			<BatchAlertsCard batchId={batch.id} onDryHopDone={(b) => onBatchUpdate?.(b)} />
+			<BatchAlertsCard batchId={batch.id} {batch} onBatchUpdate={(b) => onBatchUpdate?.(b)} />
 		{#if dryHopDoneAt}
 			<p class="dry-hop-done">Dry hopped {formatWhen(dryHopDoneAt)}</p>
 		{/if}

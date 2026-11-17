@@ -688,6 +688,7 @@ async def mark_dry_hop_done(
     now = datetime.now(timezone.utc)
     batch.dry_hop_done_at = now
     await _clear_alert(db, batch_id, AlertType.DRY_HOP_DUE, now)
+    await _clear_alert(db, batch_id, AlertType.CRASH_WAIT_DRY_HOP, now)
     await rearm_crash_ready(db, batch_id, now)  # hop creep may follow: not ready yet
     await db.commit()
     return await get_batch(batch_id, user, db)
@@ -1191,8 +1192,8 @@ async def dismiss_all_alerts(
     query = select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
         FermentationAlert.cleared_at.is_(None),
-        # The dry hop reminder clears only when marked done (tilt_ui-n1w7)
-        FermentationAlert.alert_type != AlertType.DRY_HOP_DUE,
+        # The dry hop reminders clear only when marked done (tilt_ui-n1w7, tilt_ui-8ih3)
+        FermentationAlert.alert_type.not_in((AlertType.DRY_HOP_DUE, AlertType.CRASH_WAIT_DRY_HOP)),
     )
     result = await db.execute(query)
     alerts = result.scalars().all()

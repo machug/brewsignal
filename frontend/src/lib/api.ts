@@ -1438,7 +1438,8 @@ export type AlertType =
 	| 'temp_runaway'
 	| 'dry_hop_due'
 	| 'crash_ready'
-	| 'crash_not_ready';
+	| 'crash_not_ready'
+	| 'crash_wait_dry_hop';
 
 export interface FermentationAlert {
 	id: number;

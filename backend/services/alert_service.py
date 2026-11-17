@@ -49,6 +49,8 @@ class AlertType:
     CRASH_READY = "crash_ready"
     # Warning: a crash_ready alert came down because gravity moved (tilt_ui-y6za)
     CRASH_NOT_READY = "crash_not_ready"
+    # Info: would be crash_ready, but the recipe's dry hop is not marked done (tilt_ui-8ih3)
+    CRASH_WAIT_DRY_HOP = "crash_wait_dry_hop"
 
 
 # Short push titles. Not listed = no push: rest_started is informational (the
@@ -68,6 +70,7 @@ PUSH_TITLES = {
     AlertType.DRY_HOP_DUE: "Dry hop now",
     AlertType.CRASH_READY: "Ready to cold crash",
     AlertType.CRASH_NOT_READY: "Not ready to cold crash after all",
+    AlertType.CRASH_WAIT_DRY_HOP: "Ready to cold crash once dry hopped",
 }
 
 
@@ -438,6 +441,10 @@ async def _crash_ready_alert(
     dry, still ready). "Latest SG" is the median of the last READY_EDGE, or of
     the last READY_MIN_RECENT readings when the sensor reports less often.
     Blocked by no expected FG (flat and high is a stall) or a dry hop block.
+    When the only block is a planned dry hop never marked done, a
+    crash_wait_dry_hop notice says so instead; it stays until the dry hop is
+    marked done, the plan changes or the crash starts. Ended by the crash or
+    dismissed, it is final; after a plan change it may come back (tilt_ui-8ih3).
 
     A dismissal is final; leaving fermenting or a cold-crash target ends it for
     good (end_crash_ready). While up, it clears with a "rearm" marker when the
@@ -495,11 +502,12 @@ async def _crash_ready_alert(
         # target left alone): no lager ferments this cold.
         await end_crash_ready(db, batch_id, now)
         return None
-    plan_blocked = (
-        fg is None
-        or await _crash_ready_dry_hop_block(db, batch, ref)
-        or await _crash_ready_rest_block(db, batch, ref, new_sg, pending=False)
-    )
+    dry_hop = await _crash_ready_dry_hop_block(db, batch, ref)
+    # Its message names the FG; checked before the readiness guards so a gap
+    # or a gravity move cannot hide a plan change.
+    await _replan_wait(db, batch_id, now, None if dry_hop != "planned" or fg is None else fg)
+    other_blocked = fg is None or await _crash_ready_rest_block(db, batch, ref, new_sg, pending=False)
+    plan_blocked = other_blocked or dry_hop is not None
     dry_hopped = batch.dry_hop_done_at is not None
 
     if previous is not None and previous.cleared_at is None:
@@ -562,7 +570,9 @@ async def _crash_ready_alert(
         cleared = datetime.fromisoformat(ctx["rearm_from"]) if "rearm_from" in ctx else _naive_utc(previous.cleared_at)
         if ref - cleared < READY_WINDOW:
             return not_ready  # wait a full new window after it cleared
-    if plan_blocked or new_sg is None or await _crash_ready_rest_block(db, batch, ref, new_sg):
+    # An unmarked dry hop alone still runs the checks, to say why it waits.
+    if (other_blocked or dry_hop not in (None, "planned") or new_sg is None
+            or await _crash_ready_rest_block(db, batch, ref, new_sg)):
         return not_ready
 
     before = [p for p in points if p[0] < ref - READY_WINDOW]
@@ -592,6 +602,29 @@ async def _crash_ready_alert(
     if _pts(new_sg - fg) > STALL_FG_MARGIN:
         return None
     old_sg = medians[max(medians)]
+    if dry_hop == "planned":
+        if (await db.execute(select(FermentationAlert.id).where(
+            FermentationAlert.batch_id == batch_id,
+            FermentationAlert.alert_type == AlertType.CRASH_WAIT_DRY_HOP,
+            FermentationAlert.cleared_at.is_not(None),
+            FermentationAlert.context.not_like('%"replan": true%'),
+        ).limit(1))).first():
+            return None  # ended by the crash or dismissed: final, no repeat push
+        return await _upsert_alert(
+            db=db,
+            batch_id=batch_id,
+            device_id=device_id,
+            alert_type=AlertType.CRASH_WAIT_DRY_HOP,
+            severity=AlertSeverity.INFO,
+            message=(
+                f"Gravity held at {new_sg:.3f} for 48 hours (expected FG {fg:.3f}), "
+                "but the recipe's dry hop is not marked done. Mark it dry hopped: "
+                "the cold crash notice comes once gravity holds for 48 hours after that."
+            ),
+            context=json.dumps({"sg": new_sg, "sg_48h_ago": old_sg, "expected_fg": fg}),
+            trigger_reading_id=reading.id,
+            now=now,
+        )
     return await _upsert_alert(
         db=db,
         batch_id=batch_id,
@@ -660,6 +693,23 @@ def _rearm(alert: FermentationAlert, ref: datetime, now: datetime) -> None:
     alert.cleared_at = now
 
 
+async def _replan_wait(db: AsyncSession, batch_id: int, now: datetime, fg: Optional[float] = None) -> None:
+    """Clear an up crash_wait_dry_hop after a plan change, not an ending:
+    "replan" lets it come back if the plan returns (FG set again, dry hop
+    put back in the recipe). With ``fg``, only if the FG was edited so the
+    SG the notice held at is now a stall (judged on the held SG, not the
+    latest readings, so gravity drifting up and back cannot clear it)."""
+    wait = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_WAIT_DRY_HOP,
+        FermentationAlert.cleared_at.is_(None),
+    ))).scalar_one_or_none()
+    held = json.loads(wait.context or "{}").get("sg") if wait is not None else None
+    if wait is not None and (fg is None or (held is not None and _pts(held - fg) > STALL_FG_MARGIN)):
+        wait.cleared_at = now
+        wait.context = json.dumps({**json.loads(wait.context or "{}"), "replan": True})
+
+
 async def rearm_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> None:
     """Take down an up crash_ready alert now, without waiting for the next
     reading; it may come back READY_WINDOW later. Used when the dry hop goes
@@ -673,21 +723,25 @@ async def rearm_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> N
         _rearm(alert, _naive_utc(now), now)
 
 
-async def _crash_ready_dry_hop_block(db: AsyncSession, batch: Batch, ref: datetime) -> bool:
-    """A dry hop is due, planned and not done, or done less than READY_WINDOW
-    ago (extraction and hop creep need time; the old window is pre-dry-hop)."""
+async def _crash_ready_dry_hop_block(db: AsyncSession, batch: Batch, ref: datetime) -> Optional[str]:
+    """Why a dry hop blocks crash_ready, or None: "due" (its reminder is up),
+    "settling" (done less than READY_WINDOW ago: extraction and hop creep need
+    time; the old window is pre-dry-hop) or "planned" (in the recipe, not
+    marked done, reminder not up)."""
     if (await db.execute(select(FermentationAlert.id).where(
         FermentationAlert.batch_id == batch.id,
         FermentationAlert.alert_type == AlertType.DRY_HOP_DUE,
         FermentationAlert.cleared_at.is_(None),
     ).limit(1))).first():
-        return True
+        return "due"
     if batch.dry_hop_done_at is not None:
-        return ref - _naive_utc(batch.dry_hop_done_at) < READY_WINDOW
-    return batch.recipe_id is not None and any(
+        return "settling" if ref - _naive_utc(batch.dry_hop_done_at) < READY_WINDOW else None
+    if batch.recipe_id is not None and any(
         (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
         for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == batch.recipe_id))).scalars()
-    )
+    ):
+        return "planned"
+    return None
 
 
 async def _crash_ready_rest_block(
@@ -781,12 +835,20 @@ async def end_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> boo
             changed = True
     changed = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now) or changed
     changed = await _clear_alert(db, batch_id, AlertType.CRASH_NOT_READY, now) or changed
+    changed = await _clear_alert(db, batch_id, AlertType.CRASH_WAIT_DRY_HOP, now) or changed
     for alert in (await db.execute(select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
         FermentationAlert.alert_type == AlertType.CRASH_READY,
         FermentationAlert.context.like('%"rearm": true%'),
     ))).scalars():
         alert.context = json.dumps({**json.loads(alert.context), "rearm": False})
+        changed = True
+    for alert in (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_WAIT_DRY_HOP,
+        FermentationAlert.context.like('%"replan": true%'),
+    ))).scalars():
+        alert.context = json.dumps({**json.loads(alert.context), "replan": False})
         changed = True
     return changed
 

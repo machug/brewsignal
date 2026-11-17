@@ -999,3 +999,213 @@ async def test_cooled_fg_used_when_brewer_moves_on_above_5c(client, test_db, cha
     r = await client.put(f"/api/batches/{batch.id}", json=change)
     assert r.status_code == 200, r.text
     assert r.json()["measured_fg"] == pytest.approx(1.011)
+
+
+async def _wait(db, batch, active_only=True):
+    q = select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch.id,
+        FermentationAlert.alert_type == AlertType.CRASH_WAIT_DRY_HOP,
+    )
+    if active_only:
+        q = q.where(FermentationAlert.cleared_at.is_(None))
+    return (await db.execute(q)).scalars().all()
+
+
+async def _dry_hop_batch(db, **kw):
+    recipe = Recipe(name="APA", target_og=OG, target_fg=FG)
+    db.add(recipe)
+    await db.flush()
+    db.add(RecipeHop(recipe_id=recipe.id, name="Citra", amount_grams=50, timing={"use": "dry_hop"}))
+    # Trigger below where gravity sits, so the dry hop reminder never fires.
+    return await _batch(db, recipe_id=recipe.id, dry_hop_trigger_sg=1.005, **kw)
+
+
+@pytest.mark.asyncio
+async def test_unmarked_dry_hop_says_why_crash_ready_waits(test_db, _no_push):
+    """tilt_ui-8ih3: flat for 48 h, only the unmarked dry hop blocks: say so, once."""
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, [1.010] * 24)  # 0-46 h: not 48 h yet
+    assert await _wait(test_db, batch) == []
+    await _run(test_db, batch, [1.010] * 6, start=T0 + timedelta(hours=48))
+    (wait,) = await _wait(test_db, batch)
+    assert wait.severity == "info"
+    assert "dry hop" in wait.message and "1.010" in wait.message
+    assert await _alerts(test_db, batch) == []
+    assert [t for t, *_ in _no_push] == ["Ready to cold crash once dry hopped: APA"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sgs", [
+    [1.016 - 0.0002 * i for i in range(30)],  # still fermenting
+    [1.020] * 30,  # flat but well above FG: a stall
+])
+async def test_no_wait_notice_unless_otherwise_ready(test_db, sgs):
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, sgs)
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_no_wait_notice_without_fg(test_db):
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, [1.010] * 30, fg=None)
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_stays_through_gravity_noise(test_db, _no_push):
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    await _run(test_db, batch, [1.016] * 3, start=at)  # moved: still waits for the mark
+    assert len(await _wait(test_db, batch)) == 1
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_dry_hopped_clears_wait_then_crash_ready_follows(client, test_db):
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    await test_db.commit()
+    r = await client.post(f"/api/batches/{batch.id}/dry-hop-done")
+    assert r.status_code == 200, r.text
+    test_db.expire_all()
+    await test_db.refresh(batch)
+    assert await _wait(test_db, batch) == []
+    batch.dry_hop_done_at = at  # deterministic: dry hopped at the next reading
+    at = await _run(test_db, batch, [1.010] * 24, start=at)  # under 48 h since the dry hop
+    assert await _alerts(test_db, batch) == [] and await _wait(test_db, batch) == []
+    await _run(test_db, batch, [1.010], start=at)
+    assert len(await _alerts(test_db, batch)) == 1
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_ends_when_batch_leaves_fermenting(client, test_db):
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, [1.010] * 30)
+    await test_db.commit()
+    r = await client.put(f"/api/batches/{batch.id}", json={"status": "completed"})
+    assert r.status_code == 200, r.text
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_dismiss_all_keeps_wait_notice(client, test_db):
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, [1.010] * 30)
+    await test_db.commit()
+    r = await client.post(f"/api/batches/{batch.id}/alerts/dismiss-all")
+    assert r.status_code == 200, r.text
+    assert len(await _wait(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_final_after_crash_then_warm(test_db, _no_push):
+    """Fable F1: a crash target ends it; raising the target again must not re-push."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    at = await _run(test_db, batch, [1.010] * 2, start=at, temp_target=2.0)
+    assert await _wait(test_db, batch) == []
+    await _run(test_db, batch, [1.010] * 30, start=at, temp_target=18.0)
+    assert await _wait(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_clears_when_dry_hop_reminder_raised(test_db):
+    batch = await _dry_hop_batch(test_db)
+    await _run(test_db, batch, [1.010] * 30)
+    assert len(await _wait(test_db, batch)) == 1
+    batch.dry_hop_trigger_sg = 1.012  # reminder fires now: "due" replaces "planned"
+    await _run(test_db, batch, [1.010], start=T0 + timedelta(hours=60))
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_clears_when_fg_removed(test_db):
+    """Gemini: its message names the FG, so it must not outlive it."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    assert len(await _wait(test_db, batch)) == 1
+    at = await _run(test_db, batch, [1.010], start=at, fg=None)
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_returns_when_fg_set_again(test_db, _no_push):
+    """Fable round 2: a plan change is not an ending; restoring the FG brings it back."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    at = await _run(test_db, batch, [1.010], start=at, fg=None)
+    assert await _wait(test_db, batch) == []
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    assert len(await _wait(test_db, batch)) == 1
+    assert len(_no_push) == 2  # a new plan: a new push
+
+
+@pytest.mark.asyncio
+async def test_wait_notice_dismissed_via_api_is_final(client, test_db, _no_push):
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    (wait,) = await _wait(test_db, batch)
+    await test_db.commit()
+    r = await client.post(f"/api/batches/{batch.id}/alerts/{wait.id}/dismiss")
+    assert r.status_code == 200, r.text
+    test_db.expire_all()
+    await test_db.refresh(batch)
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    assert await _wait(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_crash_makes_a_plan_cleared_wait_notice_final(test_db, _no_push):
+    """Fable round 3: FG removed (replan), then the crash, then FG back and warm: no return."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    at = await _run(test_db, batch, [1.010], start=at, fg=None)
+    at = await _run(test_db, batch, [1.010], start=at, fg=None, temp_target=2.0)
+    await _run(test_db, batch, [1.010] * 30, start=at, temp_target=18.0)
+    assert await _wait(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_fg_lowered_to_a_stall_clears_wait_notice(test_db):
+    """Fable round 4: FG edited 6 pt down, gravity now 'flat and high': not a wait."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    assert len(await _wait(test_db, batch)) == 1
+    await _run(test_db, batch, [1.010], start=at, fg=1.004)
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_fg_lowered_after_a_gap_still_clears_wait_notice(test_db):
+    """Codex round 5: a reading gap returns early; the FG check must come first."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    await _run(test_db, batch, [1.010], start=at + timedelta(hours=10), fg=1.004)
+    assert await _wait(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+async def test_gravity_drifting_up_and_back_keeps_wait_notice(test_db, _no_push):
+    """Codex round 5: same FG, gravity sits 5 pt high for a while, then settles: one notice."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.010] * 30)
+    at = await _run(test_db, batch, [1.015] * 30, start=at)
+    await _run(test_db, batch, [1.010] * 30, start=at)
+    assert len(await _wait(test_db, batch)) == 1
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_noise_at_fg_margin_gives_one_wait_push(test_db, _no_push):
+    """Fable round 5: flat at 1.014 (FG 1.010), then jitter across the margin: one push."""
+    batch = await _dry_hop_batch(test_db)
+    at = await _run(test_db, batch, [1.014] * 30)
+    assert len(await _wait(test_db, batch)) == 1
+    await _run(test_db, batch, [1.015, 1.015, 1.014, 1.014] * 3, start=at)
+    assert len(await _wait(test_db, batch)) == 1
+    assert len(_no_push) == 1

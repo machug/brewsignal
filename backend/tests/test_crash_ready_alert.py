@@ -635,3 +635,168 @@ async def test_fg_edit_with_a_move_gives_no_warning(test_db, _no_push):
     assert await _alerts(test_db, batch) == []
     assert await _not_ready(test_db, batch) == []
     assert len(_no_push) == 1
+
+
+# --- diacetyl rest gate (tilt_ui-n8n5) ---
+
+async def _control(db, on=True, ha_set_up=True):
+    from backend.routers.config import set_config_value
+    await set_config_value(db, "ha_enabled", on)
+    await set_config_value(db, "temp_control_enabled", on)
+    await set_config_value(db, "ha_url", "http://ha.local:8123" if ha_set_up else "")
+    await set_config_value(db, "ha_token", "t0ken" if ha_set_up else "")
+
+
+def _armed(**kw):
+    return dict(rest_trigger_percent=75.0, rest_temp_target=21.0, heater_entity_id="switch.heat",
+                temp_target=19.0, expected_og=OG, expected_fg=FG, **kw)
+
+
+async def _rest_start_event(db, batch, at):
+    from backend.models import ControlEvent
+    db.add(ControlEvent(batch_id=batch.id, action="rest_start", timestamp=at, target_temp=21.0))
+    await db.flush()
+
+
+@pytest.mark.asyncio
+async def test_rest_started_recently_holds_it_back(test_db):
+    batch = await _batch(test_db, rest_trigger_percent=75.0, rest_temp_target=21.0, temp_target=21.0,
+                         rest_fired_at=T0 + timedelta(hours=10))
+    await _rest_start_event(test_db, batch, T0 + timedelta(hours=10))
+    at = await _run(test_db, batch, [1.010] * 29)  # 0-56 h: rest is 46 h old
+    assert await _alerts(test_db, batch) == []
+    await _run(test_db, batch, [1.010], start=at)  # 58 h: 48 h of rest
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_rest_still_to_come_holds_it_back(test_db):
+    await _control(test_db)
+    batch = await _batch(test_db, **_armed())
+    await _run(test_db, batch, [1.010] * 30)
+    assert await _alerts(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("why", ["control_off", "no_actuator", "ha_not_set_up", "crash_target", "no_og",
+                                 "already_warm"])
+async def test_rest_the_controller_will_not_run_does_not_block(test_db, why):
+    await _control(test_db, on=why != "control_off", ha_set_up=why != "ha_not_set_up")
+    kw = _armed()
+    if why == "no_actuator":
+        kw["heater_entity_id"] = None
+    if why == "already_warm":
+        kw["temp_target"] = 21.0  # at the rest temperature: the rule would not raise it
+    if why == "no_og":
+        kw["expected_og"] = None  # rule blocked: it can never work out its trigger
+    batch = await _batch(test_db, **kw)
+    if why == "crash_target":
+        # Target in crash range: the rule does not run, and the crash itself ends the notice.
+        batch.temp_target = 2.0
+        await _run(test_db, batch, [1.010] * 30, temp_target=2.0)
+        assert await _alerts(test_db, batch) == []
+        return
+    await _run(test_db, batch, [1.010] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_rest_starting_takes_alert_down_quietly(test_db, _no_push):
+    batch = await _batch(test_db, rest_trigger_percent=75.0, rest_temp_target=21.0, temp_target=21.0)
+    at = await _run(test_db, batch, [1.010] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+    batch.rest_fired_at = at  # controller started the rest late (raised the target)
+    await _rest_start_event(test_db, batch, at)
+    at = await _run(test_db, batch, [1.010], start=at)
+    assert await _alerts(test_db, batch) == []
+    assert await _not_ready(test_db, batch) == []
+    assert len(_no_push) == 1
+    await _run(test_db, batch, [1.010] * 24, start=at)  # 48 h of rest
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_flat_above_rest_trigger_does_not_block(test_db):
+    """Trigger at 95% is 1.012; gravity holds at 1.013, inside the 4 pt FG allowance:
+    the rule can never fire, so the notice must not wait for it."""
+    await _control(test_db)
+    batch = await _batch(test_db, **{**_armed(), "rest_trigger_percent": 95.0})
+    await _run(test_db, batch, [1.013] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_rest_holding_blocks(test_db):
+    """At or below the trigger the controller is holding before it fires: wait."""
+    await _control(test_db)
+    batch = await _batch(test_db, **_armed(rest_below_since=T0))
+    await _run(test_db, batch, [1.010] * 30)
+    assert await _alerts(test_db, batch) == []
+
+
+
+@pytest.mark.asyncio
+async def test_cooler_only_batch_waits_for_rest(test_db):
+    await _control(test_db)
+    batch = await _batch(test_db, **{**_armed(), "heater_entity_id": None, "cooler_entity_id": "switch.cool"})
+    await _run(test_db, batch, [1.010] * 30)
+    assert await _alerts(test_db, batch) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["rule_off", "target_lowered"])
+async def test_rest_ended_early_stops_the_wait(test_db, change):
+    kw = dict(rest_trigger_percent=75.0, rest_temp_target=21.0, temp_target=21.0,
+              rest_fired_at=T0 + timedelta(hours=40))
+    if change == "rule_off":
+        kw["rest_trigger_percent"] = None
+    else:
+        kw["temp_target"] = 18.0  # brewer dropped back after a clean forced VDK test
+    batch = await _batch(test_db, **kw)
+    await _rest_start_event(test_db, batch, T0 + timedelta(hours=40))  # a real rest, so only the guard can free it
+    await _run(test_db, batch, [1.010] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_stale_holding_above_trigger_does_not_block(test_db):
+    """One noisy dip set rest_below_since; gravity then settled above the trigger."""
+    await _control(test_db)
+    batch = await _batch(test_db, **{**_armed(rest_below_since=T0), "rest_trigger_percent": 95.0})
+    await _run(test_db, batch, [1.013] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_op_rest_firing_does_not_start_a_wait(test_db, _no_push):
+    """Already warm: the rule fires without raising (no rest_start event), so nothing changed."""
+    batch = await _batch(test_db, rest_trigger_percent=75.0, rest_temp_target=21.0, temp_target=21.0)
+    at = await _run(test_db, batch, [1.010] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+    batch.rest_fired_at = at  # fired as a no-op
+    await _run(test_db, batch, [1.010] * 3, start=at)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_noise_at_trigger_cannot_pull_an_up_alert(test_db):
+    """Up alert, armed rule, gravity wobbling across the trigger: the pending rest is not re-checked."""
+    await _control(test_db)
+    batch = await _batch(test_db, **{**_armed(), "rest_trigger_percent": 95.0})  # trigger 1.012
+    at = await _run(test_db, batch, [1.013] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+    await _run(test_db, batch, [1.012] * 3, start=at)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_old_rest_start_does_not_count_for_a_later_firing(test_db):
+    """Rest raised once, then re-armed and fired again with nothing to raise."""
+    batch = await _batch(test_db, rest_trigger_percent=75.0, rest_temp_target=21.0, temp_target=21.0,
+                         rest_fired_at=T0 + timedelta(hours=40))
+    await _rest_start_event(test_db, batch, T0 - timedelta(hours=30))  # the first, real rest
+    await _run(test_db, batch, [1.010] * 30)
+    assert len(await _alerts(test_db, batch)) == 1

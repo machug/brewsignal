@@ -784,6 +784,17 @@ async def _rest_gravities(db, batch) -> tuple[Optional[float], Optional[float]]:
     return batch_expected_og(batch, recipe), batch_expected_fg(batch, recipe)
 
 
+async def controller_running(db) -> bool:
+    """True when the control loop actually runs its cycle (and so the rest
+    rule): the same switches and HA settings it checks before each cycle."""
+    return bool(
+        await get_config_value(db, "temp_control_enabled")
+        and await get_config_value(db, "ha_enabled")
+        and await get_config_value(db, "ha_url")
+        and await get_config_value(db, "ha_token")
+    )
+
+
 async def get_rest_rule_status(db, batch, controller_on: bool = True) -> Optional[dict]:
     """Read-only view of the rest rule for the batch page (tilt_ui-og8s). None when
     the rule is off. Uses the same inputs, in the same order, as apply_rest_rule,

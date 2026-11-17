@@ -495,7 +495,11 @@ async def _crash_ready_alert(
         # target left alone): no lager ferments this cold.
         await end_crash_ready(db, batch_id, now)
         return None
-    plan_blocked = fg is None or await _crash_ready_dry_hop_block(db, batch, ref)
+    plan_blocked = (
+        fg is None
+        or await _crash_ready_dry_hop_block(db, batch, ref)
+        or await _crash_ready_rest_block(db, batch, ref, new_sg, pending=False)
+    )
     dry_hopped = batch.dry_hop_done_at is not None
 
     if previous is not None and previous.cleared_at is None:
@@ -551,7 +555,7 @@ async def _crash_ready_alert(
         cleared = datetime.fromisoformat(ctx["rearm_from"]) if "rearm_from" in ctx else _naive_utc(previous.cleared_at)
         if ref - cleared < READY_WINDOW:
             return not_ready  # wait a full new window after it cleared
-    if plan_blocked or new_sg is None:
+    if plan_blocked or new_sg is None or await _crash_ready_rest_block(db, batch, ref, new_sg):
         return not_ready
 
     before = [p for p in points if p[0] < ref - READY_WINDOW]
@@ -676,6 +680,45 @@ async def _crash_ready_dry_hop_block(db: AsyncSession, batch: Batch, ref: dateti
         (h.timing or {}).get("use") in ("dry_hop", "add_to_fermentation")
         for h in (await db.execute(select(RecipeHop).where(RecipeHop.recipe_id == batch.recipe_id))).scalars()
     )
+
+
+async def _crash_ready_rest_block(
+    db: AsyncSession, batch: Batch, ref: datetime, sg: Optional[float], pending: bool = True,
+) -> bool:
+    """The automatic diacetyl rest started (raised the target) less than
+    READY_WINDOW ago, or (``pending``) is still to come: the yeast needs that
+    time warm to clean up diacetyl before a crash (tilt_ui-n8n5).
+
+    Not a block: a rule that will never fire (controller not running it, no
+    heater/cooler, blocked, gravity settled above its trigger), a rule that
+    does not raise the target (already at or above the rest temperature: it
+    has been warm all along), a rule switched off, or a rest the brewer ended
+    early by lowering the target. ``pending`` is off for an alert already up,
+    so gravity noise around the trigger cannot pull it down and put it back."""
+    from backend.models import ControlEvent
+    from backend.temp_controller import controller_running, get_rest_rule_status  # temp_controller imports this module
+
+    if batch.rest_trigger_percent is None or batch.rest_temp_target is None:
+        return False  # rule off (also if switched off after it fired)
+    if batch.rest_fired_at is not None:
+        if batch.temp_target is not None and batch.temp_target < batch.rest_temp_target:
+            return False  # brewer ended the rest early (e.g. a clean forced VDK test)
+        if ref - _naive_utc(batch.rest_fired_at) >= READY_WINDOW:
+            return False
+        # A real rest logs "rest_start"; a no-op firing (already warm) does not.
+        # Only this firing's event: a re-armed rule (rest edited) can fire again.
+        return (await db.execute(select(ControlEvent.id).where(
+            ControlEvent.batch_id == batch.id, ControlEvent.action == "rest_start",
+            ControlEvent.timestamp >= _naive_utc(batch.rest_fired_at) - timedelta(minutes=1),
+        ).limit(1))).first() is not None
+    if not pending or not await controller_running(db):
+        return False
+    status = await get_rest_rule_status(db, batch, controller_on=True)
+    if status is None or status["state"] not in ("waiting", "holding") or not status["will_raise"]:
+        return False
+    # Flat above the trigger: the rule fires only at or below it, so never (a
+    # stale "holding" from one noisy dip counts the same).
+    return not (sg is not None and status["trigger_sg"] is not None and _pts(sg - status["trigger_sg"]) > 0)
 
 
 async def end_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> bool:

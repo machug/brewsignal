@@ -1436,7 +1436,8 @@ export type AlertType =
 	| 'sensor_offline'
 	| 'battery_low'
 	| 'temp_runaway'
-	| 'dry_hop_due';
+	| 'dry_hop_due'
+	| 'crash_ready';
 
 export interface FermentationAlert {
 	id: number;

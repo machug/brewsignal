@@ -633,13 +633,22 @@ async def update_batch(
         batch.packaging_notes = update.packaging_notes
 
     await commit_or_409(db)
+    # After the commit above: a query here would flush early and turn an
+    # equipment conflict into a 500.
+    from ..services.alert_service import AlertType, _clear_alert
+    from ..temp_controller import REST_MIN_ACTIVE_TARGET_C
+    now = datetime.now(timezone.utc)
+    cleared = False
     if batch.rest_trigger_percent is None or batch.status != "fermenting":
         # The controller only clears this warning for batches it still drives.
-        # After the commit above: a query here would flush early and turn an
-        # equipment conflict into a 500.
-        from ..services.alert_service import AlertType, _clear_alert
-        if await _clear_alert(db, batch_id, AlertType.REST_BLOCKED, datetime.now(timezone.utc)):
-            await db.commit()
+        cleared = await _clear_alert(db, batch_id, AlertType.REST_BLOCKED, now)
+    if batch.status != "fermenting" or (
+        batch.temp_target is not None and batch.temp_target < REST_MIN_ACTIVE_TARGET_C
+    ):
+        # Ingest stops for these batches (or may be paused), so clear it here too.
+        cleared = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now) or cleared
+    if cleared:
+        await db.commit()
     await db.refresh(batch)
 
     # Always reload batch with eager loading to avoid MissingGreenlet errors

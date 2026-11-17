@@ -47,6 +47,8 @@ class AlertType:
     DRY_HOP_DUE = "dry_hop_due"
     # Info: gravity has been flat at the expected FG for 2 days (tilt_ui-v25i)
     CRASH_READY = "crash_ready"
+    # Warning: a crash_ready alert came down because gravity moved (tilt_ui-y6za)
+    CRASH_NOT_READY = "crash_not_ready"
 
 
 # Short push titles. Not listed = no push: rest_started is informational (the
@@ -65,6 +67,7 @@ PUSH_TITLES = {
     AlertType.REST_BLOCKED: "Diacetyl rest cannot start",
     AlertType.DRY_HOP_DUE: "Dry hop now",
     AlertType.CRASH_READY: "Ready to cold crash",
+    AlertType.CRASH_NOT_READY: "Not ready to cold crash after all",
 }
 
 
@@ -82,6 +85,7 @@ READY_WINDOW = timedelta(hours=48)
 READY_EDGE = timedelta(hours=4)
 READY_MAX_CHANGE = 0.002  # every bucket median within this of the latest SG
 READY_MAX_GAP = timedelta(hours=6)  # longer gap in the window = no evidence it held
+CRASH_TEMP_DROP_C = 4.0  # wort this far below its temp at the alert = a crash we were not told about
 READY_MIN_RECENT = 3  # readings behind the latest SG (from the last READY_EDGE, else the last 3)
 
 # Sensing alert thresholds (tilt_ui-lgtu; from sensing-anomaly.md, not yet
@@ -444,6 +448,11 @@ async def _crash_ready_alert(
     from backend.temp_controller import REST_MIN_ACTIVE_TARGET_C  # temp_controller imports this module
 
     batch = await db.get(Batch, batch_id)
+    previous = (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+    ).order_by(FermentationAlert.first_detected_at.desc(), FermentationAlert.id.desc()).limit(1))).scalar_one_or_none()
+    ctx = json.loads(previous.context or "{}") if previous is not None else {}
     if batch is None or batch.status != "fermenting" or (
         temp_target is not None and temp_target < REST_MIN_ACTIVE_TARGET_C
     ):
@@ -452,7 +461,7 @@ async def _crash_ready_alert(
     at = reading.timestamp or now
     ref = _naive_utc(at)
     rows = (await db.execute(
-        select(Reading.sg_calibrated, Reading.timestamp).where(
+        select(Reading.sg_calibrated, Reading.timestamp, Reading.temp_calibrated).where(
             Reading.batch_id == batch_id,
             Reading.sg_calibrated.is_not(None),
             Reading.status == "valid",
@@ -471,13 +480,24 @@ async def _crash_ready_alert(
         fresh = all(b - a <= READY_MAX_GAP for a, b in zip(steps, steps[1:]))
         recent = [sg for _, sg in tail] if fresh else []
     new_sg = statistics.median(recent) if len(recent) >= READY_MIN_RECENT else None
+    # Wort temperature: median of the last few valid readings, so one bad
+    # temperature cannot end anything (tilt_ui-y6za).
+    temp_tail = [(_naive_utc(r.timestamp), r.temp_calibrated) for r in rows if r.temp_calibrated is not None][-READY_MIN_RECENT:]
+    temp_steps = [t for t, _ in temp_tail] + [ref]
+    wort_temp = (
+        statistics.median(c for _, c in temp_tail)
+        if len(temp_tail) == READY_MIN_RECENT
+        and all(b - a <= READY_MAX_GAP for a, b in zip(temp_steps, temp_steps[1:]))
+        else None
+    )
+    if wort_temp is not None and wort_temp < REST_MIN_ACTIVE_TARGET_C:
+        # A crash the app was not told about (fermenter moved to a fridge,
+        # target left alone): no lager ferments this cold.
+        await end_crash_ready(db, batch_id, now)
+        return None
     plan_blocked = fg is None or await _crash_ready_dry_hop_block(db, batch, ref)
+    dry_hopped = batch.dry_hop_done_at is not None
 
-    previous = (await db.execute(select(FermentationAlert).where(
-        FermentationAlert.batch_id == batch_id,
-        FermentationAlert.alert_type == AlertType.CRASH_READY,
-    ).order_by(FermentationAlert.first_detected_at.desc(), FermentationAlert.id.desc()).limit(1))).scalar_one_or_none()
-    ctx = json.loads(previous.context or "{}") if previous is not None else {}
     if previous is not None and previous.cleared_at is None:
         # The FG margin is not re-checked here: "moved" already bounds drift,
         # and re-checking it would flap an alert raised right at the margin.
@@ -485,41 +505,81 @@ async def _crash_ready_alert(
             new_sg is not None and ctx.get("sg") is not None
             and _pts(abs(new_sg - ctx["sg"])) > READY_MAX_CHANGE
         )
+        # Any FG edit is the brewer's own plan change, like removing it.
+        fg_changed = fg is not None and ctx.get("expected_fg") is not None and _pts(abs(fg - ctx["expected_fg"])) > 0
+        plan_blocked = plan_blocked or fg_changed
         if not moved and not plan_blocked:
             previous.last_seen_at = now
+            if wort_temp is not None and wort_temp > (ctx.get("temp") or -100.0):
+                # Warmest seen while up: a crash is judged from here, not from
+                # an earlier, cooler reading.
+                previous.context = json.dumps({**ctx, "temp": wort_temp})
             return previous  # includes too few readings to judge a change
         _rearm(previous, ref, now)
+        cooling = (
+            wort_temp is not None and ctx.get("temp") is not None
+            and ctx["temp"] - wort_temp > CRASH_TEMP_DROP_C
+        )
+        # Cooling hard (crash starting, target left alone) reads the hydrometer
+        # high: that explains a rise, not a fall. The alert still comes down.
+        if moved and not plan_blocked and not (cooling and new_sg > ctx["sg"]):
+            # Say why it went away: a quiet disappearance reads as "crash done".
+            # A plan change (FG, dry hop) is the brewer's own act: no notice.
+            return await _crash_not_ready_alert(
+                db, batch_id, device_id, reading, ctx["sg"], new_sg, dry_hopped, now
+            )
         return None
+    not_ready = None
     if previous is not None:
         if not ctx.get("rearm"):
             return None  # dismissed, or ended by the crash: final
+        not_ready = (await db.execute(select(FermentationAlert).where(
+            FermentationAlert.batch_id == batch_id,
+            FermentationAlert.alert_type == AlertType.CRASH_NOT_READY,
+            FermentationAlert.cleared_at.is_(None),
+        ).order_by(FermentationAlert.id.desc()).limit(1))).scalar_one_or_none()
+        if not_ready is not None:
+            held = json.loads(not_ready.context or "{}").get("held_sg")
+            if plan_blocked:
+                await _clear_alert(db, batch_id, AlertType.CRASH_NOT_READY, now)  # its promise no longer holds
+                not_ready = None
+            elif new_sg is not None and held is not None:
+                # Keep the numbers current while gravity moves, either way (no new push).
+                not_ready = await _crash_not_ready_alert(db, batch_id, device_id, reading, held, new_sg, dry_hopped, now)
+            else:
+                not_ready.last_seen_at = now
         cleared = datetime.fromisoformat(ctx["rearm_from"]) if "rearm_from" in ctx else _naive_utc(previous.cleared_at)
         if ref - cleared < READY_WINDOW:
-            return None  # wait a full new window after it cleared
-    if plan_blocked or new_sg is None or _pts(new_sg - fg) > STALL_FG_MARGIN:
-        return None
+            return not_ready  # wait a full new window after it cleared
+    if plan_blocked or new_sg is None:
+        return not_ready
 
     before = [p for p in points if p[0] < ref - READY_WINDOW]
     if not before and (not window or window[0][0] > ref - READY_WINDOW):
-        return None  # less than READY_WINDOW of data
+        return not_ready  # less than READY_WINDOW of data
     span = before[-1:] + window + [(ref, None)]
     if any(b[0] - a[0] > READY_MAX_GAP for a, b in zip(span, span[1:])):
-        return None  # an outage or pause in the window (or since): flat is not proven
+        return not_ready  # an outage or pause in the window (or since): flat is not proven
     last_bucket = int(READY_WINDOW / READY_EDGE) - 1
     buckets: dict[int, list[tuple[datetime, float]]] = {}
     for t, sg in window:
         buckets.setdefault(min(int((ref - t) / READY_EDGE), last_bucket), []).append((t, sg))
     medians = {k: statistics.median(sg for _, sg in v) for k, v in buckets.items()}
     if any(_pts(abs(m - new_sg)) > READY_MAX_CHANGE for m in medians.values()):
-        return None  # moved somewhere in the window (rise and return, still falling)
+        return not_ready  # moved somewhere in the window (rise and return, still falling)
     if len(medians) < 2:
-        return None
+        return not_ready
     # Medians, not raw readings: one stray reading must not tilt the slope. Each
     # median sits at its readings' mean time (buckets can be partly filled).
     hours = [statistics.fmean((t - ref).total_seconds() / 3600 for t, _ in buckets[k]) for k in medians]
     slope = statistics.linear_regression(hours, list(medians.values())).slope
     if round(slope, 9) < -STALL_MAX_SLOPE:  # rounded: an exact 0.6 pt/day fit lands a hair over
-        return None  # a slow steady fall: still fermenting
+        return not_ready  # a slow steady fall: still fermenting
+    # Checked after the window (not before) so a "not ready" warning still
+    # clears when gravity settles flat but high: that is a stall, not a wait.
+    await _clear_alert(db, batch_id, AlertType.CRASH_NOT_READY, now)
+    if _pts(new_sg - fg) > STALL_FG_MARGIN:
+        return None
     old_sg = medians[max(medians)]
     return await _upsert_alert(
         db=db,
@@ -531,7 +591,52 @@ async def _crash_ready_alert(
             f"Gravity has held at {new_sg:.3f} for 48 hours (expected FG {fg:.3f}). "
             "Check for diacetyl, then cold crash."
         ),
-        context=json.dumps({"sg": new_sg, "sg_48h_ago": old_sg, "expected_fg": fg}),
+        context=json.dumps({"sg": new_sg, "sg_48h_ago": old_sg, "expected_fg": fg, "temp": wort_temp}),
+        trigger_reading_id=reading.id,
+        now=now,
+    )
+
+
+async def _crash_not_ready_alert(
+    db: AsyncSession,
+    batch_id: int,
+    device_id: str,
+    reading: Reading,
+    held_sg: float,
+    new_sg: float,
+    dry_hopped: bool,
+    now: datetime,
+) -> FermentationAlert:
+    """Warning + push: the ready-to-crash notice was withdrawn because gravity
+    moved (tilt_ui-y6za). Cleared when crash_ready is raised again or ends."""
+    points = abs(new_sg - held_sg) * 1000
+    if _pts(abs(new_sg - held_sg)) <= READY_MAX_CHANGE:
+        # Back near where it held (refresh of an up warning): no direction to explain.
+        message = (
+            f"Gravity moved after holding at {held_sg:.3f} and is now {new_sg:.3f}. "
+            "Do not cold crash yet: wait until gravity holds for 48 hours again."
+        )
+    elif new_sg < held_sg:
+        message = (
+            f"Gravity fell {points:.1f} points after holding at {held_sg:.3f} (now {new_sg:.3f}). "
+            + ("Likely hop creep after the dry hop, " if dry_hopped else "Likely late fermentation, ")
+            + "which can bring diacetyl back. "
+            "Do not cold crash yet: wait until gravity holds for 48 hours again."
+        )
+    else:
+        message = (
+            f"Gravity rose {points:.1f} points after holding at {held_sg:.3f} (now {new_sg:.3f}). "
+            "An addition, or the hydrometer moved? "
+            "Do not cold crash yet: wait until gravity holds for 48 hours again."
+        )
+    return await _upsert_alert(
+        db=db,
+        batch_id=batch_id,
+        device_id=device_id,
+        alert_type=AlertType.CRASH_NOT_READY,
+        severity=AlertSeverity.WARNING,
+        message=message,
+        context=json.dumps({"held_sg": held_sg, "sg": new_sg}),
         trigger_reading_id=reading.id,
         now=now,
     )
@@ -577,6 +682,7 @@ async def end_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> boo
     """Batch left fermenting or started its crash: clear the notice and cancel
     any pending re-raise, so it is final. Returns True if anything changed."""
     changed = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now)
+    changed = await _clear_alert(db, batch_id, AlertType.CRASH_NOT_READY, now) or changed
     for alert in (await db.execute(select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
         FermentationAlert.alert_type == AlertType.CRASH_READY,

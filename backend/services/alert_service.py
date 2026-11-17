@@ -419,23 +419,43 @@ async def _crash_ready_alert(
 ) -> Optional[FermentationAlert]:
     """Ready-to-cold-crash notice (tilt_ui-v25i): gravity flat for READY_WINDOW
     and no more than STALL_FG_MARGIN above the expected FG (below FG = finished
-    dry, still ready). Raised once per batch, so a
-    dismissal is final. Cleared when the batch leaves fermenting or the target
-    drops to cold-crash range. Needs an expected FG: flat and high is a stall."""
+    dry, still ready). A dismissal is final. Cleared when the batch leaves
+    fermenting or the target drops to cold-crash range. If gravity falls more
+    than READY_MAX_CHANGE below the alerted value (hop creep), it clears and
+    may be raised again after a new flat window (tilt_ui-zwwy). Needs an
+    expected FG: flat and high is a stall."""
     from backend.temp_controller import REST_MIN_ACTIVE_TARGET_C  # temp_controller imports this module
 
     batch = await db.get(Batch, batch_id)
     if batch is None or batch.status != "fermenting" or (
         temp_target is not None and temp_target < REST_MIN_ACTIVE_TARGET_C
     ):
-        await _clear_alert(db, batch_id, AlertType.CRASH_READY, now)
+        await end_crash_ready(db, batch_id, now)
         return None
     previous = (await db.execute(select(FermentationAlert).where(
         FermentationAlert.batch_id == batch_id,
         FermentationAlert.alert_type == AlertType.CRASH_READY,
     ).order_by(FermentationAlert.first_detected_at.desc()).limit(1))).scalar_one_or_none()
+    at = reading.timestamp or now
+    if previous is not None and previous.cleared_at is None:
+        recent = (await db.execute(select(Reading.sg_calibrated).where(
+            Reading.batch_id == batch_id,
+            Reading.sg_calibrated.is_not(None),
+            Reading.timestamp >= at - READY_EDGE,
+            Reading.timestamp <= at,
+        ))).scalars().all()
+        ctx = json.loads(previous.context or "{}")
+        if not recent or ctx.get("sg") is None or ctx["sg"] - statistics.median(recent) <= READY_MAX_CHANGE:
+            return previous
+        # Fermenting again: not ready after all. "rearm" tells this from a dismissal.
+        previous.context = json.dumps({**ctx, "rearm": True})
+        previous.cleared_at = now
+        return None  # the new 48 h window now holds the drop, so no instant re-raise
     if previous is not None:
-        return previous if previous.cleared_at is None else None
+        if not json.loads(previous.context or "{}").get("rearm"):
+            return None  # dismissed, or cleared by the crash: final
+        if _naive_utc(at) - _naive_utc(previous.cleared_at) < READY_WINDOW:
+            return None  # a slow fall can look flat over 48 h: wait a full new window
     if current_sg is None or fg is None or current_sg - fg > STALL_FG_MARGIN:
         return None
     dry_hop_pending = (await db.execute(select(FermentationAlert.id).where(
@@ -451,7 +471,6 @@ async def _crash_ready_alert(
     ):
         return None  # planned dry hop not marked done (its reminder may not have fired yet)
 
-    at = reading.timestamp or now
     rows = (await db.execute(
         select(Reading.sg_calibrated, Reading.timestamp).where(
             Reading.batch_id == batch_id,
@@ -486,6 +505,20 @@ async def _crash_ready_alert(
         trigger_reading_id=reading.id,
         now=now,
     )
+
+
+async def end_crash_ready(db: AsyncSession, batch_id: int, now: datetime) -> bool:
+    """Batch left fermenting or started its crash: clear the notice and cancel
+    any pending re-raise, so it is final. Returns True if anything changed."""
+    changed = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now)
+    for alert in (await db.execute(select(FermentationAlert).where(
+        FermentationAlert.batch_id == batch_id,
+        FermentationAlert.alert_type == AlertType.CRASH_READY,
+        FermentationAlert.context.like('%"rearm": true%'),
+    ))).scalars():
+        alert.context = json.dumps({**json.loads(alert.context), "rearm": False})
+        changed = True
+    return changed
 
 
 async def _dry_hop_alert(

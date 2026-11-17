@@ -136,3 +136,49 @@ async def test_unfinished_dry_hop_blocks_before_its_reminder(test_db, done, rais
     batch = await _batch(test_db, recipe_id=recipe.id, dry_hop_trigger_sg=1.005, dry_hop_done_at=done)
     await _run(test_db, batch, [1.010] * 30)
     assert len(await _alerts(test_db, batch)) == (1 if raised else 0)
+
+
+@pytest.mark.asyncio
+async def test_gravity_drop_clears_then_reraises_after_new_flat_window(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)  # 58 h flat, 3 pt above FG
+    assert len(await _alerts(test_db, batch)) == 1
+    at = await _run(test_db, batch, [1.013 - 0.0005 * i for i in range(1, 7)], start=at)  # hop creep: -> 1.010
+    assert await _alerts(test_db, batch) == []
+    at = await _run(test_db, batch, [1.010] * 20, start=at)  # 40 h flat: not yet
+    assert await _alerts(test_db, batch) == []
+    await _run(test_db, batch, [1.010] * 6, start=at)  # 52 h flat
+    assert len(await _alerts(test_db, batch)) == 1
+    assert len(_no_push) == 2
+
+
+@pytest.mark.asyncio
+async def test_small_wobble_keeps_alert(test_db):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.011] * 30)
+    await _run(test_db, batch, [1.010, 1.009, 1.010], start=at)
+    assert len(await _alerts(test_db, batch)) == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_fall_after_clear_waits_full_window(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30)
+    assert len(await _alerts(test_db, batch)) == 1
+    # 0.03 pt/h: under 2 pt per 48 h, yet it drifts 2+ pt below the alert value.
+    sgs = [1.013 - 0.00003 * 2 * i for i in range(1, 40)]
+    await _run(test_db, batch, sgs, start=at)
+    assert await _alerts(test_db, batch) == []
+    assert len(_no_push) == 1
+
+
+@pytest.mark.asyncio
+async def test_crash_cancels_pending_rearm(test_db, _no_push):
+    batch = await _batch(test_db)
+    at = await _run(test_db, batch, [1.013] * 30, temp_target=19.0)
+    at = await _run(test_db, batch, [1.013 - 0.0005 * i for i in range(1, 7)], start=at, temp_target=19.0)
+    assert await _alerts(test_db, batch) == []  # cleared by hop creep, re-raise pending
+    at = await _run(test_db, batch, [1.010], start=at, temp_target=2.0)  # brewer crashes anyway
+    await _run(test_db, batch, [1.010] * 40, start=at, temp_target=19.0)  # then warms it back up
+    assert await _alerts(test_db, batch) == []
+    assert len(_no_push) == 1

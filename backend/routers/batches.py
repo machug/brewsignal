@@ -635,7 +635,7 @@ async def update_batch(
     await commit_or_409(db)
     # After the commit above: a query here would flush early and turn an
     # equipment conflict into a 500.
-    from ..services.alert_service import AlertType, _clear_alert
+    from ..services.alert_service import AlertType, _clear_alert, end_crash_ready
     from ..temp_controller import REST_MIN_ACTIVE_TARGET_C
     now = datetime.now(timezone.utc)
     cleared = False
@@ -646,7 +646,7 @@ async def update_batch(
         batch.temp_target is not None and batch.temp_target < REST_MIN_ACTIVE_TARGET_C
     ):
         # Ingest stops for these batches (or may be paused), so clear it here too.
-        cleared = await _clear_alert(db, batch_id, AlertType.CRASH_READY, now) or cleared
+        cleared = await end_crash_ready(db, batch_id, now) or cleared
     if cleared:
         await db.commit()
     await db.refresh(batch)

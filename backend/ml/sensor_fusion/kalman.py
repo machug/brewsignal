@@ -6,27 +6,42 @@ for temperature. Settings come from measured Tilt noise (tilt_ui-0hic):
 - fixed measurement noise (RSSI does not predict Tilt noise; residual std is
   flat across RSSI bins, so the old RSSI multiplier only slowed the filter)
 - 3-sigma Huber gating: an innovation beyond the gate inflates R by
-  |z|/gate, so a single bubble spike moves the estimate far less.
+  |z|/gate, so a single bubble spike moves the estimate far less. After
+  STEP_RUN gated innovations in a row with the same sign the change is
+  treated as real (a step, not a spike): gating stops and the level
+  variance widens so the estimate moves to the new level.
 """
 
 import numpy as np
 
 
+STEP_RUN = 3
+
+
 class _CV:
     """Level + trend filter for one signal. Time unit is hours."""
 
-    def __init__(self, level: float, q: float, r: float, p0_rate: float, gate: float):
+    def __init__(
+        self, level: float, q: float, r: float, p0_level: float, p0_rate: float, gate: float
+    ):
         self.q = q
         self.r = r
+        self.p0_level = p0_level
         self.p0_rate = p0_rate
-        self.gate = gate
+        self.gate = gate  # <= 0 disables gating
         self.seed(level)
 
     def seed(self, level: float) -> None:
+        # Wide level variance: the seed may be a stored spike (load_history
+        # seeds from the last reading), so the next readings must win.
         self.x = np.array([level, 0.0])
-        self.P = np.diag([self.r, self.p0_rate ** 2])
+        self.P = np.diag([self.p0_level, self.p0_rate ** 2])
+        self._run = 0  # signed count of same-sign gated innovations
 
     def step(self, z: float, dt: float) -> None:
+        if not (np.isfinite(z) and np.isfinite(dt)):
+            return  # a bad reading must not poison the state
+        dt = max(float(dt), 0.0)
         F = np.array([[1.0, dt], [0.0, 1.0]])
         Q = self.q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
         x = F @ self.x
@@ -35,8 +50,16 @@ class _CV:
         nu = z - x[0]
         r = self.r
         zn = abs(nu) / np.sqrt(P[0, 0] + r)
-        if zn > self.gate:
-            r *= zn / self.gate
+        if self.gate > 0 and zn > self.gate:
+            sign = 1 if nu > 0 else -1
+            self._run = self._run + sign if self._run * sign > 0 else sign
+            if abs(self._run) < STEP_RUN:
+                r *= zn / self.gate
+            else:
+                # Real step: widen level uncertainty so the estimate moves to it
+                P[0, 0] = max(P[0, 0], nu ** 2)
+        else:
+            self._run = 0
 
         K = P[:, 0] / (P[0, 0] + r)
         self.x = x + K * nu
@@ -69,10 +92,10 @@ class TiltKalmanFilter:
             process_noise_temp: q for temperature, units C^2/h^3
             measurement_noise_sg: SG measurement variance (sigma 2e-4)
             measurement_noise_temp: temperature measurement variance (sigma 0.15 C)
-            gate: innovation gate in standard deviations
+            gate: innovation gate in standard deviations; <= 0 disables it
         """
-        self.sg = _CV(initial_sg, process_noise_sg, measurement_noise_sg, 1e-3, gate)
-        self.temp = _CV(initial_temp, process_noise_temp, measurement_noise_temp, 1.0, gate)
+        self.sg = _CV(initial_sg, process_noise_sg, measurement_noise_sg, 1e-4, 1e-3, gate)
+        self.temp = _CV(initial_temp, process_noise_temp, measurement_noise_temp, 1.0, 1.0, gate)
         # Seed from the first reading, not a default (cold start used to show
         # a 50+ C filtered temperature for hours; tilt_ui-89af).
         self._seeded = False

@@ -13,6 +13,16 @@ from backend.models import (
 )
 
 
+
+# Stored misc unit -> (Brewfather unit, factor). Unlisted units pass through.
+_BF_MISC_UNITS: dict[str, tuple[str, float]] = {
+    "mg": ("g", 0.001), "kg": ("g", 1000), "oz": ("g", 28.349523125),
+    "lb": ("g", 453.59237), "l": ("ml", 1000), "floz": ("ml", 29.5735295625),
+    "cup": ("ml", 236.5882365), "gal": ("ml", 3785.411784),
+    "each": ("items", 1), "unit": ("items", 1), "1": ("items", 1),
+}
+
+
 class RecipeToBrewfatherConverter:
     """Convert internal Recipe model to Brewfather JSON format."""
 
@@ -260,13 +270,19 @@ class RecipeToBrewfatherConverter:
             "type": self._map_misc_type(misc.type),
         }
 
-        if misc.amount_kg is not None:
-            # Convert kg to g for Brewfather
+        unit = (misc.amount_unit or "").strip().lower()
+        if misc.amount_kg is not None and unit:
+            # amount_kg holds the value in amount_unit, not kg (tilt_ui-qfiy)
+            bf_unit, factor = _BF_MISC_UNITS.get(unit, (unit, 1))
+            bf_misc["amount"] = misc.amount_kg * factor
+            bf_misc["unit"] = bf_unit
+        elif misc.amount_kg is not None:
+            # Legacy rows without a unit: value is kg (weight) or L
             if misc.amount_is_weight:
                 bf_misc["amount"] = misc.amount_kg * 1000
                 bf_misc["unit"] = "g"
             else:
-                bf_misc["amount"] = misc.amount_kg
+                bf_misc["amount"] = misc.amount_kg * 1000
                 bf_misc["unit"] = "ml"
         else:
             bf_misc["amount"] = 0

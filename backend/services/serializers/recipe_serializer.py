@@ -435,7 +435,7 @@ class RecipeSerializer:
             amount = misc_dict['amount']
             if isinstance(amount, dict):
                 misc.amount_kg = amount.get('value')
-                misc.amount_unit = amount.get('unit')
+                misc.amount_unit = amount.get('unit') or 'g'  # editor shows NULL as g (tilt_ui-qfiy)
 
         # Timing
         if 'timing' in misc_dict:

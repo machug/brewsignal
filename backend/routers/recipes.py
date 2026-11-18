@@ -1300,7 +1300,7 @@ async def replace_recipe_miscs(
             use=misc_data.use,
             time_min=misc_data.time_min,
             amount_kg=misc_data.amount_kg,
-            amount_unit=misc_data.amount_unit,
+            amount_unit=misc_data.amount_unit or "g",  # editor shows NULL as g (tilt_ui-qfiy)
             use_for=misc_data.use_for,
             notes=misc_data.notes,
         )

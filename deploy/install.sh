@@ -80,7 +80,7 @@ mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 
 # Copy files
-if [ "$PROJECT_DIR" -ef "$INSTALL_DIR" ]; then
+if [ "$PROJECT_DIR" -ef "$INSTALL_DIR" ] && [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing in place from $INSTALL_DIR..."
 elif [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing from local project..."
@@ -91,11 +91,13 @@ else
     echo "Fetching from repository..."
     # Check out in place, never delete the folder: data/ (gitignored) holds
     # the database. Safe to re-run after a failed fetch.
-    git -C "$INSTALL_DIR" init -q
-    git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" 2>/dev/null \
-        || git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
-    git -C "$INSTALL_DIR" fetch -q origin master
-    git -C "$INSTALL_DIR" checkout -q -f -B master origin/master
+    # safe.directory: root runs git in a folder the pi user owns.
+    G=(git -c safe.directory="$INSTALL_DIR" -C "$INSTALL_DIR")
+    "${G[@]}" init -q
+    "${G[@]}" remote set-url origin "$REPO_URL" 2>/dev/null \
+        || "${G[@]}" remote add origin "$REPO_URL"
+    "${G[@]}" fetch -q origin master
+    "${G[@]}" checkout -q -f -B master origin/master
 fi
 
 # Set up Python virtual environment
@@ -146,8 +148,10 @@ chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
 echo -e "\n${GREEN}[8/9] Installing systemd service...${NC}"
-cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE" 2>/dev/null \
-    || cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
+# Prefer the unit next to this script (the source being installed); a lone
+# downloaded install.sh has none, so fall back to the fresh checkout.
+cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE" 2>/dev/null \
+    || cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable brewsignal
 systemctl start brewsignal

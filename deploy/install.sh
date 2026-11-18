@@ -74,7 +74,7 @@ if [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing from local project..."
     cp -r "$PROJECT_DIR/backend" "$INSTALL_DIR/"
     cp -r "$PROJECT_DIR/frontend" "$INSTALL_DIR/" 2>/dev/null || true
-    cp "$PROJECT_DIR/pyproject.toml" "$INSTALL_DIR/" 2>/dev/null || true
+    cp "$PROJECT_DIR/pyproject.toml" "$PROJECT_DIR/uv.lock" "$INSTALL_DIR/"
 else
     echo "Cloning from repository..."
     if [ -d "$INSTALL_DIR/.git" ]; then
@@ -99,9 +99,10 @@ source "$VENV_DIR/bin/activate"
 # Install dependencies
 if [ -f "pyproject.toml" ]; then
     pip install --upgrade pip
-    pip install uv
-    # Install exactly what uv.lock pins, same as deploy/deploy.sh.
-    uv sync --locked --no-dev
+    pip install 'uv==0.9.0'
+    # Install exactly what uv.lock pins, same as deploy/deploy.sh. Use the
+    # system Python only, so the venv stays readable by the service user.
+    uv sync --locked --no-dev --no-managed-python
 else
     pip install --upgrade pip
     pip install \

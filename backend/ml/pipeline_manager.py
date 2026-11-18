@@ -1,5 +1,6 @@
 """ML Pipeline Manager for per-device pipeline instances."""
 
+import numpy as np
 import logging
 from typing import Optional
 from .pipeline import MLPipeline
@@ -141,7 +142,9 @@ class MLPipelineManager:
 
         # Extract Kalman filter outputs
         if nested_result.get("kalman"):
-            kalman = nested_result["kalman"]
+            # Non-finite (NaN seed) -> None: strict JSON and the DB want null
+            kalman = {k: (v if v is None or np.isfinite(v) else None)
+                      for k, v in nested_result["kalman"].items()}
             flat_result["sg_filtered"] = kalman.get("sg_filtered")
             flat_result["temp_filtered"] = kalman.get("temp_filtered")
             flat_result["confidence"] = kalman.get("confidence")

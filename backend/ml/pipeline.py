@@ -93,8 +93,9 @@ class MLPipeline:
 
         # Calculate time delta for Kalman filter
         if self.time_history:
+            # Real elapsed time (a 1-minute floor doubled dt for 30 s
+            # readings); the filter clamps negative dt to 0 (tilt_ui-0hic)
             dt_hours = time_hours - self.time_history[-1]
-            dt_hours = max(dt_hours, 1 / 60)  # At least 1 minute
         else:
             dt_hours = 1 / 60  # Default: 1 minute
 

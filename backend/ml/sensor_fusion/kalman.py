@@ -5,11 +5,12 @@ for temperature. Settings come from measured Tilt noise (tilt_ui-0hic):
 - exact CV discretisation, Q = q * [[dt^3/3, dt^2/2], [dt^2/2, dt]]
 - fixed measurement noise (RSSI does not predict Tilt noise; residual std is
   flat across RSSI bins, so the old RSSI multiplier only slowed the filter)
-- 3-sigma Huber gating: an innovation beyond the gate inflates R by
-  |z|/gate, so a single bubble spike moves the estimate far less. After
+- 3-sigma Huber gating: an innovation beyond the gate scales the whole
+  innovation variance by |z|/gate, so a single bubble spike moves the
+  estimate at most about gate sigmas. After
   STEP_RUN gated innovations in a row with the same sign the change is
-  treated as real (a step, not a spike): gating stops and the level
-  variance widens so the estimate moves to the new level.
+  treated as real (a step, not a spike): the filter restarts at the new
+  level with an unknown rate.
 """
 
 import numpy as np
@@ -45,6 +46,7 @@ class _CV:
         readings must win); wide=False for a live measurement.
         A non-finite value gives NaN output until a finite reading arrives."""
         self._run = 0
+        level = np.nan if level is None else level
         self.seeded = bool(np.isfinite(level))
         p0 = self.p0_level if wide or not self.seeded else (r or self.r)
         self.x = np.array([float(level) if self.seeded else np.nan, 0.0])
@@ -54,6 +56,7 @@ class _CV:
         """resolution: the sensor's reporting step; rounding adds step^2/12
         to the measurement variance (a standard Tilt's 0.001 SG ticks are 5x
         the Tilt Pro noise the base R was measured on)."""
+        z = np.nan if z is None else z  # HTTP devices may send no temperature
         r = self.r + resolution ** 2 / 12
         if not self.seeded:
             self.seed(z, wide=False, r=r)

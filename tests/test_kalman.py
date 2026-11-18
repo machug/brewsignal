@@ -196,7 +196,7 @@ def test_nan_reading_still_advances_time():
     assert abs(out["sg_filtered"] - target) < 5e-4
 
 
-def test_step_leaves_rate_alone():
+def test_step_gives_no_big_false_rate():
     kf = TiltKalmanFilter()
     for _ in range(100):
         kf.update(sg=1.024, temp=18.0, dt_hours=5 / 60)
@@ -370,3 +370,48 @@ def test_reload_sets_angle_noise_from_readings():
     mgr = MLPipelineManager()
     asyncio.run(mgr.reload_from_database("ISP", 1, db))
     assert mgr.pipelines["ISP"].kalman_filter.sg.r == mgr.config.kalman_measurement_noise_sg_angle
+
+
+def test_none_temperature_does_not_break_sg():
+    kf = TiltKalmanFilter()
+    kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    out = kf.update(sg=1.019, temp=None, dt_hours=5 / 60)
+    assert out["sg_filtered"] < 1.020
+
+
+def test_manager_turns_nan_into_none():
+    from backend.ml.pipeline_manager import MLPipelineManager
+    out = MLPipelineManager().process_reading(device_id="X", batch_id=1, sg=float("nan"),
+                                              temp=19.0, rssi=-60, time_hours=0.0)
+    assert out["sg_filtered"] is None
+
+
+def test_sub_minute_readings_give_true_rate():
+    """No 1-minute dt floor: 30 s readings falling 1 pt/h report 1 pt/h."""
+    from backend.ml.pipeline import MLPipeline
+    p = MLPipeline()
+    for i in range(240):  # 2 h at 30 s
+        out = p.process_reading(sg=1.040 - 0.001 * i / 120, temp=19.0, rssi=-60, time_hours=i / 120)
+    assert out["kalman"]["sg_rate"] == pytest.approx(-0.001, rel=0.15)
+
+
+@pytest.mark.parametrize("sg,temp_f,expected", [
+    (1.0488, 68.6, (0.0001, 0.1 * 5 / 9)),
+    (1.048, 68.0, (0.001, 5 / 9)),
+])
+def test_tilt_resolution_both_steps(sg, temp_f, expected):
+    from backend.scanner import tilt_resolution
+    assert tilt_resolution(sg, temp_f) == pytest.approx(expected)
+
+
+def test_http_tilt_passes_resolution():
+    from backend.ingest.base import HydrometerReading, TemperatureUnit
+    from backend.services.ingest_manager import IngestManager
+    from datetime import datetime, timezone
+    r = HydrometerReading(device_id="BLUE", device_type="tilt", timestamp=datetime.now(timezone.utc),
+                          gravity=1.048, temperature=20.0,
+                          gravity_raw=1.048, temperature_raw=68.0,
+                          temperature_unit=TemperatureUnit.FAHRENHEIT)
+    assert IngestManager._sensor_resolution(r) == {"sg_resolution": 0.001, "temp_resolution": pytest.approx(5 / 9)}
+    r.device_type = "ispindel"
+    assert IngestManager._sensor_resolution(r) == {}

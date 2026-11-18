@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
-from backend.main import handle_tilt_reading
+from backend.main import handle_tilt_reading, handle_rapt_reading
 from backend.scanner import TiltReading
 
 @pytest.mark.asyncio
@@ -112,3 +112,27 @@ async def test_tilt_ble_passes_device_type_and_resolution_to_ml():
     kw = ml.process_reading.call_args.kwargs
     assert kw["device_type"] == "tilt"
     assert kw["sg_resolution"] == 0.001
+
+
+@pytest.mark.asyncio
+async def test_rapt_ble_passes_device_type_to_ml():
+    from backend.scanner import RAPTPillReading
+    reading = RAPTPillReading(mac="aa:bb:cc:dd:ee:01", temp_c=19.0, sg=1.048, battery_percent=90,
+                              rssi=-50, timestamp=datetime.now(timezone.utc))
+    ml = MagicMock()
+    ml.process_reading.return_value = {}
+    with patch('backend.main.async_session_factory') as mock_factory, \
+            patch('backend.main.ml_pipeline_manager', ml, create=True), \
+            patch('backend.main.manager') as mock_ws, \
+            patch('backend.main.update_reading'), \
+            patch('backend.main.calibration_service.calibrate_reading', return_value=(1.048, 19.0)), \
+            patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=1), \
+            patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=15), \
+            patch('backend.main.calculate_time_since_batch_start', new_callable=AsyncMock, return_value=24.0):
+        mock_session = AsyncMock()
+        mock_factory.return_value.__aenter__.return_value = mock_session
+        mock_session.get.return_value = MagicMock(paired=True)
+        mock_ws.broadcast = AsyncMock()
+        mock_session.execute.return_value = MagicMock()
+        await handle_rapt_reading(reading)
+    assert ml.process_reading.call_args.kwargs["device_type"] == "rapt"

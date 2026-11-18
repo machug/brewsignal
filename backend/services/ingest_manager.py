@@ -101,11 +101,12 @@ class IngestManager:
         from ..scanner import tilt_resolution
 
         if (reading.device_type or "").lower() != "tilt" or reading.gravity_raw is None \
-                or reading.temperature_raw is None or reading.gravity_unit != GravityUnit.SG:
+                or reading.gravity_unit != GravityUnit.SG:
             return {}
-        temp_f = reading.temperature_raw
-        if reading.temperature_unit == TemperatureUnit.CELSIUS:
-            temp_f = temp_f * 9 / 5 + 32
+        # Only raw Fahrenheit shows the Pro's 0.1 F grid; a Celsius value
+        # (converted upstream) would always look off-grid, so use SG alone
+        temp_f = (reading.temperature_raw
+                  if reading.temperature_unit == TemperatureUnit.FAHRENHEIT else None)
         sg_res, temp_res = tilt_resolution(reading.gravity_raw, temp_f)
         return {"sg_resolution": sg_res, "temp_resolution": temp_res}
 
@@ -198,7 +199,7 @@ class IngestManager:
                         **self._sensor_resolution(reading),
                     )
                     logger.debug(
-                        "ML pipeline processed reading for %s: filtered_sg=%.4f",
+                        "ML pipeline processed reading for %s: filtered_sg=%s",
                         device.id,
                         ml_outputs.get("sg_filtered", 0),
                     )

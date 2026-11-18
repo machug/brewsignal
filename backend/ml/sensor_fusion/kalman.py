@@ -25,7 +25,7 @@ class _CV:
     def __init__(
         self, level: float, q: float, r: float, p0_level: float, p0_rate: float, gate: float
     ):
-        if not (np.isfinite([q, r, p0_level, p0_rate]).all()
+        if not (np.isfinite([q, r, p0_level, p0_rate, gate]).all()
                 and r > 0 and q >= 0 and p0_level > 0 and p0_rate >= 0):
             raise ValueError("Kalman noise must be finite and positive")
         self.q = q
@@ -57,13 +57,17 @@ class _CV:
         to the measurement variance (a standard Tilt's 0.001 SG ticks are 5x
         the Tilt Pro noise the base R was measured on)."""
         z = np.nan if z is None else z  # HTTP devices may send no temperature
+        if not np.isfinite(resolution):
+            resolution = 0.0
         r = self.r + resolution ** 2 / 12
         if not self.seeded:
             self.seed(z, wide=False, r=r)
             return
         if not np.isfinite(dt):
             return
-        dt = max(float(dt), 0.0)
+        # Tiny floor (3.6 s): readings stamped with the same time must not
+        # shrink the variance to zero and lock the gate
+        dt = max(float(dt), 1e-3)
         F = np.array([[1.0, dt], [0.0, 1.0]])
         Q = self.q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
         x = F @ self.x
@@ -85,7 +89,10 @@ class _CV:
                 # variance) so the next readings set it. Keeping the old rate
                 # left a stale slope after gaps.
                 # ponytail: a 3-reading burst of spikes also counts as a step;
-                # raise STEP_RUN if bursts show up in real data.
+                # raise STEP_RUN if bursts show up in real data. Ramps faster
+                # than ~6 C/h (or ~6 pt/h) restart every 3 readings and the
+                # rate saw-tooths; sizing the rate variance to the jump fixed
+                # that but turned spike bursts into big false rates.
                 self.x = np.array([z, 0.0])
                 self.P = np.diag([r, self.p0_rate ** 2])
                 self._run = 0

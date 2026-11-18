@@ -11,6 +11,7 @@ The pipeline:
 3. Fits fermentation curve and predicts completion (if enough history)
 """
 
+import math
 from typing import Optional
 from backend.ml.config import MLConfig
 from backend.ml.sensor_fusion.kalman import TiltKalmanFilter
@@ -90,6 +91,12 @@ class MLPipeline:
             - predictions: Fermentation predictions (if enough history)
         """
         result = {}
+
+        # No usable gravity: skip the reading entirely, so prediction history
+        # holds no None/NaN and the filter's clock stays with time_history
+        # (the next reading's dt then spans the gap). tilt_ui-0hic
+        if sg is None or not math.isfinite(sg):
+            return {"kalman": None, "anomaly": None, "predictions": None}
 
         # Calculate time delta for Kalman filter
         if self.time_history:

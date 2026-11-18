@@ -11,6 +11,7 @@ Supports four modes:
 import asyncio
 import json
 import logging
+import math
 import os
 import random
 import struct
@@ -39,12 +40,20 @@ TILT_COLORS = {
 COLOR_TO_UUID = {v: k for k, v in TILT_COLORS.items()}
 
 
-def tilt_resolution(sg: float, temp_f: float) -> tuple[float, float]:
+def _off_grid(value: Optional[float], step_per_unit: float) -> bool:
+    if value is None or not math.isfinite(value):
+        return False
+    v = value * step_per_unit
+    return abs(v - round(v)) > 1e-6
+
+
+def tilt_resolution(sg: Optional[float], temp_f: Optional[float] = None) -> tuple[float, float]:
     """(SG step, temperature step in C) of a Tilt reading. A Tilt Pro sends
-    0.0001 SG and 0.1 F, a standard Tilt 0.001 SG and 1 F. A Pro reading that
-    lands on whole steps (about 1 in 100) reads as standard: one slightly
-    wider R, harmless."""
-    fine = abs(sg * 1000 - round(sg * 1000)) > 1e-6 or abs(temp_f - round(temp_f)) > 1e-6
+    0.0001 SG and 0.1 F, a standard Tilt 0.001 SG and 1 F. Either value off
+    the standard grid means a Pro; pass temp_f=None when the temperature is
+    missing or not in raw Fahrenheit. A Pro reading that lands on whole steps
+    reads as standard: one slightly wider R, harmless."""
+    fine = _off_grid(sg, 1000) or _off_grid(temp_f, 1)
     return (0.0001, 0.1 * 5 / 9) if fine else (0.001, 5 / 9)
 
 

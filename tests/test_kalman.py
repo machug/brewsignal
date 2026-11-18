@@ -64,6 +64,7 @@ class TestTiltKalmanFilter:
         for _ in range(100):
             kf.update(sg=1.024, temp=18.0, dt_hours=5 / 60)
         outs = [kf.update(sg=1.016, temp=18.0, dt_hours=5 / 60)["sg_filtered"] for _ in range(36)]
+        assert abs(outs[2] - 1.016) < 3e-4  # step accepted on the 3rd reading
         assert abs(outs[11] - 1.016) < 1e-3
         assert min(outs) > 1.016 - 1e-3
 
@@ -169,7 +170,7 @@ def test_first_reading_is_one_measurement_not_gospel():
     first = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
     assert first["confidence"] > 0.9
     out = kf.update(sg=1.025, temp=19.0, dt_hours=5 / 60)
-    assert abs(out["sg_filtered"] - 1.020) < 2.5e-3
+    assert abs(out["sg_filtered"] - 1.020) < 1e-3  # gate caps it near 3 sigma
     for _ in range(3):
         out = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
     assert abs(out["sg_filtered"] - 1.020) < 3e-4
@@ -361,7 +362,8 @@ def test_reload_sets_angle_noise_from_readings():
     from unittest.mock import AsyncMock, MagicMock
     from backend.ml.pipeline_manager import MLPipelineManager
 
-    rd = MagicMock(sg_calibrated=1.020, temp_calibrated=19.0, device_type="ispindel",
+    from backend.models import Reading
+    rd = MagicMock(spec=Reading, sg_calibrated=1.020, temp_calibrated=19.0, device_type="ispindel",
                    timestamp=datetime(2026, 11, 1, tzinfo=timezone.utc))
     res = MagicMock()
     res.scalars.return_value.all.return_value = [rd]
@@ -383,7 +385,7 @@ def test_manager_turns_nan_into_none():
     from backend.ml.pipeline_manager import MLPipelineManager
     out = MLPipelineManager().process_reading(device_id="X", batch_id=1, sg=float("nan"),
                                               temp=19.0, rssi=-60, time_hours=0.0)
-    assert out["sg_filtered"] is None
+    assert out.get("sg_filtered") is None  # skipped, not NaN
 
 
 def test_sub_minute_readings_give_true_rate():
@@ -415,3 +417,61 @@ def test_http_tilt_passes_resolution():
     assert IngestManager._sensor_resolution(r) == {"sg_resolution": 0.001, "temp_resolution": pytest.approx(5 / 9)}
     r.device_type = "ispindel"
     assert IngestManager._sensor_resolution(r) == {}
+
+
+def test_missing_gravity_is_skipped_by_pipeline():
+    """A reading with no gravity must not reach prediction history (fits
+    failed on a None) and the next reading's dt spans the gap."""
+    from backend.ml.pipeline import MLPipeline
+    p = MLPipeline()
+    for i in range(12):
+        p.process_reading(sg=1.040 - i * 1e-4, temp=19.0, rssi=-60, time_hours=i / 12)
+    out = p.process_reading(sg=None, temp=19.0, rssi=-60, time_hours=1.0)
+    assert out["kalman"] is None
+    assert None not in p.sg_history and len(p.sg_history) == 12
+
+
+@pytest.mark.parametrize("sg,temp_f,unit,expected", [
+    (1.048, None, "f", 0.001),     # no temperature: SG alone
+    (1.0483, None, "f", 0.0001),
+    (1.048, 20.56, "c", 0.001),    # Celsius: SG alone, not fooled by decimals
+    (float("nan"), 68.0, "f", 0.001),
+])
+def test_http_tilt_resolution_edge_cases(sg, temp_f, unit, expected):
+    from datetime import datetime, timezone
+    from backend.ingest.base import HydrometerReading, TemperatureUnit
+    from backend.services.ingest_manager import IngestManager
+    r = HydrometerReading(device_id="BLUE", device_type="tilt", timestamp=datetime.now(timezone.utc),
+                          gravity_raw=sg, temperature_raw=temp_f,
+                          temperature_unit=TemperatureUnit.FAHRENHEIT if unit == "f" else TemperatureUnit.CELSIUS)
+    assert IngestManager._sensor_resolution(r)["sg_resolution"] == expected
+
+
+def test_same_timestamp_readings_do_not_lock_filter():
+    kf = TiltKalmanFilter()
+    for _ in range(500):
+        kf.update(sg=1.020, temp=19.0, dt_hours=0.0)
+    for _ in range(12):
+        out = kf.update(sg=1.019, temp=19.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - 1.019) < 3e-4
+
+
+def test_fast_crash_cool_is_learned_without_sawtooth():
+    """-6 C/h at 5 min (fast fridge crash): the rate is learned and stays.
+    Faster ramps saw-tooth: known limit, see kalman.py."""
+    kf = TiltKalmanFilter()
+    for _ in range(50):
+        kf.update(sg=1.010, temp=20.0, dt_hours=5 / 60)
+    rates = []
+    for i in range(1, 25):
+        rates.append(kf.update(sg=1.010, temp=20.0 - 6.0 * i / 12, dt_hours=5 / 60)["temp_rate"])
+    assert all(r == pytest.approx(-6.0, rel=0.1) for r in rates[-12:])
+
+
+def test_nonfinite_resolution_and_gate():
+    kf = TiltKalmanFilter()
+    kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    out = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60, sg_resolution=float("nan"))
+    assert out["sg_filtered"] == pytest.approx(1.020, abs=1e-6)
+    with pytest.raises(ValueError):
+        TiltKalmanFilter(gate=float("nan"))

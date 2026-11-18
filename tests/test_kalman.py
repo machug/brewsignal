@@ -155,3 +155,53 @@ def test_pipeline_passes_config_to_filter():
     kf = MLPipeline(config=cfg).kalman_filter
     assert kf.sg.r == 9e-8
     assert kf.temp.q == 0.07
+
+
+def test_first_reading_is_one_measurement_not_gospel():
+    """A spike right after the first reading is still gated, gives no false
+    rate, and the first stored row has a normal confidence."""
+    kf = TiltKalmanFilter()
+    first = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    assert first["confidence"] > 0.9
+    out = kf.update(sg=1.025, temp=19.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - 1.020) < 2.5e-3
+    for _ in range(3):
+        out = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - 1.020) < 3e-4
+
+
+def test_nan_on_seed_waits_for_finite_reading():
+    kf = TiltKalmanFilter()
+    kf.update(sg=float("nan"), temp=float("nan"), dt_hours=5 / 60)
+    out = kf.update(sg=1.030, temp=18.0, dt_hours=5 / 60)
+    assert out["sg_filtered"] == pytest.approx(1.030, abs=1e-6)
+    kf.reset(sg=float("nan"), temp=18.0)  # load_history ending on a NaN
+    out = kf.update(sg=1.029, temp=18.0, dt_hours=5 / 60)
+    assert out["sg_filtered"] == pytest.approx(1.029, abs=1e-6)
+
+
+def test_nan_reading_still_advances_time():
+    """A gap ending in a NaN must not leave the next valid reading 6 points behind."""
+    kf = TiltKalmanFilter()
+    for i in range(36):
+        kf.update(sg=1.040 - i * 1e-3 / 12, temp=19.0, dt_hours=5 / 60)
+    kf.update(sg=float("nan"), temp=19.0, dt_hours=6.0)
+    target = 1.040 - 35 * 1e-3 / 12 - 0.006
+    out = kf.update(sg=target, temp=19.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - target) < 5e-4
+
+
+def test_step_leaves_rate_alone():
+    kf = TiltKalmanFilter()
+    for _ in range(100):
+        kf.update(sg=1.024, temp=18.0, dt_hours=5 / 60)
+    for _ in range(4):
+        out = kf.update(sg=1.019, temp=18.0, dt_hours=5 / 60)
+    assert abs(out["sg_rate"]) < 2e-4  # under 0.2 pt/h, not a big false rate
+
+
+def test_config_rejects_non_positive_noise():
+    from pydantic import ValidationError
+    from backend.ml.config import MLConfig
+    with pytest.raises(ValidationError):
+        MLConfig(kalman_measurement_noise_sg=0)

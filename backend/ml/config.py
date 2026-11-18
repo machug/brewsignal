@@ -1,5 +1,6 @@
 """Configuration for ML features."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -13,10 +14,10 @@ class MLConfig(BaseSettings):
     enable_slm: bool = False  # Requires model download (~1GB)
 
     # Kalman filter parameters (tilt_ui-0hic; fitted on measured Tilt noise)
-    kalman_process_noise_sg: float = 1e-9  # q, SG^2/h^3
-    kalman_process_noise_temp: float = 0.05  # q, C^2/h^3
-    kalman_measurement_noise_sg: float = 4e-8  # variance, sigma 2e-4 SG
-    kalman_measurement_noise_temp: float = 0.0225  # variance, sigma 0.15 C
+    kalman_process_noise_sg: float = Field(1e-9, gt=0)  # q, SG^2/h^3
+    kalman_process_noise_temp: float = Field(0.05, gt=0)  # q, C^2/h^3
+    kalman_measurement_noise_sg: float = Field(4e-8, gt=0)  # variance, sigma 2e-4 SG
+    kalman_measurement_noise_temp: float = Field(0.0225, gt=0)  # variance, sigma 0.15 C
 
     # Predictions
     prediction_min_readings: int = 10

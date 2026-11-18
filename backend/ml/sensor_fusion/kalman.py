@@ -29,23 +29,40 @@ class _CV:
         self.p0_level = p0_level
         self.p0_rate = p0_rate
         self.gate = gate  # <= 0 disables gating
-        self.seed(level)
-
-    def seed(self, level: float) -> None:
-        # Wide level variance: the seed may be a stored spike (load_history
-        # seeds from the last reading), so the next readings must win.
         self.x = np.array([level, 0.0])
-        self.P = np.diag([self.p0_level, self.p0_rate ** 2])
+        self.P = np.diag([p0_level, p0_rate ** 2])
+        # Seed from the first finite reading, not a default (cold start used
+        # to show a 50+ C filtered temperature for hours; tilt_ui-89af).
+        self.seeded = False
         self._run = 0  # signed count of same-sign gated innovations
 
+    def seed(self, level: float, wide: bool) -> None:
+        """Start from one value. wide=True for a stored value (load_history
+        seeds from the last reading, which may be a spike, so the next
+        readings must win); wide=False for a live measurement."""
+        if not np.isfinite(level):
+            self.seeded = False  # wait for the next finite reading
+            return
+        self.x = np.array([float(level), 0.0])
+        self.P = np.diag([self.p0_level if wide else self.r, self.p0_rate ** 2])
+        self.seeded = True
+        self._run = 0
+
     def step(self, z: float, dt: float) -> None:
-        if not (np.isfinite(z) and np.isfinite(dt)):
-            return  # a bad reading must not poison the state
+        if not self.seeded:
+            self.seed(z, wide=False)
+            return
+        if not np.isfinite(dt):
+            return
         dt = max(float(dt), 0.0)
         F = np.array([[1.0, dt], [0.0, 1.0]])
         Q = self.q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
         x = F @ self.x
         P = F @ self.P @ F.T + Q
+        if not np.isfinite(z):
+            # Missing value: time still passes, skip only the correction
+            self.x, self.P = x, P
+            return
 
         nu = z - x[0]
         r = self.r
@@ -55,15 +72,20 @@ class _CV:
             self._run = self._run + sign if self._run * sign > 0 else sign
             if abs(self._run) < STEP_RUN:
                 r *= zn / self.gate
-            else:
-                # Real step: widen level uncertainty so the estimate moves to it
-                P[0, 0] = max(P[0, 0], nu ** 2)
         else:
             self._run = 0
+        step = abs(self._run) >= STEP_RUN
+        if step:
+            # Real step: widen level uncertainty so the estimate moves to it.
+            # ponytail: a 3-reading burst of spikes also counts as a step;
+            # raise STEP_RUN if bursts show up in real data.
+            P[0, 0] = max(P[0, 0], nu ** 2)
 
         K = P[:, 0] / (P[0, 0] + r)
         self.x = x + K * nu
         self.P = P - np.outer(K, P[0, :])
+        if step:
+            self.x[1] = x[1]  # a level jump is not a rate change
 
 
 class TiltKalmanFilter:
@@ -96,9 +118,6 @@ class TiltKalmanFilter:
         """
         self.sg = _CV(initial_sg, process_noise_sg, measurement_noise_sg, 1e-4, 1e-3, gate)
         self.temp = _CV(initial_temp, process_noise_temp, measurement_noise_temp, 1.0, 1.0, gate)
-        # Seed from the first reading, not a default (cold start used to show
-        # a 50+ C filtered temperature for hours; tilt_ui-89af).
-        self._seeded = False
 
     def update(
         self,
@@ -118,13 +137,8 @@ class TiltKalmanFilter:
         Returns:
             sg_filtered, sg_rate (SG/h), temp_filtered, temp_rate (C/h), confidence
         """
-        if not self._seeded:
-            self.sg.seed(sg)
-            self.temp.seed(temp)
-            self._seeded = True
-        else:
-            self.sg.step(sg, dt_hours)
-            self.temp.step(temp, dt_hours)
+        self.sg.step(sg, dt_hours)
+        self.temp.step(temp, dt_hours)
         return self.get_state()
 
     def _calculate_confidence(self) -> float:
@@ -143,6 +157,5 @@ class TiltKalmanFilter:
 
     def reset(self, sg: float, temp: float) -> None:
         """Reset filter state for a new batch or after a history reload."""
-        self.sg.seed(sg)
-        self.temp.seed(temp)
-        self._seeded = True
+        self.sg.seed(sg, wide=True)
+        self.temp.seed(temp, wide=True)

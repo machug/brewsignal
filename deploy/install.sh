@@ -55,6 +55,19 @@ echo -e "\n${GREEN}[2/9] Configuring Bluetooth...${NC}"
 systemctl enable bluetooth
 systemctl start bluetooth
 
+# Find the source tree (script is run from project root or deploy dir).
+# Check it before the service is stopped, so a bad tree leaves it running.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if [ -d "$PROJECT_DIR/backend" ]; then
+    for f in pyproject.toml uv.lock deploy/brewsignal.service; do
+        if [ ! -f "$PROJECT_DIR/$f" ]; then
+            echo -e "${RED}Missing $PROJECT_DIR/$f; cannot install.${NC}"
+            exit 1
+        fi
+    done
+fi
+
 # Stop existing service if running
 if systemctl is-active --quiet brewsignal; then
     echo -e "\n${YELLOW}Stopping existing BrewSignal service...${NC}"
@@ -66,24 +79,26 @@ echo -e "\n${GREEN}[3/9] Setting up installation directory...${NC}"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 
-# Copy files (assuming script is run from project root or deploy dir)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
-if [ -d "$PROJECT_DIR/backend" ]; then
+# Copy files
+if [ "$PROJECT_DIR" -ef "$INSTALL_DIR" ] && [ -d "$PROJECT_DIR/backend" ]; then
+    echo "Installing in place from $INSTALL_DIR..."
+elif [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing from local project..."
     cp -r "$PROJECT_DIR/backend" "$INSTALL_DIR/"
     cp -r "$PROJECT_DIR/frontend" "$INSTALL_DIR/" 2>/dev/null || true
-    cp "$PROJECT_DIR/pyproject.toml" "$INSTALL_DIR/" 2>/dev/null || true
+    cp "$PROJECT_DIR/pyproject.toml" "$PROJECT_DIR/uv.lock" "$INSTALL_DIR/"
 else
-    echo "Cloning from repository..."
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        cd "$INSTALL_DIR"
-        git pull
-    else
-        rm -rf "$INSTALL_DIR"
-        git clone "$REPO_URL" "$INSTALL_DIR"
-    fi
+    echo "Fetching from repository..."
+    # Check out in place, never delete the folder: data/ (gitignored) holds
+    # the database. Safe to re-run after a failed fetch.
+    # safe.directory: root runs git in a folder the pi user owns.
+    G=(git -c safe.directory="$INSTALL_DIR" -C "$INSTALL_DIR")
+    "${G[@]}" init -q
+    "${G[@]}" remote set-url origin "$REPO_URL" 2>/dev/null \
+        || "${G[@]}" remote add origin "$REPO_URL"
+    "${G[@]}" remote set-branches origin '*'
+    "${G[@]}" fetch -q origin +master:refs/remotes/origin/master
+    "${G[@]}" checkout -q -f -B master origin/master
 fi
 
 # Set up Python virtual environment
@@ -97,19 +112,12 @@ fi
 source "$VENV_DIR/bin/activate"
 
 # Install dependencies
-if [ -f "pyproject.toml" ]; then
-    pip install --upgrade pip
-    pip install uv
-    uv pip install -e .
-else
-    pip install --upgrade pip
-    pip install \
-        fastapi \
-        uvicorn[standard] \
-        sqlalchemy[asyncio] \
-        aiosqlite \
-        httpx
-fi
+pip install --upgrade pip
+pip install 'uv==0.9.0'
+# Install exactly what uv.lock pins (deploy/deploy.sh also uses
+# uv sync --locked). Sync into the existing venv's system Python, so the
+# service user can read it.
+uv sync --locked --no-dev --no-managed-python --python "$VENV_DIR/bin/python"
 
 deactivate
 
@@ -141,7 +149,12 @@ chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
 echo -e "\n${GREEN}[8/9] Installing systemd service...${NC}"
-cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
+# Use the unit from the source that was installed.
+if [ -d "$PROJECT_DIR/backend" ]; then
+    cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
+else
+    cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE"
+fi
 systemctl daemon-reload
 systemctl enable brewsignal
 systemctl start brewsignal

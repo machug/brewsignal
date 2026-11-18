@@ -22,7 +22,7 @@ jobs:
         enable-cache: true
 
     # Install exactly what uv.lock pins, like the Pi and Railway do. Unpinned
-    # pip installs pulled pydantic 2.14 (lock: 2.12) and broke recipe review.
+    # pip installs pulled prompty 2.x (lock: 0.1.50) and broke recipe review.
     - name: Install dependencies
       run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
 

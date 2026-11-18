@@ -32,7 +32,7 @@ dependencies = [
     # AI assistant dependencies
     "tiktoken>=0.5",
     "python-dotenv>=1.0",
-    "prompty>=0.1",
+    "prompty>=0.1,<1",  # 2.x changed the .prompty format; migrate before raising (tilt_ui-mb8m)
     "scalar-fastapi>=1.8.2",
     "pydantic-ai-slim[openrouter]==2.66.0",
     # Assistant long-term memory (embedded qdrant-client is a mem0ai dependency)

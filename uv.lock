@@ -442,7 +442,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "mem0ai", specifier = "==2.2.1" },
     { name = "numpy", specifier = ">=1.24" },
-    { name = "prompty", specifier = ">=0.1" },
+    { name = "prompty", specifier = ">=0.1,<1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "pydantic-ai-slim", extras = ["openrouter"], specifier = "==2.66.0" },

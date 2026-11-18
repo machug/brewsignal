@@ -1,202 +1,125 @@
 """Kalman filter for Tilt hydrometer readings.
 
-Uses an adaptive Kalman filter that adjusts measurement noise based on
-Bluetooth signal strength (RSSI). Weak signals increase uncertainty,
-strong signals trust the measurement more.
+Two independent level+trend (constant-velocity) filters, one for SG and one
+for temperature. Settings come from measured Tilt noise (tilt_ui-0hic):
+- exact CV discretisation, Q = q * [[dt^3/3, dt^2/2], [dt^2/2, dt]]
+- fixed measurement noise (RSSI does not predict Tilt noise; residual std is
+  flat across RSSI bins, so the old RSSI multiplier only slowed the filter)
+- 3-sigma Huber gating: an innovation beyond the gate inflates R by
+  |z|/gate, so a single bubble spike moves the estimate far less.
 """
 
 import numpy as np
-from filterpy.kalman import KalmanFilter
+
+
+class _CV:
+    """Level + trend filter for one signal. Time unit is hours."""
+
+    def __init__(self, level: float, q: float, r: float, p0_rate: float, gate: float):
+        self.q = q
+        self.r = r
+        self.p0_rate = p0_rate
+        self.gate = gate
+        self.seed(level)
+
+    def seed(self, level: float) -> None:
+        self.x = np.array([level, 0.0])
+        self.P = np.diag([self.r, self.p0_rate ** 2])
+
+    def step(self, z: float, dt: float) -> None:
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self.q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+        x = F @ self.x
+        P = F @ self.P @ F.T + Q
+
+        nu = z - x[0]
+        r = self.r
+        zn = abs(nu) / np.sqrt(P[0, 0] + r)
+        if zn > self.gate:
+            r *= zn / self.gate
+
+        K = P[:, 0] / (P[0, 0] + r)
+        self.x = x + K * nu
+        self.P = P - np.outer(K, P[0, :])
 
 
 class TiltKalmanFilter:
-    """Adaptive Kalman filter for Tilt hydrometer sensor fusion.
+    """Kalman filter for Tilt SG and temperature (Celsius).
 
-    State vector: [sg, sg_rate, temp, temp_rate]
-    - sg: Specific gravity
-    - sg_rate: Rate of SG change (points per hour)
-    - temp: Temperature (Fahrenheit)
-    - temp_rate: Rate of temperature change (F per hour)
-
-    The filter uses RSSI to dynamically adjust measurement noise.
-    Weak Bluetooth signals result in higher measurement uncertainty.
+    State per signal: [value, rate per hour].
     """
 
     def __init__(
         self,
         initial_sg: float = 1.050,
         initial_temp: float = 20.0,
-        process_noise_sg: float = 1e-8,
-        process_noise_temp: float = 0.01,
-        measurement_noise_sg: float = 1e-6,
-        measurement_noise_temp: float = 0.1,
+        process_noise_sg: float = 1e-9,
+        process_noise_temp: float = 0.05,
+        measurement_noise_sg: float = 4e-8,
+        measurement_noise_temp: float = 0.0225,
+        gate: float = 3.0,
     ):
-        """Initialize the Kalman filter.
+        """Initialize the filter.
 
         Args:
-            initial_sg: Starting specific gravity estimate
-            initial_temp: Starting temperature estimate (C); replaced by the first
-                measurement unless reset() seeded the filter explicitly
-            process_noise_sg: Process noise for SG (how much natural variation)
-            process_noise_temp: Process noise for temperature
-            measurement_noise_sg: Base measurement noise for SG
-            measurement_noise_temp: Base measurement noise for temperature
+            initial_sg: Starting SG; replaced by the first measurement unless
+                reset() seeded the filter explicitly
+            initial_temp: Starting temperature (C); same rule as initial_sg
+            process_noise_sg: q for SG, units SG^2/h^3
+            process_noise_temp: q for temperature, units C^2/h^3
+            measurement_noise_sg: SG measurement variance (sigma 2e-4)
+            measurement_noise_temp: temperature measurement variance (sigma 0.15 C)
+            gate: innovation gate in standard deviations
         """
-        # State vector: [sg, sg_rate, temp, temp_rate]
-        self.kf = KalmanFilter(dim_x=4, dim_z=2)
-
-        # State transition matrix (constant velocity model)
-        # sg = sg + sg_rate * dt
-        # sg_rate = sg_rate (constant)
-        # temp = temp + temp_rate * dt
-        # temp_rate = temp_rate (constant)
-        self.kf.F = np.array([
-            [1, 1, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 1],
-            [0, 0, 0, 1],
-        ], dtype=float)
-
-        # Measurement matrix (we observe sg and temp directly)
-        self.kf.H = np.array([
-            [1, 0, 0, 0],
-            [0, 0, 1, 0],
-        ], dtype=float)
-
-        # Initial state
-        self.kf.x = np.array([initial_sg, 0.0, initial_temp, 0.0], dtype=float)
-
-        # Base process noise covariance (scaled by dt in update())
-        self.base_Q = np.diag([
-            process_noise_sg,      # sg variance
-            process_noise_sg / 10, # sg_rate variance
-            process_noise_temp,    # temp variance
-            process_noise_temp / 10,  # temp_rate variance
-        ])
-        self.kf.Q = self.base_Q.copy()
-
-        # Base measurement noise covariance (adjusted by RSSI)
-        self.base_R = np.diag([measurement_noise_sg, measurement_noise_temp])
-        self.kf.R = self.base_R.copy()
-
-        # Initial state covariance (uncertainty)
-        self.kf.P = np.diag([1e-4, 1e-6, 1.0, 0.01])
+        self.sg = _CV(initial_sg, process_noise_sg, measurement_noise_sg, 1e-3, gate)
+        self.temp = _CV(initial_temp, process_noise_temp, measurement_noise_temp, 1.0, gate)
         # Seed from the first reading, not a default (cold start used to show
         # a 50+ C filtered temperature for hours; tilt_ui-89af).
         self._seeded = False
-
-    def _rssi_to_noise_factor(self, rssi: float) -> float:
-        """Convert RSSI to measurement noise standard deviation multiplier.
-
-        Strong signal (-40 dBm) = 1x std (trust measurement)
-        Weak signal (-90 dBm) = 10x std (distrust measurement)
-
-        Args:
-            rssi: Bluetooth signal strength in dBm
-
-        Returns:
-            Standard deviation multiplier (1.0 to 10.0)
-        """
-        # Normalize RSSI: -40 dBm -> 0, -90 dBm -> 1
-        rssi_normalized = np.clip((rssi + 40) / -50, 0, 1)
-        return 1.0 + 9.0 * rssi_normalized
 
     def update(
         self,
         sg: float,
         temp: float,
-        rssi: float,
+        rssi: float | None = None,
         dt_hours: float = 1 / 60,
     ) -> dict:
         """Process a new reading and return filtered values.
 
         Args:
-            sg: Raw specific gravity reading
-            temp: Raw temperature reading (Fahrenheit)
-            rssi: Bluetooth signal strength (dBm)
-            dt_hours: Time since last reading in hours (default: 1 minute)
+            sg: Calibrated specific gravity
+            temp: Calibrated temperature (C)
+            rssi: Ignored; kept so callers need not change
+            dt_hours: Time since last reading in hours
 
         Returns:
-            Dictionary with filtered values and metadata:
-            - sg_filtered: Kalman-filtered specific gravity
-            - sg_rate: Estimated SG change rate (points per hour)
-            - temp_filtered: Kalman-filtered temperature
-            - temp_rate: Estimated temperature change rate (F per hour)
-            - confidence: Confidence score (0-1)
-            - rssi_factor: Applied noise multiplier
+            sg_filtered, sg_rate (SG/h), temp_filtered, temp_rate (C/h), confidence
         """
-        # Adjust state transition matrix for actual time delta
-        self.kf.F[0, 1] = dt_hours  # sg += sg_rate * dt
-        self.kf.F[2, 3] = dt_hours  # temp += temp_rate * dt
-
-        # Scale process noise with time delta
-        # Process noise accumulates over time, so scale by dt
-        self.kf.Q = np.diag([
-            self.base_Q[0, 0] * dt_hours,  # sg variance scales with time
-            self.base_Q[1, 1] * dt_hours,  # sg_rate variance scales with time
-            self.base_Q[2, 2] * dt_hours,  # temp variance scales with time
-            self.base_Q[3, 3] * dt_hours,  # temp_rate variance scales with time
-        ])
-
-        # Adjust measurement noise based on signal quality
-        # rssi_factor is a std multiplier, so square it for variance
-        rssi_factor = self._rssi_to_noise_factor(rssi)
-        self.kf.R = self.base_R * (rssi_factor ** 2)
-
         if not self._seeded:
-            self.kf.x = np.array([sg, 0.0, temp, 0.0], dtype=float)
+            self.sg.seed(sg)
+            self.temp.seed(temp)
             self._seeded = True
-
-        # Predict next state
-        self.kf.predict()
-
-        # Update with measurement
-        measurement = np.array([sg, temp])
-        self.kf.update(measurement)
-
-        return {
-            "sg_filtered": float(self.kf.x[0]),
-            "sg_rate": float(self.kf.x[1]),
-            "temp_filtered": float(self.kf.x[2]),
-            "temp_rate": float(self.kf.x[3]),
-            "confidence": self._calculate_confidence(),
-            "rssi_factor": rssi_factor,
-        }
+        else:
+            self.sg.step(sg, dt_hours)
+            self.temp.step(temp, dt_hours)
+        return self.get_state()
 
     def _calculate_confidence(self) -> float:
-        """Calculate confidence score from state covariance.
-
-        Returns:
-            Confidence score between 0 and 1
-        """
-        # Use SG variance as primary confidence indicator
-        sg_variance = self.kf.P[0, 0]
-        # Map variance to confidence: low variance = high confidence
-        # Scale factor adjusted to work with typical variance values (1e-6 to 1e-4)
-        confidence = 1.0 - np.sqrt(sg_variance) * 100
-        return float(np.clip(confidence, 0, 1))
+        """Map SG standard deviation to 0-1 (1e-4 SG -> 0.99)."""
+        return float(np.clip(1.0 - np.sqrt(self.sg.P[0, 0]) * 100, 0, 1))
 
     def get_state(self) -> dict:
-        """Get current filter state without processing a reading.
-
-        Returns:
-            Dictionary with current state estimates
-        """
+        """Current filter state without processing a reading."""
         return {
-            "sg_filtered": float(self.kf.x[0]),
-            "sg_rate": float(self.kf.x[1]),
-            "temp_filtered": float(self.kf.x[2]),
-            "temp_rate": float(self.kf.x[3]),
+            "sg_filtered": float(self.sg.x[0]),
+            "sg_rate": float(self.sg.x[1]),
+            "temp_filtered": float(self.temp.x[0]),
+            "temp_rate": float(self.temp.x[1]),
             "confidence": self._calculate_confidence(),
         }
 
     def reset(self, sg: float, temp: float) -> None:
-        """Reset filter state for a new batch.
-
-        Args:
-            sg: New initial specific gravity
-            temp: New initial temperature
-        """
-        self.kf.x = np.array([sg, 0.0, temp, 0.0], dtype=float)
-        self.kf.P = np.diag([1e-4, 1e-6, 1.0, 0.01])
+        """Reset filter state for a new batch or after a history reload."""
+        self.sg.seed(sg)
+        self.temp.seed(temp)
         self._seeded = True

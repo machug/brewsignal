@@ -36,21 +36,47 @@ class TestTiltKalmanFilter:
         import numpy as np
         assert np.std(sg_values) < np.std(raw_sg)
 
-    def test_rssi_affects_confidence(self):
-        """Weak RSSI increases measurement uncertainty."""
-        kf = TiltKalmanFilter(initial_sg=1.050, initial_temp=68.0)
+    def test_rssi_does_not_change_output(self):
+        """Tilt noise does not depend on RSSI (tilt_ui-0hic), so RSSI is ignored."""
+        a, b = TiltKalmanFilter(), TiltKalmanFilter()
+        for i in range(10):
+            ra = a.update(sg=1.050 - i * 1e-4, temp=19.0, rssi=-45, dt_hours=0.25)
+            rb = b.update(sg=1.050 - i * 1e-4, temp=19.0, rssi=-95, dt_hours=0.25)
+        assert ra == rb
 
-        # Strong signal reading
-        result_strong = kf.update(sg=1.049, temp=68.0, rssi=-50, dt_hours=1.0)
-        kf_strong_confidence = result_strong["confidence"]
+    def test_single_spike_is_gated(self):
+        """A +5 point bubble spike on a flat trace moves the estimate under 2.5e-4."""
+        kf = TiltKalmanFilter()
+        for _ in range(50):
+            kf.update(sg=1.020, temp=19.0, dt_hours=0.25)
+        out = kf.update(sg=1.025, temp=19.0, dt_hours=0.25)
+        assert abs(out["sg_filtered"] - 1.020) < 2.5e-4
 
-        # Reset and test weak signal
-        kf2 = TiltKalmanFilter(initial_sg=1.050, initial_temp=68.0)
-        result_weak = kf2.update(sg=1.049, temp=68.0, rssi=-90, dt_hours=1.0)
-        kf_weak_confidence = result_weak["confidence"]
+    def test_tracks_active_fermentation_without_lag(self):
+        """Old filter lagged ~15 min on a 1 pt/h drop; new one stays within 1 pt."""
+        kf = TiltKalmanFilter()
+        for i in range(48):  # 12 h at 15 min, -1 pt/h
+            out = kf.update(sg=1.060 - i * 0.00025, temp=19.0, dt_hours=0.25)
+        assert abs(out["sg_filtered"] - (1.060 - 47 * 0.00025)) < 1e-4
+        assert out["sg_rate"] == pytest.approx(-0.001, rel=0.1)
 
-        # Strong signal should give higher confidence
-        assert kf_strong_confidence > kf_weak_confidence
+    def test_temperature_follows_step_quickly(self):
+        """Old temp filter lagged ~2 h; a 2 C change should be followed within 1 h."""
+        kf = TiltKalmanFilter()
+        for _ in range(20):
+            kf.update(sg=1.020, temp=18.0, dt_hours=0.25)
+        for _ in range(4):
+            out = kf.update(sg=1.020, temp=20.0, dt_hours=0.25)
+        assert abs(out["temp_filtered"] - 20.0) < 0.3
+
+    def test_recovers_after_gap(self):
+        """Fermenting at -0.5 pt/h, then a 6 h gap: the first reading after it lands close."""
+        kf = TiltKalmanFilter()
+        for i in range(40):
+            kf.update(sg=1.050 - i * 0.000125, temp=19.0, dt_hours=0.25)
+        sg_after_gap = 1.050 - 39 * 0.000125 - 6 * 0.0005
+        out = kf.update(sg=sg_after_gap, temp=19.0, dt_hours=6.0)
+        assert abs(out["sg_filtered"] - sg_after_gap) < 1e-4
 
     def test_returns_sg_rate(self, sample_readings):
         """Filter estimates rate of SG change."""

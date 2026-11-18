@@ -60,7 +60,7 @@ systemctl start bluetooth
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 if [ -d "$PROJECT_DIR/backend" ]; then
-    for f in pyproject.toml uv.lock; do
+    for f in pyproject.toml uv.lock deploy/brewsignal.service; do
         if [ ! -f "$PROJECT_DIR/$f" ]; then
             echo -e "${RED}Missing $PROJECT_DIR/$f; cannot install.${NC}"
             exit 1
@@ -96,7 +96,8 @@ else
     "${G[@]}" init -q
     "${G[@]}" remote set-url origin "$REPO_URL" 2>/dev/null \
         || "${G[@]}" remote add origin "$REPO_URL"
-    "${G[@]}" fetch -q origin master:refs/remotes/origin/master
+    "${G[@]}" remote set-branches origin master
+    "${G[@]}" fetch -q origin +master:refs/remotes/origin/master
     "${G[@]}" checkout -q -f -B master origin/master
 fi
 
@@ -148,10 +149,12 @@ chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
 echo -e "\n${GREEN}[8/9] Installing systemd service...${NC}"
-# Prefer the unit next to this script (the source being installed); a lone
-# downloaded install.sh has none, so fall back to the fresh checkout.
-cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE" 2>/dev/null \
-    || cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE"
+# Use the unit from the source that was installed.
+if [ -d "$PROJECT_DIR/backend" ]; then
+    cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
+else
+    cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE"
+fi
 systemctl daemon-reload
 systemctl enable brewsignal
 systemctl start brewsignal

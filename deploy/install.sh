@@ -88,17 +88,14 @@ elif [ -d "$PROJECT_DIR/backend" ]; then
     cp -r "$PROJECT_DIR/frontend" "$INSTALL_DIR/" 2>/dev/null || true
     cp "$PROJECT_DIR/pyproject.toml" "$PROJECT_DIR/uv.lock" "$INSTALL_DIR/"
 else
-    echo "Cloning from repository..."
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        cd "$INSTALL_DIR"
-        git pull
-    else
-        # Check out in place, never rm -rf: data/ (gitignored) holds the database.
-        git -C "$INSTALL_DIR" init -q
-        git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
-        git -C "$INSTALL_DIR" fetch -q origin master
-        git -C "$INSTALL_DIR" checkout -q -f -B master origin/master
-    fi
+    echo "Fetching from repository..."
+    # Check out in place, never delete the folder: data/ (gitignored) holds
+    # the database. Safe to re-run after a failed fetch.
+    git -C "$INSTALL_DIR" init -q
+    git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" 2>/dev/null \
+        || git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
+    git -C "$INSTALL_DIR" fetch -q origin master
+    git -C "$INSTALL_DIR" checkout -q -f -B master origin/master
 fi
 
 # Set up Python virtual environment
@@ -149,7 +146,8 @@ chmod 700 "$INSTALL_DIR/data"
 
 # Install systemd service
 echo -e "\n${GREEN}[8/9] Installing systemd service...${NC}"
-cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
+cp "$INSTALL_DIR/deploy/brewsignal.service" "$SERVICE_FILE" 2>/dev/null \
+    || cp "$SCRIPT_DIR/brewsignal.service" "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable brewsignal
 systemctl start brewsignal

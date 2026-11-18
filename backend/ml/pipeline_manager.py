@@ -51,6 +51,17 @@ class MLPipelineManager:
             self.pipeline_batch[device_id] = batch_id
         return self.pipelines[device_id]
 
+    def _set_sensor_noise(self, pipeline: MLPipeline, device_type: Optional[str]) -> None:
+        """Tilt SG noise is measured; angle sensors (iSpindel, GravityMon,
+        RAPT) are noisier and would trip the Tilt-tuned gate."""
+        if pipeline.kalman_filter is None or not device_type:
+            return
+        pipeline.kalman_filter.sg.r = (
+            self.config.kalman_measurement_noise_sg
+            if device_type == "tilt"
+            else self.config.kalman_measurement_noise_sg_angle
+        )
+
     def reset_pipeline(
         self,
         device_id: str,
@@ -91,6 +102,7 @@ class MLPipelineManager:
         rssi: float,
         time_hours: float,
         batch_id: Optional[int] = None,
+        device_type: Optional[str] = None,
     ) -> dict:
         """Process a reading through the device's ML pipeline.
 
@@ -101,6 +113,7 @@ class MLPipelineManager:
             rssi: Bluetooth signal strength (dBm)
             time_hours: Time since fermentation start (hours)
             batch_id: Batch the reading belongs to (fresh pipeline on change)
+            device_type: "tilt", "ispindel", ... (sets the SG noise; None keeps it)
 
         Returns:
             Flattened dictionary with ML outputs for database storage:
@@ -110,6 +123,7 @@ class MLPipelineManager:
             - is_anomaly, anomaly_score, anomaly_reasons: Anomaly detection
         """
         pipeline = self.get_or_create_pipeline(device_id, batch_id)
+        self._set_sensor_noise(pipeline, device_type)
         nested_result = pipeline.process_reading(
             sg=sg,
             temp=temp,
@@ -336,6 +350,7 @@ class MLPipelineManager:
                     "readings_loaded": 0,
                     "error": "No readings found for batch"
                 }
+            self._set_sensor_noise(pipeline, readings[-1].device_type)
 
             # Extract data for pipeline
             sgs = []

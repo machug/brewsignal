@@ -178,6 +178,7 @@ class IngestManager:
                         temp=reading.temperature,
                         rssi=reading.rssi or -70,  # Default RSSI for HTTP devices
                         time_hours=time_hours,
+                        device_type=reading.device_type,
                     )
                     logger.debug(
                         "ML pipeline processed reading for %s: filtered_sg=%.4f",

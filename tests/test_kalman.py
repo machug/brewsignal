@@ -72,9 +72,9 @@ class TestTiltKalmanFilter:
         spike, good readings must take over within a few readings."""
         kf = TiltKalmanFilter()
         kf.reset(sg=1.022, temp=18.0)
-        for _ in range(6):  # 30 min at 5 min readings
+        for _ in range(2):
             out = kf.update(sg=1.020, temp=18.0, dt_hours=5 / 60)
-        assert abs(out["sg_filtered"] - 1.020) < 3e-4
+        assert abs(out["sg_filtered"] - 1.020) < 1e-4
 
     def test_nan_and_negative_dt_do_not_poison_state(self):
         kf = TiltKalmanFilter()
@@ -114,6 +114,11 @@ class TestTiltKalmanFilter:
         outs = [kf.update(sg=sg_after_gap, temp=19.0, dt_hours=dt)["sg_filtered"]
                 for dt in (6.0, 5 / 60, 5 / 60, 5 / 60)]
         assert abs(outs[-1] - sg_after_gap) < 3e-4
+        for _ in range(12):  # and stays near it: the stale slope fades
+            out = kf.update(sg=sg_after_gap, temp=19.0, dt_hours=5 / 60)
+        # q=1e-9 keeps the rate stiff, so ~1.6e-4 (under one Tilt step) lingers
+        # for a few hours; the old filter was 18e-4 off here.
+        assert abs(out["sg_filtered"] - sg_after_gap) < 2e-4
 
     def test_returns_sg_rate(self, sample_readings):
         """Filter estimates rate of SG change."""
@@ -205,3 +210,86 @@ def test_config_rejects_non_positive_noise():
     from backend.ml.config import MLConfig
     with pytest.raises(ValidationError):
         MLConfig(kalman_measurement_noise_sg=0)
+
+
+def _flat(kf, sg=1.024, temp=18.0, n=100):
+    for _ in range(n):
+        kf.update(sg=sg, temp=temp, dt_hours=5 / 60)
+
+
+def test_alternating_spikes_never_become_a_step():
+    kf = TiltKalmanFilter()
+    _flat(kf)
+    for i in range(6):
+        out = kf.update(sg=1.024 + (0.005 if i % 2 == 0 else -0.005), temp=18.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - 1.024) < 1e-3
+    assert abs(out["sg_rate"]) < 1e-3
+
+
+def test_three_spike_burst_is_a_known_limit():
+    """Three +5 pt readings in a row count as a step (ponytail limit); the line
+    comes back within 3 good readings and no false rate stays."""
+    kf = TiltKalmanFilter()
+    _flat(kf)
+    for _ in range(3):
+        kf.update(sg=1.029, temp=18.0, dt_hours=5 / 60)
+    for _ in range(3):
+        out = kf.update(sg=1.024, temp=18.0, dt_hours=5 / 60)
+    assert abs(out["sg_filtered"] - 1.024) < 3e-4
+    assert abs(out["sg_rate"]) < 2e-4
+
+
+def test_temperature_step_gives_no_false_rate():
+    kf = TiltKalmanFilter()
+    _flat(kf, temp=18.0)
+    for _ in range(4):
+        out = kf.update(sg=1.024, temp=23.0, dt_hours=5 / 60)
+    assert abs(out["temp_filtered"] - 23.0) < 0.3
+    assert abs(out["temp_rate"]) < 0.5
+
+
+def test_early_spike_gives_no_false_rate():
+    kf = TiltKalmanFilter()
+    kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    kf.update(sg=1.025, temp=19.0, dt_hours=5 / 60)
+    for _ in range(12):  # 1 h
+        out = kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    assert abs(out["sg_rate"]) < 5e-4  # measured: 1.7 pt/h peak, 0.45 at 1 h
+    assert abs(out["sg_filtered"] - 1.020) < 2e-4
+
+
+def test_fast_ramp_rate_is_learned():
+    """Crash cooling at 6 C/h: the rate converges instead of freezing."""
+    kf = TiltKalmanFilter()
+    _flat(kf, temp=18.0)
+    for i in range(1, 25):
+        out = kf.update(sg=1.024, temp=18.0 - 6.0 * i / 12, dt_hours=5 / 60)
+    assert out["temp_rate"] == pytest.approx(-6.0, rel=0.15)
+    assert abs(out["temp_filtered"] - (18.0 - 12.0)) < 0.3
+
+
+def test_noise_must_be_positive():
+    with pytest.raises(ValueError):
+        TiltKalmanFilter(measurement_noise_sg=0)
+
+
+def test_angle_sensors_get_their_own_sg_noise():
+    """iSpindel/GravityMon are noisier than a Tilt; a 1e-3 noisy flat trace must
+    not keep tripping the step rule."""
+    import numpy as np
+    from backend.ml.pipeline_manager import MLPipelineManager
+
+    mgr = MLPipelineManager()
+    rng = np.random.default_rng(1)
+    worst = 0.0
+    for i in range(2000):
+        out = mgr.process_reading(device_id="ISP", batch_id=1, sg=1.020 + rng.normal(0, 1e-3),
+                                  temp=19.0, rssi=-70, time_hours=i * 5 / 60, device_type="ispindel")
+        if i > 50:
+            worst = max(worst, abs(out["sg_filtered"] - 1.020))
+    assert mgr.pipelines["ISP"].kalman_filter.sg.r == mgr.config.kalman_measurement_noise_sg_angle
+    assert worst < 1e-3
+
+    mgr.process_reading(device_id="ISP", batch_id=1, sg=1.020, temp=19.0, rssi=-70,
+                        time_hours=200.0, device_type="tilt")
+    assert mgr.pipelines["ISP"].kalman_filter.sg.r == mgr.config.kalman_measurement_noise_sg

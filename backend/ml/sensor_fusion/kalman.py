@@ -24,6 +24,8 @@ class _CV:
     def __init__(
         self, level: float, q: float, r: float, p0_level: float, p0_rate: float, gate: float
     ):
+        if not (r > 0 and q >= 0 and p0_level > 0 and p0_rate >= 0):
+            raise ValueError("Kalman noise must be positive")
         self.q = q
         self.r = r
         self.p0_level = p0_level
@@ -39,14 +41,13 @@ class _CV:
     def seed(self, level: float, wide: bool) -> None:
         """Start from one value. wide=True for a stored value (load_history
         seeds from the last reading, which may be a spike, so the next
-        readings must win); wide=False for a live measurement."""
-        if not np.isfinite(level):
-            self.seeded = False  # wait for the next finite reading
-            return
-        self.x = np.array([float(level), 0.0])
-        self.P = np.diag([self.p0_level if wide else self.r, self.p0_rate ** 2])
-        self.seeded = True
+        readings must win); wide=False for a live measurement.
+        A non-finite value gives NaN output until a finite reading arrives."""
         self._run = 0
+        self.seeded = bool(np.isfinite(level))
+        p0 = self.p0_level if wide or not self.seeded else self.r
+        self.x = np.array([float(level), 0.0])
+        self.P = np.diag([p0, self.p0_rate ** 2])
 
     def step(self, z: float, dt: float) -> None:
         if not self.seeded:
@@ -70,22 +71,25 @@ class _CV:
         if self.gate > 0 and zn > self.gate:
             sign = 1 if nu > 0 else -1
             self._run = self._run + sign if self._run * sign > 0 else sign
-            if abs(self._run) < STEP_RUN:
-                r *= zn / self.gate
+            if abs(self._run) >= STEP_RUN:
+                # The model broke (Tilt moved, krausen fell, rate changed in a
+                # gap): restart at the new level with an unknown rate (0, wide
+                # variance) so the next readings set it. Keeping the old rate
+                # left a stale slope after gaps.
+                # ponytail: a 3-reading burst of spikes also counts as a step;
+                # raise STEP_RUN if bursts show up in real data.
+                self.x = np.array([z, 0.0])
+                self.P = np.diag([self.r, self.p0_rate ** 2])
+                self._run = 0
+                return
+            # Huber: inflate R so a spike moves level and rate less
+            r *= zn / self.gate
         else:
             self._run = 0
-        step = abs(self._run) >= STEP_RUN
-        if step:
-            # Real step: widen level uncertainty so the estimate moves to it.
-            # ponytail: a 3-reading burst of spikes also counts as a step;
-            # raise STEP_RUN if bursts show up in real data.
-            P[0, 0] = max(P[0, 0], nu ** 2)
 
         K = P[:, 0] / (P[0, 0] + r)
         self.x = x + K * nu
         self.P = P - np.outer(K, P[0, :])
-        if step:
-            self.x[1] = x[1]  # a level jump is not a rate change
 
 
 class TiltKalmanFilter:

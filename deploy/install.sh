@@ -55,6 +55,19 @@ echo -e "\n${GREEN}[2/9] Configuring Bluetooth...${NC}"
 systemctl enable bluetooth
 systemctl start bluetooth
 
+# Find the source tree (script is run from project root or deploy dir).
+# Check it before the service is stopped, so a bad tree leaves it running.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if [ -d "$PROJECT_DIR/backend" ]; then
+    for f in pyproject.toml uv.lock; do
+        if [ ! -f "$PROJECT_DIR/$f" ]; then
+            echo -e "${RED}Missing $PROJECT_DIR/$f; cannot install.${NC}"
+            exit 1
+        fi
+    done
+fi
+
 # Stop existing service if running
 if systemctl is-active --quiet brewsignal; then
     echo -e "\n${YELLOW}Stopping existing BrewSignal service...${NC}"
@@ -66,10 +79,7 @@ echo -e "\n${GREEN}[3/9] Setting up installation directory...${NC}"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 
-# Copy files (assuming script is run from project root or deploy dir)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
+# Copy files
 if [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing from local project..."
     cp -r "$PROJECT_DIR/backend" "$INSTALL_DIR/"
@@ -97,21 +107,11 @@ fi
 source "$VENV_DIR/bin/activate"
 
 # Install dependencies
-if [ -f "pyproject.toml" ]; then
-    pip install --upgrade pip
-    pip install 'uv==0.9.0'
-    # Install exactly what uv.lock pins, same as deploy/deploy.sh. Use the
-    # system Python only, so the venv stays readable by the service user.
-    uv sync --locked --no-dev --no-managed-python
-else
-    pip install --upgrade pip
-    pip install \
-        fastapi \
-        uvicorn[standard] \
-        sqlalchemy[asyncio] \
-        aiosqlite \
-        httpx
-fi
+pip install --upgrade pip
+pip install 'uv==0.9.0'
+# Install exactly what uv.lock pins, same as deploy/deploy.sh. Sync into the
+# existing venv's system Python, so the service user can read it.
+uv sync --locked --no-dev --no-managed-python --python "$VENV_DIR/bin/python"
 
 deactivate
 

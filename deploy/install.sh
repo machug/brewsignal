@@ -96,7 +96,7 @@ else
     "${G[@]}" init -q
     "${G[@]}" remote set-url origin "$REPO_URL" 2>/dev/null \
         || "${G[@]}" remote add origin "$REPO_URL"
-    "${G[@]}" remote set-branches origin master
+    "${G[@]}" remote set-branches origin '*'
     "${G[@]}" fetch -q origin +master:refs/remotes/origin/master
     "${G[@]}" checkout -q -f -B master origin/master
 fi

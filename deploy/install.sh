@@ -80,7 +80,9 @@ mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 
 # Copy files
-if [ -d "$PROJECT_DIR/backend" ]; then
+if [ "$PROJECT_DIR" -ef "$INSTALL_DIR" ]; then
+    echo "Installing in place from $INSTALL_DIR..."
+elif [ -d "$PROJECT_DIR/backend" ]; then
     echo "Installing from local project..."
     cp -r "$PROJECT_DIR/backend" "$INSTALL_DIR/"
     cp -r "$PROJECT_DIR/frontend" "$INSTALL_DIR/" 2>/dev/null || true
@@ -91,8 +93,11 @@ else
         cd "$INSTALL_DIR"
         git pull
     else
-        rm -rf "$INSTALL_DIR"
-        git clone "$REPO_URL" "$INSTALL_DIR"
+        # Check out in place, never rm -rf: data/ (gitignored) holds the database.
+        git -C "$INSTALL_DIR" init -q
+        git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
+        git -C "$INSTALL_DIR" fetch -q origin master
+        git -C "$INSTALL_DIR" checkout -q -f -B master origin/master
     fi
 fi
 
@@ -109,8 +114,9 @@ source "$VENV_DIR/bin/activate"
 # Install dependencies
 pip install --upgrade pip
 pip install 'uv==0.9.0'
-# Install exactly what uv.lock pins, same as deploy/deploy.sh. Sync into the
-# existing venv's system Python, so the service user can read it.
+# Install exactly what uv.lock pins (deploy/deploy.sh also uses
+# uv sync --locked). Sync into the existing venv's system Python, so the
+# service user can read it.
 uv sync --locked --no-dev --no-managed-python --python "$VENV_DIR/bin/python"
 
 deactivate

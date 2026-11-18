@@ -93,6 +93,23 @@ class IngestManager:
         delta = reading_time - batch_start
         return max(0.0, delta.total_seconds() / 3600)
 
+    @staticmethod
+    def _sensor_resolution(reading: HydrometerReading) -> dict:
+        """Tilt via HTTP/MQTT (TiltBridge, gateway): Pro vs standard step
+        size from the raw values, as on the BLE path (tilt_ui-0hic)."""
+        from ..ingest.base import GravityUnit, TemperatureUnit
+        from ..scanner import tilt_resolution
+
+        if (reading.device_type or "").lower() != "tilt" or reading.gravity_raw is None \
+                or reading.gravity_unit != GravityUnit.SG:
+            return {}
+        # Only raw Fahrenheit shows the Pro's 0.1 F grid; a Celsius value
+        # (converted upstream) would always look off-grid, so use SG alone
+        temp_f = (reading.temperature_raw
+                  if reading.temperature_unit == TemperatureUnit.FAHRENHEIT else None)
+        sg_res, temp_res = tilt_resolution(reading.gravity_raw, temp_f)
+        return {"sg_resolution": sg_res, "temp_resolution": temp_res}
+
     async def _get_min_rssi(self, db: AsyncSession) -> Optional[int]:
         """Get min_rssi config with caching to reduce DB queries."""
         now = time.monotonic()
@@ -178,9 +195,11 @@ class IngestManager:
                         temp=reading.temperature,
                         rssi=reading.rssi or -70,  # Default RSSI for HTTP devices
                         time_hours=time_hours,
+                        device_type=reading.device_type,
+                        **self._sensor_resolution(reading),
                     )
                     logger.debug(
-                        "ML pipeline processed reading for %s: filtered_sg=%.4f",
+                        "ML pipeline processed reading for %s: filtered_sg=%s",
                         device.id,
                         ml_outputs.get("sg_filtered", 0),
                     )

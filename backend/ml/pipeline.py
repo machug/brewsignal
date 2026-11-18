@@ -11,6 +11,7 @@ The pipeline:
 3. Fits fermentation curve and predicts completion (if enough history)
 """
 
+import math
 from typing import Optional
 from backend.ml.config import MLConfig
 from backend.ml.sensor_fusion.kalman import TiltKalmanFilter
@@ -72,6 +73,8 @@ class MLPipeline:
         temp: float,
         rssi: float,
         time_hours: float,
+        sg_resolution: float = 0.0,
+        temp_resolution: float = 0.0,
     ) -> dict:
         """Process a fermentation reading through the ML pipeline.
 
@@ -89,10 +92,17 @@ class MLPipeline:
         """
         result = {}
 
+        # No usable gravity: skip the reading entirely, so prediction history
+        # holds no None/NaN and the filter's clock stays with time_history
+        # (the next reading's dt then spans the gap). tilt_ui-0hic
+        if sg is None or not math.isfinite(sg):
+            return {"kalman": None, "anomaly": None, "predictions": None}
+
         # Calculate time delta for Kalman filter
         if self.time_history:
+            # Real elapsed time (a 1-minute floor doubled dt for 30 s
+            # readings); the filter clamps negative dt to 0 (tilt_ui-0hic)
             dt_hours = time_hours - self.time_history[-1]
-            dt_hours = max(dt_hours, 1 / 60)  # At least 1 minute
         else:
             dt_hours = 1 / 60  # Default: 1 minute
 
@@ -103,6 +113,8 @@ class MLPipeline:
                 temp=temp,
                 rssi=rssi,
                 dt_hours=dt_hours,
+                sg_resolution=sg_resolution,
+                temp_resolution=temp_resolution,
             )
             result["kalman"] = kalman_result
 

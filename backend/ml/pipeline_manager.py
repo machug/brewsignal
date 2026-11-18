@@ -1,5 +1,6 @@
 """ML Pipeline Manager for per-device pipeline instances."""
 
+import numpy as np
 import logging
 from typing import Optional
 from .pipeline import MLPipeline
@@ -51,6 +52,17 @@ class MLPipelineManager:
             self.pipeline_batch[device_id] = batch_id
         return self.pipelines[device_id]
 
+    def _set_sensor_noise(self, pipeline: MLPipeline, device_type: Optional[str]) -> None:
+        """Tilt SG noise is measured; angle sensors (iSpindel, GravityMon,
+        RAPT) are noisier and would trip the Tilt-tuned gate."""
+        if pipeline.kalman_filter is None or not device_type:
+            return
+        pipeline.kalman_filter.sg.r = (
+            self.config.kalman_measurement_noise_sg
+            if device_type.lower() == "tilt"
+            else self.config.kalman_measurement_noise_sg_angle
+        )
+
     def reset_pipeline(
         self,
         device_id: str,
@@ -91,6 +103,9 @@ class MLPipelineManager:
         rssi: float,
         time_hours: float,
         batch_id: Optional[int] = None,
+        device_type: Optional[str] = None,
+        sg_resolution: float = 0.0,
+        temp_resolution: float = 0.0,
     ) -> dict:
         """Process a reading through the device's ML pipeline.
 
@@ -101,6 +116,8 @@ class MLPipelineManager:
             rssi: Bluetooth signal strength (dBm)
             time_hours: Time since fermentation start (hours)
             batch_id: Batch the reading belongs to (fresh pipeline on change)
+            device_type: "tilt", "ispindel", ... (sets the SG noise; None keeps it)
+            sg_resolution, temp_resolution: sensor reporting step (0 = fine)
 
         Returns:
             Flattened dictionary with ML outputs for database storage:
@@ -110,11 +127,14 @@ class MLPipelineManager:
             - is_anomaly, anomaly_score, anomaly_reasons: Anomaly detection
         """
         pipeline = self.get_or_create_pipeline(device_id, batch_id)
+        self._set_sensor_noise(pipeline, device_type)
         nested_result = pipeline.process_reading(
             sg=sg,
             temp=temp,
             rssi=rssi,
             time_hours=time_hours,
+            sg_resolution=sg_resolution,
+            temp_resolution=temp_resolution,
         )
 
         # Flatten nested structure for database storage
@@ -122,7 +142,9 @@ class MLPipelineManager:
 
         # Extract Kalman filter outputs
         if nested_result.get("kalman"):
-            kalman = nested_result["kalman"]
+            # Non-finite (NaN seed) -> None: strict JSON and the DB want null
+            kalman = {k: (v if v is None or np.isfinite(v) else None)
+                      for k, v in nested_result["kalman"].items()}
             flat_result["sg_filtered"] = kalman.get("sg_filtered")
             flat_result["temp_filtered"] = kalman.get("temp_filtered")
             flat_result["confidence"] = kalman.get("confidence")
@@ -336,6 +358,7 @@ class MLPipelineManager:
                     "readings_loaded": 0,
                     "error": "No readings found for batch"
                 }
+            self._set_sensor_noise(pipeline, readings[-1].device_type)
 
             # Extract data for pipeline
             sgs = []

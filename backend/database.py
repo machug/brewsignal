@@ -116,6 +116,31 @@ def _migrate_add_ml_columns(conn):
     logging.info("ML columns added successfully")
 
 
+def _migrate_misc_null_unit_to_grams(conn) -> None:
+    """Give legacy unitless misc rows an explicit unit once (tilt_ui-qfiy).
+
+    Rows from before amount_unit existed hold kg (weight) or L. The editor
+    shows a NULL unit as 'g', so a re-save would read 0.001 kg as 0.001 g.
+    Convert to g/ml so every reader agrees.
+    """
+    from sqlalchemy import inspect, text
+
+    # ponytail: assumes every NULL-unit row is legacy kg/L; true when run
+    # because the editor never saved NULL before this marker existed on the Pi.
+    marker = "misc_unit_backfill_v1"
+    insp = inspect(conn)
+    if not (insp.has_table("config") and insp.has_table("recipe_miscs")):
+        return
+    if conn.execute(text("SELECT 1 FROM config WHERE key = :k"), {"k": marker}).fetchone():
+        return
+    conn.execute(text(
+        "UPDATE recipe_miscs SET amount_kg = amount_kg * 1000, "
+        "amount_unit = CASE WHEN amount_is_weight = false THEN 'ml' ELSE 'g' END "
+        "WHERE amount_unit IS NULL AND amount_kg IS NOT NULL"
+    ))
+    conn.execute(text("INSERT INTO config (key, value) VALUES (:k, 'true')"), {"k": marker})
+
+
 def _migrate_global_control_config_to_celsius(conn) -> None:
     """Convert the global temp_target/temp_hysteresis config to Celsius once (tilt_ui-xrq5.6).
 
@@ -595,6 +620,8 @@ async def init_db():
         # — reflecting all 32 tables over the pooler costs ~15s, which the 120s
         # healthcheckTimeout absorbs (tilt_ui-7ba).
         await _reconcile_postgres_columns()
+        async with engine.begin() as conn:
+            await conn.run_sync(_migrate_misc_null_unit_to_grams)  # needs amount_unit column
         # Seed reference data (yeast strains, hop varieties, fermentables, styles)
         await _seed_reference_data()
         # NOTE: the recipe style_id backfill is NOT run here. It
@@ -680,6 +707,7 @@ async def init_db():
     await _migrate_temps_fahrenheit_to_celsius(engine)
     async with engine.begin() as conn:
         await conn.run_sync(_migrate_global_control_config_to_celsius)
+        await conn.run_sync(_migrate_misc_null_unit_to_grams)
 
     async with engine.begin() as conn:
         # Step 4: Data migrations

@@ -622,3 +622,64 @@ class TestWaterAdjustmentMiscDedup:
             })
             names = [m['name'] for m in self._miscs(result)]
             assert names == ['Lactic Acid', 'Whirlfloc'], acids
+
+
+class TestBrewfatherMiscAmountExport:
+    """Misc amount_kg holds the value in amount_unit, not kg (tilt_ui-qfiy)."""
+
+    def _export(self, **kw):
+        from backend.models import RecipeMisc
+        from backend.services.converters.recipe_to_brewfather import (
+            RecipeToBrewfatherConverter,
+        )
+        return RecipeToBrewfatherConverter()._convert_misc(
+            RecipeMisc(name='X', type='water_agent', **kw))
+
+    def test_grams_pass_through(self):
+        bf = self._export(amount_kg=150.0, amount_unit='g', amount_is_weight=True)
+        assert (bf['amount'], bf['unit']) == (150.0, 'g')
+
+    def test_kg_and_litres_scaled(self):
+        bf = self._export(amount_kg=0.15, amount_unit='kg')
+        assert (bf['amount'], bf['unit']) == (150.0, 'g')
+        bf = self._export(amount_kg=0.5, amount_unit='l')
+        assert (bf['amount'], bf['unit']) == (500.0, 'ml')
+
+    def test_other_units_pass_through(self):
+        bf = self._export(amount_kg=2.0, amount_unit='tsp')
+        assert (bf['amount'], bf['unit']) == (2.0, 'tsp')
+
+    def test_legacy_no_unit_still_kg(self):
+        bf = self._export(amount_kg=0.0045, amount_is_weight=True)
+        assert bf['unit'] == 'g' and abs(bf['amount'] - 4.5) < 1e-9
+
+    def test_legacy_no_unit_volume_is_litres(self):
+        bf = self._export(amount_kg=0.5, amount_is_weight=False)
+        assert (bf['amount'], bf['unit']) == (500.0, 'ml')
+
+    def test_each_maps_to_items(self):
+        bf = self._export(amount_kg=1.0, amount_unit='each')
+        assert (bf['amount'], bf['unit']) == (1.0, 'items')
+
+    def test_ounces_convert_to_grams(self):
+        bf = self._export(amount_kg=1.0, amount_unit='oz')
+        assert bf['unit'] == 'g' and abs(bf['amount'] - 28.3495) < 1e-3
+
+
+class TestMiscUnitBackfill:
+    """Legacy NULL-unit misc rows hold kg/L; backfill to g/ml once (tilt_ui-qfiy)."""
+
+    def test_backfill_converts_once(self):
+        from sqlalchemy import create_engine, text
+        from backend.database import _migrate_misc_null_unit_to_grams
+
+        eng = create_engine('sqlite://')
+        with eng.begin() as c:
+            c.execute(text("CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT)"))
+            c.execute(text("CREATE TABLE recipe_miscs (id INTEGER PRIMARY KEY, amount_kg REAL, "
+                           "amount_unit TEXT, amount_is_weight BOOLEAN)"))
+            c.execute(text("INSERT INTO recipe_miscs VALUES (1, 0.001, NULL, 1), (2, 0.5, NULL, 0), (3, 4.5, 'g', 1)"))
+            _migrate_misc_null_unit_to_grams(c)
+            _migrate_misc_null_unit_to_grams(c)
+            rows = c.execute(text("SELECT amount_kg, amount_unit FROM recipe_miscs ORDER BY id")).fetchall()
+        assert [tuple(r) for r in rows] == [(1.0, 'g'), (500.0, 'ml'), (4.5, 'g')]

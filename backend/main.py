@@ -205,6 +205,7 @@ async def handle_tilt_reading(reading: TiltReading):
             if ml_pipeline_manager:
                 try:
                     # Call synchronous process_reading (no await)
+                    sg_res, temp_res = reading.resolution
                     ml_outputs = ml_pipeline_manager.process_reading(
                         device_id=reading.id,
                         batch_id=batch_id,
@@ -212,6 +213,9 @@ async def handle_tilt_reading(reading: TiltReading):
                         temp=temp_calibrated_c,
                         rssi=reading.rssi,
                         time_hours=time_hours,
+                        device_type="tilt",
+                        sg_resolution=sg_res,
+                        temp_resolution=temp_res,
                         # TODO: Add ambient_temp, heater_on, cooler_on, target_temp when available
                     )
                 except Exception as e:
@@ -391,6 +395,7 @@ async def handle_rapt_reading(reading: RAPTPillReading):
                         temp=temp_calibrated_c,
                         rssi=reading.rssi,
                         time_hours=time_hours,
+                        device_type="rapt",
                     )
                 except Exception as e:
                     logging.error(f"ML pipeline failed for {reading.id}: {e}")

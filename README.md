@@ -161,7 +161,6 @@ result = manager.process_reading(
 
 ML features require additional packages (installed automatically with `pip install -e '.[dev]'`):
 - `numpy` - Numerical computing
-- `filterpy` - Kalman filter implementation
 - `scipy` - Optimization and curve fitting
 - `scikit-learn` - Machine learning utilities
 

@@ -52,6 +52,15 @@ class TiltReading:
     def id(self) -> str:
         return self.color
 
+    @property
+    def resolution(self) -> tuple[float, float]:
+        """(SG step, temperature step in C). A Tilt Pro sends 0.0001 SG and
+        0.1 F, a standard Tilt 0.001 SG and 1 F. A Pro reading that lands on
+        whole steps (about 1 in 100) reads as standard: one slightly wider R."""
+        fine = abs(self.sg * 1000 - round(self.sg * 1000)) > 1e-6 or \
+            abs(self.temp_f - round(self.temp_f)) > 1e-6
+        return (0.0001, 0.1 * 5 / 9) if fine else (0.001, 5 / 9)
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,

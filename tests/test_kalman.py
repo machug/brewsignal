@@ -293,3 +293,80 @@ def test_angle_sensors_get_their_own_sg_noise():
     mgr.process_reading(device_id="ISP", batch_id=1, sg=1.020, temp=19.0, rssi=-70,
                         time_hours=200.0, device_type="tilt")
     assert mgr.pipelines["ISP"].kalman_filter.sg.r == mgr.config.kalman_measurement_noise_sg
+
+
+def test_standard_tilt_ticks_do_not_trip_steps():
+    """A standard Tilt reports 0.001 SG: a slow 0.2 pt/h drop arrives as
+    single ticks. With the resolution passed in, no tick counts as a step
+    and the rate stays close to the truth."""
+    kf = TiltKalmanFilter()
+    runs = []
+    for i in range(12 * 48):  # 48 h at 5 min
+        true = 1.030 - 0.0002 * i / 12
+        kf.update(sg=round(true, 3), temp=19.0, dt_hours=5 / 60, sg_resolution=0.001)
+        runs.append(abs(kf.sg._run))
+    out = kf.get_state()
+    assert max(runs) < 2  # a step needs 3 gated readings in a row
+    assert out["sg_rate"] == pytest.approx(-0.0002, abs=1e-4)
+    assert abs(out["sg_filtered"] - true) < 6e-4
+
+
+def test_spike_after_gap_is_still_bounded():
+    """After a 12 h gap P >> R; the gate must scale the whole innovation
+    variance or a single 85 C glitch drags the temperature far up."""
+    kf = TiltKalmanFilter()
+    for _ in range(50):
+        kf.update(sg=1.020, temp=19.0, dt_hours=5 / 60)
+    out = kf.update(sg=1.020, temp=85.0, dt_hours=12.0)
+    # 12 h without data: temp sigma is ~6 C, so the gate allows up to ~3 sigma
+    # (it was 44-85 C when only R was scaled)
+    assert out["temp_filtered"] < 40.0
+
+
+def test_non_finite_seed_outputs_nan():
+    import math
+    kf = TiltKalmanFilter()
+    assert math.isnan(kf.update(sg=float("inf"), temp=19.0, dt_hours=5 / 60)["sg_filtered"])
+    kf.update(sg=1.030, temp=19.0, dt_hours=5 / 60)
+    kf.reset(sg=float("nan"), temp=19.0)
+    assert math.isnan(kf.get_state()["sg_filtered"])
+
+
+def test_infinite_noise_rejected():
+    from pydantic import ValidationError
+    from backend.ml.config import MLConfig
+    with pytest.raises(ValueError):
+        TiltKalmanFilter(measurement_noise_sg=float("inf"))
+    with pytest.raises(ValidationError):
+        MLConfig(kalman_measurement_noise_sg=float("inf"))
+
+
+@pytest.mark.parametrize("sg,temp_f,expected", [
+    (1.0488, 68.6, 0.0001),  # Tilt Pro
+    (1.048, 68.0, 0.001),    # standard Tilt
+    (1.048, 68.6, 0.0001),   # Pro landing on a whole SG step
+])
+def test_tilt_reading_resolution(sg, temp_f, expected):
+    from datetime import datetime, timezone
+    from backend.scanner import TiltReading
+    r = TiltReading(color="BLUE", mac="x", temp_f=temp_f, sg=sg, rssi=-60,
+                    timestamp=datetime.now(timezone.utc))
+    assert r.resolution[0] == expected
+
+
+def test_reload_sets_angle_noise_from_readings():
+    """reload_from_database picks the SG noise from the batch's last reading."""
+    import asyncio
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+    from backend.ml.pipeline_manager import MLPipelineManager
+
+    rd = MagicMock(sg_calibrated=1.020, temp_calibrated=19.0, device_type="ispindel",
+                   timestamp=datetime(2026, 11, 1, tzinfo=timezone.utc))
+    res = MagicMock()
+    res.scalars.return_value.all.return_value = [rd]
+    res.scalar_one_or_none.return_value = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    db = MagicMock(execute=AsyncMock(return_value=res))
+    mgr = MLPipelineManager()
+    asyncio.run(mgr.reload_from_database("ISP", 1, db))
+    assert mgr.pipelines["ISP"].kalman_filter.sg.r == mgr.config.kalman_measurement_noise_sg_angle

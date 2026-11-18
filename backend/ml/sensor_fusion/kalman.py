@@ -24,8 +24,9 @@ class _CV:
     def __init__(
         self, level: float, q: float, r: float, p0_level: float, p0_rate: float, gate: float
     ):
-        if not (r > 0 and q >= 0 and p0_level > 0 and p0_rate >= 0):
-            raise ValueError("Kalman noise must be positive")
+        if not (np.isfinite([q, r, p0_level, p0_rate]).all()
+                and r > 0 and q >= 0 and p0_level > 0 and p0_rate >= 0):
+            raise ValueError("Kalman noise must be finite and positive")
         self.q = q
         self.r = r
         self.p0_level = p0_level
@@ -38,20 +39,24 @@ class _CV:
         self.seeded = False
         self._run = 0  # signed count of same-sign gated innovations
 
-    def seed(self, level: float, wide: bool) -> None:
+    def seed(self, level: float, wide: bool, r: float | None = None) -> None:
         """Start from one value. wide=True for a stored value (load_history
         seeds from the last reading, which may be a spike, so the next
         readings must win); wide=False for a live measurement.
         A non-finite value gives NaN output until a finite reading arrives."""
         self._run = 0
         self.seeded = bool(np.isfinite(level))
-        p0 = self.p0_level if wide or not self.seeded else self.r
-        self.x = np.array([float(level), 0.0])
+        p0 = self.p0_level if wide or not self.seeded else (r or self.r)
+        self.x = np.array([float(level) if self.seeded else np.nan, 0.0])
         self.P = np.diag([p0, self.p0_rate ** 2])
 
-    def step(self, z: float, dt: float) -> None:
+    def step(self, z: float, dt: float, resolution: float = 0.0) -> None:
+        """resolution: the sensor's reporting step; rounding adds step^2/12
+        to the measurement variance (a standard Tilt's 0.001 SG ticks are 5x
+        the Tilt Pro noise the base R was measured on)."""
+        r = self.r + resolution ** 2 / 12
         if not self.seeded:
-            self.seed(z, wide=False)
+            self.seed(z, wide=False, r=r)
             return
         if not np.isfinite(dt):
             return
@@ -66,8 +71,8 @@ class _CV:
             return
 
         nu = z - x[0]
-        r = self.r
-        zn = abs(nu) / np.sqrt(P[0, 0] + r)
+        S = P[0, 0] + r
+        zn = abs(nu) / np.sqrt(S)
         if self.gate > 0 and zn > self.gate:
             sign = 1 if nu > 0 else -1
             self._run = self._run + sign if self._run * sign > 0 else sign
@@ -79,11 +84,13 @@ class _CV:
                 # ponytail: a 3-reading burst of spikes also counts as a step;
                 # raise STEP_RUN if bursts show up in real data.
                 self.x = np.array([z, 0.0])
-                self.P = np.diag([self.r, self.p0_rate ** 2])
+                self.P = np.diag([r, self.p0_rate ** 2])
                 self._run = 0
                 return
-            # Huber: inflate R so a spike moves level and rate less
-            r *= zn / self.gate
+            # Huber: scale the whole innovation variance by zn/gate, so a spike
+            # moves the estimate at most gate sigmas even when P >> R (after
+            # a gap or right after seeding)
+            r = S * zn / self.gate - P[0, 0]
         else:
             self._run = 0
 
@@ -129,6 +136,8 @@ class TiltKalmanFilter:
         temp: float,
         rssi: float | None = None,
         dt_hours: float = 1 / 60,
+        sg_resolution: float = 0.0,
+        temp_resolution: float = 0.0,
     ) -> dict:
         """Process a new reading and return filtered values.
 
@@ -137,12 +146,13 @@ class TiltKalmanFilter:
             temp: Calibrated temperature (C)
             rssi: Ignored; kept so callers need not change
             dt_hours: Time since last reading in hours
+            sg_resolution, temp_resolution: sensor reporting step (0 = fine)
 
         Returns:
             sg_filtered, sg_rate (SG/h), temp_filtered, temp_rate (C/h), confidence
         """
-        self.sg.step(sg, dt_hours)
-        self.temp.step(temp, dt_hours)
+        self.sg.step(sg, dt_hours, sg_resolution)
+        self.temp.step(temp, dt_hours, temp_resolution)
         return self.get_state()
 
     def _calculate_confidence(self) -> float:

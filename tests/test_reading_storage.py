@@ -85,3 +85,30 @@ async def test_paired_tilt_stores_reading():
                        if call[0] and isinstance(call[0][0], Reading)]
         assert len(reading_adds) == 1, "Expected exactly one Reading object to be added for paired tilt with active batch"
         assert reading_adds[0][0][0].device_id == "BLUE"
+
+
+@pytest.mark.asyncio
+async def test_tilt_ble_passes_device_type_and_resolution_to_ml():
+    """tilt_ui-0hic: the Tilt BLE path tells the ML pipeline it is a Tilt and
+    which resolution (Pro vs standard) the reading has."""
+    reading = TiltReading(color="PINK", mac="BB:CC:DD:EE:FF:AB", sg=1.048, temp_f=66.0,
+                          rssi=-50, timestamp=datetime.now(timezone.utc))
+    ml = MagicMock()
+    ml.process_reading.return_value = {}
+    with patch('backend.main.async_session_factory') as mock_factory, \
+            patch('backend.main.ml_pipeline_manager', ml, create=True), \
+            patch('backend.main.manager') as mock_ws, \
+            patch('backend.main.update_reading'), \
+            patch('backend.main.calibration_service.calibrate_reading', return_value=(1.048, 18.9)), \
+            patch('backend.main.link_reading_to_batch', new_callable=AsyncMock, return_value=1), \
+            patch('backend.main.get_config_value', new_callable=AsyncMock, return_value=15), \
+            patch('backend.main.calculate_time_since_batch_start', new_callable=AsyncMock, return_value=24.0):
+        mock_session = AsyncMock()
+        mock_factory.return_value.__aenter__.return_value = mock_session
+        mock_session.get.return_value = MagicMock(paired=True)
+        mock_ws.broadcast = AsyncMock()
+        mock_session.execute.return_value = MagicMock()
+        await handle_tilt_reading(reading)
+    kw = ml.process_reading.call_args.kwargs
+    assert kw["device_type"] == "tilt"
+    assert kw["sg_resolution"] == 0.001

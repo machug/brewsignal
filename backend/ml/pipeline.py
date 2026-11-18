@@ -72,6 +72,8 @@ class MLPipeline:
         temp: float,
         rssi: float,
         time_hours: float,
+        sg_resolution: float = 0.0,
+        temp_resolution: float = 0.0,
     ) -> dict:
         """Process a fermentation reading through the ML pipeline.
 
@@ -103,6 +105,8 @@ class MLPipeline:
                 temp=temp,
                 rssi=rssi,
                 dt_hours=dt_hours,
+                sg_resolution=sg_resolution,
+                temp_resolution=temp_resolution,
             )
             result["kalman"] = kalman_result
 

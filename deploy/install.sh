@@ -100,7 +100,8 @@ source "$VENV_DIR/bin/activate"
 if [ -f "pyproject.toml" ]; then
     pip install --upgrade pip
     pip install uv
-    uv pip install -e .
+    # Install exactly what uv.lock pins, same as deploy/deploy.sh.
+    uv sync --locked --no-dev
 else
     pip install --upgrade pip
     pip install \

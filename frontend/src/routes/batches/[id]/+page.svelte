@@ -494,7 +494,12 @@
 							class="status-select"
 							aria-label="Batch status"
 							value={batch.status}
-							onchange={(e) => handleStatusChange(e.currentTarget.value as BatchStatus)}
+							onchange={async (e) => {
+								const el = e.currentTarget;
+								await handleStatusChange(el.value as BatchStatus);
+								// Cancelled or failed: snap the hidden select back to the real status
+								if (batch) el.value = batch.status;
+							}}
 							disabled={statusUpdating}
 						>
 							{#each statusOptions as status}

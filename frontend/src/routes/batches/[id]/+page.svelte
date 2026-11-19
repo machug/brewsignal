@@ -50,7 +50,7 @@
 
 	const statusOptions: BatchStatus[] = ['planning', 'brewing', 'fermenting', 'conditioning', 'completed', 'archived'];
 
-	let statusInfo = $derived(batch ? (statusConfig[batch.status] || statusConfig.planning) : statusConfig.planning);
+	let statusInfo = $derived(batch ? statusConfig[batch.status] : statusConfig.planning);
 
 	// Check if temperature control is available for this batch
 	let hasTempControl = $derived(
@@ -897,7 +897,8 @@
 		opacity: 0;
 		appearance: none;
 		font-family: var(--font-display);
-		font-size: var(--text-sm);
+		/* 16px: iOS Safari zooms the page on focus for smaller select text */
+		font-size: 16px;
 		cursor: pointer;
 	}
 	.status-select:disabled {

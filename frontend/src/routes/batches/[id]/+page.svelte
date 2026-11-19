@@ -50,7 +50,7 @@
 
 	const statusOptions: BatchStatus[] = ['planning', 'brewing', 'fermenting', 'conditioning', 'completed', 'archived'];
 
-	let statusInfo = $derived(batch ? statusConfig[batch.status] : statusConfig.planning);
+	let statusInfo = $derived(batch ? (statusConfig[batch.status] || statusConfig.planning) : statusConfig.planning);
 
 	// Check if temperature control is available for this batch
 	let hasTempControl = $derived(
@@ -487,9 +487,11 @@
 		<div class="batch-header">
 			<div class="header-main">
 				<div class="header-info">
-					<div class="batch-number"><span>Batch #{batch.batch_number || '?'}</span><span class="status-selector">
+					<div class="batch-number"><span>Batch #{batch.batch_number || '?'}</span><span class="status-selector s-{batch.status}">
+						<span class="status-label" aria-hidden="true">{statusInfo.label}</span>
+						<svg class="status-chevron" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
 						<select
-							class="status-select s-{batch.status}"
+							class="status-select"
 							aria-label="Batch status"
 							value={batch.status}
 							onchange={(e) => handleStatusChange(e.currentTarget.value as BatchStatus)}
@@ -499,7 +501,6 @@
 								<option value={status}>{statusConfig[status].label}</option>
 							{/each}
 						</select>
-						<svg class="status-chevron" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
 					</span>{#if batch.recipe?.style?.name}<span class="style-part"><span class="sep" aria-hidden="true">&middot;</span> <span class="style-name">{batch.recipe.style.name}</span></span>{/if}</div>
 					<h1 class="batch-name">{batch.name || batch.recipe?.name || 'Unnamed Batch'}</h1>
 					{#if batch.recipe}
@@ -863,11 +864,9 @@
 		position: relative;
 		display: inline-flex;
 		align-items: center;
-	}
-	.status-select {
-		appearance: none;
+		gap: 6px;
 		height: 22px;
-		padding: 0 22px 0 8px;
+		padding: 0 6px 0 8px;
 		font-family: var(--font-display);
 		font-size: var(--text-xs);
 		font-weight: 600;
@@ -878,45 +877,64 @@
 		background: transparent;
 		border: 1px solid var(--rule-strong);
 		border-radius: 2px;
-		cursor: pointer;
 	}
-	/* Compact badge on desk; full touch target on phone/tablet */
-	@media (pointer: coarse), (max-width: 760px) {
-		.status-select {
-			height: 44px;
-			padding: 0 28px 0 12px;
-		}
+	.status-label {
+		white-space: nowrap;
 	}
 	.status-chevron {
-		position: absolute;
-		right: 6px;
-		top: 50%;
-		transform: translateY(-50%);
+		flex-shrink: 0;
 		color: var(--ink-secondary);
 		pointer-events: none;
 	}
-	.status-select:focus-visible {
+	.status-select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		opacity: 0;
+		appearance: none;
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+	.status-select:disabled {
+		cursor: not-allowed;
+	}
+	/* Compact badge on desk; full touch target on phone/tablet */
+	@media (pointer: coarse), (max-width: 760px) {
+		.status-selector {
+			height: 44px;
+			padding: 0 10px 0 12px;
+		}
+	}
+	.status-selector:has(.status-select:focus-visible) {
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
+	}
+	.status-selector:has(.status-select:disabled) {
+		opacity: 0.6;
 	}
 	.status-select option {
 		background: var(--bg-elevated);
 		color: var(--ink-primary);
 	}
-	.status-select.s-planning,
-	.status-select.s-brewing,
-	.status-select.s-fermenting {
+	.status-selector.s-planning,
+	.status-selector.s-brewing,
+	.status-selector.s-fermenting {
 		color: var(--accent);
 		border-color: var(--accent-rule);
 	}
-	.status-select.s-planning {
+	.status-selector.s-planning {
 		background: var(--accent-tint);
 	}
-	.status-select.s-conditioning {
+	.status-selector.s-conditioning {
 		color: var(--status-conditioning);
 		border-color: color-mix(in oklch, var(--status-conditioning) 55%, transparent);
 	}
-	.status-select.s-completed {
+	.status-selector.s-completed {
 		color: var(--status-completed);
 		border-color: color-mix(in oklch, var(--status-completed) 55%, transparent);
 	}

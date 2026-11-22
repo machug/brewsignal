@@ -4,8 +4,6 @@
 
 A modern web interface for monitoring fermentation hydrometers on Raspberry Pi. Supports Tilt, iSpindel, and GravityMon devices.
 
-![Dashboard](docs/screenshots/dashboard.png)
-
 ## Quick Install (Raspberry Pi)
 
 ```bash
